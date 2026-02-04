@@ -80,32 +80,30 @@ async function logEvento({ comprobanteId, accion, origen }) {
 /* =====================================================
    UTIL — WATERMARK RECEIPT IMAGE
 ===================================================== */
-async function watermarkReceipt(filePath, { id, orderNumber, monto, estado }) {
+async function watermarkReceipt(filePath, { id, orderNumber }) {
   const image = sharp(filePath);
   const metadata = await image.metadata();
 
   const width = metadata.width || 800;
-  const fontSize = Math.max(16, Math.round(width * 0.025));
-  const padding = Math.round(fontSize * 0.8);
-  const lineHeight = Math.round(fontSize * 1.4);
+  const fontSize = Math.max(18, Math.round(width * 0.03));
+  const padding = Math.round(fontSize * 0.6);
+  const lineHeight = Math.round(fontSize * 1.3);
 
   const lines = [
     `ID: ${id}`,
-    `Pedido: ${orderNumber}`,
-    `Monto: $${monto}`,
-    `Estado: ${estado}`
+    `Pedido: ${orderNumber}`
   ];
 
-  const textWidth = Math.round(fontSize * 12);
+  const textWidth = Math.round(fontSize * 10);
   const textHeight = lines.length * lineHeight + padding * 2;
 
   const svgOverlay = `
-    <svg width="${textWidth}" height="${textHeight}">
+    <svg width="${textWidth}" height="${textHeight}" xmlns="http://www.w3.org/2000/svg">
       <rect x="0" y="0" width="${textWidth}" height="${textHeight}"
-            fill="rgba(0,0,0,0.65)" rx="4" ry="4"/>
+            fill="rgba(0,0,0,0.7)" rx="4" ry="4"/>
       ${lines.map((line, i) => `
         <text x="${padding}" y="${padding + fontSize + i * lineHeight}"
-              font-family="Arial, sans-serif" font-size="${fontSize}"
+              font-family="DejaVu Sans, Liberation Sans, sans-serif" font-size="${fontSize}"
               fill="white" font-weight="bold">${line}</text>
       `).join('')}
     </svg>
@@ -1227,9 +1225,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     ================================ */
     await watermarkReceipt(file.path, {
       id: comprobanteId,
-      orderNumber,
-      monto: montoDetectado,
-      estado: 'pendiente'
+      orderNumber
     });
 
     /* ===============================
