@@ -4,7 +4,7 @@ import { RefreshCw, AlertCircle, Eye, Banknote, FileText, Download, Calendar } f
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
 import { fetchComprobantes, ApiComprobanteList } from '../services/api';
-import { formatDistanceToNow, format, isToday } from 'date-fns';
+import { formatDistanceToNow, format, isToday, isSameDay, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { clsx } from 'clsx';
 import JSZip from 'jszip';
@@ -176,7 +176,8 @@ export function RealReceipts() {
   const [error, setError] = useState<string | null>(null);
   const [estadoFilter, setEstadoFilter] = useState<ComprobanteEstado | 'all'>('all');
   const [tipoFilter, setTipoFilter] = useState<string | 'all'>('all');
-  const [fechaFilter, setFechaFilter] = useState<'all' | 'hoy'>('all');
+  const [fechaFilter, setFechaFilter] = useState<'all' | 'hoy' | 'custom'>('all');
+  const [customDate, setCustomDate] = useState<string>('');
   const [downloading, setDownloading] = useState(false);
 
   const loadComprobantes = async () => {
@@ -204,16 +205,24 @@ export function RealReceipts() {
       const matchesTipo = tipoFilter === 'all' ||
         (tipoFilter === 'efectivo' && comp.tipo === 'efectivo') ||
         (tipoFilter === 'transferencia' && comp.tipo !== 'efectivo');
-      const matchesFecha = fechaFilter === 'all' || isToday(new Date(comp.created_at));
+      let matchesFecha = true;
+      if (fechaFilter === 'hoy') {
+        matchesFecha = isToday(new Date(comp.created_at));
+      } else if (fechaFilter === 'custom' && customDate) {
+        matchesFecha = isSameDay(new Date(comp.created_at), parseISO(customDate));
+      }
 
       return matchesEstado && matchesTipo && matchesFecha;
     });
-  }, [comprobantes, estadoFilter, tipoFilter, fechaFilter]);
+  }, [comprobantes, estadoFilter, tipoFilter, fechaFilter, customDate]);
 
   const estadoCounts = useMemo(() => {
-    const filtered = fechaFilter === 'hoy'
-      ? comprobantes.filter(c => isToday(new Date(c.created_at)))
-      : comprobantes;
+    let filtered = comprobantes;
+    if (fechaFilter === 'hoy') {
+      filtered = comprobantes.filter(c => isToday(new Date(c.created_at)));
+    } else if (fechaFilter === 'custom' && customDate) {
+      filtered = comprobantes.filter(c => isSameDay(new Date(c.created_at), parseISO(customDate)));
+    }
 
     return filtered.reduce(
       (acc, comp) => {
@@ -224,7 +233,7 @@ export function RealReceipts() {
       },
       { total: 0 } as Record<string, number>
     );
-  }, [comprobantes, fechaFilter]);
+  }, [comprobantes, fechaFilter, customDate]);
 
   return (
     <div className="min-h-screen">
@@ -283,6 +292,24 @@ export function RealReceipts() {
                 <Calendar size={14} />
                 Hoy
               </button>
+              <div className="relative">
+                <input
+                  type="date"
+                  value={customDate}
+                  onChange={(e) => {
+                    setCustomDate(e.target.value);
+                    if (e.target.value) {
+                      setFechaFilter('custom');
+                    }
+                  }}
+                  className={clsx(
+                    'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150',
+                    fechaFilter === 'custom' && customDate
+                      ? 'bg-purple-50 text-purple-700 ring-2 ring-purple-900/10 border-transparent'
+                      : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
+                  )}
+                />
+              </div>
             </div>
           </div>
 
