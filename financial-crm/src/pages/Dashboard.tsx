@@ -13,7 +13,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { Header } from '../components/layout';
-import { KPICard, ActivityFeed } from '../components/dashboard';
+import { KPICard, ActivityFeed, StatusDistributionChart } from '../components/dashboard';
 import { fetchOrders, fetchComprobantes, ApiOrder, ApiComprobanteList } from '../services/api';
 import { isToday } from 'date-fns';
 
@@ -91,6 +91,19 @@ export function Dashboard() {
       enviados,
     };
   }, [orders, comprobantes]);
+
+  // Datos para el gráfico de estados
+  const chartData = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const rejected = comprobantes.filter(c => c.estado === 'rechazado').length;
+    return [{
+      date: today,
+      paid: kpis.pagados,
+      pending: kpis.pendientes + kpis.parciales,
+      rejected,
+      total: kpis.totalPedidosHoy,
+    }];
+  }, [kpis, comprobantes]);
 
   // Actividad reciente (últimos comprobantes)
   const actividadReciente = useMemo(() => {
@@ -203,9 +216,9 @@ export function Dashboard() {
           />
         </div>
 
+        {/* Gráfico de estados */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Actividad reciente */}
-          <ActivityFeed activities={actividadReciente} />
+          <StatusDistributionChart data={chartData} />
 
           {/* Acciones rápidas */}
           <div className="bg-white rounded-2xl border border-neutral-200/60 p-6 shadow-soft">
@@ -246,6 +259,9 @@ export function Dashboard() {
             </div>
           </div>
         </div>
+
+        {/* Actividad reciente */}
+        <ActivityFeed activities={actividadReciente} />
       </div>
     </div>
   );
