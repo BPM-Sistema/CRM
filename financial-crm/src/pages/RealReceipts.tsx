@@ -72,12 +72,6 @@ const estadoButtons: { value: ComprobanteEstado | 'all'; label: string; color: s
   { value: 'rechazado', label: 'Rechazado', color: 'bg-red-50 text-red-700' },
 ];
 
-const tipoButtons: { value: string | 'all'; label: string }[] = [
-  { value: 'all', label: 'Todos' },
-  { value: 'transferencia', label: 'Transferencia' },
-  { value: 'efectivo', label: 'Efectivo' },
-];
-
 // Mapear estado del comprobante (para datos viejos que tienen 'pendiente')
 function mapComprobanteEstado(estado: string | null): ComprobanteEstado {
   if (!estado || estado === 'pendiente') return 'a_confirmar';
@@ -175,7 +169,6 @@ export function RealReceipts() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [estadoFilter, setEstadoFilter] = useState<ComprobanteEstado | 'all'>('all');
-  const [tipoFilter, setTipoFilter] = useState<string | 'all'>('all');
   const [fechaFilter, setFechaFilter] = useState<'all' | 'hoy' | 'custom'>('all');
   const [customDate, setCustomDate] = useState<string>('');
   const [downloading, setDownloading] = useState(false);
@@ -202,9 +195,6 @@ export function RealReceipts() {
       // Mapear estado del comprobante (pendiente → a_confirmar para datos viejos)
       const compEstado = mapComprobanteEstado(comp.estado);
       const matchesEstado = estadoFilter === 'all' || compEstado === estadoFilter;
-      const matchesTipo = tipoFilter === 'all' ||
-        (tipoFilter === 'efectivo' && comp.tipo === 'efectivo') ||
-        (tipoFilter === 'transferencia' && comp.tipo !== 'efectivo');
       let matchesFecha = true;
       if (fechaFilter === 'hoy') {
         matchesFecha = isToday(new Date(comp.created_at));
@@ -212,9 +202,9 @@ export function RealReceipts() {
         matchesFecha = isSameDay(new Date(comp.created_at), parseISO(customDate));
       }
 
-      return matchesEstado && matchesTipo && matchesFecha;
+      return matchesEstado && matchesFecha;
     });
-  }, [comprobantes, estadoFilter, tipoFilter, fechaFilter, customDate]);
+  }, [comprobantes, estadoFilter, fechaFilter, customDate]);
 
   const estadoCounts = useMemo(() => {
     let filtered = comprobantes;
@@ -334,27 +324,7 @@ export function RealReceipts() {
             </div>
           </div>
 
-          {/* Filtro de tipo */}
-          <div>
-            <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block">Tipo</span>
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0">
-              {tipoButtons.map((btn) => (
-                <button
-                  key={btn.value}
-                  onClick={() => setTipoFilter(btn.value)}
-                  className={clsx(
-                    'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
-                    tipoFilter === btn.value
-                      ? 'bg-neutral-100 text-neutral-700 ring-2 ring-neutral-900/10'
-                      : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
-                  )}
-                >
-                  {btn.label}
-                </button>
-              ))}
-            </div>
           </div>
-        </div>
 
         {/* Grid de comprobantes */}
         {loading && comprobantes.length === 0 ? (
