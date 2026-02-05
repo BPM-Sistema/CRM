@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RefreshCw, AlertCircle, Eye, Receipt, RotateCcw, Printer, Calendar } from 'lucide-react';
+import { RefreshCw, AlertCircle, Eye, Receipt, RotateCcw, Printer, Calendar, Search } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card, PaymentStatusBadge, OrderStatusBadge } from '../components/ui';
 import {
@@ -43,6 +43,7 @@ export function RealOrders() {
   const [paymentFilter, setPaymentFilter] = useState<PaymentStatus | 'all'>('all');
   const [orderStatusFilter, setOrderStatusFilter] = useState<OrderStatus | 'all'>('all');
   const [fechaFilter, setFechaFilter] = useState<'all' | 'hoy'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const loadOrders = async () => {
     setLoading(true);
@@ -70,9 +71,17 @@ export function RealOrders() {
       const matchesOrderStatus = orderStatusFilter === 'all' || orderStatus === orderStatusFilter;
       const matchesFecha = fechaFilter === 'all' || isToday(new Date(order.created_at));
 
-      return matchesPayment && matchesOrderStatus && matchesFecha;
+      // Búsqueda por número de pedido, nombre, email o teléfono
+      const query = searchQuery.toLowerCase().trim();
+      const matchesSearch = !query ||
+        order.order_number.toLowerCase().includes(query) ||
+        (order.customer_name?.toLowerCase().includes(query)) ||
+        (order.customer_email?.toLowerCase().includes(query)) ||
+        (order.customer_phone?.toLowerCase().includes(query));
+
+      return matchesPayment && matchesOrderStatus && matchesFecha && matchesSearch;
     });
-  }, [orders, paymentFilter, orderStatusFilter, fechaFilter]);
+  }, [orders, paymentFilter, orderStatusFilter, fechaFilter, searchQuery]);
 
   const statusCounts = useMemo(() => {
     return orders.reduce(
@@ -145,8 +154,20 @@ export function RealOrders() {
       />
 
       <div className="p-6 space-y-6">
-        {/* Filtros */}
+        {/* Búsqueda y Filtros */}
         <div className="space-y-4">
+          {/* Barra de búsqueda */}
+          <div className="relative">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+            <input
+              type="text"
+              placeholder="Buscar por número, cliente, email o teléfono..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-neutral-200 bg-white text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-300 transition-all"
+            />
+          </div>
+
           {/* Filtro de fecha */}
           <div>
             <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block">Fecha</span>

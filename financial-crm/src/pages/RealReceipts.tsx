@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RefreshCw, AlertCircle, Eye, Banknote, FileText, Download, Calendar, CheckSquare, Square, X } from 'lucide-react';
+import { RefreshCw, AlertCircle, Eye, Banknote, FileText, Download, Calendar, CheckSquare, Square, X, Search } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
 import { fetchComprobantes, ApiComprobanteList } from '../services/api';
@@ -209,6 +209,7 @@ export function RealReceipts() {
   const [downloading, setDownloading] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
 
   const loadComprobantes = async () => {
     setLoading(true);
@@ -239,9 +240,16 @@ export function RealReceipts() {
         matchesFecha = isSameDay(new Date(comp.created_at), parseISO(customDate));
       }
 
-      return matchesEstado && matchesFecha;
+      // Búsqueda por número de pedido, ID de comprobante o nombre de cliente
+      const query = searchQuery.toLowerCase().trim();
+      const matchesSearch = !query ||
+        comp.order_number?.toLowerCase().includes(query) ||
+        comp.id.toString().includes(query) ||
+        (comp.customer_name?.toLowerCase().includes(query));
+
+      return matchesEstado && matchesFecha && matchesSearch;
     });
-  }, [comprobantes, estadoFilter, fechaFilter, customDate]);
+  }, [comprobantes, estadoFilter, fechaFilter, customDate, searchQuery]);
 
   const estadoCounts = useMemo(() => {
     let filtered = comprobantes;
@@ -362,8 +370,20 @@ export function RealReceipts() {
       />
 
       <div className="p-6 space-y-6">
-        {/* Filtros */}
+        {/* Búsqueda y Filtros */}
         <div className="space-y-4">
+          {/* Barra de búsqueda */}
+          <div className="relative">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+            <input
+              type="text"
+              placeholder="Buscar por número de pedido, ID o cliente..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-neutral-200 bg-white text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-300 transition-all"
+            />
+          </div>
+
           {/* Filtro de fecha */}
           <div>
             <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block">Fecha</span>
