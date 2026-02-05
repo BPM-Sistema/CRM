@@ -1,18 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Header } from '../components/layout';
-import { RefreshCw, AlertCircle, Check, Save, ChevronDown } from 'lucide-react';
+import { RefreshCw, AlertCircle, Check, Save, ChevronDown, LayoutDashboard, ShoppingCart, Receipt, Users } from 'lucide-react';
 import { fetchRoles, fetchPermissions, updateRolePermissions, Role, Permission } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-
-const MODULE_LABELS: Record<string, string> = {
-  dashboard: 'Dashboard',
-  orders: 'Pedidos (General)',
-  orders_pago: 'Pedidos - Estados de Pago',
-  orders_estado: 'Pedidos - Estados Logísticos',
-  receipts: 'Comprobantes (General)',
-  receipts_estado: 'Comprobantes - Estados',
-  users: 'Usuarios',
-};
 
 const PERMISSION_LABELS: Record<string, string> = {
   'dashboard.view': 'Ver dashboard',
@@ -22,18 +12,18 @@ const PERMISSION_LABELS: Record<string, string> = {
   'orders.update_status': 'Cambiar estado logístico',
   'orders.create_cash_payment': 'Registrar pago en efectivo',
   // Orders por estado de pago
-  'orders.view_pendiente': 'Ver pendientes de pago',
-  'orders.view_a_confirmar': 'Ver a confirmar',
-  'orders.view_parcial': 'Ver pago parcial',
-  'orders.view_total': 'Ver pago total',
-  'orders.view_rechazado': 'Ver rechazados',
+  'orders.view_pendiente': 'Pendiente',
+  'orders.view_a_confirmar': 'A confirmar',
+  'orders.view_parcial': 'Parcial',
+  'orders.view_total': 'Total',
+  'orders.view_rechazado': 'Rechazado',
   // Orders por estado de pedido
-  'orders.view_pendiente_pago': 'Ver pendiente de pago',
-  'orders.view_a_imprimir': 'Ver a imprimir',
-  'orders.view_armado': 'Ver armados',
-  'orders.view_enviado': 'Ver enviados',
-  'orders.view_en_calle': 'Ver en calle',
-  'orders.view_retirado': 'Ver retirados',
+  'orders.view_pendiente_pago': 'Pendiente de pago',
+  'orders.view_a_imprimir': 'A imprimir',
+  'orders.view_armado': 'Armado',
+  'orders.view_enviado': 'Enviado',
+  'orders.view_en_calle': 'En calle',
+  'orders.view_retirado': 'Retirado',
   // Receipts general
   'receipts.view': 'Ver comprobantes',
   'receipts.download': 'Descargar imágenes',
@@ -41,20 +31,61 @@ const PERMISSION_LABELS: Record<string, string> = {
   'receipts.confirm': 'Confirmar',
   'receipts.reject': 'Rechazar',
   // Receipts por estado
-  'receipts.view_pendiente': 'Ver pendientes',
-  'receipts.view_a_confirmar': 'Ver a confirmar',
-  'receipts.view_parcial': 'Ver parciales',
-  'receipts.view_total': 'Ver totales',
-  'receipts.view_rechazado': 'Ver rechazados',
+  'receipts.view_pendiente': 'Pendiente',
+  'receipts.view_a_confirmar': 'A confirmar',
+  'receipts.view_parcial': 'Parcial',
+  'receipts.view_total': 'Total',
+  'receipts.view_rechazado': 'Rechazado',
   // Users
   'users.view': 'Ver usuarios',
-  'users.create': 'Crear',
-  'users.edit': 'Editar',
-  'users.disable': 'Desactivar',
+  'users.create': 'Crear usuario',
+  'users.edit': 'Editar usuario',
+  'users.disable': 'Desactivar usuario',
   'users.assign_role': 'Asignar rol',
 };
 
-const MODULE_ORDER = ['dashboard', 'orders', 'orders_pago', 'orders_estado', 'receipts', 'receipts_estado', 'users'];
+// Estructura de secciones organizadas
+const SECTIONS = [
+  {
+    id: 'dashboard',
+    title: 'Dashboard',
+    icon: LayoutDashboard,
+    color: 'bg-blue-50 text-blue-600',
+    subsections: [
+      { title: 'Acceso', permissions: ['dashboard.view'] }
+    ]
+  },
+  {
+    id: 'orders',
+    title: 'Pedidos',
+    icon: ShoppingCart,
+    color: 'bg-amber-50 text-amber-600',
+    subsections: [
+      { title: 'Acciones', permissions: ['orders.view', 'orders.print', 'orders.update_status', 'orders.create_cash_payment'] },
+      { title: 'Filtro por Estado de Pago', permissions: ['orders.view_pendiente', 'orders.view_a_confirmar', 'orders.view_parcial', 'orders.view_total', 'orders.view_rechazado'] },
+      { title: 'Filtro por Estado Logístico', permissions: ['orders.view_pendiente_pago', 'orders.view_a_imprimir', 'orders.view_armado', 'orders.view_enviado', 'orders.view_en_calle', 'orders.view_retirado'] }
+    ]
+  },
+  {
+    id: 'receipts',
+    title: 'Comprobantes',
+    icon: Receipt,
+    color: 'bg-emerald-50 text-emerald-600',
+    subsections: [
+      { title: 'Acciones', permissions: ['receipts.view', 'receipts.download', 'receipts.upload_manual', 'receipts.confirm', 'receipts.reject'] },
+      { title: 'Filtro por Estado', permissions: ['receipts.view_pendiente', 'receipts.view_a_confirmar', 'receipts.view_parcial', 'receipts.view_total', 'receipts.view_rechazado'] }
+    ]
+  },
+  {
+    id: 'users',
+    title: 'Usuarios',
+    icon: Users,
+    color: 'bg-violet-50 text-violet-600',
+    subsections: [
+      { title: 'Gestión', permissions: ['users.view', 'users.create', 'users.edit', 'users.disable', 'users.assign_role'] }
+    ]
+  }
+];
 
 export function AdminRoles() {
   const { hasPermission } = useAuth();
@@ -149,14 +180,17 @@ export function AdminRoles() {
   const hasChanges = JSON.stringify([...editedPermissions].sort()) !== JSON.stringify([...originalPermissions].sort());
   const selectedRole = roles.find(r => r.id === selectedRoleId);
 
-  // Agrupar permisos por módulo
-  const permissionsByModule = allPermissions.reduce((acc, perm) => {
-    if (!acc[perm.module]) {
-      acc[perm.module] = [];
+  // Función para seleccionar/deseleccionar todos los permisos de una subsección
+  const toggleSubsection = (permissions: string[]) => {
+    if (!canEdit) return;
+    const allChecked = permissions.every(p => editedPermissions.includes(p));
+    if (allChecked) {
+      setEditedPermissions(prev => prev.filter(p => !permissions.includes(p)));
+    } else {
+      setEditedPermissions(prev => [...new Set([...prev, ...permissions])]);
     }
-    acc[perm.module].push(perm);
-    return acc;
-  }, {} as Record<string, Permission[]>);
+    setSuccessMessage(null);
+  };
 
   if (loading) {
     return (
@@ -185,7 +219,7 @@ export function AdminRoles() {
     <div className="min-h-screen">
       <Header title="Permisos por Rol" subtitle="Configura los permisos de cada rol del sistema" />
 
-      <div className="p-6 max-w-2xl mx-auto">
+      <div className="p-6 max-w-3xl mx-auto">
         {/* Selector de rol */}
         <div className="mb-8">
           <label className="block text-sm font-semibold text-neutral-600 mb-2 uppercase tracking-wide">
@@ -236,37 +270,87 @@ export function AdminRoles() {
           </div>
         )}
 
-        {/* Lista de permisos por módulo */}
+        {/* Lista de permisos por sección */}
         {selectedRole && (
-          <div className="space-y-8">
-            {MODULE_ORDER.map(module => {
-              const modulePerms = permissionsByModule[module];
-              if (!modulePerms || modulePerms.length === 0) return null;
+          <div className="space-y-6">
+            {SECTIONS.map(section => {
+              const Icon = section.icon;
+              const sectionPermissions = section.subsections.flatMap(s => s.permissions);
+              const checkedCount = sectionPermissions.filter(p => editedPermissions.includes(p)).length;
+              const totalCount = sectionPermissions.length;
 
               return (
-                <div key={module}>
-                  <h3 className="text-sm font-semibold text-neutral-900 mb-4">
-                    {MODULE_LABELS[module] || module}
-                  </h3>
-                  <div className="space-y-3 pl-1">
-                    {modulePerms.map(permission => {
-                      const isChecked = editedPermissions.includes(permission.key);
+                <div key={section.id} className="bg-white rounded-2xl border border-neutral-200/60 overflow-hidden">
+                  {/* Header de sección */}
+                  <div className={`flex items-center gap-3 px-5 py-4 border-b border-neutral-100 ${section.color}`}>
+                    <Icon size={20} />
+                    <h3 className="font-semibold">{section.title}</h3>
+                    <span className="ml-auto text-sm opacity-70">
+                      {checkedCount}/{totalCount}
+                    </span>
+                  </div>
+
+                  {/* Subsecciones */}
+                  <div className="p-5 space-y-6">
+                    {section.subsections.map((subsection, idx) => {
+                      const subsectionChecked = subsection.permissions.filter(p => editedPermissions.includes(p)).length;
+                      const allSubsectionChecked = subsectionChecked === subsection.permissions.length;
+                      const someSubsectionChecked = subsectionChecked > 0 && !allSubsectionChecked;
+
                       return (
-                        <label
-                          key={permission.id}
-                          className={`flex items-center gap-3 cursor-pointer py-1 ${!canEdit ? 'opacity-60 cursor-not-allowed' : ''}`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => togglePermission(permission.key)}
-                            disabled={!canEdit}
-                            className="w-5 h-5 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900 focus:ring-offset-0"
-                          />
-                          <span className="text-neutral-700">
-                            {PERMISSION_LABELS[permission.key] || permission.key}
-                          </span>
-                        </label>
+                        <div key={idx}>
+                          {/* Título de subsección con checkbox "seleccionar todos" */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <button
+                              onClick={() => toggleSubsection(subsection.permissions)}
+                              disabled={!canEdit}
+                              className={`flex items-center gap-2 text-xs font-semibold uppercase tracking-wider ${
+                                canEdit ? 'hover:text-neutral-900 cursor-pointer' : 'cursor-not-allowed opacity-60'
+                              } ${allSubsectionChecked ? 'text-neutral-900' : 'text-neutral-500'}`}
+                            >
+                              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                                allSubsectionChecked
+                                  ? 'bg-neutral-900 border-neutral-900'
+                                  : someSubsectionChecked
+                                    ? 'bg-neutral-400 border-neutral-400'
+                                    : 'border-neutral-300'
+                              }`}>
+                                {(allSubsectionChecked || someSubsectionChecked) && (
+                                  <Check size={12} className="text-white" />
+                                )}
+                              </div>
+                              {subsection.title}
+                            </button>
+                          </div>
+
+                          {/* Permisos en grid */}
+                          <div className="grid grid-cols-2 gap-2 pl-6">
+                            {subsection.permissions.map(permKey => {
+                              const isChecked = editedPermissions.includes(permKey);
+                              return (
+                                <label
+                                  key={permKey}
+                                  className={`flex items-center gap-2 py-1.5 px-2 rounded-lg transition-colors ${
+                                    !canEdit
+                                      ? 'opacity-60 cursor-not-allowed'
+                                      : 'cursor-pointer hover:bg-neutral-50'
+                                  } ${isChecked ? 'bg-neutral-50' : ''}`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => togglePermission(permKey)}
+                                    disabled={!canEdit}
+                                    className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900 focus:ring-offset-0"
+                                  />
+                                  <span className={`text-sm ${isChecked ? 'text-neutral-900' : 'text-neutral-600'}`}>
+                                    {PERMISSION_LABELS[permKey] || permKey}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
                       );
                     })}
                   </div>
