@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Lock, Eye, EyeOff } from 'lucide-react';
+import { Lock, Eye, EyeOff, Mail } from 'lucide-react';
 
 export function LoginPage() {
   const { login } = useAuth();
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -14,13 +15,13 @@ export function LoginPage() {
     setError('');
     setLoading(true);
 
-    // Pequeño delay para simular verificación
-    await new Promise(resolve => setTimeout(resolve, 300));
-
-    const success = login(password);
-    if (!success) {
-      setError('Contraseña incorrecta');
-      setPassword('');
+    try {
+      const success = await login(email, password);
+      if (!success) {
+        setError('Credenciales incorrectas');
+      }
+    } catch {
+      setError('Error al iniciar sesión');
     }
     setLoading(false);
   };
@@ -41,8 +42,27 @@ export function LoginPage() {
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
+              <label htmlFor="email" className="block text-sm font-medium text-neutral-700 mb-2">
+                Correo electrónico
+              </label>
+              <div className="relative">
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="tu@email.com"
+                  className="w-full px-4 py-3 pl-12 border border-neutral-200 rounded-xl focus:ring-2 focus:ring-neutral-900 focus:border-transparent outline-none transition-all"
+                  autoFocus
+                  required
+                />
+                <Mail size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
+              </div>
+            </div>
+
+            <div>
               <label htmlFor="password" className="block text-sm font-medium text-neutral-700 mb-2">
-                Contraseña de acceso
+                Contraseña
               </label>
               <div className="relative">
                 <input
@@ -50,9 +70,8 @@ export function LoginPage() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Ingresá la contraseña"
+                  placeholder="Tu contraseña"
                   className="w-full px-4 py-3 pr-12 border border-neutral-200 rounded-xl focus:ring-2 focus:ring-neutral-900 focus:border-transparent outline-none transition-all"
-                  autoFocus
                   required
                 />
                 <button
@@ -73,10 +92,10 @@ export function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading || !password}
+              disabled={loading || !email || !password}
               className="w-full bg-neutral-900 text-white py-3 px-4 rounded-xl font-medium hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
-              {loading ? 'Verificando...' : 'Ingresar'}
+              {loading ? 'Ingresando...' : 'Ingresar'}
             </button>
           </form>
         </div>

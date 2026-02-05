@@ -15,6 +15,7 @@ const supabase = require('./supabase');
 const pool = require('./db');
 const { ocrFromUrl } = require('./services/ocrFromUrl');
 const { hashText } = require('./hash');
+const { authenticate, requirePermission } = require('./middleware/auth');
 const crypto = require('crypto');
 const sharp = require('sharp');
 const app = express();
@@ -353,7 +354,7 @@ app.get('/health', (_, res) => res.json({ ok: true }));
 /* =====================================================
    GET — LISTAR TODOS LOS PEDIDOS
 ===================================================== */
-app.get('/orders', async (req, res) => {
+app.get('/orders', authenticate, requirePermission('orders.view'), async (req, res) => {
   try {
     const ordersRes = await pool.query(`
       SELECT
@@ -393,7 +394,7 @@ app.get('/orders', async (req, res) => {
 /* =====================================================
    GET — LISTAR TODOS LOS COMPROBANTES
 ===================================================== */
-app.get('/comprobantes', async (req, res) => {
+app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async (req, res) => {
   try {
     const comprobantesRes = await pool.query(`
       SELECT
@@ -428,7 +429,7 @@ app.get('/comprobantes', async (req, res) => {
 /* =====================================================
    GET — DETALLE DE UN COMPROBANTE
 ===================================================== */
-app.get('/comprobantes/:id', async (req, res) => {
+app.get('/comprobantes/:id', authenticate, requirePermission('receipts.view'), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -484,7 +485,7 @@ app.get('/comprobantes/:id', async (req, res) => {
 /* =====================================================
    POST — CONFIRMAR COMPROBANTE (API JSON)
 ===================================================== */
-app.post('/comprobantes/:id/confirmar', async (req, res) => {
+app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipts.confirm'), async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -578,7 +579,7 @@ app.post('/comprobantes/:id/confirmar', async (req, res) => {
 /* =====================================================
    POST — RECHAZAR COMPROBANTE (API JSON)
 ===================================================== */
-app.post('/comprobantes/:id/rechazar', async (req, res) => {
+app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts.reject'), async (req, res) => {
   const { id } = req.params;
   const { motivo } = req.body;
 
@@ -626,7 +627,7 @@ app.post('/comprobantes/:id/rechazar', async (req, res) => {
 /* =====================================================
    GET — DATOS PARA IMPRIMIR PEDIDO (DESDE TIENDANUBE)
 ===================================================== */
-app.get('/orders/:orderNumber/print', async (req, res) => {
+app.get('/orders/:orderNumber/print', authenticate, requirePermission('orders.print'), async (req, res) => {
   try {
     const { orderNumber } = req.params;
     const storeId = process.env.TIENDANUBE_STORE_ID;
@@ -742,7 +743,7 @@ app.get('/orders/:orderNumber/print', async (req, res) => {
 /* =====================================================
    GET — DETALLE DE UN PEDIDO
 ===================================================== */
-app.get('/orders/:orderNumber', async (req, res) => {
+app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), async (req, res) => {
   try {
     const { orderNumber } = req.params;
 
@@ -865,7 +866,7 @@ app.get('/orders/:orderNumber', async (req, res) => {
 /* =====================================================
    PATCH — ACTUALIZAR ESTADO DE PEDIDO
 ===================================================== */
-app.patch('/orders/:orderNumber/status', async (req, res) => {
+app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders.update_status'), async (req, res) => {
   try {
     const { orderNumber } = req.params;
     const { estado_pedido } = req.body;
@@ -1686,7 +1687,7 @@ async function calcularTotalPagado(orderNumber) {
 /* =====================================================
    PAGO EN EFECTIVO
 ===================================================== */
-app.post('/pago-efectivo', async (req, res) => {
+app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_payment'), async (req, res) => {
   try {
     const { orderNumber, monto, registradoPor, notas } = req.body;
 
@@ -1813,7 +1814,7 @@ app.post('/pago-efectivo', async (req, res) => {
 /* =====================================================
    GET — HISTORIAL DE PAGOS DE UN PEDIDO
 ===================================================== */
-app.get('/pagos/:orderNumber', async (req, res) => {
+app.get('/pagos/:orderNumber', authenticate, requirePermission('orders.view'), async (req, res) => {
   try {
     const { orderNumber } = req.params;
 
@@ -1864,6 +1865,17 @@ app.get('/pagos/:orderNumber', async (req, res) => {
   }
 });
 
+
+/* =====================================================
+   RBAC ROUTES
+===================================================== */
+const authRoutes = require('./routes/auth');
+const usersRoutes = require('./routes/users');
+const rolesRoutes = require('./routes/roles');
+
+app.use('/auth', authRoutes);
+app.use('/users', usersRoutes);
+app.use('/roles', rolesRoutes);
 
 /* =====================================================
    SERVER

@@ -10,6 +10,8 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+  Shield,
+  Users,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -50,9 +52,16 @@ const navItems = [
   { to: '/settings', icon: <Settings size={20} />, label: 'Configuración' },
 ];
 
+const adminItems = [
+  { to: '/admin/roles', icon: <Shield size={20} />, label: 'Roles', permission: 'users.view' },
+  { to: '/admin/users', icon: <Users size={20} />, label: 'Usuarios', permission: 'users.view' },
+];
+
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
-  const { logout } = useAuth();
+  const { logout, hasPermission } = useAuth();
+
+  const visibleAdminItems = adminItems.filter(item => hasPermission(item.permission));
 
   return (
     <aside
@@ -83,6 +92,27 @@ export function Sidebar() {
         {navItems.map((item) => (
           <NavItem key={item.to} {...item} collapsed={collapsed} />
         ))}
+
+        {visibleAdminItems.length > 0 && (
+          <>
+            <div className={clsx(
+              'pt-4 pb-2',
+              collapsed ? 'px-2' : 'px-3'
+            )}>
+              {!collapsed && (
+                <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">
+                  Administración
+                </span>
+              )}
+              {collapsed && (
+                <div className="h-px bg-neutral-200" />
+              )}
+            </div>
+            {visibleAdminItems.map((item) => (
+              <NavItem key={item.to} to={item.to} icon={item.icon} label={item.label} collapsed={collapsed} />
+            ))}
+          </>
+        )}
       </nav>
 
       <div className="p-3 border-t border-neutral-100">

@@ -1,43 +1,73 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import {
+  login as apiLogin,
+  logout as apiLogout,
+  getStoredUser,
+  isAuthenticated as checkIsAuthenticated,
+  hasPermission as checkHasPermission,
+  AuthUser,
+} from '../services/api';
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  login: (password: string) => boolean;
+  user: AuthUser | null;
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
+  hasPermission: (permission: string) => boolean;
+  loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Contraseña para acceder al sistema (podés cambiarla)
-const VALID_PASSWORD = import.meta.env.VITE_APP_PASSWORD || 'petlove2024';
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Verificar si ya hay una sesión guardada
-    const session = sessionStorage.getItem('auth_session');
-    if (session === 'authenticated') {
+    const authenticated = checkIsAuthenticated();
+    const storedUser = getStoredUser();
+
+    if (authenticated && storedUser) {
       setIsAuthenticated(true);
+      setUser(storedUser);
     }
+
+    setLoading(false);
   }, []);
 
-  const login = (password: string): boolean => {
-    if (password === VALID_PASSWORD) {
+  const login = async (email: string, password: string): Promise<boolean> => {
+    try {
+      const result = await apiLogin(email, password);
       setIsAuthenticated(true);
-      sessionStorage.setItem('auth_session', 'authenticated');
+      setUser(result.user);
       return true;
+    } catch {
+      return false;
     }
-    return false;
   };
 
   const logout = () => {
+    apiLogout();
     setIsAuthenticated(false);
-    sessionStorage.removeItem('auth_session');
+    setUser(null);
   };
 
+  const hasPermission = (permission: string): boolean => {
+    return checkHasPermission(permission);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-4 border-neutral-300 border-t-neutral-900 rounded-full"></div>
+      </div>
+    );
+  }
+
   return (
-    <AuthContext.Provider value={{ isAuthenticated, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, hasPermission, loading }}>
       {children}
     </AuthContext.Provider>
   );

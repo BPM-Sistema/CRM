@@ -1,5 +1,34 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
+// Helper para obtener el token de autenticación
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem('auth_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+  };
+}
+
+// Fetch con autenticación
+async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      ...getAuthHeaders(),
+      ...options.headers,
+    },
+  });
+
+  if (response.status === 401) {
+    // Token expirado o inválido
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
+    window.location.href = '/login';
+  }
+
+  return response;
+}
+
 // Tipos de estado
 export type PaymentStatus = 'pendiente' | 'a_confirmar' | 'parcial' | 'total' | 'rechazado';
 export type OrderStatus = 'pendiente_pago' | 'a_imprimir' | 'armado' | 'retirado' | 'enviado' | 'en_calle';
@@ -181,7 +210,7 @@ export function mapEstadoPago(estadoPago: string | null): 'pendiente' | 'a_confi
 
 // Obtener todos los pedidos
 export async function fetchOrders(): Promise<ApiOrder[]> {
-  const response = await fetch(`${API_BASE_URL}/orders`);
+  const response = await authFetch(`${API_BASE_URL}/orders`);
 
   if (!response.ok) {
     throw new Error('Error al obtener pedidos');
@@ -193,7 +222,7 @@ export async function fetchOrders(): Promise<ApiOrder[]> {
 
 // Obtener detalle de un pedido
 export async function fetchOrderDetail(orderNumber: string): Promise<ApiOrderDetail> {
-  const response = await fetch(`${API_BASE_URL}/orders/${orderNumber}`);
+  const response = await authFetch(`${API_BASE_URL}/orders/${orderNumber}`);
 
   if (!response.ok) {
     if (response.status === 404) {
@@ -214,7 +243,7 @@ export async function fetchOrderDetail(orderNumber: string): Promise<ApiOrderDet
 
 // Obtener datos para impresión de pedido
 export async function fetchOrderPrintData(orderNumber: string): Promise<ApiOrderPrintData> {
-  const response = await fetch(`${API_BASE_URL}/orders/${orderNumber}/print`);
+  const response = await authFetch(`${API_BASE_URL}/orders/${orderNumber}/print`);
 
   if (!response.ok) {
     if (response.status === 404) {
@@ -239,11 +268,8 @@ export async function registerCashPayment(
   saldo: number;
   estado_pago: string;
 }> {
-  const response = await fetch(`${API_BASE_URL}/pago-efectivo`, {
+  const response = await authFetch(`${API_BASE_URL}/pago-efectivo`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify({
       orderNumber,
       monto,
@@ -265,7 +291,7 @@ export async function fetchPaymentHistory(orderNumber: string): Promise<{
   pedido: ApiOrder;
   pagos: ApiComprobante[];
 }> {
-  const response = await fetch(`${API_BASE_URL}/pagos/${orderNumber}`);
+  const response = await authFetch(`${API_BASE_URL}/pagos/${orderNumber}`);
 
   if (!response.ok) {
     throw new Error('Error al obtener historial de pagos');
@@ -286,11 +312,8 @@ export async function updateOrderStatus(
   ok: boolean;
   order: ApiOrder;
 }> {
-  const response = await fetch(`${API_BASE_URL}/orders/${orderNumber}/status`, {
+  const response = await authFetch(`${API_BASE_URL}/orders/${orderNumber}/status`, {
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify({
       estado_pedido: estadoPedido,
     }),
@@ -323,7 +346,7 @@ export function mapEstadoPedido(estadoPedido: string | null): OrderStatus {
 
 // Obtener todos los comprobantes
 export async function fetchComprobantes(): Promise<ApiComprobanteList[]> {
-  const response = await fetch(`${API_BASE_URL}/comprobantes`);
+  const response = await authFetch(`${API_BASE_URL}/comprobantes`);
 
   if (!response.ok) {
     throw new Error('Error al obtener comprobantes');
@@ -352,7 +375,7 @@ export async function fetchComprobanteDetail(id: string): Promise<{
   comprobante: ApiComprobanteDetail;
   logs: ApiLog[];
 }> {
-  const response = await fetch(`${API_BASE_URL}/comprobantes/${id}`);
+  const response = await authFetch(`${API_BASE_URL}/comprobantes/${id}`);
 
   if (!response.ok) {
     if (response.status === 404) {
@@ -377,11 +400,8 @@ export async function confirmComprobante(id: string): Promise<{
   saldo: number;
   estado_pago: string;
 }> {
-  const response = await fetch(`${API_BASE_URL}/comprobantes/${id}/confirmar`, {
+  const response = await authFetch(`${API_BASE_URL}/comprobantes/${id}/confirmar`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
   });
 
   const data = await response.json();
@@ -399,11 +419,8 @@ export async function rejectComprobante(id: string, motivo?: string): Promise<{
   comprobante_id: string;
   order_number: string;
 }> {
-  const response = await fetch(`${API_BASE_URL}/comprobantes/${id}/rechazar`, {
+  const response = await authFetch(`${API_BASE_URL}/comprobantes/${id}/rechazar`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify({ motivo }),
   });
 
@@ -414,4 +431,283 @@ export async function rejectComprobante(id: string, motivo?: string): Promise<{
   }
 
   return data;
+}
+
+// ============================================
+// RBAC - Tipos y funciones de autenticación
+// ============================================
+
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role_id: string;
+  role_name: string;
+  is_active: boolean;
+  permissions: string[];
+}
+
+export interface Permission {
+  id: string;
+  key: string;
+  module: string;
+}
+
+export interface Role {
+  id: string;
+  name: string;
+  created_at: string;
+  permissions: string[];
+}
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role_id: string | null;
+  role_name: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+// Login
+export async function login(email: string, password: string): Promise<{
+  token: string;
+  user: AuthUser;
+}> {
+  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al iniciar sesión');
+  }
+
+  // Guardar token y usuario en localStorage
+  localStorage.setItem('auth_token', data.token);
+  localStorage.setItem('auth_user', JSON.stringify(data.user));
+
+  return data;
+}
+
+// Cerrar sesión
+export function logout(): void {
+  localStorage.removeItem('auth_token');
+  localStorage.removeItem('auth_user');
+  window.location.href = '/login';
+}
+
+// Obtener usuario actual
+export async function getMe(): Promise<AuthUser> {
+  const response = await authFetch(`${API_BASE_URL}/auth/me`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al obtener usuario');
+  }
+
+  return data.user;
+}
+
+// Cambiar contraseña
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const response = await authFetch(`${API_BASE_URL}/auth/change-password`, {
+    method: 'POST',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al cambiar contraseña');
+  }
+}
+
+// Obtener usuario guardado localmente
+export function getStoredUser(): AuthUser | null {
+  const stored = localStorage.getItem('auth_user');
+  if (!stored) return null;
+  try {
+    return JSON.parse(stored);
+  } catch {
+    return null;
+  }
+}
+
+// Verificar si hay token
+export function isAuthenticated(): boolean {
+  return !!localStorage.getItem('auth_token');
+}
+
+// Verificar permiso
+export function hasPermission(permission: string): boolean {
+  const user = getStoredUser();
+  if (!user) return false;
+  return user.permissions.includes(permission);
+}
+
+// ============================================
+// RBAC - Gestión de roles
+// ============================================
+
+// Obtener todos los roles
+export async function fetchRoles(): Promise<Role[]> {
+  const response = await authFetch(`${API_BASE_URL}/roles`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al obtener roles');
+  }
+
+  return data.roles;
+}
+
+// Obtener todos los permisos (agrupados por módulo)
+export async function fetchPermissions(): Promise<Record<string, Permission[]>> {
+  const response = await authFetch(`${API_BASE_URL}/roles/permissions`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al obtener permisos');
+  }
+
+  return data.permissions;
+}
+
+// Obtener detalle de un rol
+export async function fetchRoleDetail(id: string): Promise<Role> {
+  const response = await authFetch(`${API_BASE_URL}/roles/${id}`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al obtener rol');
+  }
+
+  return data.role;
+}
+
+// Actualizar permisos de un rol
+export async function updateRolePermissions(roleId: string, permissions: string[]): Promise<Role> {
+  const response = await authFetch(`${API_BASE_URL}/roles/${roleId}/permissions`, {
+    method: 'PATCH',
+    body: JSON.stringify({ permissions }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al actualizar permisos');
+  }
+
+  return data.role;
+}
+
+// ============================================
+// RBAC - Gestión de usuarios
+// ============================================
+
+// Obtener todos los usuarios
+export async function fetchUsers(): Promise<User[]> {
+  const response = await authFetch(`${API_BASE_URL}/users`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al obtener usuarios');
+  }
+
+  return data.users;
+}
+
+// Obtener detalle de un usuario
+export async function fetchUserDetail(id: string): Promise<User> {
+  const response = await authFetch(`${API_BASE_URL}/users/${id}`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al obtener usuario');
+  }
+
+  return data.user;
+}
+
+// Crear usuario
+export async function createUser(userData: {
+  name: string;
+  email: string;
+  password: string;
+  role_id?: string;
+}): Promise<User> {
+  const response = await authFetch(`${API_BASE_URL}/users`, {
+    method: 'POST',
+    body: JSON.stringify(userData),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al crear usuario');
+  }
+
+  return data.user;
+}
+
+// Editar usuario (nombre y email)
+export async function updateUser(id: string, userData: {
+  name?: string;
+  email?: string;
+}): Promise<User> {
+  const response = await authFetch(`${API_BASE_URL}/users/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(userData),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al actualizar usuario');
+  }
+
+  return data.user;
+}
+
+// Activar/desactivar usuario
+export async function toggleUserActive(id: string, isActive: boolean): Promise<User> {
+  const response = await authFetch(`${API_BASE_URL}/users/${id}/disable`, {
+    method: 'PATCH',
+    body: JSON.stringify({ is_active: isActive }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al cambiar estado de usuario');
+  }
+
+  return data.user;
+}
+
+// Asignar rol a usuario
+export async function assignUserRole(id: string, roleId: string): Promise<User> {
+  const response = await authFetch(`${API_BASE_URL}/users/${id}/role`, {
+    method: 'PATCH',
+    body: JSON.stringify({ role_id: roleId }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al asignar rol');
+  }
+
+  return data.user;
 }
