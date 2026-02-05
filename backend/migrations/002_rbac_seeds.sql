@@ -123,7 +123,7 @@ INSERT INTO users (name, email, password_hash, role_id, is_active)
 SELECT
   'Administrador',
   'admin@petlove.com',
-  '$2b$10$vI8aWBnW3fID.ZQ4/zo1G.q1lRps.9cGLcZEiGDMVr5yUP1KUOYTa',
+  '$2b$10$EROVCB6u3MXY0dMayQltWuSjthXPveoDwg5sJlnjXjY40unWDztru',
   r.id,
   true
 FROM roles r
