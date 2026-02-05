@@ -578,7 +578,7 @@ export async function fetchPermissions(): Promise<Record<string, Permission[]>> 
     throw new Error(data.error || 'Error al obtener permisos');
   }
 
-  return data.permissions;
+  return data.grouped;
 }
 
 // Obtener detalle de un rol

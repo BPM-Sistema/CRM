@@ -24,11 +24,11 @@ router.get('/', requirePermission('users.view'), async (req, res) => {
       ORDER BY name
     `);
 
-    // Obtener permisos por rol
+    // Obtener permisos por rol (solo keys)
     const rolesWithPermissions = await Promise.all(
       rolesResult.rows.map(async (role) => {
         const permissionsResult = await pool.query(`
-          SELECT p.id, p.key, p.module
+          SELECT p.key
           FROM permissions p
           JOIN role_permissions rp ON p.id = rp.permission_id
           WHERE rp.role_id = $1
@@ -37,7 +37,7 @@ router.get('/', requirePermission('users.view'), async (req, res) => {
 
         return {
           ...role,
-          permissions: permissionsResult.rows
+          permissions: permissionsResult.rows.map(p => p.key)
         };
       })
     );
@@ -105,7 +105,7 @@ router.get('/:id', requirePermission('users.view'), async (req, res) => {
     }
 
     const permissionsResult = await pool.query(`
-      SELECT p.id, p.key, p.module
+      SELECT p.key
       FROM permissions p
       JOIN role_permissions rp ON p.id = rp.permission_id
       WHERE rp.role_id = $1
@@ -116,7 +116,7 @@ router.get('/:id', requirePermission('users.view'), async (req, res) => {
       ok: true,
       role: {
         ...roleResult.rows[0],
-        permissions: permissionsResult.rows
+        permissions: permissionsResult.rows.map(p => p.key)
       }
     });
 
@@ -184,7 +184,7 @@ router.patch('/:id/permissions', requirePermission('users.assign_role'), async (
 
     // Obtener rol actualizado
     const updatedPermissions = await pool.query(`
-      SELECT p.id, p.key, p.module
+      SELECT p.key
       FROM permissions p
       JOIN role_permissions rp ON p.id = rp.permission_id
       WHERE rp.role_id = $1
@@ -195,7 +195,7 @@ router.patch('/:id/permissions', requirePermission('users.assign_role'), async (
       ok: true,
       role: {
         ...roleExists.rows[0],
-        permissions: updatedPermissions.rows
+        permissions: updatedPermissions.rows.map(p => p.key)
       }
     });
 
