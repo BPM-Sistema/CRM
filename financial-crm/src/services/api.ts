@@ -83,11 +83,22 @@ export interface ApiPagoEfectivo {
   created_at: string;
 }
 
+export interface ApiOrderProduct {
+  id: number;
+  name: string;
+  variant: string | null;
+  quantity: number;
+  price: number;
+  total: number;
+  sku: string | null;
+}
+
 export interface ApiOrderDetail {
   order: ApiOrder;
   comprobantes: ApiComprobante[];
   pagos_efectivo: ApiPagoEfectivo[];
   logs: ApiLog[];
+  productos: ApiOrderProduct[];
 }
 
 // Datos para impresión de pedido
@@ -196,7 +207,8 @@ export async function fetchOrderDetail(orderNumber: string): Promise<ApiOrderDet
     order: data.order,
     comprobantes: data.comprobantes,
     pagos_efectivo: data.pagos_efectivo || [],
-    logs: data.logs
+    logs: data.logs,
+    productos: data.productos || []
   };
 }
 

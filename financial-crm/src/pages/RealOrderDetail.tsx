@@ -17,6 +17,7 @@ import {
   UserCheck,
   Package,
   MessageSquare,
+  ShoppingBag,
 } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card, PaymentStatusBadge, OrderStatusBadge, Modal, Input } from '../components/ui';
@@ -189,7 +190,7 @@ export function RealOrderDetail() {
     );
   }
 
-  const { order, comprobantes, pagos_efectivo, logs } = data;
+  const { order, comprobantes, pagos_efectivo, logs, productos } = data;
   const saldoPendiente = (order.monto_tiendanube || 0) - (order.total_pagado || 0);
   const paymentStatus = mapEstadoPago(order.estado_pago);
   const orderStatus = mapEstadoPedido(order.estado_pedido);
@@ -276,6 +277,54 @@ export function RealOrderDetail() {
                 </div>
               </div>
             </Card>
+
+            {/* Productos */}
+            {productos && productos.length > 0 && (
+              <Card>
+                <h3 className="text-base font-semibold text-neutral-900 mb-4">
+                  <div className="flex items-center gap-2">
+                    <ShoppingBag size={18} />
+                    Productos ({productos.length})
+                  </div>
+                </h3>
+                <div className="space-y-2">
+                  {productos.map((producto) => (
+                    <div
+                      key={producto.id}
+                      className="flex items-center justify-between p-3 bg-neutral-50 rounded-xl"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-neutral-900 truncate">
+                          {producto.name}
+                        </p>
+                        {producto.variant && (
+                          <p className="text-xs text-neutral-500">
+                            {producto.variant}
+                          </p>
+                        )}
+                        {producto.sku && (
+                          <p className="text-xs text-neutral-400 font-mono">
+                            SKU: {producto.sku}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4 ml-4">
+                        <div className="text-center">
+                          <p className="text-xs text-neutral-500">Cantidad</p>
+                          <p className="font-semibold text-neutral-900">{producto.quantity}</p>
+                        </div>
+                        <div className="text-right min-w-[80px]">
+                          <p className="text-xs text-neutral-500">Subtotal</p>
+                          <p className="font-semibold text-neutral-900">
+                            {formatCurrency(producto.total)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
 
             {/* Pagos */}
             <Card>

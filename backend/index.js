@@ -813,12 +813,46 @@ app.get('/orders/:orderNumber', async (req, res) => {
       ORDER BY l.created_at DESC
     `, [orderNumber]);
 
+    // Obtener productos de Tiendanube
+    let productos = [];
+    try {
+      const storeId = process.env.TIENDANUBE_STORE_ID;
+      const tnResponse = await axios.get(
+        `https://api.tiendanube.com/v1/${storeId}/orders`,
+        {
+          headers: {
+            authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
+            'User-Agent': 'bpm-validator'
+          },
+          params: { q: orderNumber }
+        }
+      );
+
+      if (tnResponse.data && tnResponse.data.length > 0) {
+        const pedido = tnResponse.data[0];
+        productos = (pedido.products || [])
+          .map(p => ({
+            id: p.id,
+            name: p.name,
+            variant: p.variant_values ? p.variant_values.join(' / ') : null,
+            quantity: p.quantity,
+            price: Number(p.price),
+            total: Number(p.price) * p.quantity,
+            sku: p.sku || null,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+      }
+    } catch (tnError) {
+      console.warn('⚠️ No se pudieron obtener productos de Tiendanube:', tnError.message);
+    }
+
     res.json({
       ok: true,
       order: orderRes.rows[0],
       comprobantes: comprobantesRes.rows,
       pagos_efectivo: pagosEfectivoRes.rows,
-      logs: logsRes.rows
+      logs: logsRes.rows,
+      productos: productos
     });
 
   } catch (error) {
