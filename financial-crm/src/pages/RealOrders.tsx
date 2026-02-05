@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RefreshCw, AlertCircle, Eye, Receipt, RotateCcw, Printer, Calendar, Search } from 'lucide-react';
 import { Header } from '../components/layout';
-import { Button, Card, PaymentStatusBadge, OrderStatusBadge } from '../components/ui';
+import { Button, Card, PaymentStatusBadge, OrderStatusBadge, Modal } from '../components/ui';
 import {
   Table,
   TableHeader,
@@ -44,6 +44,12 @@ export function RealOrders() {
   const [orderStatusFilter, setOrderStatusFilter] = useState<OrderStatus | 'all'>('all');
   const [fechaFilter, setFechaFilter] = useState<'all' | 'hoy'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Estado para modal de impresión
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [selectedPrintStatuses, setSelectedPrintStatuses] = useState<Set<PaymentStatus>>(
+    new Set(['a_confirmar', 'parcial', 'total'])
+  );
 
   const loadOrders = async () => {
     setLoading(true);
@@ -95,15 +101,32 @@ export function RealOrders() {
     );
   }, [orders]);
 
-  // Contar pedidos pendientes de imprimir
-  const printableStatuses: PaymentStatus[] = ['a_confirmar', 'parcial', 'total'];
-  const pendingPrintCount = useMemo(() => {
+  // Contar pedidos por estado de pago (no impresos)
+  const printCountByStatus = useMemo(() => {
+    const counts: Record<PaymentStatus, number> = {
+      pendiente: 0,
+      a_confirmar: 0,
+      parcial: 0,
+      total: 0,
+      rechazado: 0,
+    };
+    orders.forEach(order => {
+      if (!order.printed_at) {
+        const status = mapEstadoPago(order.estado_pago);
+        counts[status]++;
+      }
+    });
+    return counts;
+  }, [orders]);
+
+  // Contar pedidos seleccionados para imprimir
+  const selectedPrintCount = useMemo(() => {
     return orders.filter(
       (order) =>
         !order.printed_at &&
-        printableStatuses.includes(mapEstadoPago(order.estado_pago))
+        selectedPrintStatuses.has(mapEstadoPago(order.estado_pago))
     ).length;
-  }, [orders]);
+  }, [orders, selectedPrintStatuses]);
 
   const formatCurrency = (amount: number | null) => {
     if (amount === null) return '-';
@@ -114,15 +137,33 @@ export function RealOrders() {
     }).format(amount);
   };
 
-  const handlePrintAllPending = () => {
+  const togglePrintStatus = (status: PaymentStatus) => {
+    setSelectedPrintStatuses(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(status)) {
+        newSet.delete(status);
+      } else {
+        newSet.add(status);
+      }
+      return newSet;
+    });
+  };
+
+  const handlePrintSelected = () => {
     const ordersToPrint = orders.filter(
       (order) =>
         !order.printed_at &&
-        printableStatuses.includes(mapEstadoPago(order.estado_pago))
+        selectedPrintStatuses.has(mapEstadoPago(order.estado_pago))
     );
 
+    if (ordersToPrint.length === 0) {
+      alert('No hay pedidos para imprimir con los filtros seleccionados');
+      return;
+    }
+
     console.log('Imprimiendo pedidos:', ordersToPrint.map(o => o.order_number));
-    alert(`Imprimiendo ${ordersToPrint.length} pedidos pendientes:\n${ordersToPrint.map(o => '#' + o.order_number).join(', ')}`);
+    alert(`Imprimiendo ${ordersToPrint.length} pedidos:\n${ordersToPrint.map(o => '#' + o.order_number).join(', ')}`);
+    setIsPrintModalOpen(false);
   };
 
   return (
@@ -132,15 +173,13 @@ export function RealOrders() {
         subtitle={`${statusCounts.total} pedidos en total · ${statusCounts.pendiente || 0} pendientes de pago`}
         actions={
           <div className="flex items-center gap-2">
-            {pendingPrintCount > 0 && (
-              <Button
-                variant="secondary"
-                leftIcon={<Printer size={16} />}
-                onClick={handlePrintAllPending}
-              >
-                Imprimir Pendientes ({pendingPrintCount})
-              </Button>
-            )}
+            <Button
+              variant="secondary"
+              leftIcon={<Printer size={16} />}
+              onClick={() => setIsPrintModalOpen(true)}
+            >
+              Imprimir Pedidos
+            </Button>
             <Button
               variant="secondary"
               leftIcon={<RefreshCw size={16} className={loading ? 'animate-spin' : ''} />}
@@ -359,6 +398,122 @@ export function RealOrders() {
           </span>
         </div>
       </div>
+
+      {/* Modal de selección para impresión */}
+      <Modal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        title="Imprimir Pedidos"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-neutral-600">
+            Seleccioná los estados de pago que querés incluir en la impresión:
+          </p>
+
+          <div className="space-y-2">
+            {/* Opción: Pendiente */}
+            <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={selectedPrintStatuses.has('pendiente')}
+                  onChange={() => togglePrintStatus('pendiente')}
+                  className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+                />
+                <span className="font-medium text-neutral-900">Pendiente</span>
+              </div>
+              <span className="text-sm text-neutral-500">{printCountByStatus.pendiente} pedidos</span>
+            </label>
+
+            {/* Opción: A confirmar */}
+            <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={selectedPrintStatuses.has('a_confirmar')}
+                  onChange={() => togglePrintStatus('a_confirmar')}
+                  className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+                />
+                <span className="font-medium text-neutral-900">A confirmar</span>
+              </div>
+              <span className="text-sm text-neutral-500">{printCountByStatus.a_confirmar} pedidos</span>
+            </label>
+
+            {/* Opción: Parcial */}
+            <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={selectedPrintStatuses.has('parcial')}
+                  onChange={() => togglePrintStatus('parcial')}
+                  className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+                />
+                <span className="font-medium text-neutral-900">Parcial</span>
+              </div>
+              <span className="text-sm text-neutral-500">{printCountByStatus.parcial} pedidos</span>
+            </label>
+
+            {/* Opción: Total */}
+            <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={selectedPrintStatuses.has('total')}
+                  onChange={() => togglePrintStatus('total')}
+                  className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+                />
+                <span className="font-medium text-neutral-900">Total (Pagado)</span>
+              </div>
+              <span className="text-sm text-neutral-500">{printCountByStatus.total} pedidos</span>
+            </label>
+
+            {/* Opción: Rechazado */}
+            <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={selectedPrintStatuses.has('rechazado')}
+                  onChange={() => togglePrintStatus('rechazado')}
+                  className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+                />
+                <span className="font-medium text-neutral-900">Rechazado</span>
+              </div>
+              <span className="text-sm text-neutral-500">{printCountByStatus.rechazado} pedidos</span>
+            </label>
+          </div>
+
+          {/* Resumen */}
+          <div className="p-3 bg-neutral-50 rounded-xl">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-neutral-600">Total a imprimir:</span>
+              <span className="font-semibold text-neutral-900">{selectedPrintCount} pedidos</span>
+            </div>
+            <p className="text-xs text-neutral-500 mt-1">
+              Solo se imprimirán pedidos que no hayan sido impresos anteriormente
+            </p>
+          </div>
+
+          {/* Botones */}
+          <div className="flex gap-3">
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => setIsPrintModalOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={handlePrintSelected}
+              disabled={selectedPrintCount === 0}
+              leftIcon={<Printer size={16} />}
+            >
+              Imprimir ({selectedPrintCount})
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
