@@ -501,7 +501,7 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
 
     const comprobante = compRes.rows[0];
 
-    if (comprobante.estado !== 'pendiente') {
+    if (comprobante.estado !== 'pendiente' && comprobante.estado !== 'a_confirmar') {
       return res.status(400).json({ error: 'Este comprobante ya fue procesado' });
     }
 
@@ -595,7 +595,7 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
 
     const comprobante = compRes.rows[0];
 
-    if (comprobante.estado !== 'pendiente') {
+    if (comprobante.estado !== 'pendiente' && comprobante.estado !== 'a_confirmar') {
       return res.status(400).json({ error: 'Este comprobante ya fue procesado' });
     }
 
@@ -1414,7 +1414,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
         plantilla = 'todo_pago';
         variables = { '1': nombre, '2': montoDetectado };
       } else if (estadoCuenta === 'debe') {
-        plantilla = 'pago_incompleto';
+        plantilla = 'partial_paid';
         variables = {
           '1': nombre,
           '2': montoDetectado,
@@ -1582,7 +1582,7 @@ app.get('/revisar/:id', async (req, res) => {
             <img src="${comprobante.file_url}" alt="Comprobante" />
 
             ${
-              comprobante.estado === 'pendiente'
+              (comprobante.estado === 'pendiente' || comprobante.estado === 'a_confirmar')
                 ? `
                   <a class="btn confirmar" href="/confirmar/${comprobante.id}">
                     ✅ Confirmar
@@ -1623,7 +1623,7 @@ app.get('/confirmar/:id', async (req, res) => {
 
     const comprobante = compRes.rows[0];
 
-    if (comprobante.estado !== 'pendiente') {
+    if (comprobante.estado !== 'pendiente' && comprobante.estado !== 'a_confirmar') {
       return res.send('Este comprobante ya fue procesado.');
     }
 
@@ -1716,7 +1716,7 @@ app.get('/rechazar/:id', async (req, res) => {
       return res.status(404).send('Comprobante no encontrado');
     }
 
-    if (compRes.rows[0].estado !== 'pendiente') {
+    if (compRes.rows[0].estado !== 'pendiente' && compRes.rows[0].estado !== 'a_confirmar') {
       return res.send('Este comprobante ya fue procesado.');
     }
 
