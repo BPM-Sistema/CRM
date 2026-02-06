@@ -1,9 +1,12 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { getDefaultRoute } from '../utils/navigation';
 import { Lock, Eye, EyeOff, Mail } from 'lucide-react';
 
 export function LoginPage() {
   const { login } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -17,7 +20,11 @@ export function LoginPage() {
 
     try {
       const success = await login(email, password);
-      if (!success) {
+      if (success) {
+        // Redirigir a la primera sección permitida según los permisos
+        const defaultRoute = getDefaultRoute();
+        navigate(defaultRoute, { replace: true });
+      } else {
         setError('Credenciales incorrectas');
       }
     } catch {
