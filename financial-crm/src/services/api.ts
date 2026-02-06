@@ -551,6 +551,29 @@ export function hasPermission(permission: string): boolean {
   return user.permissions.includes(permission);
 }
 
+// Refrescar permisos del usuario desde el backend
+export async function refreshUserPermissions(): Promise<AuthUser | null> {
+  try {
+    const currentUser = getStoredUser();
+    if (!currentUser) {
+      console.log('[API] No current user, skipping refresh');
+      return null;
+    }
+
+    console.log('[API] Calling /auth/me...');
+    const freshUser = await getMe();
+    console.log('[API] Got fresh user:', freshUser);
+
+    // Actualizar localStorage con los nuevos permisos
+    localStorage.setItem('auth_user', JSON.stringify(freshUser));
+
+    return freshUser;
+  } catch (error) {
+    console.error('[API] Error refreshing permissions:', error);
+    return null;
+  }
+}
+
 // ============================================
 // RBAC - Gestión de roles
 // ============================================

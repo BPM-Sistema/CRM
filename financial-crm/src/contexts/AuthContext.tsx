@@ -4,7 +4,7 @@ import {
   logout as apiLogout,
   getStoredUser,
   isAuthenticated as checkIsAuthenticated,
-  hasPermission as checkHasPermission,
+  refreshUserPermissions,
   AuthUser,
 } from '../services/api';
 
@@ -37,6 +37,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   }, []);
 
+  // Refrescar permisos cuando el usuario vuelve a la pestaña
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      console.log('[Auth] Visibility changed:', document.visibilityState);
+      if (document.visibilityState === 'visible' && isAuthenticated) {
+        console.log('[Auth] Refreshing permissions...');
+        const freshUser = await refreshUserPermissions();
+        if (freshUser) {
+          console.log('[Auth] Permissions updated:', freshUser.permissions);
+          setUser(freshUser);
+        } else {
+          console.log('[Auth] Failed to refresh permissions');
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isAuthenticated]);
+
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       const result = await apiLogin(email, password);
@@ -55,7 +78,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const hasPermission = (permission: string): boolean => {
-    return checkHasPermission(permission);
+    if (!user) return false;
+    return user.permissions.includes(permission);
   };
 
   if (loading) {

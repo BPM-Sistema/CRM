@@ -69,7 +69,9 @@ router.post('/login', async (req, res) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role_name,
+        role_id: user.role_id,
+        role_name: user.role_name,
+        is_active: user.is_active,
         permissions: permissionsResult.rows.map(p => p.key)
       }
     });
@@ -92,7 +94,9 @@ router.get('/me', authenticate, async (req, res) => {
         id: req.user.id,
         name: req.user.name,
         email: req.user.email,
-        role: req.user.role_name,
+        role_id: req.user.role_id,
+        role_name: req.user.role_name,
+        is_active: req.user.is_active,
         permissions: req.user.permissions
       }
     });
