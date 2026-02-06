@@ -90,6 +90,22 @@ export function RealOrders() {
       const paymentStatus = mapEstadoPago(order.estado_pago);
       const orderStatus = mapEstadoPedido(order.estado_pedido);
 
+      // Verificar permisos: si el usuario no tiene permiso para ver este estado, ocultar el pedido
+      const paymentPermission = `orders.view_${paymentStatus}`;
+      const orderStatusPermission = `orders.view_${orderStatus}`;
+
+      // Si hay permisos de filtro definidos, verificar que tenga al menos uno
+      const hasAnyPaymentFilterPermission = paymentButtons.some(btn => btn.permission && hasPermission(btn.permission));
+      const hasAnyOrderStatusFilterPermission = orderStatusButtons.some(btn => btn.permission && hasPermission(btn.permission));
+
+      // Solo aplicar filtro de permisos si el usuario tiene al menos un permiso de ese tipo
+      const canViewPaymentStatus = !hasAnyPaymentFilterPermission || hasPermission(paymentPermission);
+      const canViewOrderStatus = !hasAnyOrderStatusFilterPermission || hasPermission(orderStatusPermission);
+
+      if (!canViewPaymentStatus || !canViewOrderStatus) {
+        return false;
+      }
+
       const matchesPayment = paymentFilter === 'all' || paymentStatus === paymentFilter;
       const matchesOrderStatus = orderStatusFilter === 'all' || orderStatus === orderStatusFilter;
       const matchesFecha = fechaFilter === 'all' || isToday(new Date(order.created_at));
@@ -104,7 +120,7 @@ export function RealOrders() {
 
       return matchesPayment && matchesOrderStatus && matchesFecha && matchesSearch;
     });
-  }, [orders, paymentFilter, orderStatusFilter, fechaFilter, searchQuery]);
+  }, [orders, paymentFilter, orderStatusFilter, fechaFilter, searchQuery, hasPermission]);
 
   const statusCounts = useMemo(() => {
     return orders.reduce(
