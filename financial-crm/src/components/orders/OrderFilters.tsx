@@ -34,16 +34,25 @@ export function OrderFilters({
   orderStatusFilter,
   onOrderStatusFilterChange,
 }: OrderFiltersProps) {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
+
+  // Debug: mostrar permisos del usuario
+  console.log('[OrderFilters] User permissions:', user?.permissions);
 
   // Filtrar botones según permisos del usuario
-  const visiblePaymentButtons = paymentButtons.filter(btn =>
-    btn.value === 'all' || !btn.permission || hasPermission(btn.permission)
-  );
+  const visiblePaymentButtons = paymentButtons.filter(btn => {
+    if (btn.value === 'all') return true;
+    const hasPerm = hasPermission(btn.permission!);
+    console.log(`[OrderFilters] ${btn.permission}: ${hasPerm}`);
+    return hasPerm;
+  });
 
-  const visibleOrderStatusButtons = orderStatusButtons.filter(btn =>
-    btn.value === 'all' || !btn.permission || hasPermission(btn.permission)
-  );
+  const visibleOrderStatusButtons = orderStatusButtons.filter(btn => {
+    if (btn.value === 'all') return true;
+    const hasPerm = hasPermission(btn.permission!);
+    console.log(`[OrderFilters] ${btn.permission}: ${hasPerm}`);
+    return hasPerm;
+  });
 
   // Ocultar sección si solo queda el botón "Todos"
   const showPaymentFilters = visiblePaymentButtons.length > 1;
