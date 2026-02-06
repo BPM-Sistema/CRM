@@ -801,17 +801,31 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
       ORDER BY created_at DESC
     `, [orderNumber]);
 
-    // Obtener logs del pedido
+    // Obtener logs del pedido (por comprobante O por order_number directo)
     const logsRes = await pool.query(`
-      SELECT
-        l.id,
-        l.accion,
-        l.origen,
-        l.created_at
-      FROM logs l
-      JOIN comprobantes c ON l.comprobante_id = c.id
-      WHERE c.order_number = $1
-      ORDER BY l.created_at DESC
+      SELECT id, accion, origen, created_at FROM (
+        -- Logs vinculados a comprobantes del pedido
+        SELECT
+          l.id,
+          l.accion,
+          l.origen,
+          l.created_at
+        FROM logs l
+        JOIN comprobantes c ON l.comprobante_id = c.id
+        WHERE c.order_number = $1
+
+        UNION ALL
+
+        -- Logs directos del pedido (ej: webhook tiendanube)
+        SELECT
+          l.id,
+          l.accion,
+          l.origen,
+          l.created_at
+        FROM logs l
+        WHERE l.order_number = $1
+      ) combined
+      ORDER BY created_at DESC
     `, [orderNumber]);
 
     // Obtener productos de Tiendanube
