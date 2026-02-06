@@ -12,31 +12,33 @@ import {
   TableCell,
 } from '../components/ui';
 import { fetchOrders, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import { format, isToday } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { clsx } from 'clsx';
 
-const paymentButtons: { value: PaymentStatus | 'all'; label: string; color: string }[] = [
+const paymentButtons: { value: PaymentStatus | 'all'; label: string; color: string; permission?: string }[] = [
   { value: 'all', label: 'Todos', color: 'bg-neutral-100 text-neutral-700' },
-  { value: 'pendiente', label: 'Pendiente', color: 'bg-amber-50 text-amber-700' },
-  { value: 'a_confirmar', label: 'A confirmar', color: 'bg-blue-50 text-blue-700' },
-  { value: 'parcial', label: 'Parcial', color: 'bg-violet-50 text-violet-700' },
-  { value: 'total', label: 'Total', color: 'bg-emerald-50 text-emerald-700' },
-  { value: 'rechazado', label: 'Rechazado', color: 'bg-red-50 text-red-700' },
+  { value: 'pendiente', label: 'Pendiente', color: 'bg-amber-50 text-amber-700', permission: 'orders.view_pendiente' },
+  { value: 'a_confirmar', label: 'A confirmar', color: 'bg-blue-50 text-blue-700', permission: 'orders.view_a_confirmar' },
+  { value: 'parcial', label: 'Parcial', color: 'bg-violet-50 text-violet-700', permission: 'orders.view_parcial' },
+  { value: 'total', label: 'Total', color: 'bg-emerald-50 text-emerald-700', permission: 'orders.view_total' },
+  { value: 'rechazado', label: 'Rechazado', color: 'bg-red-50 text-red-700', permission: 'orders.view_rechazado' },
 ];
 
-const orderStatusButtons: { value: OrderStatus | 'all'; label: string; color: string }[] = [
+const orderStatusButtons: { value: OrderStatus | 'all'; label: string; color: string; permission?: string }[] = [
   { value: 'all', label: 'Todos', color: 'bg-neutral-100 text-neutral-700' },
-  { value: 'pendiente_pago', label: 'Pend. Pago', color: 'bg-amber-50 text-amber-700' },
-  { value: 'a_imprimir', label: 'A Imprimir', color: 'bg-blue-50 text-blue-700' },
-  { value: 'armado', label: 'Armado', color: 'bg-cyan-50 text-cyan-700' },
-  { value: 'retirado', label: 'Retirado', color: 'bg-purple-50 text-purple-700' },
-  { value: 'enviado', label: 'Enviado', color: 'bg-emerald-50 text-emerald-700' },
-  { value: 'en_calle', label: 'En Calle', color: 'bg-orange-50 text-orange-700' },
+  { value: 'pendiente_pago', label: 'Pend. Pago', color: 'bg-amber-50 text-amber-700', permission: 'orders.view_pendiente_pago' },
+  { value: 'a_imprimir', label: 'A Imprimir', color: 'bg-blue-50 text-blue-700', permission: 'orders.view_a_imprimir' },
+  { value: 'armado', label: 'Armado', color: 'bg-cyan-50 text-cyan-700', permission: 'orders.view_armado' },
+  { value: 'retirado', label: 'Retirado', color: 'bg-purple-50 text-purple-700', permission: 'orders.view_retirado' },
+  { value: 'enviado', label: 'Enviado', color: 'bg-emerald-50 text-emerald-700', permission: 'orders.view_enviado' },
+  { value: 'en_calle', label: 'En Calle', color: 'bg-orange-50 text-orange-700', permission: 'orders.view_en_calle' },
 ];
 
 export function RealOrders() {
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
   const [orders, setOrders] = useState<ApiOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +46,21 @@ export function RealOrders() {
   const [orderStatusFilter, setOrderStatusFilter] = useState<OrderStatus | 'all'>('all');
   const [fechaFilter, setFechaFilter] = useState<'all' | 'hoy'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Filtrar botones según permisos del usuario
+  const visiblePaymentButtons = useMemo(() =>
+    paymentButtons.filter(btn => btn.value === 'all' || !btn.permission || hasPermission(btn.permission)),
+    [hasPermission]
+  );
+
+  const visibleOrderStatusButtons = useMemo(() =>
+    orderStatusButtons.filter(btn => btn.value === 'all' || !btn.permission || hasPermission(btn.permission)),
+    [hasPermission]
+  );
+
+  // Ocultar sección de filtros si solo queda el botón "Todos"
+  const showPaymentFilters = visiblePaymentButtons.length > 1;
+  const showOrderStatusFilters = visibleOrderStatusButtons.length > 1;
 
   // Estado para modal de impresión
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
@@ -237,45 +254,49 @@ export function RealOrders() {
             </div>
           </div>
 
-          <div>
-            <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block">Estado de Pago</span>
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0">
-              {paymentButtons.map((btn) => (
-                <button
-                  key={btn.value}
-                  onClick={() => setPaymentFilter(btn.value)}
-                  className={clsx(
-                    'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
-                    paymentFilter === btn.value
-                      ? clsx(btn.color, 'ring-2 ring-neutral-900/10')
-                      : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
-                  )}
-                >
-                  {btn.label}
-                </button>
-              ))}
+          {showPaymentFilters && (
+            <div>
+              <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block">Estado de Pago</span>
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0">
+                {visiblePaymentButtons.map((btn) => (
+                  <button
+                    key={btn.value}
+                    onClick={() => setPaymentFilter(btn.value)}
+                    className={clsx(
+                      'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
+                      paymentFilter === btn.value
+                        ? clsx(btn.color, 'ring-2 ring-neutral-900/10')
+                        : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
+                    )}
+                  >
+                    {btn.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          <div>
-            <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block">Estado del Pedido</span>
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0">
-              {orderStatusButtons.map((btn) => (
-                <button
-                  key={btn.value}
-                  onClick={() => setOrderStatusFilter(btn.value)}
-                  className={clsx(
-                    'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
-                    orderStatusFilter === btn.value
-                      ? clsx(btn.color, 'ring-2 ring-neutral-900/10')
-                      : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
-                  )}
-                >
-                  {btn.label}
-                </button>
-              ))}
+          {showOrderStatusFilters && (
+            <div>
+              <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block">Estado del Pedido</span>
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0">
+                {visibleOrderStatusButtons.map((btn) => (
+                  <button
+                    key={btn.value}
+                    onClick={() => setOrderStatusFilter(btn.value)}
+                    className={clsx(
+                      'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
+                      orderStatusFilter === btn.value
+                        ? clsx(btn.color, 'ring-2 ring-neutral-900/10')
+                        : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
+                    )}
+                  >
+                    {btn.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Tabla */}
