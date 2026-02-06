@@ -68,9 +68,10 @@ export function Dashboard() {
     ).length;
 
     // Total recaudado hoy (solo confirmados)
+    // Nota: forzamos Number() porque total_pagado puede venir como string de la API
     const recaudadoHoy = pedidosHoy
       .filter(o => o.estado_pago === 'confirmado_total' || o.estado_pago === 'a_favor')
-      .reduce((sum, o) => sum + (o.total_pagado || 0), 0);
+      .reduce((sum, o) => sum + Number(o.total_pagado || 0), 0);
 
     // Pedidos por estado de proceso
     const aImprimir = orders.filter(o => o.estado_pedido === 'a_imprimir').length;
