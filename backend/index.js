@@ -1125,7 +1125,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
           channelId: process.env.BOTMAKER_CHANNEL_ID,
           contactId: contactIdClean
         },
-        intentIdOrName: 'final',
+        intentIdOrName: 'order_created',
         variables: {
           '1': pedido.customer?.name || 'Cliente',
           '2': String(pedido.number),
