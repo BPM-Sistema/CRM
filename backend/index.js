@@ -1023,6 +1023,14 @@ app.post('/webhook/tiendanube', async (req, res) => {
         console.log(`✅ Pedido #${pedido.number} creado como PAGADO`);
       }
 
+      // 📝 Registrar log del pago desde Tiendanube
+      await pool.query(
+        `INSERT INTO logs (order_number, accion, origen)
+         VALUES ($1, $2, $3)`,
+        [String(pedido.number), 'pago_confirmado_tiendanube', 'webhook_tiendanube']
+      );
+      console.log(`📝 Log registrado para pedido #${pedido.number}`);
+
       return;
     }
 
