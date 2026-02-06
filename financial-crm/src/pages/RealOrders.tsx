@@ -86,27 +86,17 @@ export function RealOrders() {
   }, []);
 
   const filteredOrders = useMemo(() => {
-    // Verificar si el usuario tiene al menos un permiso de cada tipo de filtro
-    const hasAnyPaymentFilterPermission = paymentButtons.some(btn => btn.permission && hasPermission(btn.permission));
-    const hasAnyOrderStatusFilterPermission = orderStatusButtons.some(btn => btn.permission && hasPermission(btn.permission));
-
     return orders.filter((order) => {
       const paymentStatus = mapEstadoPago(order.estado_pago);
       const orderStatus = mapEstadoPedido(order.estado_pedido);
 
-      // Verificar permisos de estado de pago
-      // Si tiene al menos un permiso de filtro de pago, debe tener el permiso específico
-      // Si no tiene ningún permiso de filtro de pago, no se aplica este filtro
-      const paymentPermission = `orders.view_${paymentStatus}`;
-      const canViewPaymentStatus = !hasAnyPaymentFilterPermission || hasPermission(paymentPermission);
+      // Si no tiene el permiso para ver este estado de pago, no lo ve
+      if (!hasPermission(`orders.view_${paymentStatus}`)) {
+        return false;
+      }
 
-      // Verificar permisos de estado logístico
-      // Si tiene al menos un permiso de filtro logístico, debe tener el permiso específico
-      // Si no tiene ningún permiso de filtro logístico, no se aplica este filtro
-      const orderStatusPermission = `orders.view_${orderStatus}`;
-      const canViewOrderStatus = !hasAnyOrderStatusFilterPermission || hasPermission(orderStatusPermission);
-
-      if (!canViewPaymentStatus || !canViewOrderStatus) {
+      // Si no tiene el permiso para ver este estado logístico, no lo ve
+      if (!hasPermission(`orders.view_${orderStatus}`)) {
         return false;
       }
 
