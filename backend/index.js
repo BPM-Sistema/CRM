@@ -1138,7 +1138,13 @@ app.post('/validate-order', async (req, res) => {
 
   } catch (error) {
     console.error('❌ /validate-order error:', error);
-    res.status(500).json({ error: error.message });
+
+    // Error 404 de Tiendanube = pedido no encontrado
+    if (error.response?.status === 404 || error.message.includes('404')) {
+      return res.status(404).json({ error: 'Pedido no encontrado, intentar de nuevo' });
+    }
+
+    res.status(500).json({ error: 'Error al validar pedido, intentar de nuevo' });
   }
 });
 
