@@ -1037,6 +1037,16 @@ app.post('/webhook/tiendanube', async (req, res) => {
         console.log(`✅ Pedido #${pedido.number} creado como PAGADO`);
       }
 
+      // 💳 Crear comprobante de pago desde Tiendanube (para que aparezca en Pagos)
+      const montoTotal = Math.round(Number(pedido.total));
+      await pool.query(
+        `INSERT INTO comprobantes (order_number, monto, monto_tiendanube, estado, texto_ocr)
+         VALUES ($1, $2, $2, 'confirmado', $3)
+         ON CONFLICT DO NOTHING`,
+        [String(pedido.number), montoTotal, 'Pago confirmado automáticamente desde Tiendanube/MercadoPago']
+      );
+      console.log(`💳 Comprobante de pago Tiendanube creado para pedido #${pedido.number}`);
+
       // 📝 Registrar log del pago desde Tiendanube
       await pool.query(
         `INSERT INTO logs (order_number, accion, origen)
