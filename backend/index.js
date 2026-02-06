@@ -1468,11 +1468,15 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     );
 
     /* ===============================
-       1️⃣4️⃣ UPDATE ESTADO PEDIDO A "A CONFIRMAR"
+       1️⃣4️⃣ UPDATE ESTADO PAGO A "A CONFIRMAR" Y HABILITAR IMPRESIÓN
     ================================ */
     await pool.query(
       `update orders_validated
-       set estado_pago = 'a_confirmar'
+       set estado_pago = 'a_confirmar',
+           estado_pedido = CASE
+             WHEN estado_pedido = 'pendiente_pago' THEN 'a_imprimir'
+             ELSE estado_pedido
+           END
        where order_number = $1 and estado_pago = 'pendiente'`,
       [orderNumber]
     );
