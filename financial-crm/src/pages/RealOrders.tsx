@@ -83,8 +83,41 @@ export function RealOrders() {
     loadOrders();
   }, []);
 
-  const filteredOrders = useMemo(() => {
+  // Mapeo de estados a permisos
+  const paymentStatusPermissions: Record<PaymentStatus, string> = {
+    pendiente: 'orders.view_pendiente',
+    a_confirmar: 'orders.view_a_confirmar',
+    parcial: 'orders.view_parcial',
+    total: 'orders.view_total',
+    rechazado: 'orders.view_rechazado',
+  };
+
+  const orderStatusPermissions: Record<OrderStatus, string> = {
+    pendiente_pago: 'orders.view_pendiente_pago',
+    a_imprimir: 'orders.view_a_imprimir',
+    armado: 'orders.view_armado',
+    enviado: 'orders.view_enviado',
+    en_calle: 'orders.view_en_calle',
+    retirado: 'orders.view_retirado',
+  };
+
+  // Primero filtrar por permisos del usuario
+  const permittedOrders = useMemo(() => {
     return orders.filter((order) => {
+      const paymentStatus = mapEstadoPago(order.estado_pago);
+      const orderStatus = mapEstadoPedido(order.estado_pedido);
+
+      // Verificar que el usuario tiene permiso para ver este estado de pago Y este estado de pedido
+      const hasPaymentPermission = hasPermission(paymentStatusPermissions[paymentStatus]);
+      const hasOrderStatusPermission = hasPermission(orderStatusPermissions[orderStatus]);
+
+      return hasPaymentPermission && hasOrderStatusPermission;
+    });
+  }, [orders, hasPermission]);
+
+  // Luego aplicar filtros de UI sobre los pedidos permitidos
+  const filteredOrders = useMemo(() => {
+    return permittedOrders.filter((order) => {
       const paymentStatus = mapEstadoPago(order.estado_pago);
       const orderStatus = mapEstadoPedido(order.estado_pedido);
 
@@ -102,10 +135,10 @@ export function RealOrders() {
 
       return matchesPayment && matchesOrderStatus && matchesFecha && matchesSearch;
     });
-  }, [orders, paymentFilter, orderStatusFilter, fechaFilter, searchQuery]);
+  }, [permittedOrders, paymentFilter, orderStatusFilter, fechaFilter, searchQuery]);
 
   const statusCounts = useMemo(() => {
-    return orders.reduce(
+    return permittedOrders.reduce(
       (acc, order) => {
         const status = mapEstadoPago(order.estado_pago);
         acc[status] = (acc[status] || 0) + 1;
@@ -114,9 +147,9 @@ export function RealOrders() {
       },
       { total: 0 } as Record<string, number>
     );
-  }, [orders]);
+  }, [permittedOrders]);
 
-  // Contar pedidos por estado de pago (no impresos)
+  // Contar pedidos por estado de pago (no impresos) - solo los permitidos
   const printCountByStatus = useMemo(() => {
     const counts: Record<PaymentStatus, number> = {
       pendiente: 0,
@@ -125,23 +158,23 @@ export function RealOrders() {
       total: 0,
       rechazado: 0,
     };
-    orders.forEach(order => {
+    permittedOrders.forEach(order => {
       if (!order.printed_at) {
         const status = mapEstadoPago(order.estado_pago);
         counts[status]++;
       }
     });
     return counts;
-  }, [orders]);
+  }, [permittedOrders]);
 
-  // Contar pedidos seleccionados para imprimir
+  // Contar pedidos seleccionados para imprimir - solo los permitidos
   const selectedPrintCount = useMemo(() => {
-    return orders.filter(
+    return permittedOrders.filter(
       (order) =>
         !order.printed_at &&
         selectedPrintStatuses.has(mapEstadoPago(order.estado_pago))
     ).length;
-  }, [orders, selectedPrintStatuses]);
+  }, [permittedOrders, selectedPrintStatuses]);
 
   const formatCurrency = (amount: number | null) => {
     if (amount === null) return '-';
@@ -165,7 +198,7 @@ export function RealOrders() {
   };
 
   const handlePrintSelected = () => {
-    const ordersToPrint = orders.filter(
+    const ordersToPrint = permittedOrders.filter(
       (order) =>
         !order.printed_at &&
         selectedPrintStatuses.has(mapEstadoPago(order.estado_pago))
@@ -415,7 +448,7 @@ export function RealOrders() {
 
         <div className="flex items-center justify-between">
           <span className="text-sm text-neutral-500">
-            Mostrando {filteredOrders.length} de {orders.length} pedidos
+            Mostrando {filteredOrders.length} de {permittedOrders.length} pedidos
           </span>
         </div>
       </div>
