@@ -94,13 +94,9 @@ export function RealOrders() {
       const paymentPermission = `orders.view_${paymentStatus}`;
       const orderStatusPermission = `orders.view_${orderStatus}`;
 
-      // Si hay permisos de filtro definidos, verificar que tenga al menos uno
-      const hasAnyPaymentFilterPermission = paymentButtons.some(btn => btn.permission && hasPermission(btn.permission));
-      const hasAnyOrderStatusFilterPermission = orderStatusButtons.some(btn => btn.permission && hasPermission(btn.permission));
-
-      // Solo aplicar filtro de permisos si el usuario tiene al menos un permiso de ese tipo
-      const canViewPaymentStatus = !hasAnyPaymentFilterPermission || hasPermission(paymentPermission);
-      const canViewOrderStatus = !hasAnyOrderStatusFilterPermission || hasPermission(orderStatusPermission);
+      // Si no tiene el permiso específico, no puede ver el pedido
+      const canViewPaymentStatus = hasPermission(paymentPermission);
+      const canViewOrderStatus = hasPermission(orderStatusPermission);
 
       if (!canViewPaymentStatus || !canViewOrderStatus) {
         return false;
