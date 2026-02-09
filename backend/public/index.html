@@ -80,17 +80,6 @@
       border-color: #111;
     }
 
-    /* === PULSE PASO 1 === */
-    @keyframes pulse {
-      0% { box-shadow: 0 0 0 0 rgba(0,0,0,0.15); }
-      70% { box-shadow: 0 0 0 8px rgba(0,0,0,0); }
-      100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
-    }
-
-    input.pulse {
-      animation: pulse 1.8s infinite;
-    }
-
     button {
       width: 100%;
       padding: 16px;
@@ -107,12 +96,6 @@
     button.primary {
       background: #111;
       color: white;
-    }
-
-    button.secondary {
-      background: #111;
-      color: white;
-      margin-bottom: 20px;
     }
 
     button:disabled {
@@ -152,36 +135,28 @@
 
       <div class="container">
         <h1>Confirmar pago</h1>
-        <p>Ingresá tu número de pedido para validarlo y luego subí el comprobante de pago.</p>
+        <p>Ingresá tu número de pedido y subí el comprobante de pago.</p>
 
         <form id="paymentForm" enctype="multipart/form-data">
-          <!-- PASO 1 -->
           <label for="orderNumber">Número de pedido</label>
           <input
             type="text"
             id="orderNumber"
-            class="pulse"
             placeholder="Ej: 12345678"
             required
             autofocus
           />
 
-          <button type="button" id="validateOrderBtn" class="secondary">
-            Validar pedido
-          </button>
-
-          <!-- PASO 2 -->
           <label for="file">Comprobante de pago</label>
           <input
             type="file"
             id="file"
             name="file"
             accept="image/*,application/pdf"
-            disabled
             required
           />
 
-          <button type="submit" id="submitBtn" class="primary" disabled>
+          <button type="submit" id="submitBtn" class="primary">
             <span class="btn-text">Enviar comprobante</span>
           </button>
         </form>
@@ -195,75 +170,20 @@
   const form = document.getElementById('paymentForm');
   const messageDiv = document.getElementById('message');
   const submitBtn = document.getElementById('submitBtn');
-  const validateBtn = document.getElementById('validateOrderBtn');
   const orderInput = document.getElementById('orderNumber');
   const fileInput = document.getElementById('file');
 
-  let orderValidated = false;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
 
-  // =======================
-  // VALIDAR PEDIDO (REAL)
-  // =======================
-  validateBtn.addEventListener('click', async () => {
     const orderNumber = orderInput.value.trim();
+    const file = fileInput.files[0];
 
     if (!orderNumber) {
       messageDiv.textContent = 'Ingresá un número de pedido válido';
       messageDiv.className = 'message error';
       return;
     }
-
-    validateBtn.disabled = true;
-    validateBtn.textContent = 'Validando...';
-    messageDiv.textContent = '';
-    messageDiv.className = 'message';
-
-    try {
-      const res = await fetch('/validate-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderNumber })
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'El pedido no existe');
-      }
-
-      // Pedido válido
-      orderValidated = true;
-      orderInput.disabled = true;
-      orderInput.classList.remove('pulse');
-      fileInput.disabled = false;
-      submitBtn.disabled = false;
-      validateBtn.style.display = 'none';
-
-      messageDiv.textContent = `Pedido #${orderNumber} validado correctamente`;
-      messageDiv.className = 'message success';
-
-    } catch (err) {
-      messageDiv.textContent = err.message;
-      messageDiv.className = 'message error';
-      validateBtn.disabled = false;
-      validateBtn.textContent = 'Validar pedido';
-    }
-  });
-
-  // =======================
-  // SUBMIT COMPROBANTE
-  // =======================
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    if (!orderValidated) {
-      messageDiv.textContent = 'Primero debés validar el número de pedido';
-      messageDiv.className = 'message error';
-      return;
-    }
-
-    const orderNumber = orderInput.value.trim();
-    const file = fileInput.files[0];
 
     if (!file) {
       messageDiv.textContent = 'Seleccioná un comprobante';
@@ -272,7 +192,9 @@
     }
 
     submitBtn.disabled = true;
-    submitBtn.innerHTML = `<div class="spinner"></div> Procesando...`;
+    submitBtn.innerHTML = `<div class="spinner"></div> Validando pedido y procesando...`;
+    messageDiv.textContent = '';
+    messageDiv.className = 'message';
 
     const formData = new FormData();
     formData.append('orderNumber', orderNumber);
@@ -293,12 +215,13 @@
       messageDiv.textContent = 'Comprobante enviado correctamente ✅';
       messageDiv.className = 'message success';
       submitBtn.disabled = true;
+      orderInput.disabled = true;
       fileInput.disabled = true;
-      form.reset();
 
     } catch (err) {
       messageDiv.textContent = err.message;
       messageDiv.className = 'message error';
+      submitBtn.disabled = false;
     } finally {
       submitBtn.innerHTML = '<span class="btn-text">Enviar comprobante</span>';
     }

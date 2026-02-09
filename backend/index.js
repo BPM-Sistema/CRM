@@ -1293,8 +1293,30 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     const nombre = pedido.customer?.name || 'Cliente';
     const telefono = pedido.customer?.phone || null;
     const montoTiendanube = Math.round(Number(pedido.total));
+    const currency = pedido.currency || 'ARS';
+
+    // Datos del cliente para orders_validated
+    const customerName = pedido.customer?.name || pedido.contact_name || null;
+    const customerEmail = pedido.customer?.email || pedido.contact_email || null;
+    const customerPhone = pedido.contact_phone || pedido.customer?.phone ||
+                          pedido.shipping_address?.phone || pedido.customer?.default_address?.phone || null;
 
     console.log('📦 Pedido encontrado:', pedido.number);
+
+    /* ===============================
+       1️⃣b REGISTRAR EN ORDERS_VALIDATED
+    ================================ */
+    await pool.query(
+      `
+      insert into orders_validated (order_number, monto_tiendanube, currency, customer_name, customer_email, customer_phone, estado_pedido)
+      values ($1, $2, $3, $4, $5, $6, 'pendiente_pago')
+      on conflict (order_number) do update set
+        customer_name = coalesce(orders_validated.customer_name, excluded.customer_name),
+        customer_email = coalesce(orders_validated.customer_email, excluded.customer_email),
+        customer_phone = coalesce(orders_validated.customer_phone, excluded.customer_phone)
+      `,
+      [orderNumber, montoTiendanube, currency, customerName, customerEmail, customerPhone]
+    );
 
     /* ===============================
        2️⃣ OCR (antes de cualquier modificación)
