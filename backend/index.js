@@ -1366,7 +1366,13 @@ app.post('/upload', (req, res, next) => {
     /* ===============================
        5️⃣ PREPARAR URL DE SUPABASE
     ================================ */
-    const supabasePath = `pendientes/${Date.now()}-${file.originalname}`;
+    // Sanitizar nombre de archivo (remover caracteres especiales y espacios)
+    const sanitizedFilename = file.originalname
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Remover acentos
+      .replace(/[^\w.-]/g, '_') // Reemplazar caracteres especiales por _
+      .replace(/_+/g, '_'); // Colapsar múltiples _
+    const supabasePath = `pendientes/${Date.now()}-${sanitizedFilename}`;
     const { data: publicUrlData } = supabase.storage
       .from('comprobantes')
       .getPublicUrl(supabasePath);
