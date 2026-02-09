@@ -1274,6 +1274,8 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     /* ===============================
        1️⃣ OBTENER PEDIDO DESDE TIENDANUBE
     ================================ */
+    console.log('🔍 Buscando pedido en Tiendanube:', orderNumber);
+
     const tnResponse = await axios.get(
       `https://api.tiendanube.com/v1/${process.env.TIENDANUBE_STORE_ID}/orders`,
       {
@@ -1285,7 +1287,10 @@ app.post('/upload', upload.single('file'), async (req, res) => {
       }
     );
 
+    console.log('✅ Respuesta Tiendanube recibida, pedidos encontrados:', tnResponse.data?.length || 0);
+
     if (!tnResponse.data || tnResponse.data.length === 0) {
+      console.log('❌ Pedido no encontrado en Tiendanube');
       return res.status(404).json({ error: 'El número de pedido no existe. Verificá que esté bien escrito.' });
     }
 
