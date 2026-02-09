@@ -11,9 +11,9 @@ import {
   TableHead,
   TableCell,
 } from '../components/ui';
-import { fetchOrders, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus, PaginationInfo } from '../services/api';
+import { fetchOrders, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus, PaginationInfo, OrderFilters } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-import { format, isToday } from 'date-fns';
+import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { clsx } from 'clsx';
 
@@ -69,12 +69,18 @@ export function RealOrders() {
     new Set(['a_imprimir'])
   );
 
-  const loadOrders = async (page?: number) => {
+  const loadOrders = async (page?: number, filters?: OrderFilters) => {
     const pageToLoad = page ?? currentPage;
+    const filtersToUse = filters ?? {
+      estado_pago: paymentFilter,
+      estado_pedido: orderStatusFilter,
+      search: searchQuery,
+      fecha: fechaFilter,
+    };
     setLoading(true);
     setError(null);
     try {
-      const response = await fetchOrders(pageToLoad, ITEMS_PER_PAGE);
+      const response = await fetchOrders(pageToLoad, ITEMS_PER_PAGE, filtersToUse);
       setOrders(response.data);
       setPagination(response.pagination);
     } catch (err) {
@@ -91,9 +97,22 @@ export function RealOrders() {
     loadOrders(page);
   };
 
+  // Recargar cuando cambian los filtros (resetear a página 1)
   useEffect(() => {
-    loadOrders();
+    setCurrentPage(1);
+    loadOrders(1);
+  }, [paymentFilter, orderStatusFilter, fechaFilter]);
 
+  // Debounce para búsqueda
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCurrentPage(1);
+      loadOrders(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
     // Refetch al enfocar la ventana
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -113,7 +132,7 @@ export function RealOrders() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(pollInterval);
     };
-  }, []);
+  }, [paymentFilter, orderStatusFilter, searchQuery, fechaFilter]);
 
   // Mapeo de estados a permisos
   const paymentStatusPermissions: Record<PaymentStatus, string> = {
@@ -147,27 +166,8 @@ export function RealOrders() {
     });
   }, [orders, hasPermission]);
 
-  // Luego aplicar filtros de UI sobre los pedidos permitidos
-  const filteredOrders = useMemo(() => {
-    return permittedOrders.filter((order) => {
-      const paymentStatus = mapEstadoPago(order.estado_pago);
-      const orderStatus = mapEstadoPedido(order.estado_pedido);
-
-      const matchesPayment = paymentFilter === 'all' || paymentStatus === paymentFilter;
-      const matchesOrderStatus = orderStatusFilter === 'all' || orderStatus === orderStatusFilter;
-      const matchesFecha = fechaFilter === 'all' || isToday(new Date(order.created_at));
-
-      // Búsqueda por número de pedido, nombre, email o teléfono
-      const query = searchQuery.toLowerCase().trim();
-      const matchesSearch = !query ||
-        order.order_number.toLowerCase().includes(query) ||
-        (order.customer_name?.toLowerCase().includes(query)) ||
-        (order.customer_email?.toLowerCase().includes(query)) ||
-        (order.customer_phone?.toLowerCase().includes(query));
-
-      return matchesPayment && matchesOrderStatus && matchesFecha && matchesSearch;
-    });
-  }, [permittedOrders, paymentFilter, orderStatusFilter, fechaFilter, searchQuery]);
+  // Los filtros ahora se aplican en el servidor, solo filtramos por permisos localmente
+  const filteredOrders = permittedOrders;
 
   const statusCounts = useMemo(() => {
     return permittedOrders.reduce(

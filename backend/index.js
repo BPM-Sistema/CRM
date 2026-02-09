@@ -383,10 +383,49 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
     const offset = (page - 1) * limit;
 
-    // Contar total
-    const countRes = await pool.query(`SELECT COUNT(*) as total FROM orders_validated`);
+    // Filtros
+    const { estado_pago, estado_pedido, search, fecha } = req.query;
+
+    // Construir WHERE dinámico
+    const conditions = [];
+    const params = [];
+    let paramIndex = 1;
+
+    if (estado_pago && estado_pago !== 'all') {
+      conditions.push(`o.estado_pago = $${paramIndex++}`);
+      params.push(estado_pago);
+    }
+
+    if (estado_pedido && estado_pedido !== 'all') {
+      conditions.push(`o.estado_pedido = $${paramIndex++}`);
+      params.push(estado_pedido);
+    }
+
+    if (search) {
+      conditions.push(`(
+        o.order_number ILIKE $${paramIndex} OR
+        o.customer_name ILIKE $${paramIndex} OR
+        o.customer_email ILIKE $${paramIndex} OR
+        o.customer_phone ILIKE $${paramIndex}
+      )`);
+      params.push(`%${search}%`);
+      paramIndex++;
+    }
+
+    if (fecha === 'hoy') {
+      conditions.push(`DATE(o.created_at) = CURRENT_DATE`);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // Contar total con filtros
+    const countRes = await pool.query(
+      `SELECT COUNT(*) as total FROM orders_validated o ${whereClause}`,
+      params
+    );
     const total = parseInt(countRes.rows[0].total);
 
+    // Query con filtros
     const ordersRes = await pool.query(`
       SELECT
         o.order_number,
@@ -406,10 +445,11 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
         COUNT(c.id) as comprobantes_count
       FROM orders_validated o
       LEFT JOIN comprobantes c ON o.order_number = c.order_number
+      ${whereClause}
       GROUP BY o.order_number, o.monto_tiendanube, o.total_pagado, o.saldo, o.estado_pago, o.estado_pedido, o.currency, o.created_at, o.customer_name, o.customer_email, o.customer_phone, o.printed_at, o.packed_at, o.shipped_at
       ORDER BY CAST(REGEXP_REPLACE(o.order_number, '[^0-9]', '', 'g') AS INTEGER) DESC
-      LIMIT $1 OFFSET $2
-    `, [limit, offset]);
+      LIMIT $${paramIndex++} OFFSET $${paramIndex}
+    `, [...params, limit, offset]);
 
     res.json({
       ok: true,

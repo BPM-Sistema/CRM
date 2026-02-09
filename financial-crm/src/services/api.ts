@@ -222,9 +222,32 @@ export interface PaginatedResponse<T> {
   pagination: PaginationInfo;
 }
 
-// Obtener todos los pedidos (con paginación)
-export async function fetchOrders(page = 1, limit = 50): Promise<PaginatedResponse<ApiOrder>> {
-  const response = await authFetch(`${API_BASE_URL}/orders?page=${page}&limit=${limit}`);
+// Filtros para pedidos
+export interface OrderFilters {
+  estado_pago?: string;
+  estado_pedido?: string;
+  search?: string;
+  fecha?: string;
+}
+
+// Obtener todos los pedidos (con paginación y filtros)
+export async function fetchOrders(page = 1, limit = 50, filters?: OrderFilters): Promise<PaginatedResponse<ApiOrder>> {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+
+  if (filters?.estado_pago && filters.estado_pago !== 'all') {
+    params.append('estado_pago', filters.estado_pago);
+  }
+  if (filters?.estado_pedido && filters.estado_pedido !== 'all') {
+    params.append('estado_pedido', filters.estado_pedido);
+  }
+  if (filters?.search) {
+    params.append('search', filters.search);
+  }
+  if (filters?.fecha && filters.fecha !== 'all') {
+    params.append('fecha', filters.fecha);
+  }
+
+  const response = await authFetch(`${API_BASE_URL}/orders?${params.toString()}`);
 
   if (!response.ok) {
     throw new Error('Error al obtener pedidos');
