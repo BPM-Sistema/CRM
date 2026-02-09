@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   ShoppingCart,
   Receipt,
+  Trash2,
 } from 'lucide-react';
 import {
   fetchUsers,
@@ -21,6 +22,7 @@ import {
   updateUser,
   toggleUserActive,
   updateUserPermissions,
+  deleteUser,
   User,
 } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -263,6 +265,21 @@ export function AdminUsers() {
     }
   };
 
+  const handleDeleteUser = async (user: User) => {
+    if (!canDisable || user.id === currentUser?.id) return;
+
+    if (!confirm(`¿Estás seguro de eliminar a ${user.name}? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    try {
+      await deleteUser(user.id);
+      setUsers(prev => prev.filter(u => u.id !== user.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al eliminar usuario');
+    }
+  };
+
 
   if (loading) {
     return (
@@ -415,6 +432,15 @@ export function AdminUsers() {
                           title={user.is_active ? 'Desactivar' : 'Activar'}
                         >
                           {user.is_active ? <UserX size={16} /> : <UserCheck size={16} />}
+                        </button>
+                      )}
+                      {canDisable && user.id !== currentUser?.id && (
+                        <button
+                          onClick={() => handleDeleteUser(user)}
+                          className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Eliminar usuario"
+                        >
+                          <Trash2 size={16} />
                         </button>
                       )}
                     </div>

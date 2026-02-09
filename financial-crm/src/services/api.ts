@@ -734,3 +734,16 @@ export async function updateUserPermissions(id: string, permissions: string[]): 
 
   return data.user;
 }
+
+// Eliminar usuario
+export async function deleteUser(id: string): Promise<void> {
+  const response = await authFetch(`${API_BASE_URL}/users/${id}`, {
+    method: 'DELETE',
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al eliminar usuario');
+  }
+}

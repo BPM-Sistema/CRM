@@ -338,4 +338,42 @@ router.patch('/:id/permissions', requirePermission('users.assign_role'), async (
   }
 });
 
+/**
+ * DELETE /users/:id
+ * Eliminar un usuario
+ */
+router.delete('/:id', requirePermission('users.disable'), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // No permitir eliminarse a sí mismo
+    if (id === req.user.id) {
+      return res.status(400).json({ error: 'No podés eliminarte a vos mismo' });
+    }
+
+    // Verificar que el usuario existe
+    const userExists = await pool.query('SELECT id, email FROM users WHERE id = $1', [id]);
+    if (userExists.rowCount === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    // Eliminar permisos del usuario primero (por FK)
+    await pool.query('DELETE FROM user_permissions WHERE user_id = $1', [id]);
+
+    // Eliminar el usuario
+    await pool.query('DELETE FROM users WHERE id = $1', [id]);
+
+    console.log(`🗑️ Usuario eliminado: ${userExists.rows[0].email}`);
+
+    res.json({
+      ok: true,
+      message: 'Usuario eliminado correctamente'
+    });
+
+  } catch (error) {
+    console.error('Error en DELETE /users/:id:', error);
+    res.status(500).json({ error: 'Error al eliminar usuario' });
+  }
+});
+
 module.exports = router;
