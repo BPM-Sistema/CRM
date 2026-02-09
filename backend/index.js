@@ -1258,12 +1258,21 @@ app.post('/validate-order', async (req, res) => {
 /* =====================================================
    PASO 2 — UPLOAD + OCR + COMPARACIÓN
 ===================================================== */
-app.post('/upload', upload.single('file'), async (req, res) => {
+app.post('/upload', (req, res, next) => {
+  console.log('📥 /upload - request recibido');
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      console.error('❌ Multer error:', err.message);
+      return res.status(400).json({ error: 'Error al subir archivo: ' + err.message });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     const { orderNumber } = req.body;
     const file = req.file;
 
-    console.log('📥 /upload iniciado');
+    console.log('📥 /upload handler iniciado');
     console.log('orderNumber:', orderNumber);
     console.log('file:', file?.originalname);
 
