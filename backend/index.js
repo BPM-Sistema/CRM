@@ -1559,8 +1559,8 @@ app.post('/upload', (req, res, next) => {
     console.error('❌ Error status:', error.response?.status);
     console.error('❌ Error data:', JSON.stringify(error.response?.data));
 
-    if (file?.path && fs.existsSync(file.path)) {
-      fs.unlinkSync(file.path);
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
       console.log('🗑️ Temp file eliminado (error)');
     }
 
