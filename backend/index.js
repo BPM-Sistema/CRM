@@ -127,17 +127,26 @@ async function watermarkReceipt(filePath, { id, orderNumber }) {
    UTIL — OBTENER PEDIDO TIENDANUBE (UNA SOLA FUNCIÓN)
 ===================================================== */
 async function obtenerPedidoPorId(storeId, orderId) {
-  const response = await axios.get(
-    `https://api.tiendanube.com/v1/${storeId}/orders/${orderId}`,
-    {
-      headers: {
-        authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
-        'User-Agent': 'bpm-validator'
+  try {
+    const response = await axios.get(
+      `https://api.tiendanube.com/v1/${storeId}/orders/${orderId}`,
+      {
+        headers: {
+          authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
+          'User-Agent': 'bpm-validator'
+        },
+        timeout: 10000 // 10 segundos timeout
       }
+    );
+    return response.data;
+  } catch (error) {
+    console.error(`❌ Error obteniendo pedido ${orderId} de Tiendanube:`, error.message);
+    if (error.response) {
+      console.error('   Status:', error.response.status);
+      console.error('   Data:', JSON.stringify(error.response.data));
     }
-  );
-
-  return response.data;
+    return null;
+  }
 }
 
 
@@ -1095,6 +1104,8 @@ app.post('/webhook/tiendanube', async (req, res) => {
       ]
     );
 
+    console.log(`✅ Pedido #${pedido.number} guardado en DB (order/created)`);
+
     // 5️⃣ Teléfono
     const telefono =
       pedido.contact_phone ||
@@ -1144,6 +1155,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
   } catch (err) {
     console.error('❌ Error webhook:', err.message);
+    console.error('   Stack:', err.stack?.split('\n')[1]);
   }
 });
 
