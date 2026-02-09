@@ -5,5 +5,4 @@ export { RealReceipts } from './RealReceipts';
 export { RealReceiptDetail } from './RealReceiptDetail';
 export { Analytics } from './Analytics';
 export { Settings } from './Settings';
-export { AdminRoles } from './AdminRoles';
 export { AdminUsers } from './AdminUsers';

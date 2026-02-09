@@ -10,7 +10,6 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
-  Shield,
   Users,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -79,7 +78,6 @@ const navItems = [
 ];
 
 const adminItems = [
-  { to: '/admin/roles', icon: <Shield size={20} />, label: 'Roles', permissions: ['users.view'] },
   { to: '/admin/users', icon: <Users size={20} />, label: 'Usuarios', permissions: ['users.view'] },
 ];
 

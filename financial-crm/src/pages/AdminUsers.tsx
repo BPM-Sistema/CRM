@@ -462,7 +462,9 @@ export function AdminUsers() {
       {/* Modal de crear/editar usuario */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+          <div className={`bg-white rounded-2xl w-full shadow-xl max-h-[90vh] flex flex-col ${
+            modalMode === 'create' && canManagePermissions ? 'max-w-5xl' : 'max-w-md'
+          }`}>
             <div className="flex items-center justify-between p-6 border-b border-neutral-200">
               <h2 className="text-lg font-semibold text-neutral-900">
                 {modalMode === 'create' ? 'Nuevo Usuario' : 'Editar Usuario'}
@@ -475,132 +477,218 @@ export function AdminUsers() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1.5">
-                  Nombre
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full px-4 py-2.5 border border-neutral-200 rounded-lg focus:ring-2 focus:ring-neutral-900 focus:border-transparent outline-none"
-                  placeholder="Nombre completo"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1.5">
-                  Correo electrónico
-                </label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                  className="w-full px-4 py-2.5 border border-neutral-200 rounded-lg focus:ring-2 focus:ring-neutral-900 focus:border-transparent outline-none"
-                  placeholder="usuario@ejemplo.com"
-                  required
-                />
-              </div>
-
-              {modalMode === 'create' && (
-                <>
+            <form onSubmit={handleSubmit} className="flex-1 overflow-hidden flex flex-col">
+              <div className={`flex-1 overflow-y-auto p-6 ${
+                modalMode === 'create' && canManagePermissions ? 'grid grid-cols-[320px_1fr] gap-8' : ''
+              }`}>
+                {/* Datos del usuario */}
+                <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-neutral-700 mb-1.5">
-                      Contraseña
+                      Nombre
                     </label>
                     <input
-                      type="password"
-                      value={formData.password}
-                      onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                       className="w-full px-4 py-2.5 border border-neutral-200 rounded-lg focus:ring-2 focus:ring-neutral-900 focus:border-transparent outline-none"
-                      placeholder="Mínimo 6 caracteres"
+                      placeholder="Nombre completo"
                       required
-                      minLength={6}
                     />
                   </div>
 
-                  {canManagePermissions && (
-                    <div>
-                      <label className="block text-sm font-medium text-neutral-700 mb-3">
-                        Permisos ({selectedPermissions.length} seleccionados)
-                      </label>
-                      <div className="max-h-60 overflow-y-auto border border-neutral-200 rounded-lg p-3 space-y-3">
-                        {SECTIONS.map(section => {
-                          const Icon = section.icon;
-                          const sectionPerms = section.subsections.flatMap(s => s.permissions);
-                          const checkedCount = sectionPerms.filter(p => selectedPermissions.includes(p)).length;
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-1.5">
+                      Correo electrónico
+                    </label>
+                    <input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                      className="w-full px-4 py-2.5 border border-neutral-200 rounded-lg focus:ring-2 focus:ring-neutral-900 focus:border-transparent outline-none"
+                      placeholder="usuario@ejemplo.com"
+                      required
+                    />
+                  </div>
 
-                          return (
-                            <div key={section.id} className="space-y-2">
-                              <div className={`flex items-center gap-2 text-xs font-semibold uppercase ${section.color} px-2 py-1 rounded`}>
-                                <Icon size={14} />
-                                {section.title}
-                                <span className="ml-auto opacity-70">{checkedCount}/{sectionPerms.length}</span>
-                              </div>
-                              {section.subsections.map((sub, idx) => (
-                                <div key={idx} className="pl-4 space-y-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleSubsectionPermissions(sub.permissions, false)}
-                                    className="text-xs text-neutral-500 hover:text-neutral-700"
-                                  >
-                                    {sub.title}
-                                  </button>
-                                  <div className="grid grid-cols-2 gap-1">
-                                    {sub.permissions.map(perm => (
-                                      <label key={perm} className="flex items-center gap-1.5 text-xs cursor-pointer hover:bg-neutral-50 p-1 rounded">
-                                        <input
-                                          type="checkbox"
-                                          checked={selectedPermissions.includes(perm)}
-                                          onChange={() => togglePermission(perm)}
-                                          className="w-3 h-3 rounded border-neutral-300 text-neutral-900"
-                                        />
-                                        <span className={selectedPermissions.includes(perm) ? 'text-neutral-900' : 'text-neutral-600'}>
-                                          {PERMISSION_LABELS[perm] || perm}
-                                        </span>
-                                      </label>
-                                    ))}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        })}
-                      </div>
+                  {modalMode === 'create' && (
+                    <div>
+                      <label className="block text-sm font-medium text-neutral-700 mb-1.5">
+                        Contraseña
+                      </label>
+                      <input
+                        type="password"
+                        value={formData.password}
+                        onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                        className="w-full px-4 py-2.5 border border-neutral-200 rounded-lg focus:ring-2 focus:ring-neutral-900 focus:border-transparent outline-none"
+                        placeholder="Mínimo 6 caracteres"
+                        required
+                        minLength={6}
+                      />
                     </div>
                   )}
-                </>
-              )}
 
-              {formError && (
-                <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm">
-                  {formError}
+                  {formError && (
+                    <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm">
+                      {formError}
+                    </div>
+                  )}
+
+                  {/* Botones en modo edit (sin permisos) */}
+                  {modalMode === 'edit' && (
+                    <div className="flex gap-3 pt-4">
+                      <button
+                        type="button"
+                        onClick={() => setShowModal(false)}
+                        className="flex-1 px-4 py-2.5 border border-neutral-200 rounded-lg text-neutral-700 font-medium hover:bg-neutral-50 transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={formLoading}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-neutral-900 text-white rounded-lg font-medium hover:bg-neutral-800 disabled:opacity-50 transition-colors"
+                      >
+                        {formLoading ? (
+                          <RefreshCw size={16} className="animate-spin" />
+                        ) : (
+                          <Check size={16} />
+                        )}
+                        Guardar
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Panel de permisos (solo en modo crear) */}
+                {modalMode === 'create' && canManagePermissions && (
+                  <div className="border-l border-neutral-200 pl-8">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-semibold text-neutral-900">
+                        Permisos
+                      </h3>
+                      <span className="text-sm text-neutral-500">
+                        {selectedPermissions.length} seleccionados
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      {SECTIONS.map(section => {
+                        const Icon = section.icon;
+                        const sectionPerms = section.subsections.flatMap(s => s.permissions);
+                        const checkedCount = sectionPerms.filter(p => selectedPermissions.includes(p)).length;
+
+                        return (
+                          <div key={section.id} className="border border-neutral-200 rounded-xl overflow-hidden">
+                            <div className={`flex items-center gap-2 px-4 py-2.5 ${section.color}`}>
+                              <Icon size={16} />
+                              <span className="font-semibold text-sm">{section.title}</span>
+                              <span className="ml-auto text-xs opacity-70">{checkedCount}/{sectionPerms.length}</span>
+                            </div>
+                            <div className="p-3 space-y-3">
+                              {section.subsections.map((sub, idx) => {
+                                const allChecked = sub.permissions.every(p => selectedPermissions.includes(p));
+                                const someChecked = sub.permissions.some(p => selectedPermissions.includes(p)) && !allChecked;
+
+                                return (
+                                  <div key={idx}>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleSubsectionPermissions(sub.permissions, false)}
+                                      className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-neutral-500 hover:text-neutral-900 mb-2"
+                                    >
+                                      <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                                        allChecked
+                                          ? 'bg-neutral-900 border-neutral-900'
+                                          : someChecked
+                                            ? 'bg-neutral-400 border-neutral-400'
+                                            : 'border-neutral-300'
+                                      }`}>
+                                        {(allChecked || someChecked) && <Check size={12} className="text-white" />}
+                                      </div>
+                                      {sub.title}
+                                    </button>
+                                    <div className="space-y-1 pl-6">
+                                      {sub.permissions.map(perm => (
+                                        <label
+                                          key={perm}
+                                          className={`flex items-center gap-2.5 py-1.5 px-2 rounded-lg cursor-pointer transition-colors hover:bg-neutral-50 ${
+                                            selectedPermissions.includes(perm) ? 'bg-neutral-50' : ''
+                                          }`}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedPermissions.includes(perm)}
+                                            onChange={() => togglePermission(perm)}
+                                            className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900"
+                                          />
+                                          <span className={`text-sm ${selectedPermissions.includes(perm) ? 'text-neutral-900' : 'text-neutral-600'}`}>
+                                            {PERMISSION_LABELS[perm] || perm}
+                                          </span>
+                                        </label>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer con botones (solo en modo crear con permisos) */}
+              {modalMode === 'create' && canManagePermissions && (
+                <div className="p-6 border-t border-neutral-200 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(false)}
+                    className="flex-1 px-4 py-2.5 border border-neutral-200 rounded-lg text-neutral-700 font-medium hover:bg-neutral-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={formLoading}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-neutral-900 text-white rounded-lg font-medium hover:bg-neutral-800 disabled:opacity-50 transition-colors"
+                  >
+                    {formLoading ? (
+                      <RefreshCw size={16} className="animate-spin" />
+                    ) : (
+                      <Check size={16} />
+                    )}
+                    Crear Usuario
+                  </button>
                 </div>
               )}
 
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2.5 border border-neutral-200 rounded-lg text-neutral-700 font-medium hover:bg-neutral-50 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={formLoading}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-neutral-900 text-white rounded-lg font-medium hover:bg-neutral-800 disabled:opacity-50 transition-colors"
-                >
-                  {formLoading ? (
-                    <RefreshCw size={16} className="animate-spin" />
-                  ) : (
-                    <Check size={16} />
-                  )}
-                  {modalMode === 'create' ? 'Crear' : 'Guardar'}
-                </button>
-              </div>
+              {/* Botones para modo crear sin permisos */}
+              {modalMode === 'create' && !canManagePermissions && (
+                <div className="p-6 border-t border-neutral-200 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(false)}
+                    className="flex-1 px-4 py-2.5 border border-neutral-200 rounded-lg text-neutral-700 font-medium hover:bg-neutral-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={formLoading}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-neutral-900 text-white rounded-lg font-medium hover:bg-neutral-800 disabled:opacity-50 transition-colors"
+                  >
+                    {formLoading ? (
+                      <RefreshCw size={16} className="animate-spin" />
+                    ) : (
+                      <Check size={16} />
+                    )}
+                    Crear
+                  </button>
+                </div>
+              )}
             </form>
           </div>
         </div>
