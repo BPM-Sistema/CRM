@@ -226,6 +226,26 @@ export function RealReceipts() {
 
   useEffect(() => {
     loadComprobantes();
+
+    // Refetch al enfocar la ventana
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadComprobantes();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Polling cada 15 segundos para datos en tiempo real
+    const pollInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadComprobantes();
+      }
+    }, 15000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(pollInterval);
+    };
   }, []);
 
   const filteredComprobantes = useMemo(() => {

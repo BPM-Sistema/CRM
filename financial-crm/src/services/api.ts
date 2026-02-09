@@ -9,10 +9,11 @@ function getAuthHeaders(): HeadersInit {
   };
 }
 
-// Fetch con autenticación
+// Fetch con autenticación (sin cache para datos en tiempo real)
 async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const response = await fetch(url, {
     ...options,
+    cache: 'no-store', // Forzar datos frescos, nunca usar cache
     headers: {
       ...getAuthHeaders(),
       ...options.headers,

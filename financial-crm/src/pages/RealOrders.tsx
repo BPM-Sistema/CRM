@@ -81,6 +81,26 @@ export function RealOrders() {
 
   useEffect(() => {
     loadOrders();
+
+    // Refetch al enfocar la ventana
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadOrders();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Polling cada 15 segundos para datos en tiempo real
+    const pollInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadOrders();
+      }
+    }, 15000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(pollInterval);
+    };
   }, []);
 
   // Mapeo de estados a permisos

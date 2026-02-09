@@ -21,6 +21,9 @@ const sharp = require('sharp');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Desactivar ETag globalmente para evitar respuestas 304
+app.set('etag', false);
+
 // Configurar Google Cloud Vision credentials para producción (Railway)
 if (process.env.GOOGLE_CREDENTIALS_JSON) {
   const credentialsPath = '/tmp/google-credentials.json';
@@ -364,6 +367,14 @@ app.get('/health', (_, res) => res.json({ ok: true }));
    GET — LISTAR TODOS LOS PEDIDOS
 ===================================================== */
 app.get('/orders', authenticate, requirePermission('orders.view'), async (req, res) => {
+  // Deshabilitar cache completamente - siempre datos frescos
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store'
+  });
+
   try {
     const ordersRes = await pool.query(`
       SELECT
