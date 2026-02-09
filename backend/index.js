@@ -18,6 +18,8 @@ const { hashText } = require('./hash');
 const { authenticate, requirePermission } = require('./middleware/auth');
 const crypto = require('crypto');
 const sharp = require('sharp');
+const { runSyncJob } = require('./services/orderSync');
+const { getQueueStats, getSyncState } = require('./services/syncQueue');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -396,7 +398,7 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
       FROM orders_validated o
       LEFT JOIN comprobantes c ON o.order_number = c.order_number
       GROUP BY o.order_number, o.monto_tiendanube, o.total_pagado, o.saldo, o.estado_pago, o.estado_pedido, o.currency, o.created_at, o.customer_name, o.customer_email, o.customer_phone, o.printed_at, o.packed_at, o.shipped_at
-      ORDER BY o.created_at DESC
+      ORDER BY CAST(o.order_number AS INTEGER) DESC
     `);
 
     res.json({
@@ -2033,8 +2035,72 @@ app.use('/users', usersRoutes);
 app.use('/roles', rolesRoutes);
 
 /* =====================================================
+   SYNC QUEUE - Endpoints y Scheduler
+===================================================== */
+
+// Estado de la cola de sincronización
+app.get('/sync/status', authenticate, async (req, res) => {
+  try {
+    const [stats, lastSync] = await Promise.all([
+      getQueueStats(),
+      getSyncState('last_order_sync')
+    ]);
+
+    res.json({
+      ok: true,
+      queue: stats,
+      lastSync: lastSync || { last_synced_at: null }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Ejecutar sincronización manual
+app.post('/sync/run', authenticate, requirePermission('users.view'), async (req, res) => {
+  try {
+    console.log('🔄 Sincronización manual iniciada por:', req.user.email);
+    const result = await runSyncJob();
+    res.json({ ok: true, result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Scheduler: ejecutar sync cada 5 minutos
+const SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutos
+let syncInterval = null;
+
+function startSyncScheduler() {
+  if (syncInterval) return;
+
+  console.log('⏰ Scheduler de sincronización iniciado (cada 5 min)');
+
+  // Primera ejecución después de 30 segundos (dar tiempo a que arranque todo)
+  setTimeout(async () => {
+    try {
+      await runSyncJob();
+    } catch (err) {
+      console.error('❌ Error en sync inicial:', err.message);
+    }
+  }, 30000);
+
+  // Luego cada 5 minutos
+  syncInterval = setInterval(async () => {
+    try {
+      await runSyncJob();
+    } catch (err) {
+      console.error('❌ Error en sync programado:', err.message);
+    }
+  }, SYNC_INTERVAL);
+}
+
+/* =====================================================
    SERVER
 ===================================================== */
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+
+  // Iniciar scheduler de sincronización
+  startSyncScheduler();
 });
