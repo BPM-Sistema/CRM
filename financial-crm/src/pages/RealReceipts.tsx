@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RefreshCw, AlertCircle, Eye, Banknote, FileText, Download, Calendar, CheckSquare, Square, X, Search } from 'lucide-react';
+import { RefreshCw, AlertCircle, Eye, Banknote, FileText, Download, Calendar, CheckSquare, Square, X, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
-import { fetchComprobantes, ApiComprobanteList } from '../services/api';
+import { fetchComprobantes, ApiComprobanteList, PaginationInfo } from '../services/api';
 import { formatDistanceToNow, format, isToday, isSameDay, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { clsx } from 'clsx';
@@ -210,18 +210,30 @@ export function RealReceipts() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+  const [pagination, setPagination] = useState<PaginationInfo | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 50;
 
-  const loadComprobantes = async () => {
+  const loadComprobantes = async (page?: number) => {
+    const pageToLoad = page ?? currentPage;
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchComprobantes();
-      setComprobantes(data);
+      const response = await fetchComprobantes(pageToLoad, ITEMS_PER_PAGE);
+      setComprobantes(response.data);
+      setPagination(response.pagination);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar comprobantes');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRefresh = () => loadComprobantes();
+
+  const goToPage = (page: number) => {
+    setCurrentPage(page);
+    loadComprobantes(page);
   };
 
   useEffect(() => {
@@ -378,7 +390,7 @@ export function RealReceipts() {
                 <Button
                   variant="secondary"
                   leftIcon={<RefreshCw size={16} className={loading ? 'animate-spin' : ''} />}
-                  onClick={loadComprobantes}
+                  onClick={handleRefresh}
                   disabled={loading}
                 >
                   Actualizar
@@ -485,7 +497,7 @@ export function RealReceipts() {
             <AlertCircle size={48} className="mx-auto text-red-400 mb-4" />
             <h3 className="text-lg font-semibold text-neutral-900 mb-2">Error al cargar comprobantes</h3>
             <p className="text-neutral-500 mb-4">{error}</p>
-            <Button onClick={loadComprobantes}>Reintentar</Button>
+            <Button onClick={handleRefresh}>Reintentar</Button>
           </Card>
         ) : filteredComprobantes.length === 0 ? (
           <div className="text-center py-16">
@@ -509,11 +521,63 @@ export function RealReceipts() {
           </div>
         )}
 
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-neutral-500">
-            Mostrando {filteredComprobantes.length} de {comprobantes.length} comprobantes
-          </span>
-        </div>
+        {/* Paginación */}
+        {pagination && (
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-neutral-500">
+              Mostrando {filteredComprobantes.length} de {pagination.total} comprobantes (página {pagination.page} de {pagination.totalPages})
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage <= 1 || loading}
+                leftIcon={<ChevronLeft size={16} />}
+              >
+                Anterior
+              </Button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                  let pageNum: number;
+                  if (pagination.totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= pagination.totalPages - 2) {
+                    pageNum = pagination.totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => goToPage(pageNum)}
+                      disabled={loading}
+                      className={clsx(
+                        'w-8 h-8 rounded-lg text-sm font-medium transition-colors',
+                        pageNum === currentPage
+                          ? 'bg-neutral-900 text-white'
+                          : 'bg-white text-neutral-600 hover:bg-neutral-100 border border-neutral-200'
+                      )}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage >= pagination.totalPages || loading}
+                rightIcon={<ChevronRight size={16} />}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

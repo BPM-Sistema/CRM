@@ -209,16 +209,32 @@ export function mapEstadoPago(estadoPago: string | null): 'pendiente' | 'a_confi
   }
 }
 
-// Obtener todos los pedidos
-export async function fetchOrders(): Promise<ApiOrder[]> {
-  const response = await authFetch(`${API_BASE_URL}/orders`);
+// Tipos de paginación
+export interface PaginationInfo {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  pagination: PaginationInfo;
+}
+
+// Obtener todos los pedidos (con paginación)
+export async function fetchOrders(page = 1, limit = 50): Promise<PaginatedResponse<ApiOrder>> {
+  const response = await authFetch(`${API_BASE_URL}/orders?page=${page}&limit=${limit}`);
 
   if (!response.ok) {
     throw new Error('Error al obtener pedidos');
   }
 
   const data = await response.json();
-  return data.orders;
+  return {
+    data: data.orders,
+    pagination: data.pagination
+  };
 }
 
 // Obtener detalle de un pedido
@@ -345,16 +361,19 @@ export function mapEstadoPedido(estadoPedido: string | null): OrderStatus {
   return estados[estadoPedido] || 'pendiente_pago';
 }
 
-// Obtener todos los comprobantes
-export async function fetchComprobantes(): Promise<ApiComprobanteList[]> {
-  const response = await authFetch(`${API_BASE_URL}/comprobantes`);
+// Obtener todos los comprobantes (con paginación)
+export async function fetchComprobantes(page = 1, limit = 50): Promise<PaginatedResponse<ApiComprobanteList>> {
+  const response = await authFetch(`${API_BASE_URL}/comprobantes?page=${page}&limit=${limit}`);
 
   if (!response.ok) {
     throw new Error('Error al obtener comprobantes');
   }
 
   const data = await response.json();
-  return data.comprobantes;
+  return {
+    data: data.comprobantes,
+    pagination: data.pagination
+  };
 }
 
 // Mapear estado de comprobante

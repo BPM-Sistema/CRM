@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RefreshCw, AlertCircle, Eye, Receipt, RotateCcw, Printer, Calendar, Search } from 'lucide-react';
+import { RefreshCw, AlertCircle, Eye, Receipt, RotateCcw, Printer, Calendar, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card, PaymentStatusBadge, OrderStatusBadge, Modal } from '../components/ui';
 import {
@@ -11,7 +11,7 @@ import {
   TableHead,
   TableCell,
 } from '../components/ui';
-import { fetchOrders, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus } from '../services/api';
+import { fetchOrders, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus, PaginationInfo } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { format, isToday } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -46,6 +46,9 @@ export function RealOrders() {
   const [orderStatusFilter, setOrderStatusFilter] = useState<OrderStatus | 'all'>('all');
   const [fechaFilter, setFechaFilter] = useState<'all' | 'hoy'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [pagination, setPagination] = useState<PaginationInfo | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 50;
 
   // Filtrar botones según permisos del usuario
   const visiblePaymentButtons = useMemo(() => {
@@ -66,17 +69,26 @@ export function RealOrders() {
     new Set(['a_imprimir'])
   );
 
-  const loadOrders = async () => {
+  const loadOrders = async (page?: number) => {
+    const pageToLoad = page ?? currentPage;
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchOrders();
-      setOrders(data);
+      const response = await fetchOrders(pageToLoad, ITEMS_PER_PAGE);
+      setOrders(response.data);
+      setPagination(response.pagination);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar pedidos');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRefresh = () => loadOrders();
+
+  const goToPage = (page: number) => {
+    setCurrentPage(page);
+    loadOrders(page);
   };
 
   useEffect(() => {
@@ -252,7 +264,7 @@ export function RealOrders() {
             <Button
               variant="secondary"
               leftIcon={<RefreshCw size={16} className={loading ? 'animate-spin' : ''} />}
-              onClick={loadOrders}
+              onClick={handleRefresh}
               disabled={loading}
             >
               Actualizar
@@ -363,7 +375,7 @@ export function RealOrders() {
             <AlertCircle size={48} className="mx-auto text-red-400 mb-4" />
             <h3 className="text-lg font-semibold text-neutral-900 mb-2">Error al cargar pedidos</h3>
             <p className="text-neutral-500 mb-4">{error}</p>
-            <Button onClick={loadOrders}>Reintentar</Button>
+            <Button onClick={handleRefresh}>Reintentar</Button>
           </Card>
         ) : filteredOrders.length === 0 ? (
           <Card className="text-center py-8">
@@ -467,11 +479,63 @@ export function RealOrders() {
           </div>
         )}
 
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-neutral-500">
-            Mostrando {filteredOrders.length} de {permittedOrders.length} pedidos
-          </span>
-        </div>
+        {/* Paginación */}
+        {pagination && (
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-neutral-500">
+              Mostrando {filteredOrders.length} de {pagination.total} pedidos (página {pagination.page} de {pagination.totalPages})
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage <= 1 || loading}
+                leftIcon={<ChevronLeft size={16} />}
+              >
+                Anterior
+              </Button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                  let pageNum: number;
+                  if (pagination.totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= pagination.totalPages - 2) {
+                    pageNum = pagination.totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => goToPage(pageNum)}
+                      disabled={loading}
+                      className={clsx(
+                        'w-8 h-8 rounded-lg text-sm font-medium transition-colors',
+                        pageNum === currentPage
+                          ? 'bg-neutral-900 text-white'
+                          : 'bg-white text-neutral-600 hover:bg-neutral-100 border border-neutral-200'
+                      )}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage >= pagination.totalPages || loading}
+                rightIcon={<ChevronRight size={16} />}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal de selección para impresión */}

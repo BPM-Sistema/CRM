@@ -378,6 +378,15 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
   });
 
   try {
+    // Paginación
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    const offset = (page - 1) * limit;
+
+    // Contar total
+    const countRes = await pool.query(`SELECT COUNT(*) as total FROM orders_validated`);
+    const total = parseInt(countRes.rows[0].total);
+
     const ordersRes = await pool.query(`
       SELECT
         o.order_number,
@@ -399,11 +408,18 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
       LEFT JOIN comprobantes c ON o.order_number = c.order_number
       GROUP BY o.order_number, o.monto_tiendanube, o.total_pagado, o.saldo, o.estado_pago, o.estado_pedido, o.currency, o.created_at, o.customer_name, o.customer_email, o.customer_phone, o.printed_at, o.packed_at, o.shipped_at
       ORDER BY CAST(REGEXP_REPLACE(o.order_number, '[^0-9]', '', 'g') AS INTEGER) DESC
-    `);
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]);
 
     res.json({
       ok: true,
-      orders: ordersRes.rows
+      orders: ordersRes.rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
     });
 
   } catch (error) {
@@ -418,6 +434,15 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
 ===================================================== */
 app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async (req, res) => {
   try {
+    // Paginación
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    const offset = (page - 1) * limit;
+
+    // Contar total
+    const countRes = await pool.query(`SELECT COUNT(*) as total FROM comprobantes`);
+    const total = parseInt(countRes.rows[0].total);
+
     const comprobantesRes = await pool.query(`
       SELECT
         c.id,
@@ -434,11 +459,18 @@ app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async
       FROM comprobantes c
       LEFT JOIN orders_validated o ON c.order_number = o.order_number
       ORDER BY c.created_at DESC
-    `);
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]);
 
     res.json({
       ok: true,
-      comprobantes: comprobantesRes.rows
+      comprobantes: comprobantesRes.rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
     });
 
   } catch (error) {

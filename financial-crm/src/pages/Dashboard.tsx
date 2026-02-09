@@ -28,12 +28,13 @@ export function Dashboard() {
     setLoading(true);
     setError(null);
     try {
-      const [ordersData, comprobantesData] = await Promise.all([
-        fetchOrders(),
-        fetchComprobantes()
+      // Dashboard muestra resumen, cargar primera página con más items
+      const [ordersRes, comprobantesRes] = await Promise.all([
+        fetchOrders(1, 100),
+        fetchComprobantes(1, 100)
       ]);
-      setOrders(ordersData);
-      setComprobantes(comprobantesData);
+      setOrders(ordersRes.data);
+      setComprobantes(comprobantesRes.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar datos');
     } finally {
