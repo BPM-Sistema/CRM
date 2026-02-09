@@ -230,12 +230,21 @@ export interface OrderFilters {
   fecha?: string;
 }
 
+// Mapeo inverso: de UI a DB
+function mapEstadoPagoToDB(uiValue: string): string {
+  switch (uiValue) {
+    case 'parcial': return 'confirmado_parcial';
+    case 'total': return 'confirmado_total';
+    default: return uiValue; // pendiente, a_confirmar, rechazado ya coinciden
+  }
+}
+
 // Obtener todos los pedidos (con paginación y filtros)
 export async function fetchOrders(page = 1, limit = 50, filters?: OrderFilters): Promise<PaginatedResponse<ApiOrder>> {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
 
   if (filters?.estado_pago && filters.estado_pago !== 'all') {
-    params.append('estado_pago', filters.estado_pago);
+    params.append('estado_pago', mapEstadoPagoToDB(filters.estado_pago));
   }
   if (filters?.estado_pedido && filters.estado_pedido !== 'all') {
     params.append('estado_pedido', filters.estado_pedido);
