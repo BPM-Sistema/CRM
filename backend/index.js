@@ -1259,7 +1259,6 @@ app.post('/validate-order', async (req, res) => {
    PASO 2 — UPLOAD + OCR + COMPARACIÓN
 ===================================================== */
 app.post('/upload', (req, res, next) => {
-  console.log('📥 /upload - request recibido');
   upload.single('file')(req, res, (err) => {
     if (err) {
       console.error('❌ Multer error:', err.message);
@@ -1272,7 +1271,7 @@ app.post('/upload', (req, res, next) => {
     const { orderNumber } = req.body;
     const file = req.file;
 
-    console.log('📥 /upload handler iniciado');
+    console.log('📥 /upload iniciado');
     console.log('orderNumber:', orderNumber);
     console.log('file:', file?.originalname);
 
@@ -1283,8 +1282,6 @@ app.post('/upload', (req, res, next) => {
     /* ===============================
        1️⃣ OBTENER PEDIDO DESDE TIENDANUBE
     ================================ */
-    console.log('🔍 Buscando pedido en Tiendanube:', orderNumber);
-
     const tnResponse = await axios.get(
       `https://api.tiendanube.com/v1/${process.env.TIENDANUBE_STORE_ID}/orders`,
       {
@@ -1296,10 +1293,7 @@ app.post('/upload', (req, res, next) => {
       }
     );
 
-    console.log('✅ Respuesta Tiendanube recibida, pedidos encontrados:', tnResponse.data?.length || 0);
-
     if (!tnResponse.data || tnResponse.data.length === 0) {
-      console.log('❌ Pedido no encontrado en Tiendanube');
       return res.status(404).json({ error: 'El número de pedido no existe. Verificá que esté bien escrito.' });
     }
 
@@ -1556,12 +1550,9 @@ app.post('/upload', (req, res, next) => {
 
   } catch (error) {
     console.error('❌ /upload error:', error.message);
-    console.error('❌ Error status:', error.response?.status);
-    console.error('❌ Error data:', JSON.stringify(error.response?.data));
 
     if (req.file?.path && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
-      console.log('🗑️ Temp file eliminado (error)');
     }
 
     // Error de Tiendanube (pedido no encontrado)
