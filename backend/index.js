@@ -1546,7 +1546,13 @@ app.post('/upload', upload.single('file'), async (req, res) => {
       fs.unlinkSync(file.path);
       console.log('🗑️ Temp file eliminado (error)');
     }
-    res.status(500).json({ error: error.message });
+
+    // Error de Tiendanube (pedido no encontrado)
+    if (error.response?.status === 404 || error.message?.includes('404')) {
+      return res.status(404).json({ error: 'El número de pedido no existe. Verificá que esté bien escrito.' });
+    }
+
+    res.status(500).json({ error: error.message || 'Error al procesar comprobante' });
   }
 });
 
