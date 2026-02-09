@@ -465,10 +465,9 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role_id: string | null;
-  role_name: string | null;
   is_active: boolean;
   created_at: string;
+  permissions: string[];
 }
 
 // Login
@@ -669,7 +668,7 @@ export async function createUser(userData: {
   name: string;
   email: string;
   password: string;
-  role_id?: string;
+  permissions?: string[];
 }): Promise<User> {
   const response = await authFetch(`${API_BASE_URL}/users`, {
     method: 'POST',
@@ -720,17 +719,17 @@ export async function toggleUserActive(id: string, isActive: boolean): Promise<U
   return data.user;
 }
 
-// Asignar rol a usuario
-export async function assignUserRole(id: string, roleId: string): Promise<User> {
-  const response = await authFetch(`${API_BASE_URL}/users/${id}/role`, {
+// Actualizar permisos de usuario
+export async function updateUserPermissions(id: string, permissions: string[]): Promise<User> {
+  const response = await authFetch(`${API_BASE_URL}/users/${id}/permissions`, {
     method: 'PATCH',
-    body: JSON.stringify({ role_id: roleId }),
+    body: JSON.stringify({ permissions }),
   });
 
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.error || 'Error al asignar rol');
+    throw new Error(data.error || 'Error al actualizar permisos');
   }
 
   return data.user;

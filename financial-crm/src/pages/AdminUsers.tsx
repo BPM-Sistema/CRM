@@ -10,23 +10,100 @@ import {
   Edit2,
   X,
   Check,
+  Shield,
+  LayoutDashboard,
+  ShoppingCart,
+  Receipt,
 } from 'lucide-react';
 import {
   fetchUsers,
-  fetchRoles,
   createUser,
   updateUser,
   toggleUserActive,
-  assignUserRole,
+  updateUserPermissions,
   User,
-  Role,
 } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+
+const PERMISSION_LABELS: Record<string, string> = {
+  'dashboard.view': 'Ver dashboard',
+  'orders.view': 'Ver pedidos',
+  'orders.print': 'Imprimir pedido',
+  'orders.update_status': 'Cambiar estado logístico',
+  'orders.create_cash_payment': 'Registrar pago en efectivo',
+  'orders.view_pendiente': 'Pendiente',
+  'orders.view_a_confirmar': 'A confirmar',
+  'orders.view_parcial': 'Parcial',
+  'orders.view_total': 'Total',
+  'orders.view_rechazado': 'Rechazado',
+  'orders.view_pendiente_pago': 'Pendiente de pago',
+  'orders.view_a_imprimir': 'A imprimir',
+  'orders.view_armado': 'Armado',
+  'orders.view_enviado': 'Enviado',
+  'orders.view_en_calle': 'En calle',
+  'orders.view_retirado': 'Retirado',
+  'receipts.view': 'Ver comprobantes',
+  'receipts.download': 'Descargar imágenes',
+  'receipts.upload_manual': 'Subir manual',
+  'receipts.confirm': 'Confirmar',
+  'receipts.reject': 'Rechazar',
+  'receipts.view_pendiente': 'Pendiente',
+  'receipts.view_a_confirmar': 'A confirmar',
+  'receipts.view_parcial': 'Parcial',
+  'receipts.view_total': 'Total',
+  'receipts.view_rechazado': 'Rechazado',
+  'users.view': 'Ver usuarios',
+  'users.create': 'Crear usuario',
+  'users.edit': 'Editar usuario',
+  'users.disable': 'Desactivar usuario',
+  'users.assign_role': 'Gestionar permisos',
+};
+
+const SECTIONS = [
+  {
+    id: 'dashboard',
+    title: 'Dashboard',
+    icon: LayoutDashboard,
+    color: 'bg-blue-50 text-blue-600',
+    subsections: [
+      { title: 'Acceso', permissions: ['dashboard.view'] }
+    ]
+  },
+  {
+    id: 'orders',
+    title: 'Pedidos',
+    icon: ShoppingCart,
+    color: 'bg-amber-50 text-amber-600',
+    subsections: [
+      { title: 'Acciones', permissions: ['orders.view', 'orders.print', 'orders.update_status', 'orders.create_cash_payment'] },
+      { title: 'Filtro por Estado de Pago', permissions: ['orders.view_pendiente', 'orders.view_a_confirmar', 'orders.view_parcial', 'orders.view_total', 'orders.view_rechazado'] },
+      { title: 'Filtro por Estado Logístico', permissions: ['orders.view_pendiente_pago', 'orders.view_a_imprimir', 'orders.view_armado', 'orders.view_enviado', 'orders.view_en_calle', 'orders.view_retirado'] }
+    ]
+  },
+  {
+    id: 'receipts',
+    title: 'Comprobantes',
+    icon: Receipt,
+    color: 'bg-emerald-50 text-emerald-600',
+    subsections: [
+      { title: 'Acciones', permissions: ['receipts.view', 'receipts.download', 'receipts.upload_manual', 'receipts.confirm', 'receipts.reject'] },
+      { title: 'Filtro por Estado', permissions: ['receipts.view_pendiente', 'receipts.view_a_confirmar', 'receipts.view_parcial', 'receipts.view_total', 'receipts.view_rechazado'] }
+    ]
+  },
+  {
+    id: 'users',
+    title: 'Usuarios',
+    icon: Users,
+    color: 'bg-violet-50 text-violet-600',
+    subsections: [
+      { title: 'Gestión', permissions: ['users.view', 'users.create', 'users.edit', 'users.disable', 'users.assign_role'] }
+    ]
+  }
+];
 
 export function AdminUsers() {
   const { hasPermission, user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
-  const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,26 +115,28 @@ export function AdminUsers() {
     name: '',
     email: '',
     password: '',
-    role_id: '',
   });
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [formError, setFormError] = useState('');
   const [formLoading, setFormLoading] = useState(false);
+
+  // Modal de permisos
+  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
+  const [permissionsUser, setPermissionsUser] = useState<User | null>(null);
+  const [editingPermissions, setEditingPermissions] = useState<string[]>([]);
+  const [savingPermissions, setSavingPermissions] = useState(false);
 
   const canCreate = hasPermission('users.create');
   const canEdit = hasPermission('users.edit');
   const canDisable = hasPermission('users.disable');
-  const canAssignRole = hasPermission('users.assign_role');
+  const canManagePermissions = hasPermission('users.assign_role');
 
   const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [usersData, rolesData] = await Promise.all([
-        fetchUsers(),
-        fetchRoles()
-      ]);
+      const usersData = await fetchUsers();
       setUsers(usersData);
-      setRoles(rolesData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar datos');
     } finally {
@@ -72,7 +151,8 @@ export function AdminUsers() {
   const openCreateModal = () => {
     setModalMode('create');
     setEditingUser(null);
-    setFormData({ name: '', email: '', password: '', role_id: '' });
+    setFormData({ name: '', email: '', password: '' });
+    setSelectedPermissions([]);
     setFormError('');
     setShowModal(true);
   };
@@ -84,10 +164,43 @@ export function AdminUsers() {
       name: user.name,
       email: user.email,
       password: '',
-      role_id: user.role_id || '',
     });
     setFormError('');
     setShowModal(true);
+  };
+
+  const openPermissionsModal = (user: User) => {
+    setPermissionsUser(user);
+    setEditingPermissions(user.permissions || []);
+    setShowPermissionsModal(true);
+  };
+
+  const togglePermission = (permKey: string) => {
+    setSelectedPermissions(prev =>
+      prev.includes(permKey)
+        ? prev.filter(p => p !== permKey)
+        : [...prev, permKey]
+    );
+  };
+
+  const toggleEditingPermission = (permKey: string) => {
+    setEditingPermissions(prev =>
+      prev.includes(permKey)
+        ? prev.filter(p => p !== permKey)
+        : [...prev, permKey]
+    );
+  };
+
+  const toggleSubsectionPermissions = (permissions: string[], isEditing: boolean) => {
+    const current = isEditing ? editingPermissions : selectedPermissions;
+    const setter = isEditing ? setEditingPermissions : setSelectedPermissions;
+    const allChecked = permissions.every(p => current.includes(p));
+
+    if (allChecked) {
+      setter(prev => prev.filter(p => !permissions.includes(p)));
+    } else {
+      setter(prev => [...new Set([...prev, ...permissions])]);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -106,7 +219,7 @@ export function AdminUsers() {
           name: formData.name,
           email: formData.email,
           password: formData.password,
-          role_id: formData.role_id || undefined,
+          permissions: selectedPermissions.length > 0 ? selectedPermissions : undefined,
         });
         setUsers(prev => [...prev, newUser]);
       } else if (editingUser) {
@@ -124,6 +237,21 @@ export function AdminUsers() {
     }
   };
 
+  const handleSavePermissions = async () => {
+    if (!permissionsUser) return;
+
+    setSavingPermissions(true);
+    try {
+      const updatedUser = await updateUserPermissions(permissionsUser.id, editingPermissions);
+      setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+      setShowPermissionsModal(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al guardar permisos');
+    } finally {
+      setSavingPermissions(false);
+    }
+  };
+
   const handleToggleActive = async (user: User) => {
     if (!canDisable || user.id === currentUser?.id) return;
 
@@ -135,16 +263,6 @@ export function AdminUsers() {
     }
   };
 
-  const handleRoleChange = async (userId: string, roleId: string) => {
-    if (!canAssignRole) return;
-
-    try {
-      const updatedUser = await assignUserRole(userId, roleId);
-      setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al asignar rol');
-    }
-  };
 
   if (loading) {
     return (
@@ -176,7 +294,7 @@ export function AdminUsers() {
     <div className="min-h-screen">
       <Header
         title="Gestión de Usuarios"
-        subtitle="Administra usuarios y asigna roles"
+        subtitle="Administra usuarios y sus permisos"
         actions={
           <div className="flex items-center gap-2">
             <button
@@ -218,7 +336,7 @@ export function AdminUsers() {
                   Email
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-                  Rol
+                  Permisos
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-500 uppercase tracking-wider">
                   Estado
@@ -248,28 +366,13 @@ export function AdminUsers() {
                     <span className="text-neutral-600">{user.email}</span>
                   </td>
                   <td className="px-6 py-4">
-                    {canAssignRole ? (
-                      <select
-                        value={user.role_id || ''}
-                        onChange={(e) => handleRoleChange(user.id, e.target.value)}
-                        className="px-3 py-1.5 border border-neutral-200 rounded-lg text-sm focus:ring-2 focus:ring-neutral-900 focus:border-transparent outline-none"
-                      >
-                        <option value="">Sin rol</option>
-                        {roles.map(role => (
-                          <option key={role.id} value={role.id}>
-                            {role.name}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                        user.role_name
-                          ? 'bg-neutral-100 text-neutral-700'
-                          : 'bg-neutral-50 text-neutral-400'
-                      }`}>
-                        {user.role_name || 'Sin rol'}
-                      </span>
-                    )}
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                      user.permissions?.length > 0
+                        ? 'bg-violet-50 text-violet-700'
+                        : 'bg-neutral-50 text-neutral-400'
+                    }`}>
+                      {user.permissions?.length || 0} permisos
+                    </span>
                   </td>
                   <td className="px-6 py-4">
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
@@ -283,6 +386,15 @@ export function AdminUsers() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      {canManagePermissions && (
+                        <button
+                          onClick={() => openPermissionsModal(user)}
+                          className="p-2 text-violet-500 hover:text-violet-700 hover:bg-violet-50 rounded-lg transition-colors"
+                          title="Gestionar permisos"
+                        >
+                          <Shield size={16} />
+                        </button>
+                      )}
                       {canEdit && (
                         <button
                           onClick={() => openEditModal(user)}
@@ -383,23 +495,54 @@ export function AdminUsers() {
                     />
                   </div>
 
-                  {canAssignRole && (
+                  {canManagePermissions && (
                     <div>
-                      <label className="block text-sm font-medium text-neutral-700 mb-1.5">
-                        Rol
+                      <label className="block text-sm font-medium text-neutral-700 mb-3">
+                        Permisos ({selectedPermissions.length} seleccionados)
                       </label>
-                      <select
-                        value={formData.role_id}
-                        onChange={(e) => setFormData(prev => ({ ...prev, role_id: e.target.value }))}
-                        className="w-full px-4 py-2.5 border border-neutral-200 rounded-lg focus:ring-2 focus:ring-neutral-900 focus:border-transparent outline-none"
-                      >
-                        <option value="">Sin rol asignado</option>
-                        {roles.map(role => (
-                          <option key={role.id} value={role.id}>
-                            {role.name}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="max-h-60 overflow-y-auto border border-neutral-200 rounded-lg p-3 space-y-3">
+                        {SECTIONS.map(section => {
+                          const Icon = section.icon;
+                          const sectionPerms = section.subsections.flatMap(s => s.permissions);
+                          const checkedCount = sectionPerms.filter(p => selectedPermissions.includes(p)).length;
+
+                          return (
+                            <div key={section.id} className="space-y-2">
+                              <div className={`flex items-center gap-2 text-xs font-semibold uppercase ${section.color} px-2 py-1 rounded`}>
+                                <Icon size={14} />
+                                {section.title}
+                                <span className="ml-auto opacity-70">{checkedCount}/{sectionPerms.length}</span>
+                              </div>
+                              {section.subsections.map((sub, idx) => (
+                                <div key={idx} className="pl-4 space-y-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleSubsectionPermissions(sub.permissions, false)}
+                                    className="text-xs text-neutral-500 hover:text-neutral-700"
+                                  >
+                                    {sub.title}
+                                  </button>
+                                  <div className="grid grid-cols-2 gap-1">
+                                    {sub.permissions.map(perm => (
+                                      <label key={perm} className="flex items-center gap-1.5 text-xs cursor-pointer hover:bg-neutral-50 p-1 rounded">
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedPermissions.includes(perm)}
+                                          onChange={() => togglePermission(perm)}
+                                          className="w-3 h-3 rounded border-neutral-300 text-neutral-900"
+                                        />
+                                        <span className={selectedPermissions.includes(perm) ? 'text-neutral-900' : 'text-neutral-600'}>
+                                          {PERMISSION_LABELS[perm] || perm}
+                                        </span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </>
@@ -433,6 +576,115 @@ export function AdminUsers() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de editar permisos */}
+      {showPermissionsModal && permissionsUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl shadow-xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-neutral-200">
+              <div>
+                <h2 className="text-lg font-semibold text-neutral-900">
+                  Permisos de {permissionsUser.name}
+                </h2>
+                <p className="text-sm text-neutral-500">{permissionsUser.email}</p>
+              </div>
+              <button
+                onClick={() => setShowPermissionsModal(false)}
+                className="p-2 text-neutral-400 hover:text-neutral-600 rounded-lg transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {SECTIONS.map(section => {
+                const Icon = section.icon;
+                const sectionPerms = section.subsections.flatMap(s => s.permissions);
+                const checkedCount = sectionPerms.filter(p => editingPermissions.includes(p)).length;
+
+                return (
+                  <div key={section.id} className="border border-neutral-200 rounded-xl overflow-hidden">
+                    <div className={`flex items-center gap-3 px-4 py-3 ${section.color}`}>
+                      <Icon size={18} />
+                      <span className="font-semibold">{section.title}</span>
+                      <span className="ml-auto text-sm opacity-70">{checkedCount}/{sectionPerms.length}</span>
+                    </div>
+                    <div className="p-4 space-y-4">
+                      {section.subsections.map((sub, idx) => {
+                        const allChecked = sub.permissions.every(p => editingPermissions.includes(p));
+                        const someChecked = sub.permissions.some(p => editingPermissions.includes(p)) && !allChecked;
+
+                        return (
+                          <div key={idx}>
+                            <button
+                              type="button"
+                              onClick={() => toggleSubsectionPermissions(sub.permissions, true)}
+                              className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-neutral-500 hover:text-neutral-900 mb-2"
+                            >
+                              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                                allChecked
+                                  ? 'bg-neutral-900 border-neutral-900'
+                                  : someChecked
+                                    ? 'bg-neutral-400 border-neutral-400'
+                                    : 'border-neutral-300'
+                              }`}>
+                                {(allChecked || someChecked) && <Check size={12} className="text-white" />}
+                              </div>
+                              {sub.title}
+                            </button>
+                            <div className="grid grid-cols-2 gap-2 pl-6">
+                              {sub.permissions.map(perm => (
+                                <label
+                                  key={perm}
+                                  className={`flex items-center gap-2 py-1.5 px-2 rounded-lg cursor-pointer transition-colors hover:bg-neutral-50 ${
+                                    editingPermissions.includes(perm) ? 'bg-neutral-50' : ''
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={editingPermissions.includes(perm)}
+                                    onChange={() => toggleEditingPermission(perm)}
+                                    className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900"
+                                  />
+                                  <span className={`text-sm ${editingPermissions.includes(perm) ? 'text-neutral-900' : 'text-neutral-600'}`}>
+                                    {PERMISSION_LABELS[perm] || perm}
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="p-6 border-t border-neutral-200 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowPermissionsModal(false)}
+                className="flex-1 px-4 py-2.5 border border-neutral-200 rounded-lg text-neutral-700 font-medium hover:bg-neutral-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSavePermissions}
+                disabled={savingPermissions}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-neutral-900 text-white rounded-lg font-medium hover:bg-neutral-800 disabled:opacity-50 transition-colors"
+              >
+                {savingPermissions ? (
+                  <RefreshCw size={16} className="animate-spin" />
+                ) : (
+                  <Check size={16} />
+                )}
+                Guardar permisos
+              </button>
+            </div>
           </div>
         </div>
       )}

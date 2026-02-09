@@ -40,13 +40,13 @@ async function authenticate(req, res, next) {
       return res.status(401).json({ error: 'Usuario no encontrado o desactivado' });
     }
 
-    // Cargar permisos del rol
+    // Cargar permisos directos del usuario
     const permissionsResult = await pool.query(`
       SELECT p.key
       FROM permissions p
-      JOIN role_permissions rp ON p.id = rp.permission_id
-      WHERE rp.role_id = $1
-    `, [userResult.rows[0].role_id]);
+      JOIN user_permissions up ON p.id = up.permission_id
+      WHERE up.user_id = $1
+    `, [decoded.userId]);
 
     req.user = {
       ...userResult.rows[0],
@@ -139,9 +139,9 @@ async function optionalAuth(req, res, next) {
       const permissionsResult = await pool.query(`
         SELECT p.key
         FROM permissions p
-        JOIN role_permissions rp ON p.id = rp.permission_id
-        WHERE rp.role_id = $1
-      `, [userResult.rows[0].role_id]);
+        JOIN user_permissions up ON p.id = up.permission_id
+        WHERE up.user_id = $1
+      `, [userResult.rows[0].id]);
 
       req.user = {
         ...userResult.rows[0],

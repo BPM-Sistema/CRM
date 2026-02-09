@@ -23,12 +23,17 @@ router.get('/', requirePermission('users.view'), async (req, res) => {
         u.id,
         u.name,
         u.email,
-        u.role_id,
-        r.name as role_name,
         u.is_active,
-        u.created_at
+        u.created_at,
+        COALESCE(
+          ARRAY(
+            SELECT p.key FROM permissions p
+            JOIN user_permissions up ON p.id = up.permission_id
+            WHERE up.user_id = u.id
+          ),
+          '{}'::text[]
+        ) as permissions
       FROM users u
-      LEFT JOIN roles r ON u.role_id = r.id
       ORDER BY u.created_at DESC
     `);
 
@@ -56,12 +61,17 @@ router.get('/:id', requirePermission('users.view'), async (req, res) => {
         u.id,
         u.name,
         u.email,
-        u.role_id,
-        r.name as role_name,
         u.is_active,
-        u.created_at
+        u.created_at,
+        COALESCE(
+          ARRAY(
+            SELECT p.key FROM permissions p
+            JOIN user_permissions up ON p.id = up.permission_id
+            WHERE up.user_id = u.id
+          ),
+          '{}'::text[]
+        ) as permissions
       FROM users u
-      LEFT JOIN roles r ON u.role_id = r.id
       WHERE u.id = $1
     `, [id]);
 
@@ -86,7 +96,7 @@ router.get('/:id', requirePermission('users.view'), async (req, res) => {
  */
 router.post('/', requirePermission('users.create'), async (req, res) => {
   try {
-    const { name, email, password, role_id } = req.body;
+    const { name, email, password, permissions } = req.body;
 
     // Validaciones
     if (!name || !email || !password) {
@@ -107,11 +117,14 @@ router.post('/', requirePermission('users.create'), async (req, res) => {
       return res.status(409).json({ error: 'Ya existe un usuario con ese email' });
     }
 
-    // Verificar que el rol existe
-    if (role_id) {
-      const roleExists = await pool.query('SELECT id FROM roles WHERE id = $1', [role_id]);
-      if (roleExists.rowCount === 0) {
-        return res.status(400).json({ error: 'Rol no válido' });
+    // Validar que los permisos existen
+    if (permissions && permissions.length > 0) {
+      const validPerms = await pool.query(
+        'SELECT key FROM permissions WHERE key = ANY($1)',
+        [permissions]
+      );
+      if (validPerms.rowCount !== permissions.length) {
+        return res.status(400).json({ error: 'Algunos permisos no son válidos' });
       }
     }
 
@@ -119,23 +132,26 @@ router.post('/', requirePermission('users.create'), async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
 
     const result = await pool.query(`
-      INSERT INTO users (name, email, password_hash, role_id, is_active)
-      VALUES ($1, $2, $3, $4, true)
-      RETURNING id, name, email, role_id, is_active, created_at
-    `, [name, email.toLowerCase(), passwordHash, role_id || null]);
+      INSERT INTO users (name, email, password_hash, is_active)
+      VALUES ($1, $2, $3, true)
+      RETURNING id, name, email, is_active, created_at
+    `, [name, email.toLowerCase(), passwordHash]);
 
-    // Obtener rol
-    let role_name = null;
-    if (role_id) {
-      const roleResult = await pool.query('SELECT name FROM roles WHERE id = $1', [role_id]);
-      role_name = roleResult.rows[0]?.name;
+    const userId = result.rows[0].id;
+
+    // Insertar permisos
+    if (permissions && permissions.length > 0) {
+      await pool.query(`
+        INSERT INTO user_permissions (user_id, permission_id)
+        SELECT $1, id FROM permissions WHERE key = ANY($2)
+      `, [userId, permissions]);
     }
 
     res.status(201).json({
       ok: true,
       user: {
         ...result.rows[0],
-        role_name
+        permissions: permissions || []
       }
     });
 
@@ -196,22 +212,21 @@ router.patch('/:id', requirePermission('users.edit'), async (req, res) => {
       UPDATE users
       SET ${updates.join(', ')}
       WHERE id = $${paramIndex}
-      RETURNING id, name, email, role_id, is_active, created_at
+      RETURNING id, name, email, is_active, created_at
     `, values);
 
-    // Obtener rol
-    const roleResult = await pool.query(`
-      SELECT r.name as role_name
-      FROM users u
-      LEFT JOIN roles r ON u.role_id = r.id
-      WHERE u.id = $1
+    // Obtener permisos del usuario
+    const permissionsResult = await pool.query(`
+      SELECT p.key FROM permissions p
+      JOIN user_permissions up ON p.id = up.permission_id
+      WHERE up.user_id = $1
     `, [id]);
 
     res.json({
       ok: true,
       user: {
         ...result.rows[0],
-        role_name: roleResult.rows[0]?.role_name
+        permissions: permissionsResult.rows.map(p => p.key)
       }
     });
 
@@ -239,16 +254,26 @@ router.patch('/:id/disable', requirePermission('users.disable'), async (req, res
       UPDATE users
       SET is_active = $1
       WHERE id = $2
-      RETURNING id, name, email, role_id, is_active, created_at
+      RETURNING id, name, email, is_active, created_at
     `, [is_active, id]);
 
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
+    // Obtener permisos del usuario
+    const permissionsResult = await pool.query(`
+      SELECT p.key FROM permissions p
+      JOIN user_permissions up ON p.id = up.permission_id
+      WHERE up.user_id = $1
+    `, [id]);
+
     res.json({
       ok: true,
-      user: result.rows[0]
+      user: {
+        ...result.rows[0],
+        permissions: permissionsResult.rows.map(p => p.key)
+      }
     });
 
   } catch (error) {
@@ -258,51 +283,58 @@ router.patch('/:id/disable', requirePermission('users.disable'), async (req, res
 });
 
 /**
- * PATCH /users/:id/role
- * Cambiar el rol de un usuario
+ * PATCH /users/:id/permissions
+ * Actualizar permisos de un usuario
  */
-router.patch('/:id/role', requirePermission('users.assign_role'), async (req, res) => {
+router.patch('/:id/permissions', requirePermission('users.assign_role'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { role_id } = req.body;
+    const { permissions } = req.body;
 
-    // Verificar que el rol existe
-    if (role_id) {
-      const roleExists = await pool.query('SELECT id FROM roles WHERE id = $1', [role_id]);
-      if (roleExists.rowCount === 0) {
-        return res.status(400).json({ error: 'Rol no válido' });
-      }
-    }
-
-    const result = await pool.query(`
-      UPDATE users
-      SET role_id = $1
-      WHERE id = $2
-      RETURNING id, name, email, role_id, is_active, created_at
-    `, [role_id, id]);
-
-    if (result.rowCount === 0) {
+    // Verificar que el usuario existe
+    const userExists = await pool.query('SELECT id FROM users WHERE id = $1', [id]);
+    if (userExists.rowCount === 0) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
-    // Obtener nombre del rol
-    let role_name = null;
-    if (role_id) {
-      const roleResult = await pool.query('SELECT name FROM roles WHERE id = $1', [role_id]);
-      role_name = roleResult.rows[0]?.name;
+    // Validar que los permisos existen
+    if (permissions && permissions.length > 0) {
+      const validPerms = await pool.query(
+        'SELECT key FROM permissions WHERE key = ANY($1)',
+        [permissions]
+      );
+      if (validPerms.rowCount !== permissions.length) {
+        return res.status(400).json({ error: 'Algunos permisos no son válidos' });
+      }
     }
+
+    // Eliminar permisos actuales
+    await pool.query('DELETE FROM user_permissions WHERE user_id = $1', [id]);
+
+    // Insertar nuevos permisos
+    if (permissions && permissions.length > 0) {
+      await pool.query(`
+        INSERT INTO user_permissions (user_id, permission_id)
+        SELECT $1, id FROM permissions WHERE key = ANY($2)
+      `, [id, permissions]);
+    }
+
+    // Obtener usuario actualizado
+    const result = await pool.query(`
+      SELECT id, name, email, is_active, created_at FROM users WHERE id = $1
+    `, [id]);
 
     res.json({
       ok: true,
       user: {
         ...result.rows[0],
-        role_name
+        permissions: permissions || []
       }
     });
 
   } catch (error) {
-    console.error('Error en PATCH /users/:id/role:', error);
-    res.status(500).json({ error: 'Error al asignar rol' });
+    console.error('Error en PATCH /users/:id/permissions:', error);
+    res.status(500).json({ error: 'Error al actualizar permisos' });
   }
 });
 
