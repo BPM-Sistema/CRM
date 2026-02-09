@@ -1286,7 +1286,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     );
 
     if (!tnResponse.data || tnResponse.data.length === 0) {
-      return res.status(404).json({ error: 'Pedido no encontrado' });
+      return res.status(404).json({ error: 'El número de pedido no existe. Verificá que esté bien escrito.' });
     }
 
     const pedido = tnResponse.data[0];
