@@ -206,7 +206,12 @@
         body: formData,
       });
 
-      const data = await res.json();
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        data = { error: 'Error al procesar comprobante' };
+      }
 
       if (!res.ok) {
         throw new Error(data.error || 'Error al procesar comprobante');

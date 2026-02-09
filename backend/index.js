@@ -1542,13 +1542,18 @@ app.post('/upload', upload.single('file'), async (req, res) => {
 
   } catch (error) {
     console.error('❌ /upload error:', error.message);
+    console.error('❌ Error status:', error.response?.status);
+    console.error('❌ Error data:', JSON.stringify(error.response?.data));
+
     if (file?.path && fs.existsSync(file.path)) {
       fs.unlinkSync(file.path);
       console.log('🗑️ Temp file eliminado (error)');
     }
 
     // Error de Tiendanube (pedido no encontrado)
-    if (error.response?.status === 404 || error.message?.includes('404')) {
+    const status = error.response?.status;
+    const errorData = error.response?.data;
+    if (status === 404 || errorData?.code === 404 || error.message?.includes('404') || error.message?.includes('Not Found')) {
       return res.status(404).json({ error: 'El número de pedido no existe. Verificá que esté bien escrito.' });
     }
 
