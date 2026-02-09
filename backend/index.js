@@ -398,7 +398,7 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
       FROM orders_validated o
       LEFT JOIN comprobantes c ON o.order_number = c.order_number
       GROUP BY o.order_number, o.monto_tiendanube, o.total_pagado, o.saldo, o.estado_pago, o.estado_pedido, o.currency, o.created_at, o.customer_name, o.customer_email, o.customer_phone, o.printed_at, o.packed_at, o.shipped_at
-      ORDER BY CAST(o.order_number AS INTEGER) DESC
+      ORDER BY CAST(REGEXP_REPLACE(o.order_number, '[^0-9]', '', 'g') AS INTEGER) DESC
     `);
 
     res.json({
