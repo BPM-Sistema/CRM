@@ -28,30 +28,24 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
             @media print {
               @page {
                 size: A4;
-                margin: 15mm;
-              }
-              body * {
-                visibility: hidden;
-              }
-              .print-container, .print-container * {
-                visibility: visible;
+                margin: 10mm;
               }
               .print-container {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
                 padding: 0 !important;
+                max-width: 100% !important;
               }
-              .no-print {
-                display: none !important;
-              }
+              /* Paginación de tabla */
+              table { page-break-inside: auto; }
+              thead { display: table-header-group; }
+              tr { page-break-inside: avoid; page-break-after: auto; }
+              /* Secciones que no se cortan */
+              .print-no-break { page-break-inside: avoid; }
             }
           `}
         </style>
 
         {/* Header */}
-        <div className="border-b-2 border-neutral-900 pb-4 mb-6">
+        <div className="print-no-break border-b-2 border-neutral-900 pb-4 mb-6">
           <div className="flex justify-between items-start">
             <div>
               <h1 className="text-2xl font-bold text-neutral-900">HOJA DE PEDIDO</h1>
@@ -67,7 +61,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
         </div>
 
         {/* Cliente y Envío en dos columnas */}
-        <div className="grid grid-cols-2 gap-6 mb-6">
+        <div className="print-no-break grid grid-cols-2 gap-6 mb-6">
           {/* Cliente */}
           <div className="border border-neutral-300 rounded-lg p-4">
             <h2 className="text-sm font-bold text-neutral-500 uppercase tracking-wider mb-3">
@@ -180,7 +174,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
         </div>
 
         {/* Totales */}
-        <div className="flex justify-end mb-6">
+        <div className="print-no-break flex justify-end mb-6">
           <div className="w-64">
             <div className="flex justify-between py-1 text-neutral-600">
               <span>Subtotal:</span>
@@ -241,7 +235,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
         )}
 
         {/* Espacio para firma / verificación */}
-        <div className="mt-8 pt-4 border-t border-neutral-300">
+        <div className="print-no-break mt-8 pt-4 border-t border-neutral-300">
           <div className="grid grid-cols-2 gap-8">
             <div>
               <p className="text-sm text-neutral-500 mb-8">Armado por:</p>

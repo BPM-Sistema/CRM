@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useReactToPrint } from 'react-to-print';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -145,22 +146,26 @@ export function RealOrderDetail() {
     }
   };
 
-  // Confirmar impresión y actualizar estado
-  const handleConfirmPrint = async () => {
-    if (!orderNumber) return;
+  // Hook de react-to-print
+  const handlePrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: `Pedido-${orderNumber}`,
+    onAfterPrint: useCallback(async () => {
+      if (!orderNumber) return;
+      try {
+        await updateOrderStatus(orderNumber, 'a_imprimir');
+        setIsPrintModalOpen(false);
+        setPrintData(null);
+        await loadOrder();
+      } catch (error) {
+        console.error('Error al actualizar estado:', error);
+      }
+    }, [orderNumber]),
+  });
 
-    // Imprimir
-    window.print();
-
-    // Actualizar estado a 'a_imprimir'
-    try {
-      await updateOrderStatus(orderNumber, 'a_imprimir');
-      setIsPrintModalOpen(false);
-      setPrintData(null);
-      await loadOrder();
-    } catch (error) {
-      console.error('Error al actualizar estado:', error);
-    }
+  // Confirmar impresión
+  const handleConfirmPrint = () => {
+    handlePrint();
   };
 
   if (loading) {
