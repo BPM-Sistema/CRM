@@ -757,7 +757,7 @@ export function RealOrderDetail() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-auto">
           <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[95vh] overflow-auto">
             {/* Header del modal */}
-            <div className="sticky top-0 bg-white border-b border-neutral-200 p-4 flex items-center justify-between z-10">
+            <div className="sticky top-0 bg-white border-b border-neutral-200 p-4 flex items-center justify-between z-10 no-print">
               <h2 className="text-lg font-semibold">Vista Previa de Impresión</h2>
               <div className="flex items-center gap-3">
                 <Button
