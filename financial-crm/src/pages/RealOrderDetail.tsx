@@ -368,7 +368,8 @@ export function RealOrderDetail() {
                       {comprobantes.map((comp) => (
                         <div
                           key={`comp-${comp.id}`}
-                          className="flex items-center justify-between p-4 bg-neutral-50 rounded-xl"
+                          className={`flex items-center justify-between p-4 bg-neutral-50 rounded-xl ${comp.file_url ? 'cursor-pointer hover:bg-neutral-100 transition-colors' : ''}`}
+                          onClick={() => comp.file_url && window.open(comp.file_url, '_blank')}
                         >
                           <div className="flex items-center gap-3">
                             <div className="p-2 rounded-lg bg-blue-100">
