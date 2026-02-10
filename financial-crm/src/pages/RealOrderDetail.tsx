@@ -196,6 +196,10 @@ export function RealOrderDetail() {
   const orderStatus = mapEstadoPedido(order.estado_pedido);
   const totalPagos = comprobantes.length + pagos_efectivo.length;
 
+  // Pagos pendientes de confirmación
+  const pagosAConfirmar = comprobantes.filter(c => c.estado === 'a_confirmar');
+  const totalAConfirmar = pagosAConfirmar.reduce((sum, c) => sum + (c.monto || 0), 0);
+
   // Lógica de permisos
   const canRegisterPayment = saldoPendiente > 0 && paymentStatus !== 'rechazado';
   const canPrint = ['a_confirmar', 'parcial', 'total'].includes(paymentStatus);
@@ -250,7 +254,7 @@ export function RealOrderDetail() {
                   <OrderStatusBadge status={orderStatus} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div className="p-4 bg-neutral-50 rounded-xl">
                   <p className="text-xs text-neutral-500 uppercase tracking-wider">Total</p>
                   <p className="text-lg font-semibold text-neutral-900 mt-1">
@@ -262,12 +266,30 @@ export function RealOrderDetail() {
                   <p className="text-lg font-semibold text-emerald-600 mt-1">
                     {formatCurrency(order.total_pagado)}
                   </p>
+                  <p className="text-xs text-neutral-400 mt-0.5">confirmado</p>
+                </div>
+                <div className="p-4 bg-neutral-50 rounded-xl">
+                  <p className="text-xs text-amber-700 uppercase tracking-wider">A confirmar</p>
+                  {totalAConfirmar > 0 ? (
+                    <>
+                      <p className="text-lg font-semibold text-amber-600 mt-1 flex items-center gap-1">
+                        <Clock size={16} className="text-amber-500" />
+                        {formatCurrency(totalAConfirmar)}
+                      </p>
+                      <p className="text-xs text-neutral-400 mt-0.5">
+                        ({pagosAConfirmar.length} pago{pagosAConfirmar.length > 1 ? 's' : ''})
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-lg text-neutral-400 mt-1">—</p>
+                  )}
                 </div>
                 <div className="p-4 bg-neutral-50 rounded-xl">
                   <p className="text-xs text-neutral-500 uppercase tracking-wider">Saldo</p>
                   <p className={`text-lg font-semibold mt-1 ${saldoPendiente > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
                     {formatCurrency(order.saldo)}
                   </p>
+                  <p className="text-xs text-neutral-400 mt-0.5">pendiente</p>
                 </div>
                 <div className="p-4 bg-neutral-50 rounded-xl">
                   <p className="text-xs text-neutral-500 uppercase tracking-wider">Pagos</p>
