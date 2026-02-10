@@ -1085,21 +1085,8 @@ app.post('/webhook/tiendanube', async (req, res) => {
   try {
     const { event, store_id, id: orderId } = req.body;
 
-    // =====================================================
-    // EVENTO: order/paid - DESACTIVADO
+    // Solo procesar order/created - todos los demás eventos se ignoran
     // Los pagos se gestionan desde Petlove, no desde Tiendanube
-    // TODO: Cuando se resuelva la sincronización inversa, este webhook
-    //       debería ignorarse completamente o eliminarse
-    // =====================================================
-    if (event === 'order/paid') {
-      console.log('⏸️ order/paid recibido pero IGNORADO (pagos se gestionan desde Petlove)');
-      console.log('   Order ID:', orderId);
-      return;
-    }
-
-    // =====================================================
-    // EVENTO: order/created - Pedido nuevo
-    // =====================================================
     if (event !== 'order/created') return;
 
     // 3️⃣ Buscar pedido REAL (como antes)
