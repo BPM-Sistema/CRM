@@ -1086,68 +1086,14 @@ app.post('/webhook/tiendanube', async (req, res) => {
     const { event, store_id, id: orderId } = req.body;
 
     // =====================================================
-    // EVENTO: order/paid - Pedido pagado en Tiendanube
+    // EVENTO: order/paid - DESACTIVADO
+    // Los pagos se gestionan desde Petlove, no desde Tiendanube
+    // TODO: Cuando se resuelva la sincronización inversa, este webhook
+    //       debería ignorarse completamente o eliminarse
     // =====================================================
     if (event === 'order/paid') {
-      console.log('💰 Procesando order/paid para pedido ID:', orderId);
-
-      // Buscar pedido en Tiendanube
-      const pedido = await obtenerPedidoPorId(store_id, orderId);
-      if (!pedido) {
-        console.log('❌ Pedido no encontrado en Tiendanube');
-        return;
-      }
-
-      // Actualizar en nuestra base de datos
-      const updateResult = await pool.query(
-        `UPDATE orders_validated
-         SET estado_pago = 'confirmado_total',
-             total_pagado = monto_tiendanube,
-             saldo = 0,
-             estado_pedido = CASE
-               WHEN estado_pedido = 'pendiente_pago' THEN 'a_imprimir'
-               ELSE estado_pedido
-             END
-         WHERE order_number = $1
-         RETURNING order_number, estado_pago, estado_pedido`,
-        [String(pedido.number)]
-      );
-
-      if (updateResult.rowCount > 0) {
-        console.log(`✅ Pedido #${pedido.number} marcado como PAGADO (Tiendanube)`);
-        console.log('   Estado:', updateResult.rows[0]);
-      } else {
-        console.log(`⚠️ Pedido #${pedido.number} no existe en DB, creando...`);
-        // Si no existe, lo creamos como pagado
-        await pool.query(
-          `INSERT INTO orders_validated (order_number, monto_tiendanube, total_pagado, saldo, estado_pago, estado_pedido, currency)
-           VALUES ($1, $2, $2, 0, 'confirmado_total', 'a_imprimir', $3)
-           ON CONFLICT (order_number) DO UPDATE SET
-             estado_pago = 'confirmado_total',
-             total_pagado = orders_validated.monto_tiendanube,
-             saldo = 0`,
-          [String(pedido.number), Math.round(Number(pedido.total)), pedido.currency || 'ARS']
-        );
-        console.log(`✅ Pedido #${pedido.number} creado como PAGADO`);
-      }
-
-      // 💳 Registrar pago desde Tiendanube (en pagos_efectivo con tipo 'tiendanube')
-      const montoTotal = Math.round(Number(pedido.total));
-      await pool.query(
-        `INSERT INTO pagos_efectivo (order_number, monto, registrado_por, notas, tipo)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [String(pedido.number), montoTotal, 'sistema', 'Pago confirmado automáticamente desde Tiendanube/MercadoPago', 'tiendanube']
-      );
-      console.log(`💳 Pago Tiendanube registrado para pedido #${pedido.number}`);
-
-      // 📝 Registrar log del pago desde Tiendanube
-      await pool.query(
-        `INSERT INTO logs (order_number, accion, origen)
-         VALUES ($1, $2, $3)`,
-        [String(pedido.number), 'pago_confirmado_tiendanube', 'webhook_tiendanube']
-      );
-      console.log(`📝 Log registrado para pedido #${pedido.number}`);
-
+      console.log('⏸️ order/paid recibido pero IGNORADO (pagos se gestionan desde Petlove)');
+      console.log('   Order ID:', orderId);
       return;
     }
 
