@@ -28,7 +28,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
             @media print {
               @page {
                 size: A4;
-                margin: 15mm;
+                margin: 12mm;
               }
               body * {
                 visibility: hidden;
@@ -37,15 +37,18 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
                 visibility: visible;
               }
               .print-container {
-                position: absolute;
-                left: 0;
-                top: 0;
+                position: relative;
                 width: 100%;
                 padding: 0 !important;
+                margin: 0;
               }
               .no-print {
                 display: none !important;
               }
+              table { page-break-inside: auto; }
+              tr { page-break-inside: avoid; page-break-after: auto; }
+              thead { display: table-header-group; }
+              tfoot { display: table-footer-group; }
             }
           `}
         </style>
