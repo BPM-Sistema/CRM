@@ -37,7 +37,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
                 visibility: visible;
               }
               .print-container {
-                position: relative;
+                position: absolute;
                 left: 0;
                 top: 0;
                 width: 100%;
@@ -46,32 +46,12 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
               .no-print {
                 display: none !important;
               }
-              /* Paginación correcta */
-              .print-header {
-                break-inside: avoid;
-              }
-              .print-section {
-                break-inside: avoid;
-              }
-              table {
-                break-inside: auto;
-              }
-              thead {
-                display: table-header-group;
-              }
-              tr {
-                break-inside: avoid;
-                break-after: auto;
-              }
-              .print-footer {
-                break-inside: avoid;
-              }
             }
           `}
         </style>
 
         {/* Header */}
-        <div className="print-header border-b-2 border-neutral-900 pb-4 mb-6">
+        <div className="border-b-2 border-neutral-900 pb-4 mb-6">
           <div className="flex justify-between items-start">
             <div>
               <h1 className="text-2xl font-bold text-neutral-900">HOJA DE PEDIDO</h1>
@@ -87,7 +67,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
         </div>
 
         {/* Cliente y Envío en dos columnas */}
-        <div className="print-section grid grid-cols-2 gap-6 mb-6">
+        <div className="grid grid-cols-2 gap-6 mb-6">
           {/* Cliente */}
           <div className="border border-neutral-300 rounded-lg p-4">
             <h2 className="text-sm font-bold text-neutral-500 uppercase tracking-wider mb-3">
@@ -144,7 +124,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
         </div>
 
         {/* Método de envío */}
-        <div className="print-section mb-6 p-3 bg-neutral-100 rounded-lg">
+        <div className="mb-6 p-3 bg-neutral-100 rounded-lg">
           <span className="text-sm font-medium text-neutral-500">Método de envío: </span>
           <span className="font-semibold">{data.shipping.type}</span>
           {data.shipping.tracking_number && (
@@ -200,7 +180,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
         </div>
 
         {/* Totales */}
-        <div className="print-section flex justify-end mb-6">
+        <div className="flex justify-end mb-6">
           <div className="w-64">
             <div className="flex justify-between py-1 text-neutral-600">
               <span>Subtotal:</span>
@@ -261,7 +241,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
         )}
 
         {/* Espacio para firma / verificación */}
-        <div className="print-footer mt-8 pt-4 border-t border-neutral-300">
+        <div className="mt-8 pt-4 border-t border-neutral-300">
           <div className="grid grid-cols-2 gap-8">
             <div>
               <p className="text-sm text-neutral-500 mb-8">Armado por:</p>
