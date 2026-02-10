@@ -151,10 +151,19 @@ export function RealOrderDetail() {
   const handlePrint = useReactToPrint({
     contentRef: printRef,
     documentTitle: `Pedido-${orderNumber}`,
-    onAfterPrint: useCallback(() => {
+    onAfterPrint: useCallback(async () => {
       setIsPrintModalOpen(false);
       setPrintData(null);
-    }, []),
+      // Si el estado actual es a_imprimir, pasar a etiqueta_impresa
+      if (data?.order.estado_pedido === 'a_imprimir' && orderNumber) {
+        try {
+          await updateOrderStatus(orderNumber, 'etiqueta_impresa');
+          loadOrder();
+        } catch (error) {
+          console.error('Error al actualizar estado después de imprimir:', error);
+        }
+      }
+    }, [data?.order.estado_pedido, orderNumber]),
   });
 
   // Confirmar impresión
@@ -570,6 +579,31 @@ export function RealOrderDetail() {
                   >
                     {isUpdatingStatus ? 'Procesando...' : 'Marcar como Armado'}
                   </Button>
+                  </>
+                )}
+
+                {/* Etiqueta impresa */}
+                {orderStatus === 'etiqueta_impresa' && (
+                  <>
+                    <Button
+                      variant="secondary"
+                      className="w-full mb-2"
+                      leftIcon={isLoadingPrint ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
+                      onClick={handlePrintOrder}
+                      disabled={isLoadingPrint}
+                    >
+                      Re-imprimir Hoja
+                    </Button>
+                    <Button
+                      variant="primary"
+                      className="w-full"
+                      size="lg"
+                      leftIcon={<Package size={18} />}
+                      onClick={() => handleUpdateOrderStatus('armado')}
+                      disabled={isUpdatingStatus}
+                    >
+                      {isUpdatingStatus ? 'Procesando...' : 'Marcar como Armado'}
+                    </Button>
                   </>
                 )}
 

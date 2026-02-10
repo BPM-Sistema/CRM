@@ -19,6 +19,7 @@ const paymentStatusPermissions: Record<PaymentStatus, string> = {
 const orderStatusPermissions: Record<OrderStatus, string> = {
   pendiente_pago: 'orders.view_pendiente_pago',
   a_imprimir: 'orders.view_a_imprimir',
+  etiqueta_impresa: 'orders.view_etiqueta_impresa',
   armado: 'orders.view_armado',
   enviado: 'orders.view_enviado',
   en_calle: 'orders.view_en_calle',

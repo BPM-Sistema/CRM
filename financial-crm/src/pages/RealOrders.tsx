@@ -30,6 +30,7 @@ const orderStatusButtons: { value: OrderStatus | 'all'; label: string; color: st
   { value: 'all', label: 'Todos', color: 'bg-neutral-100 text-neutral-700' },
   { value: 'pendiente_pago', label: 'Pend. Pago', color: 'bg-amber-50 text-amber-700', permission: 'orders.view_pendiente_pago' },
   { value: 'a_imprimir', label: 'A Imprimir', color: 'bg-blue-50 text-blue-700', permission: 'orders.view_a_imprimir' },
+  { value: 'etiqueta_impresa', label: 'Etiq. Impresa', color: 'bg-violet-50 text-violet-700', permission: 'orders.view_etiqueta_impresa' },
   { value: 'armado', label: 'Armado', color: 'bg-cyan-50 text-cyan-700', permission: 'orders.view_armado' },
   { value: 'retirado', label: 'Retirado', color: 'bg-purple-50 text-purple-700', permission: 'orders.view_retirado' },
   { value: 'enviado', label: 'Enviado', color: 'bg-emerald-50 text-emerald-700', permission: 'orders.view_enviado' },
@@ -146,6 +147,7 @@ export function RealOrders() {
   const orderStatusPermissions: Record<OrderStatus, string> = {
     pendiente_pago: 'orders.view_pendiente_pago',
     a_imprimir: 'orders.view_a_imprimir',
+    etiqueta_impresa: 'orders.view_etiqueta_impresa',
     armado: 'orders.view_armado',
     enviado: 'orders.view_enviado',
     en_calle: 'orders.view_en_calle',
@@ -186,6 +188,7 @@ export function RealOrders() {
     const counts: Record<OrderStatus, number> = {
       pendiente_pago: 0,
       a_imprimir: 0,
+      etiqueta_impresa: 0,
       armado: 0,
       retirado: 0,
       enviado: 0,
@@ -563,6 +566,20 @@ export function RealOrders() {
                 <span className="font-medium text-neutral-900">A Imprimir</span>
               </div>
               <span className="text-sm text-neutral-500">{printCountByStatus.a_imprimir} pedidos</span>
+            </label>
+
+            {/* Opción: Etiqueta Impresa */}
+            <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={selectedPrintStatuses.has('etiqueta_impresa')}
+                  onChange={() => togglePrintStatus('etiqueta_impresa')}
+                  className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+                />
+                <span className="font-medium text-neutral-900">Etiqueta Impresa</span>
+              </div>
+              <span className="text-sm text-neutral-500">{printCountByStatus.etiqueta_impresa} pedidos</span>
             </label>
 
             {/* Opción: Pendiente Pago */}
