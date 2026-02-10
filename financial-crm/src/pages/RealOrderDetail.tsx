@@ -559,7 +559,7 @@ export function RealOrderDetail() {
                       onClick={handlePrintOrder}
                       disabled={isLoadingPrint}
                     >
-                      Re-imprimir Hoja
+                      {order.printed_at ? 'Re-imprimir Hoja' : 'Imprimir Hoja'}
                     </Button>
                     <Button
                     variant="primary"
