@@ -151,17 +151,10 @@ export function RealOrderDetail() {
   const handlePrint = useReactToPrint({
     contentRef: printRef,
     documentTitle: `Pedido-${orderNumber}`,
-    onAfterPrint: useCallback(async () => {
-      if (!orderNumber) return;
-      try {
-        await updateOrderStatus(orderNumber, 'a_imprimir');
-        setIsPrintModalOpen(false);
-        setPrintData(null);
-        await loadOrder();
-      } catch (error) {
-        console.error('Error al actualizar estado:', error);
-      }
-    }, [orderNumber]),
+    onAfterPrint: useCallback(() => {
+      setIsPrintModalOpen(false);
+      setPrintData(null);
+    }, []),
   });
 
   // Confirmar impresión
