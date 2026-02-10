@@ -26,6 +26,7 @@ INSERT INTO permissions (key, module) VALUES
   -- Orders por estado de pedido
   ('orders.view_pendiente_pago', 'orders_estado'),
   ('orders.view_a_imprimir', 'orders_estado'),
+  ('orders.view_etiqueta_impresa', 'orders_estado'),
   ('orders.view_armado', 'orders_estado'),
   ('orders.view_enviado', 'orders_estado'),
   ('orders.view_en_calle', 'orders_estado'),
@@ -96,6 +97,7 @@ WHERE r.name = 'operador'
     -- Estados de pedido
     'orders.view_pendiente_pago',
     'orders.view_a_imprimir',
+    'orders.view_etiqueta_impresa',
     'orders.view_armado',
     'orders.view_enviado',
     'orders.view_en_calle',
@@ -156,6 +158,7 @@ WHERE r.name = 'logistica'
     'orders.view_total',
     -- Estados de pedido - todos los logísticos
     'orders.view_a_imprimir',
+    'orders.view_etiqueta_impresa',
     'orders.view_armado',
     'orders.view_enviado',
     'orders.view_en_calle',
@@ -180,6 +183,7 @@ WHERE r.name = 'readonly'
     -- Todos los estados de pedido
     'orders.view_pendiente_pago',
     'orders.view_a_imprimir',
+    'orders.view_etiqueta_impresa',
     'orders.view_armado',
     'orders.view_enviado',
     'orders.view_en_calle',
