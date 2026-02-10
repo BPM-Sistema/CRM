@@ -28,51 +28,24 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
             @media print {
               @page {
                 size: A4;
-                margin: 10mm;
+                margin: 15mm;
               }
-
-              /* Ocultar todo el contenido de la app */
-              #root > * {
-                display: none !important;
+              body * {
+                visibility: hidden;
               }
-
-              /* Mostrar solo el modal de impresión */
-              .fixed.inset-0 {
-                display: block !important;
-                position: static !important;
-                background: white !important;
-                padding: 0 !important;
-                overflow: visible !important;
+              .print-container, .print-container * {
+                visibility: visible;
               }
-
-              /* El contenedor del modal */
-              .fixed.inset-0 > div {
-                max-width: none !important;
-                max-height: none !important;
-                overflow: visible !important;
-                box-shadow: none !important;
-                border-radius: 0 !important;
-              }
-
-              /* El print-container debe fluir naturalmente */
               .print-container {
-                position: static !important;
-                width: 100% !important;
-                max-width: none !important;
-                margin: 0 !important;
-                padding: 20px !important;
-                box-shadow: none !important;
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                padding: 0 !important;
               }
-
-              /* Ocultar elementos marcados como no-print */
               .no-print {
                 display: none !important;
               }
-
-              /* Permitir que la tabla se divida entre páginas */
-              table { page-break-inside: auto; }
-              tr { page-break-inside: avoid; page-break-after: auto; }
-              thead { display: table-header-group; }
             }
           `}
         </style>
