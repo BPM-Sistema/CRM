@@ -1,7 +1,7 @@
 import { forwardRef } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ApiOrderPrintData } from '../../services/api';
+import { ApiOrderPrintData, getTotalUnits } from '../../services/api';
 
 interface PrintableOrderProps {
   data: ApiOrderPrintData;
@@ -48,10 +48,10 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
         <div className="print-no-break border-b-2 border-neutral-900 pb-4 mb-6">
           <div className="flex justify-between items-start">
             <div>
-              <h1 className="text-2xl font-bold text-neutral-900">HOJA DE PEDIDO</h1>
-              <p className="text-lg font-mono font-semibold text-neutral-700 mt-1">
+              <h1 className="text-3xl font-bold font-mono text-neutral-900">
                 #{data.order_number}
-              </p>
+              </h1>
+              <p className="text-sm font-medium text-neutral-500 uppercase tracking-wider">Hoja de Pedido</p>
             </div>
             <div className="text-right">
               <p className="text-sm text-neutral-600">Fecha del pedido:</p>
@@ -131,7 +131,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
         {/* Productos */}
         <div className="mb-6">
           <h2 className="text-sm font-bold text-neutral-500 uppercase tracking-wider mb-3">
-            Productos ({data.products.length})
+            Productos ({getTotalUnits(data.products)} unidades)
           </h2>
           <table className="w-full border-collapse">
             <thead>

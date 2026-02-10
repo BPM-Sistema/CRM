@@ -123,6 +123,11 @@ export interface ApiOrderProduct {
   sku: string | null;
 }
 
+// Helper: suma total de unidades de productos
+export function getTotalUnits(products: { quantity: number }[]): number {
+  return products.reduce((sum, p) => sum + p.quantity, 0);
+}
+
 export interface ApiOrderDetail {
   order: ApiOrder;
   comprobantes: ApiComprobante[];

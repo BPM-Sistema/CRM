@@ -33,6 +33,7 @@ import {
   mapEstadoPago,
   mapEstadoPedido,
   OrderStatus,
+  getTotalUnits,
 } from '../services/api';
 import { formatDistanceToNow, format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -289,7 +290,7 @@ export function RealOrderDetail() {
                 <h3 className="text-base font-semibold text-neutral-900 mb-4">
                   <div className="flex items-center gap-2">
                     <ShoppingBag size={18} />
-                    Productos ({productos.length})
+                    Productos ({getTotalUnits(productos)} unidades)
                   </div>
                 </h3>
                 <div className="space-y-2">
