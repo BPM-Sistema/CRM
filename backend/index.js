@@ -605,13 +605,14 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
     // 3️⃣ Recalcular total pagado (comprobantes + efectivo)
     const totalPagado = await calcularTotalPagado(comprobante.order_number);
 
-    // 4️⃣ Obtener monto del pedido
+    // 4️⃣ Obtener monto y estado actual del pedido
     const orderRes = await pool.query(
-      `SELECT monto_tiendanube FROM orders_validated WHERE order_number = $1`,
+      `SELECT monto_tiendanube, estado_pedido FROM orders_validated WHERE order_number = $1`,
       [comprobante.order_number]
     );
 
     const montoPedido = Number(orderRes.rows[0].monto_tiendanube);
+    const estadoPedidoActual = orderRes.rows[0].estado_pedido;
     const saldo = montoPedido - totalPagado;
 
     // 5️⃣ Definir estado_pago
@@ -622,36 +623,24 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
       estadoPago = 'confirmado_parcial';
     }
 
-    // 6️⃣ Actualizar orden (y estado_pedido si el pago está completo)
-    const nuevoEstadoPedido = (estadoPago === 'confirmado_total') ? 'a_imprimir' : null;
+    // 6️⃣ Calcular nuevo estado_pedido (lógica centralizada)
+    const nuevoEstadoPedido = calcularEstadoPedido(estadoPago, estadoPedidoActual);
 
-    if (nuevoEstadoPedido) {
-      // Actualizar estado_pedido solo si está en pendiente_pago
-      await pool.query(
-        `UPDATE orders_validated
-         SET total_pagado = $1, saldo = $2, estado_pago = $3, estado_pedido = $4
-         WHERE order_number = $5 AND estado_pedido = 'pendiente_pago'`,
-        [totalPagado, saldo, estadoPago, nuevoEstadoPedido, comprobante.order_number]
-      );
-      // Si no estaba en pendiente_pago, solo actualizar montos
-      await pool.query(
-        `UPDATE orders_validated
-         SET total_pagado = $1, saldo = $2, estado_pago = $3
-         WHERE order_number = $4 AND estado_pedido != 'pendiente_pago'`,
-        [totalPagado, saldo, estadoPago, comprobante.order_number]
-      );
-    } else {
-      await pool.query(
-        `UPDATE orders_validated SET total_pagado = $1, saldo = $2, estado_pago = $3 WHERE order_number = $4`,
-        [totalPagado, saldo, estadoPago, comprobante.order_number]
-      );
-    }
+    // 7️⃣ Actualizar orden
+    await pool.query(
+      `UPDATE orders_validated
+       SET total_pagado = $1, saldo = $2, estado_pago = $3, estado_pedido = $4
+       WHERE order_number = $5`,
+      [totalPagado, saldo, estadoPago, nuevoEstadoPedido, comprobante.order_number]
+    );
 
-    // 7️⃣ Log
+    // 8️⃣ Log
     await logEvento({ comprobanteId: id, accion: 'confirmado', origen: 'operador' });
 
     console.log(`✅ Comprobante ${id} confirmado`);
-    if (nuevoEstadoPedido) console.log(`📦 Estado pedido actualizado a: ${nuevoEstadoPedido}`);
+    if (nuevoEstadoPedido !== estadoPedidoActual) {
+      console.log(`📦 Estado pedido: ${estadoPedidoActual} → ${nuevoEstadoPedido}`);
+    }
 
     res.json({
       ok: true,
@@ -1716,59 +1705,41 @@ app.get('/confirmar/:id', async (req, res) => {
     // 3️⃣ Recalcular total pagado (comprobantes + efectivo)
     const totalPagado = await calcularTotalPagado(comprobante.order_number);
 
-    // 4️⃣ Obtener monto real del pedido
+    // 4️⃣ Obtener monto y estado actual del pedido
     const orderRes = await pool.query(
-      `
-      SELECT monto_tiendanube
-      FROM orders_validated
-      WHERE order_number = $1
-      `,
+      `SELECT monto_tiendanube, estado_pedido FROM orders_validated WHERE order_number = $1`,
       [comprobante.order_number]
     );
 
     const montoPedido = Number(orderRes.rows[0].monto_tiendanube);
+    const estadoPedidoActual = orderRes.rows[0].estado_pedido;
     const saldo = montoPedido - totalPagado;
 
     // 5️⃣ Definir estado_pago correcto
     let estadoPago = 'pendiente';
-
     if (saldo <= 0) {
       estadoPago = 'confirmado_total';
     } else if (totalPagado > 0) {
       estadoPago = 'confirmado_parcial';
     }
 
-    // 6️⃣ Actualizar orden (y estado_pedido si el pago está completo)
-    const nuevoEstadoPedido = (estadoPago === 'confirmado_total') ? 'a_imprimir' : null;
+    // 6️⃣ Calcular nuevo estado_pedido (lógica centralizada)
+    const nuevoEstadoPedido = calcularEstadoPedido(estadoPago, estadoPedidoActual);
 
-    if (nuevoEstadoPedido) {
-      await pool.query(
-        `UPDATE orders_validated
-         SET total_pagado = $1, saldo = $2, estado_pago = $3, estado_pedido = $4
-         WHERE order_number = $5 AND estado_pedido = 'pendiente_pago'`,
-        [totalPagado, saldo, estadoPago, nuevoEstadoPedido, comprobante.order_number]
-      );
-      await pool.query(
-        `UPDATE orders_validated
-         SET total_pagado = $1, saldo = $2, estado_pago = $3
-         WHERE order_number = $4 AND estado_pedido != 'pendiente_pago'`,
-        [totalPagado, saldo, estadoPago, comprobante.order_number]
-      );
-    } else {
-      await pool.query(
-        `UPDATE orders_validated
-         SET total_pagado = $1, saldo = $2, estado_pago = $3
-         WHERE order_number = $4`,
-        [totalPagado, saldo, estadoPago, comprobante.order_number]
-      );
-    }
+    // 7️⃣ Actualizar orden
+    await pool.query(
+      `UPDATE orders_validated
+       SET total_pagado = $1, saldo = $2, estado_pago = $3, estado_pedido = $4
+       WHERE order_number = $5`,
+      [totalPagado, saldo, estadoPago, nuevoEstadoPedido, comprobante.order_number]
+    );
 
     return res.send(`
       <h2>✅ Comprobante confirmado</h2>
       <p>Pedido: ${comprobante.order_number}</p>
       <p>Total pagado: $${totalPagado}</p>
       <p>Estado pago: ${estadoPago}</p>
-      ${nuevoEstadoPedido ? `<p>Estado pedido: ${nuevoEstadoPedido}</p>` : ''}
+      <p>Estado pedido: ${nuevoEstadoPedido}</p>
     `);
 
   } catch (err) {
@@ -1853,6 +1824,29 @@ async function calcularTotalPagado(orderNumber) {
 
 
 /* =====================================================
+   UTIL — CALCULAR ESTADO PEDIDO (centralizado)
+   Regla: si hay plata pagada → puede avanzar en flujo logístico
+   Independiente del método de pago (transferencia, efectivo, etc.)
+===================================================== */
+function calcularEstadoPedido(estadoPago, estadoPedidoActual) {
+  // Si ya avanzó más allá de pendiente_pago, no retroceder
+  if (estadoPedidoActual !== 'pendiente_pago') {
+    return estadoPedidoActual;
+  }
+
+  // Estados de pago que indican que hay plata pagada → avanzar a a_imprimir
+  const estadosPagados = ['confirmado_total', 'confirmado_parcial', 'a_favor'];
+
+  if (estadosPagados.includes(estadoPago)) {
+    return 'a_imprimir';
+  }
+
+  // Si no hay pago confirmado, mantener pendiente_pago
+  return 'pendiente_pago';
+}
+
+
+/* =====================================================
    PAGO EN EFECTIVO
 ===================================================== */
 app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_payment'), async (req, res) => {
@@ -1878,7 +1872,7 @@ app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_p
        1️⃣ VERIFICAR QUE EXISTE EL PEDIDO
     ================================ */
     const orderRes = await pool.query(
-      `SELECT order_number, monto_tiendanube
+      `SELECT order_number, monto_tiendanube, estado_pedido
        FROM orders_validated
        WHERE order_number = $1`,
       [orderNumber]
@@ -1889,6 +1883,7 @@ app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_p
     }
 
     const montoTiendanube = Number(orderRes.rows[0].monto_tiendanube);
+    const estadoPedidoActual = orderRes.rows[0].estado_pedido;
 
     /* ===============================
        2️⃣ INSERTAR EN PAGOS_EFECTIVO
@@ -1924,42 +1919,30 @@ app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_p
     }
 
     /* ===============================
-       5️⃣ ACTUALIZAR ORDEN
+       5️⃣ CALCULAR ESTADO PEDIDO (lógica centralizada)
     ================================ */
-    // Si el pago está completo, cambiar estado_pedido a 'a_imprimir'
-    const nuevoEstadoPedido = (estadoPago === 'confirmado_total' || estadoPago === 'a_favor') ? 'a_imprimir' : null;
+    const nuevoEstadoPedido = calcularEstadoPedido(estadoPago, estadoPedidoActual);
 
-    if (nuevoEstadoPedido) {
-      await pool.query(
-        `UPDATE orders_validated
-         SET total_pagado = $1, saldo = $2, estado_pago = $3, estado_pedido = $4
-         WHERE order_number = $5 AND estado_pedido = 'pendiente_pago'`,
-        [totalPagado, saldo, estadoPago, nuevoEstadoPedido, orderNumber]
-      );
-      // Si no estaba en pendiente_pago, solo actualizar los montos
-      await pool.query(
-        `UPDATE orders_validated
-         SET total_pagado = $1, saldo = $2, estado_pago = $3
-         WHERE order_number = $4 AND estado_pedido != 'pendiente_pago'`,
-        [totalPagado, saldo, estadoPago, orderNumber]
-      );
-    } else {
-      await pool.query(
-        `UPDATE orders_validated
-         SET total_pagado = $1, saldo = $2, estado_pago = $3
-         WHERE order_number = $4`,
-        [totalPagado, saldo, estadoPago, orderNumber]
-      );
-    }
+    /* ===============================
+       6️⃣ ACTUALIZAR ORDEN
+    ================================ */
+    await pool.query(
+      `UPDATE orders_validated
+       SET total_pagado = $1, saldo = $2, estado_pago = $3, estado_pedido = $4
+       WHERE order_number = $5`,
+      [totalPagado, saldo, estadoPago, nuevoEstadoPedido, orderNumber]
+    );
 
     console.log('✅ Pago en efectivo procesado');
     console.log('Total pagado:', totalPagado);
     console.log('Saldo:', saldo);
     console.log('Estado pago:', estadoPago);
-    if (nuevoEstadoPedido) console.log('Estado pedido:', nuevoEstadoPedido);
+    if (nuevoEstadoPedido !== estadoPedidoActual) {
+      console.log(`📦 Estado pedido: ${estadoPedidoActual} → ${nuevoEstadoPedido}`);
+    }
 
     /* ===============================
-       6️⃣ RESPUESTA
+       7️⃣ RESPUESTA
     ================================ */
     res.json({
       ok: true,
