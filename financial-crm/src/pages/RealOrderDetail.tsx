@@ -621,7 +621,7 @@ export function RealOrderDetail() {
                         className="w-full"
                         leftIcon={<UserCheck size={16} />}
                         onClick={() => handleUpdateOrderStatus('retirado')}
-                        disabled={isUpdatingStatus}
+                        disabled={isUpdatingStatus || !canShip}
                       >
                         Retirado
                       </Button>
