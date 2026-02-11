@@ -40,7 +40,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   'orders.view_rechazado': 'Rechazado',
   'orders.view_pendiente_pago': 'Pendiente de pago',
   'orders.view_a_imprimir': 'A imprimir',
-  'orders.view_etiqueta_impresa': 'Etiqueta impresa',
+  'orders.view_etiqueta_impresa': 'Hoja impresa',
   'orders.view_armado': 'Armado',
   'orders.view_enviado': 'Enviado',
   'orders.view_en_calle': 'En calle',

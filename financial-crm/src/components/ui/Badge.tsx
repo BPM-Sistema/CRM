@@ -98,7 +98,7 @@ const orderStatusVariants: Record<OrderStatus, BadgeVariant> = {
 const orderStatusLabels: Record<OrderStatus, string> = {
   pendiente_pago: 'Pendiente de pago',
   a_imprimir: 'A imprimir',
-  etiqueta_impresa: 'Etiqueta impresa',
+  etiqueta_impresa: 'Hoja impresa',
   armado: 'Armado',
   retirado: 'Retirado',
   enviado: 'Enviado',
@@ -109,7 +109,7 @@ const orderStatusLabels: Record<OrderStatus, string> = {
 const orderStatusLabelsShort: Record<OrderStatus, string> = {
   pendiente_pago: 'Pend. pago',
   a_imprimir: 'A impr.',
-  etiqueta_impresa: 'Etiq. impr.',
+  etiqueta_impresa: 'Hoja impr.',
   armado: 'Armado',
   retirado: 'Retirado',
   enviado: 'Enviado',
