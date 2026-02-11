@@ -385,7 +385,7 @@ export function RealReceipts() {
                   onClick={downloadPending}
                   disabled={loading || downloading || (estadoCounts.a_confirmar || 0) === 0}
                 >
-                  {downloading ? 'Descargando...' : `Pendientes (${estadoCounts.a_confirmar || 0})`}
+                  {downloading ? 'Descargando...' : `A confirmar (${estadoCounts.a_confirmar || 0})`}
                 </Button>
                 <Button
                   variant="secondary"
