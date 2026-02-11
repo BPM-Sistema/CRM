@@ -15,6 +15,7 @@ import {
   ShoppingCart,
   Receipt,
   Trash2,
+  Activity,
 } from 'lucide-react';
 import {
   fetchUsers,
@@ -60,6 +61,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   'users.edit': 'Editar usuario',
   'users.disable': 'Desactivar usuario',
   'users.assign_role': 'Gestionar permisos',
+  'activity.view': 'Ver historial de actividad',
 };
 
 const SECTIONS = [
@@ -100,6 +102,15 @@ const SECTIONS = [
     color: 'bg-violet-50 text-violet-600',
     subsections: [
       { title: 'Gestión', permissions: ['users.view', 'users.create', 'users.edit', 'users.disable', 'users.assign_role'] }
+    ]
+  },
+  {
+    id: 'activity',
+    title: 'Actividad',
+    icon: Activity,
+    color: 'bg-rose-50 text-rose-600',
+    subsections: [
+      { title: 'Acceso', permissions: ['activity.view'] }
     ]
   }
 ];
