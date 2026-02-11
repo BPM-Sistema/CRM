@@ -602,7 +602,8 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
     }
 
     if (fecha === 'hoy') {
-      conditions.push(`DATE(o.created_at) = CURRENT_DATE`);
+      // Usar fecha original de Tiendanube (tn_created_at), con fallback a created_at
+      conditions.push(`DATE(COALESCE(o.tn_created_at, o.created_at)) = CURRENT_DATE`);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -624,7 +625,7 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
         o.estado_pago,
         o.estado_pedido,
         o.currency,
-        o.created_at,
+        COALESCE(o.tn_created_at, o.created_at) as created_at,
         o.customer_name,
         o.customer_email,
         o.customer_phone,
@@ -635,7 +636,7 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
       FROM orders_validated o
       LEFT JOIN comprobantes c ON o.order_number = c.order_number
       ${whereClause}
-      GROUP BY o.order_number, o.monto_tiendanube, o.total_pagado, o.saldo, o.estado_pago, o.estado_pedido, o.currency, o.created_at, o.customer_name, o.customer_email, o.customer_phone, o.printed_at, o.packed_at, o.shipped_at
+      GROUP BY o.order_number, o.monto_tiendanube, o.total_pagado, o.saldo, o.estado_pago, o.estado_pedido, o.currency, o.tn_created_at, o.created_at, o.customer_name, o.customer_email, o.customer_phone, o.printed_at, o.packed_at, o.shipped_at
       ORDER BY CAST(REGEXP_REPLACE(o.order_number, '[^0-9]', '', 'g') AS INTEGER) DESC
       LIMIT $${paramIndex++} OFFSET $${paramIndex}
     `, [...params, limit, offset]);
@@ -1310,12 +1311,13 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
     await pool.query(
       `
-      INSERT INTO orders_validated (order_number, monto_tiendanube, currency, customer_name, customer_email, customer_phone, estado_pedido)
-      VALUES ($1, $2, $3, $4, $5, $6, 'pendiente_pago')
+      INSERT INTO orders_validated (order_number, monto_tiendanube, currency, customer_name, customer_email, customer_phone, estado_pedido, tn_created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, 'pendiente_pago', $7)
       ON CONFLICT (order_number) DO UPDATE SET
         customer_name = COALESCE(orders_validated.customer_name, EXCLUDED.customer_name),
         customer_email = COALESCE(orders_validated.customer_email, EXCLUDED.customer_email),
-        customer_phone = COALESCE(orders_validated.customer_phone, EXCLUDED.customer_phone)
+        customer_phone = COALESCE(orders_validated.customer_phone, EXCLUDED.customer_phone),
+        tn_created_at = COALESCE(orders_validated.tn_created_at, EXCLUDED.tn_created_at)
       `,
       [
         pedido.number,
@@ -1323,7 +1325,8 @@ app.post('/webhook/tiendanube', async (req, res) => {
         pedido.currency || 'ARS',
         customerName,
         customerEmail,
-        customerPhone
+        customerPhone,
+        pedido.created_at || null
       ]
     );
 

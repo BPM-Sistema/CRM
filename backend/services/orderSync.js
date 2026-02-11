@@ -153,19 +153,21 @@ async function processOrderCreated(orderId, orderNumber) {
 
   // Guardar en DB
   await pool.query(`
-    INSERT INTO orders_validated (order_number, monto_tiendanube, currency, customer_name, customer_email, customer_phone, estado_pedido)
-    VALUES ($1, $2, $3, $4, $5, $6, 'pendiente_pago')
+    INSERT INTO orders_validated (order_number, monto_tiendanube, currency, customer_name, customer_email, customer_phone, estado_pedido, tn_created_at)
+    VALUES ($1, $2, $3, $4, $5, $6, 'pendiente_pago', $7)
     ON CONFLICT (order_number) DO UPDATE SET
       customer_name = COALESCE(orders_validated.customer_name, EXCLUDED.customer_name),
       customer_email = COALESCE(orders_validated.customer_email, EXCLUDED.customer_email),
-      customer_phone = COALESCE(orders_validated.customer_phone, EXCLUDED.customer_phone)
+      customer_phone = COALESCE(orders_validated.customer_phone, EXCLUDED.customer_phone),
+      tn_created_at = COALESCE(orders_validated.tn_created_at, EXCLUDED.tn_created_at)
   `, [
     String(pedido.number),
     Math.round(Number(pedido.total)),
     pedido.currency || 'ARS',
     customerName,
     customerEmail,
-    customerPhone
+    customerPhone,
+    pedido.created_at || null
   ]);
 
   console.log(`✅ Pedido #${pedido.number} sincronizado desde cola`);
@@ -195,9 +197,9 @@ async function processOrderPaid(orderId, orderNumber) {
   if (existing.rowCount === 0) {
     // Crear como pagado directamente
     await pool.query(`
-      INSERT INTO orders_validated (order_number, monto_tiendanube, total_pagado, saldo, estado_pago, estado_pedido, currency)
-      VALUES ($1, $2, $2, 0, 'confirmado_total', 'a_imprimir', $3)
-    `, [String(pedido.number), Math.round(Number(pedido.total)), pedido.currency || 'ARS']);
+      INSERT INTO orders_validated (order_number, monto_tiendanube, total_pagado, saldo, estado_pago, estado_pedido, currency, tn_created_at)
+      VALUES ($1, $2, $2, 0, 'confirmado_total', 'a_imprimir', $3, $4)
+    `, [String(pedido.number), Math.round(Number(pedido.total)), pedido.currency || 'ARS', pedido.created_at || null]);
   } else {
     // Actualizar como pagado
     await pool.query(`
@@ -208,9 +210,10 @@ async function processOrderPaid(orderId, orderNumber) {
         estado_pedido = CASE
           WHEN estado_pedido = 'pendiente_pago' THEN 'a_imprimir'
           ELSE estado_pedido
-        END
+        END,
+        tn_created_at = COALESCE(tn_created_at, $2)
       WHERE order_number = $1
-    `, [String(pedido.number)]);
+    `, [String(pedido.number), pedido.created_at || null]);
   }
 
   // Registrar pago
