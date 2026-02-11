@@ -466,17 +466,16 @@ app.get('/activity-log', authenticate, requirePermission('activity.view'), async
 
 
 /* =====================================================
-   GET — CONTEOS PARA MODAL DE IMPRESIÓN (sin filtros)
+   GET — CONTEOS PARA MODAL DE IMPRESIÓN (TODOS los pedidos)
 ===================================================== */
 app.get('/orders/print-counts', authenticate, requirePermission('orders.view'), async (req, res) => {
   try {
-    // Contar pedidos NO impresos por estado_pedido
+    // Contar TODOS los pedidos por estado_pedido
     const countsRes = await pool.query(`
       SELECT
         estado_pedido,
         COUNT(*) as count
       FROM orders_validated
-      WHERE printed_at IS NULL
       GROUP BY estado_pedido
     `);
 
@@ -524,12 +523,11 @@ app.post('/orders/to-print', authenticate, requirePermission('orders.print'), as
       return res.status(400).json({ error: `Estados inválidos: ${invalidStatuses.join(', ')}` });
     }
 
-    // Obtener pedidos no impresos con los estados seleccionados
+    // Obtener TODOS los pedidos con los estados seleccionados
     const result = await pool.query(`
       SELECT order_number
       FROM orders_validated
-      WHERE printed_at IS NULL
-        AND estado_pedido = ANY($1)
+      WHERE estado_pedido = ANY($1)
       ORDER BY created_at ASC
     `, [statuses]);
 

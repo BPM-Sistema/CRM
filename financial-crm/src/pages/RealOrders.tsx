@@ -698,7 +698,7 @@ export function RealOrders() {
               <span className="font-semibold text-neutral-900">{selectedPrintCount} pedidos</span>
             </div>
             <p className="text-xs text-neutral-500 mt-1">
-              Solo se imprimirán pedidos que no hayan sido impresos anteriormente
+              Se incluyen todos los pedidos con los estados seleccionados
             </p>
           </div>
 
