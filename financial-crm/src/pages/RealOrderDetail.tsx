@@ -599,6 +599,15 @@ export function RealOrderDetail() {
                 {/* Armado */}
                 {orderStatus === 'armado' && (
                   <>
+                    <Button
+                      variant="secondary"
+                      className="w-full mb-3"
+                      leftIcon={isLoadingPrint ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
+                      onClick={handlePrintOrder}
+                      disabled={isLoadingPrint}
+                    >
+                      Re-imprimir Hoja
+                    </Button>
                     {!canShip && (
                       <div className="p-3 bg-amber-50 rounded-xl text-center mb-3">
                         <p className="text-xs text-amber-700">
