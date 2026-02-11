@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RefreshCw, AlertCircle, Eye, Receipt, RotateCcw, Printer, Calendar, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { RefreshCw, AlertCircle, Eye, Receipt, RotateCcw, Printer, Calendar, Search, ChevronLeft, ChevronRight, CheckSquare, X } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card, PaymentStatusBadge, OrderStatusBadge, Modal } from '../components/ui';
 import {
@@ -65,6 +65,10 @@ export function RealOrders() {
       btn.value === 'all' || !btn.permission || hasPermission(btn.permission)
     );
   }, [hasPermission]);
+
+  // Estado para selección de pedidos
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedOrderNumbers, setSelectedOrderNumbers] = useState<Set<string>>(new Set());
 
   // Estado para modal de impresión
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
@@ -242,6 +246,37 @@ export function RealOrders() {
     });
   };
 
+  // Funciones de selección de pedidos
+  const toggleSelectOrder = (orderNumber: string) => {
+    setSelectedOrderNumbers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(orderNumber)) {
+        newSet.delete(orderNumber);
+      } else {
+        newSet.add(orderNumber);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAllVisible = () => {
+    const visibleOrderNumbers = filteredOrders.map(o => o.order_number);
+    setSelectedOrderNumbers(new Set(visibleOrderNumbers));
+  };
+
+  const clearSelection = () => {
+    setSelectedOrderNumbers(new Set());
+    setSelectionMode(false);
+  };
+
+  const printSelectedOrders = () => {
+    if (selectedOrderNumbers.size === 0) return;
+    const params = new URLSearchParams();
+    params.set('orders', Array.from(selectedOrderNumbers).join(','));
+    navigate(`/orders/print?${params.toString()}`);
+    clearSelection();
+  };
+
   const [isPrinting, setIsPrinting] = useState(false);
 
   const handlePrintSelected = async () => {
@@ -282,21 +317,59 @@ export function RealOrders() {
         subtitle={`${statusCounts.total} pedidos en total · ${statusCounts.pendiente || 0} pendientes de pago`}
         actions={
           <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              leftIcon={<Printer size={16} />}
-              onClick={openPrintModal}
-            >
-              Imprimir Pedidos
-            </Button>
-            <Button
-              variant="secondary"
-              leftIcon={<RefreshCw size={16} className={loading ? 'animate-spin' : ''} />}
-              onClick={handleRefresh}
-              disabled={loading}
-            >
-              Actualizar
-            </Button>
+            {selectionMode ? (
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={selectAllVisible}
+                >
+                  Seleccionar todos ({filteredOrders.length})
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leftIcon={<Printer size={16} />}
+                  onClick={printSelectedOrders}
+                  disabled={selectedOrderNumbers.size === 0}
+                >
+                  Imprimir ({selectedOrderNumbers.size})
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leftIcon={<X size={16} />}
+                  onClick={clearSelection}
+                >
+                  Cancelar
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={() => setSelectionMode(true)}
+                  leftIcon={<CheckSquare size={16} />}
+                >
+                  Seleccionar
+                </Button>
+                <Button
+                  variant="secondary"
+                  leftIcon={<Printer size={16} />}
+                  onClick={openPrintModal}
+                >
+                  Imprimir Pedidos
+                </Button>
+                <Button
+                  variant="secondary"
+                  leftIcon={<RefreshCw size={16} className={loading ? 'animate-spin' : ''} />}
+                  onClick={handleRefresh}
+                  disabled={loading}
+                >
+                  Actualizar
+                </Button>
+              </>
+            )}
           </div>
         }
       />
@@ -421,13 +494,29 @@ export function RealOrders() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {selectionMode && (
+                    <TableHead className="w-[40px] text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedOrderNumbers.size === filteredOrders.length && filteredOrders.length > 0}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            selectAllVisible();
+                          } else {
+                            setSelectedOrderNumbers(new Set());
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+                      />
+                    </TableHead>
+                  )}
                   <TableHead className="w-[100px]">Pedido</TableHead>
                   <TableHead className="min-w-[140px]">Cliente</TableHead>
                   <TableHead className="text-right w-[90px]">Total</TableHead>
                   <TableHead className="text-right w-[90px]">Pagado</TableHead>
                   <TableHead className="text-center w-[85px]">Pago</TableHead>
                   <TableHead className="text-center w-[95px]">Estado</TableHead>
-                  <TableHead className="text-center w-[45px]">Comp</TableHead>
+                  <TableHead className="text-center w-[45px]">Pagos</TableHead>
                   <TableHead className="w-[80px]">Fecha</TableHead>
                   <TableHead className="text-right w-[140px]">Acciones</TableHead>
                 </TableRow>
@@ -436,9 +525,27 @@ export function RealOrders() {
                 {filteredOrders.map((order) => (
                   <TableRow
                     key={order.order_number}
-                    isClickable
-                    onClick={() => navigate(`/orders/${order.order_number}`)}
+                    isClickable={!selectionMode}
+                    onClick={() => {
+                      if (selectionMode) {
+                        toggleSelectOrder(order.order_number);
+                      } else {
+                        navigate(`/orders/${order.order_number}`);
+                      }
+                    }}
+                    className={selectedOrderNumbers.has(order.order_number) ? 'bg-blue-50' : ''}
                   >
+                    {selectionMode && (
+                      <TableCell className="text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedOrderNumbers.has(order.order_number)}
+                          onChange={() => toggleSelectOrder(order.order_number)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+                        />
+                      </TableCell>
+                    )}
                     <TableCell>
                       <span className="font-mono text-xs font-medium text-neutral-900">
                         #{order.order_number}
