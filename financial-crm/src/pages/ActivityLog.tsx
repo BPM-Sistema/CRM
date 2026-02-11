@@ -143,21 +143,10 @@ export default function ActivityLog() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header />
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-violet-100 rounded-lg flex items-center justify-center">
-              <Activity className="w-5 h-5 text-violet-600" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Historial de Actividad</h1>
-              <p className="text-sm text-gray-500">{total} eventos registrados</p>
-            </div>
-          </div>
-
+      <Header
+        title="Historial de Actividad"
+        subtitle={`${total} eventos registrados`}
+        actions={
           <div className="flex gap-2">
             <button
               onClick={() => setShowFilters(!showFilters)}
@@ -173,7 +162,6 @@ export default function ActivityLog() {
                 <span className="w-2 h-2 bg-violet-500 rounded-full" />
               )}
             </button>
-
             <button
               onClick={loadData}
               disabled={loading}
@@ -183,8 +171,10 @@ export default function ActivityLog() {
               Actualizar
             </button>
           </div>
-        </div>
+        }
+      />
 
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Filtros */}
         {showFilters && (
           <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
