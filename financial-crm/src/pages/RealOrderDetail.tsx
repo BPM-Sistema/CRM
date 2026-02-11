@@ -611,7 +611,7 @@ export function RealOrderDetail() {
                     {!canShip && (
                       <div className="p-3 bg-amber-50 rounded-xl text-center mb-3">
                         <p className="text-xs text-amber-700">
-                          Para enviar, el pago debe estar confirmado como "Total"
+                          Para enviar/retirar, el pago debe estar confirmado como "Total"
                         </p>
                       </div>
                     )}

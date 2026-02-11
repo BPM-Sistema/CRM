@@ -530,7 +530,7 @@ export function OrderDetail() {
                     {!canShip && (
                       <div className="p-3 bg-amber-50 rounded-xl text-center mb-3">
                         <p className="text-xs text-amber-700">
-                          Para enviar el pedido, el pago debe estar confirmado como "Total"
+                          Para enviar/retirar el pedido, el pago debe estar confirmado como "Total"
                         </p>
                       </div>
                     )}
