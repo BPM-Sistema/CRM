@@ -49,6 +49,8 @@ export function RealOrders() {
   const [searchQuery, setSearchQuery] = useState('');
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  // Estado explícito para mostrar spinner cuando se cambian filtros
+  const [isFiltering, setIsFiltering] = useState(false);
   const ITEMS_PER_PAGE = 50;
 
   // Filtrar botones según permisos del usuario
@@ -70,7 +72,7 @@ export function RealOrders() {
     new Set(['a_imprimir'])
   );
 
-  const loadOrders = async (page?: number, filters?: OrderFilters) => {
+  const loadOrders = async (page?: number, filters?: OrderFilters, isFilterChange = false) => {
     const pageToLoad = page ?? currentPage;
     const filtersToUse = filters ?? {
       estado_pago: paymentFilter,
@@ -79,6 +81,9 @@ export function RealOrders() {
       fecha: fechaFilter,
     };
     setLoading(true);
+    if (isFilterChange) {
+      setIsFiltering(true);
+    }
     setError(null);
     try {
       const response = await fetchOrders(pageToLoad, ITEMS_PER_PAGE, filtersToUse);
@@ -88,6 +93,7 @@ export function RealOrders() {
       setError(err instanceof Error ? err.message : 'Error al cargar pedidos');
     } finally {
       setLoading(false);
+      setIsFiltering(false);
     }
   };
 
@@ -95,20 +101,20 @@ export function RealOrders() {
 
   const goToPage = (page: number) => {
     setCurrentPage(page);
-    loadOrders(page);
+    loadOrders(page, undefined, true); // true = mostrar spinner
   };
 
   // Recargar cuando cambian los filtros (resetear a página 1)
   useEffect(() => {
     setCurrentPage(1);
-    loadOrders(1);
+    loadOrders(1, undefined, true); // true = es cambio de filtro
   }, [paymentFilter, orderStatusFilter, fechaFilter]);
 
   // Debounce para búsqueda
   useEffect(() => {
     const timer = setTimeout(() => {
       setCurrentPage(1);
-      loadOrders(1);
+      loadOrders(1, undefined, true); // true = es cambio de filtro
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
@@ -372,6 +378,13 @@ export function RealOrders() {
         {loading && orders.length === 0 ? (
           <div className="flex items-center justify-center py-16">
             <RefreshCw size={32} className="animate-spin text-neutral-400" />
+          </div>
+        ) : isFiltering ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="flex flex-col items-center gap-3">
+              <RefreshCw size={32} className="animate-spin text-neutral-400" />
+              <span className="text-sm text-neutral-500">Cargando...</span>
+            </div>
           </div>
         ) : error ? (
           <Card className="text-center py-8">
