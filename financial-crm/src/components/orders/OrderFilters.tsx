@@ -22,7 +22,7 @@ const orderStatusButtons: { value: OrderStatus | 'all'; label: string; color: st
   { value: 'all', label: 'Todos', color: 'bg-neutral-100 text-neutral-700' },
   { value: 'pendiente_pago', label: 'Pend. Pago', color: 'bg-amber-50 text-amber-700', permission: 'orders.view_pendiente_pago' },
   { value: 'a_imprimir', label: 'A Imprimir', color: 'bg-blue-50 text-blue-700', permission: 'orders.view_a_imprimir' },
-  { value: 'etiqueta_impresa', label: 'Hoja Impr.', color: 'bg-violet-50 text-violet-700', permission: 'orders.view_etiqueta_impresa' },
+  { value: 'hoja_impresa', label: 'Hoja Impr.', color: 'bg-violet-50 text-violet-700', permission: 'orders.view_hoja_impresa' },
   { value: 'armado', label: 'Armado', color: 'bg-cyan-50 text-cyan-700', permission: 'orders.view_armado' },
   { value: 'enviado', label: 'Enviado', color: 'bg-emerald-50 text-emerald-700', permission: 'orders.view_enviado' },
   { value: 'en_calle', label: 'En Calle', color: 'bg-orange-50 text-orange-700', permission: 'orders.view_en_calle' },

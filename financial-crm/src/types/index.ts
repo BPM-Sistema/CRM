@@ -5,7 +5,7 @@ export type PaymentStatus = 'pendiente' | 'a_confirmar' | 'parcial' | 'total' | 
 export type OrderStatus =
   | 'pendiente_pago'      // Pendiente de pago (default)
   | 'a_imprimir'          // Listo para imprimir
-  | 'etiqueta_impresa'    // Etiqueta impresa (hoja de pedido)
+  | 'hoja_impresa'    // Etiqueta impresa (hoja de pedido)
   | 'armado'              // Armado/empaquetado
   | 'retirado'            // Retirado por cliente
   | 'enviado'             // Enviado por delivery

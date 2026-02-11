@@ -980,7 +980,7 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
     const { estado_pedido } = req.body;
 
     // Validar estado_pedido
-    const estadosValidos = ['pendiente_pago', 'a_imprimir', 'etiqueta_impresa', 'armado', 'retirado', 'enviado', 'en_calle'];
+    const estadosValidos = ['pendiente_pago', 'a_imprimir', 'hoja_impresa', 'armado', 'retirado', 'enviado', 'en_calle'];
     if (!estado_pedido || !estadosValidos.includes(estado_pedido)) {
       return res.status(400).json({
         error: `Estado inválido. Valores permitidos: ${estadosValidos.join(', ')}`
@@ -1014,7 +1014,7 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
     let updateValues = [estado_pedido];
     let paramIndex = 2;
 
-    if (estado_pedido === 'etiqueta_impresa' && !pedido.printed_at) {
+    if (estado_pedido === 'hoja_impresa' && !pedido.printed_at) {
       // Cuando se imprime la etiqueta, marcamos printed_at
       updateFields.push(`printed_at = NOW()`);
     } else if (estado_pedido === 'armado' && !pedido.packed_at) {

@@ -88,7 +88,7 @@ export function PaymentStatusBadge({ status, size = 'md', className }: PaymentSt
 const orderStatusVariants: Record<OrderStatus, BadgeVariant> = {
   pendiente_pago: 'warning',
   a_imprimir: 'info',
-  etiqueta_impresa: 'purple',
+  hoja_impresa: 'purple',
   armado: 'cyan',
   retirado: 'success',
   enviado: 'success',
@@ -98,7 +98,7 @@ const orderStatusVariants: Record<OrderStatus, BadgeVariant> = {
 const orderStatusLabels: Record<OrderStatus, string> = {
   pendiente_pago: 'Pendiente de pago',
   a_imprimir: 'A imprimir',
-  etiqueta_impresa: 'Hoja impresa',
+  hoja_impresa: 'Hoja impresa',
   armado: 'Armado',
   retirado: 'Retirado',
   enviado: 'Enviado',
@@ -109,7 +109,7 @@ const orderStatusLabels: Record<OrderStatus, string> = {
 const orderStatusLabelsShort: Record<OrderStatus, string> = {
   pendiente_pago: 'Pend. pago',
   a_imprimir: 'A impr.',
-  etiqueta_impresa: 'Hoja impr.',
+  hoja_impresa: 'Hoja impr.',
   armado: 'Armado',
   retirado: 'Retirado',
   enviado: 'Enviado',

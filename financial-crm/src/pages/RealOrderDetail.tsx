@@ -154,10 +154,10 @@ export function RealOrderDetail() {
     onAfterPrint: useCallback(async () => {
       setIsPrintModalOpen(false);
       setPrintData(null);
-      // Si el estado actual es a_imprimir, pasar a etiqueta_impresa
+      // Si el estado actual es a_imprimir, pasar a hoja_impresa
       if (data?.order.estado_pedido === 'a_imprimir' && orderNumber) {
         try {
-          await updateOrderStatus(orderNumber, 'etiqueta_impresa');
+          await updateOrderStatus(orderNumber, 'hoja_impresa');
           loadOrder();
         } catch (error) {
           console.error('Error al actualizar estado después de imprimir:', error);
@@ -583,7 +583,7 @@ export function RealOrderDetail() {
                 )}
 
                 {/* Etiqueta impresa */}
-                {orderStatus === 'etiqueta_impresa' && (
+                {orderStatus === 'hoja_impresa' && (
                   <>
                     <Button
                       variant="secondary"
