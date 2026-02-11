@@ -466,6 +466,47 @@ app.get('/activity-log', authenticate, requirePermission('activity.view'), async
 
 
 /* =====================================================
+   GET — CONTEOS PARA MODAL DE IMPRESIÓN (sin filtros)
+===================================================== */
+app.get('/orders/print-counts', authenticate, requirePermission('orders.view'), async (req, res) => {
+  try {
+    // Contar pedidos NO impresos por estado_pedido
+    const countsRes = await pool.query(`
+      SELECT
+        estado_pedido,
+        COUNT(*) as count
+      FROM orders_validated
+      WHERE printed_at IS NULL
+      GROUP BY estado_pedido
+    `);
+
+    // Convertir a objeto
+    const counts = {
+      pendiente_pago: 0,
+      a_imprimir: 0,
+      hoja_impresa: 0,
+      armado: 0,
+      retirado: 0,
+      enviado: 0,
+      en_calle: 0,
+    };
+
+    countsRes.rows.forEach(row => {
+      if (row.estado_pedido && counts.hasOwnProperty(row.estado_pedido)) {
+        counts[row.estado_pedido] = Number(row.count);
+      }
+    });
+
+    res.json({ ok: true, counts });
+
+  } catch (error) {
+    console.error('❌ /orders/print-counts error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+/* =====================================================
    GET — LISTAR TODOS LOS PEDIDOS
 ===================================================== */
 app.get('/orders', authenticate, requirePermission('orders.view'), async (req, res) => {

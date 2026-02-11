@@ -11,7 +11,7 @@ import {
   TableHead,
   TableCell,
 } from '../components/ui';
-import { fetchOrders, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus, PaginationInfo, OrderFilters } from '../services/api';
+import { fetchOrders, fetchPrintCounts, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus, PaginationInfo, OrderFilters } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -71,6 +71,27 @@ export function RealOrders() {
   const [selectedPrintStatuses, setSelectedPrintStatuses] = useState<Set<OrderStatus>>(
     new Set(['a_imprimir'])
   );
+  const [printCounts, setPrintCounts] = useState<Record<OrderStatus, number> | null>(null);
+  const [loadingPrintCounts, setLoadingPrintCounts] = useState(false);
+
+  // Cargar conteos de impresión desde el backend (independiente de filtros)
+  const loadPrintCounts = async () => {
+    setLoadingPrintCounts(true);
+    try {
+      const counts = await fetchPrintCounts();
+      setPrintCounts(counts);
+    } catch (err) {
+      console.error('Error al cargar conteos de impresión:', err);
+    } finally {
+      setLoadingPrintCounts(false);
+    }
+  };
+
+  // Abrir modal y cargar conteos
+  const openPrintModal = () => {
+    setIsPrintModalOpen(true);
+    loadPrintCounts();
+  };
 
   const loadOrders = async (page?: number, filters?: OrderFilters, isFilterChange = false) => {
     const pageToLoad = page ?? currentPage;
@@ -189,34 +210,15 @@ export function RealOrders() {
     );
   }, [permittedOrders]);
 
-  // Contar pedidos por estado del pedido (no impresos) - solo los permitidos
-  const printCountByStatus = useMemo(() => {
-    const counts: Record<OrderStatus, number> = {
-      pendiente_pago: 0,
-      a_imprimir: 0,
-      hoja_impresa: 0,
-      armado: 0,
-      retirado: 0,
-      enviado: 0,
-      en_calle: 0,
-    };
-    permittedOrders.forEach(order => {
-      if (!order.printed_at) {
-        const status = mapEstadoPedido(order.estado_pedido);
-        counts[status]++;
-      }
-    });
-    return counts;
-  }, [permittedOrders]);
-
-  // Contar pedidos seleccionados para imprimir - solo los permitidos
+  // Contar pedidos seleccionados para imprimir - usa conteos del API
   const selectedPrintCount = useMemo(() => {
-    return permittedOrders.filter(
-      (order) =>
-        !order.printed_at &&
-        selectedPrintStatuses.has(mapEstadoPedido(order.estado_pedido))
-    ).length;
-  }, [permittedOrders, selectedPrintStatuses]);
+    if (!printCounts) return 0;
+    let total = 0;
+    selectedPrintStatuses.forEach(status => {
+      total += printCounts[status] || 0;
+    });
+    return total;
+  }, [printCounts, selectedPrintStatuses]);
 
   const formatCurrency = (amount: number | null) => {
     if (amount === null) return '-';
@@ -266,7 +268,7 @@ export function RealOrders() {
             <Button
               variant="secondary"
               leftIcon={<Printer size={16} />}
-              onClick={() => setIsPrintModalOpen(true)}
+              onClick={openPrintModal}
             >
               Imprimir Pedidos
             </Button>
@@ -566,105 +568,111 @@ export function RealOrders() {
             Seleccioná los estados del pedido que querés incluir en la impresión:
           </p>
 
-          <div className="space-y-2">
-            {/* Opción: A Imprimir */}
-            <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={selectedPrintStatuses.has('a_imprimir')}
-                  onChange={() => togglePrintStatus('a_imprimir')}
-                  className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
-                />
-                <span className="font-medium text-neutral-900">A Imprimir</span>
-              </div>
-              <span className="text-sm text-neutral-500">{printCountByStatus.a_imprimir} pedidos</span>
-            </label>
+          {loadingPrintCounts ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw size={24} className="animate-spin text-neutral-400" />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {/* Opción: A Imprimir */}
+              <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedPrintStatuses.has('a_imprimir')}
+                    onChange={() => togglePrintStatus('a_imprimir')}
+                    className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+                  />
+                  <span className="font-medium text-neutral-900">A Imprimir</span>
+                </div>
+                <span className="text-sm text-neutral-500">{printCounts?.a_imprimir ?? 0} pedidos</span>
+              </label>
 
-            {/* Opción: Hoja Impresa */}
-            <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={selectedPrintStatuses.has('hoja_impresa')}
-                  onChange={() => togglePrintStatus('hoja_impresa')}
-                  className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
-                />
-                <span className="font-medium text-neutral-900">Hoja Impresa</span>
-              </div>
-              <span className="text-sm text-neutral-500">{printCountByStatus.hoja_impresa} pedidos</span>
-            </label>
+              {/* Opción: Hoja Impresa */}
+              <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedPrintStatuses.has('hoja_impresa')}
+                    onChange={() => togglePrintStatus('hoja_impresa')}
+                    className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+                  />
+                  <span className="font-medium text-neutral-900">Hoja Impresa</span>
+                </div>
+                <span className="text-sm text-neutral-500">{printCounts?.hoja_impresa ?? 0} pedidos</span>
+              </label>
 
-            {/* Opción: Pendiente Pago */}
-            <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={selectedPrintStatuses.has('pendiente_pago')}
-                  onChange={() => togglePrintStatus('pendiente_pago')}
-                  className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
-                />
-                <span className="font-medium text-neutral-900">Pendiente Pago</span>
-              </div>
-              <span className="text-sm text-neutral-500">{printCountByStatus.pendiente_pago} pedidos</span>
-            </label>
+              {/* Opción: Pendiente Pago */}
+              <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedPrintStatuses.has('pendiente_pago')}
+                    onChange={() => togglePrintStatus('pendiente_pago')}
+                    className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+                  />
+                  <span className="font-medium text-neutral-900">Pendiente Pago</span>
+                </div>
+                <span className="text-sm text-neutral-500">{printCounts?.pendiente_pago ?? 0} pedidos</span>
+              </label>
 
-            {/* Opción: Armado */}
-            <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={selectedPrintStatuses.has('armado')}
-                  onChange={() => togglePrintStatus('armado')}
-                  className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
-                />
-                <span className="font-medium text-neutral-900">Armado</span>
-              </div>
-              <span className="text-sm text-neutral-500">{printCountByStatus.armado} pedidos</span>
-            </label>
+              {/* Opción: Armado */}
+              <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedPrintStatuses.has('armado')}
+                    onChange={() => togglePrintStatus('armado')}
+                    className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+                  />
+                  <span className="font-medium text-neutral-900">Armado</span>
+                </div>
+                <span className="text-sm text-neutral-500">{printCounts?.armado ?? 0} pedidos</span>
+              </label>
 
-            {/* Opción: Retirado */}
-            <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={selectedPrintStatuses.has('retirado')}
-                  onChange={() => togglePrintStatus('retirado')}
-                  className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
-                />
-                <span className="font-medium text-neutral-900">Retirado</span>
-              </div>
-              <span className="text-sm text-neutral-500">{printCountByStatus.retirado} pedidos</span>
-            </label>
+              {/* Opción: Retirado */}
+              <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedPrintStatuses.has('retirado')}
+                    onChange={() => togglePrintStatus('retirado')}
+                    className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+                  />
+                  <span className="font-medium text-neutral-900">Retirado</span>
+                </div>
+                <span className="text-sm text-neutral-500">{printCounts?.retirado ?? 0} pedidos</span>
+              </label>
 
-            {/* Opción: Enviado */}
-            <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={selectedPrintStatuses.has('enviado')}
-                  onChange={() => togglePrintStatus('enviado')}
-                  className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
-                />
-                <span className="font-medium text-neutral-900">Enviado</span>
-              </div>
-              <span className="text-sm text-neutral-500">{printCountByStatus.enviado} pedidos</span>
-            </label>
+              {/* Opción: Enviado */}
+              <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedPrintStatuses.has('enviado')}
+                    onChange={() => togglePrintStatus('enviado')}
+                    className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+                  />
+                  <span className="font-medium text-neutral-900">Enviado</span>
+                </div>
+                <span className="text-sm text-neutral-500">{printCounts?.enviado ?? 0} pedidos</span>
+              </label>
 
-            {/* Opción: En Calle */}
-            <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={selectedPrintStatuses.has('en_calle')}
-                  onChange={() => togglePrintStatus('en_calle')}
-                  className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
-                />
-                <span className="font-medium text-neutral-900">En Calle</span>
-              </div>
-              <span className="text-sm text-neutral-500">{printCountByStatus.en_calle} pedidos</span>
-            </label>
-          </div>
+              {/* Opción: En Calle */}
+              <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedPrintStatuses.has('en_calle')}
+                    onChange={() => togglePrintStatus('en_calle')}
+                    className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+                  />
+                  <span className="font-medium text-neutral-900">En Calle</span>
+                </div>
+                <span className="text-sm text-neutral-500">{printCounts?.en_calle ?? 0} pedidos</span>
+              </label>
+            </div>
+          )}
 
           {/* Resumen */}
           <div className="p-3 bg-neutral-50 rounded-xl">

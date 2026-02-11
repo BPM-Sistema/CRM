@@ -274,6 +274,18 @@ export async function fetchOrders(page = 1, limit = 50, filters?: OrderFilters):
   };
 }
 
+// Obtener conteos para modal de impresión (sin filtros)
+export async function fetchPrintCounts(): Promise<Record<OrderStatus, number>> {
+  const response = await authFetch(`${API_BASE_URL}/orders/print-counts`);
+
+  if (!response.ok) {
+    throw new Error('Error al obtener conteos de impresión');
+  }
+
+  const data = await response.json();
+  return data.counts;
+}
+
 // Obtener detalle de un pedido
 export async function fetchOrderDetail(orderNumber: string): Promise<ApiOrderDetail> {
   const response = await authFetch(`${API_BASE_URL}/orders/${orderNumber}`);
