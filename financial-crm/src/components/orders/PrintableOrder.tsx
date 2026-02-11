@@ -9,163 +9,100 @@ interface PrintableOrderProps {
 
 export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
   ({ data }, ref) => {
-    const formatCurrency = (amount: number) => {
-      return new Intl.NumberFormat('es-AR', {
-        style: 'currency',
-        currency: 'ARS',
-        maximumFractionDigits: 0,
-      }).format(amount);
-    };
-
-    const formatDate = (dateString: string) => {
-      return format(new Date(dateString), "dd 'de' MMMM 'de' yyyy - HH:mm", { locale: es });
-    };
-
     return (
-      <div ref={ref} className="print-container bg-white p-8 max-w-[800px] mx-auto">
+      <div ref={ref} className="print-container bg-white">
         <style>
           {`
             @media print {
               @page {
                 size: A4;
-                margin: 10mm;
+                margin: 8mm;
               }
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
               .print-container {
                 padding: 0 !important;
                 max-width: 100% !important;
+                font-size: 11px !important;
               }
-              /* Paginación de tabla */
               table { page-break-inside: auto; }
               thead { display: table-header-group; }
-              tr { page-break-inside: avoid; page-break-after: auto; }
-              /* Secciones que no se cortan */
+              tr { page-break-inside: avoid; }
               .print-no-break { page-break-inside: avoid; }
             }
+            .print-container { font-size: 11px; padding: 12px; max-width: 800px; margin: 0 auto; }
+            .print-container h1 { font-size: 18px; }
+            .print-container h2 { font-size: 11px; }
+            .print-container p { margin: 0; line-height: 1.3; }
+            .print-container table { font-size: 11px; }
+            .print-container th, .print-container td { padding: 4px 6px; }
           `}
         </style>
 
-        {/* Header */}
-        <div className="print-no-break border-b-2 border-neutral-900 pb-4 mb-6">
-          <div className="flex justify-between items-start">
-            <div>
-              <h1 className="text-3xl font-bold font-mono text-neutral-900">
-                #{data.order_number}
-              </h1>
-              <p className="text-sm font-medium text-neutral-500 uppercase tracking-wider">Hoja de Pedido</p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm text-neutral-600">Fecha del pedido:</p>
-              <p className="font-medium">{formatDate(data.created_at)}</p>
-            </div>
+        {/* Header compacto */}
+        <div className="print-no-break border-b border-black pb-2 mb-3 flex justify-between items-end">
+          <div>
+            <h1 className="font-bold font-mono">#{data.order_number}</h1>
+            <p className="text-[10px] text-gray-600 uppercase">Hoja de Picking</p>
           </div>
+          <p className="text-[10px] text-gray-600">
+            {format(new Date(data.created_at), "dd/MM/yyyy HH:mm", { locale: es })}
+          </p>
         </div>
 
-        {/* Cliente y Envío en dos columnas */}
-        <div className="print-no-break grid grid-cols-2 gap-6 mb-6">
-          {/* Cliente */}
-          <div className="border border-neutral-300 rounded-lg p-4">
-            <h2 className="text-sm font-bold text-neutral-500 uppercase tracking-wider mb-3">
-              Cliente
-            </h2>
-            <p className="font-semibold text-lg">{data.customer.name}</p>
-            {data.customer.phone && (
-              <p className="text-neutral-700">Tel: {data.customer.phone}</p>
-            )}
-            {data.customer.email && (
-              <p className="text-neutral-600 text-sm">{data.customer.email}</p>
-            )}
-            {data.customer.identification && (
-              <p className="text-neutral-600 text-sm">DNI/CUIT: {data.customer.identification}</p>
-            )}
+        {/* Cliente y Envío en línea */}
+        <div className="print-no-break grid grid-cols-2 gap-3 mb-3 text-[11px]">
+          <div className="border border-gray-400 p-2">
+            <h2 className="font-bold text-gray-500 uppercase mb-1">Cliente</h2>
+            <p className="font-semibold">{data.customer.name}</p>
+            {data.customer.phone && <p>Tel: {data.customer.phone}</p>}
           </div>
 
-          {/* Dirección de Envío */}
-          <div className="border border-neutral-300 rounded-lg p-4">
-            <h2 className="text-sm font-bold text-neutral-500 uppercase tracking-wider mb-3">
-              Dirección de Envío
-            </h2>
+          <div className="border border-gray-400 p-2">
+            <h2 className="font-bold text-gray-500 uppercase mb-1">Envío</h2>
             {data.shipping_address ? (
               <>
-                <p className="font-semibold">{data.shipping_address.name}</p>
-                <p className="text-neutral-700">
-                  {data.shipping_address.address} {data.shipping_address.number}
-                  {data.shipping_address.floor && `, ${data.shipping_address.floor}`}
-                </p>
-                <p className="text-neutral-700">
-                  {data.shipping_address.locality}, {data.shipping_address.city}
-                </p>
-                <p className="text-neutral-700">
-                  {data.shipping_address.province} - CP {data.shipping_address.zipcode}
-                </p>
-                {data.shipping_address.phone && (
-                  <p className="text-neutral-600 text-sm">Tel: {data.shipping_address.phone}</p>
-                )}
-                {data.shipping_address.between_streets && (
-                  <p className="text-neutral-600 text-sm mt-1">
-                    Entre calles: {data.shipping_address.between_streets}
-                  </p>
-                )}
-                {data.shipping_address.reference && (
-                  <p className="text-neutral-600 text-sm">
-                    Referencia: {data.shipping_address.reference}
-                  </p>
-                )}
+                <p>{data.shipping_address.address} {data.shipping_address.number}{data.shipping_address.floor && `, ${data.shipping_address.floor}`}</p>
+                <p>{data.shipping_address.locality}, {data.shipping_address.city}</p>
+                <p>{data.shipping_address.province} - CP {data.shipping_address.zipcode}</p>
+                {data.shipping_address.phone && <p>Tel: {data.shipping_address.phone}</p>}
               </>
             ) : (
-              <p className="text-neutral-500 italic">Retiro en local</p>
+              <p className="font-semibold">RETIRO EN LOCAL</p>
             )}
           </div>
         </div>
 
         {/* Método de envío */}
-        <div className="mb-6 p-3 bg-neutral-100 rounded-lg">
-          <span className="text-sm font-medium text-neutral-500">Método de envío: </span>
+        <div className="mb-3 py-1 px-2 bg-gray-100 text-[10px]">
+          <span className="text-gray-500">Método: </span>
           <span className="font-semibold">{data.shipping.type}</span>
-          {data.shipping.tracking_number && (
-            <span className="ml-4 text-sm text-neutral-600">
-              Tracking: {data.shipping.tracking_number}
-            </span>
-          )}
         </div>
 
-        {/* Productos */}
-        <div className="mb-6">
-          <h2 className="text-sm font-bold text-neutral-500 uppercase tracking-wider mb-3">
+        {/* Tabla de productos - SOLO cantidad, producto, SKU */}
+        <div className="mb-3">
+          <h2 className="font-bold text-gray-500 uppercase mb-1">
             Productos ({getTotalUnits(data.products)} unidades)
           </h2>
-          <table className="w-full border-collapse">
+          <table className="w-full border-collapse border border-gray-400">
             <thead>
-              <tr className="bg-neutral-900 text-white">
-                <th className="text-left p-2 text-sm font-medium">Cant.</th>
-                <th className="text-left p-2 text-sm font-medium">Producto</th>
-                <th className="text-left p-2 text-sm font-medium">SKU</th>
-                <th className="text-right p-2 text-sm font-medium">Precio</th>
-                <th className="text-right p-2 text-sm font-medium">Total</th>
+              <tr className="bg-black text-white">
+                <th className="text-center border border-gray-400 w-12">Cant.</th>
+                <th className="text-left border border-gray-400">Producto</th>
+                <th className="text-left border border-gray-400 w-24">SKU</th>
               </tr>
             </thead>
             <tbody>
               {data.products.map((product, index) => (
-                <tr
-                  key={product.id}
-                  className={index % 2 === 0 ? 'bg-white' : 'bg-neutral-50'}
-                >
-                  <td className="p-2 border-b border-neutral-200 font-mono font-bold text-center">
+                <tr key={product.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="text-center border border-gray-300 font-mono font-bold">
                     {product.quantity}
                   </td>
-                  <td className="p-2 border-b border-neutral-200">
-                    <p className="font-medium">{product.name}</p>
-                    {product.variant && (
-                      <p className="text-sm text-neutral-500">{product.variant}</p>
-                    )}
+                  <td className="border border-gray-300">
+                    <span className="font-medium">{product.name}</span>
+                    {product.variant && <span className="text-gray-500 text-[10px] ml-1">({product.variant})</span>}
                   </td>
-                  <td className="p-2 border-b border-neutral-200 font-mono text-sm text-neutral-500">
+                  <td className="border border-gray-300 font-mono text-[10px] text-gray-600">
                     {product.sku || '-'}
-                  </td>
-                  <td className="p-2 border-b border-neutral-200 text-right font-mono">
-                    {formatCurrency(product.price)}
-                  </td>
-                  <td className="p-2 border-b border-neutral-200 text-right font-mono font-medium">
-                    {formatCurrency(product.total)}
                   </td>
                 </tr>
               ))}
@@ -173,85 +110,31 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
           </table>
         </div>
 
-        {/* Totales */}
-        <div className="print-no-break flex justify-end mb-6">
-          <div className="w-64">
-            <div className="flex justify-between py-1 text-neutral-600">
-              <span>Subtotal:</span>
-              <span className="font-mono">{formatCurrency(data.totals.subtotal)}</span>
-            </div>
-            {data.totals.discount > 0 && (
-              <div className="flex justify-between py-1 text-green-600">
-                <span>Descuento:</span>
-                <span className="font-mono">-{formatCurrency(data.totals.discount)}</span>
-              </div>
-            )}
-            <div className="flex justify-between py-1 text-neutral-600">
-              <span>Envío:</span>
-              <span className="font-mono">{formatCurrency(data.totals.shipping)}</span>
-            </div>
-            <div className="flex justify-between py-2 border-t-2 border-neutral-900 font-bold text-lg">
-              <span>TOTAL:</span>
-              <span className="font-mono">{formatCurrency(data.totals.total)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Notas */}
-        {(data.note || data.owner_note) && (
-          <div className="border-t border-neutral-300 pt-4">
-            {data.note && (
-              <div className="mb-3">
-                <h3 className="text-sm font-bold text-neutral-500 uppercase">Nota del cliente:</h3>
-                <p className="text-neutral-700 mt-1 p-2 bg-yellow-50 rounded">{data.note}</p>
-              </div>
-            )}
-            {data.owner_note && (
-              <div>
-                <h3 className="text-sm font-bold text-neutral-500 uppercase">Nota interna:</h3>
-                <p className="text-neutral-700 mt-1 p-2 bg-blue-50 rounded">{data.owner_note}</p>
-              </div>
-            )}
+        {/* Notas del cliente (si existen) */}
+        {data.note && (
+          <div className="print-no-break mb-3 p-2 border border-gray-400 bg-yellow-50 text-[10px]">
+            <span className="font-bold">Nota cliente: </span>
+            <span>{data.note}</span>
           </div>
         )}
 
-        {/* Estado de pago interno */}
-        {data.internal && (
-          <div className="mt-6 pt-4 border-t border-dashed border-neutral-300">
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-neutral-500">Estado interno:</span>
-              <div className="flex gap-4">
-                <span>
-                  Pagado: <strong className="text-emerald-600">{formatCurrency(data.internal.total_pagado || 0)}</strong>
-                </span>
-                <span>
-                  Saldo: <strong className={data.internal.saldo > 0 ? 'text-red-600' : 'text-emerald-600'}>
-                    {formatCurrency(data.internal.saldo || 0)}
-                  </strong>
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Espacio para firma / verificación */}
-        <div className="print-no-break mt-8 pt-4 border-t border-neutral-300">
-          <div className="grid grid-cols-2 gap-8">
+        {/* Firma compacta */}
+        <div className="print-no-break mt-4 pt-2 border-t border-gray-400">
+          <div className="grid grid-cols-2 gap-4 text-[10px]">
             <div>
-              <p className="text-sm text-neutral-500 mb-8">Armado por:</p>
-              <div className="border-b border-neutral-400 w-full"></div>
+              <p className="text-gray-500 mb-4">Armado:</p>
+              <div className="border-b border-gray-400"></div>
             </div>
             <div>
-              <p className="text-sm text-neutral-500 mb-8">Verificado por:</p>
-              <div className="border-b border-neutral-400 w-full"></div>
+              <p className="text-gray-500 mb-4">Verificado:</p>
+              <div className="border-b border-gray-400"></div>
             </div>
           </div>
         </div>
 
-        {/* Checkbox para marcar productos */}
-        <div className="mt-6 text-xs text-neutral-400 text-center">
-          Impreso el {format(new Date(), "dd/MM/yyyy 'a las' HH:mm", { locale: es })}
-        </div>
+        <p className="mt-3 text-[9px] text-gray-400 text-center">
+          {format(new Date(), "dd/MM/yyyy HH:mm", { locale: es })}
+        </p>
       </div>
     );
   }
