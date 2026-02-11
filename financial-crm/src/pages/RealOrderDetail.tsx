@@ -754,6 +754,18 @@ export function RealOrderDetail() {
                 disabled={isSubmittingCash}
               />
 
+              {saldoPendiente > 0 && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setCashAmount(Math.round(saldoPendiente).toString())}
+                  disabled={isSubmittingCash}
+                >
+                  Pagar total ({formatCurrency(saldoPendiente)})
+                </Button>
+              )}
+
               {cashError && (
                 <div className="p-3 bg-red-50 rounded-lg">
                   <p className="text-sm text-red-700">{cashError}</p>
