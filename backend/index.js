@@ -507,6 +507,48 @@ app.get('/orders/print-counts', authenticate, requirePermission('orders.view'), 
 
 
 /* =====================================================
+   POST — OBTENER PEDIDOS PARA IMPRIMIR (por estados)
+===================================================== */
+app.post('/orders/to-print', authenticate, requirePermission('orders.print'), async (req, res) => {
+  try {
+    const { statuses } = req.body;
+
+    if (!statuses || !Array.isArray(statuses) || statuses.length === 0) {
+      return res.status(400).json({ error: 'Debe seleccionar al menos un estado' });
+    }
+
+    // Validar que los estados sean válidos
+    const validStatuses = ['pendiente_pago', 'a_imprimir', 'hoja_impresa', 'armado', 'retirado', 'enviado', 'en_calle'];
+    const invalidStatuses = statuses.filter(s => !validStatuses.includes(s));
+    if (invalidStatuses.length > 0) {
+      return res.status(400).json({ error: `Estados inválidos: ${invalidStatuses.join(', ')}` });
+    }
+
+    // Obtener pedidos no impresos con los estados seleccionados
+    const result = await pool.query(`
+      SELECT order_number
+      FROM orders_validated
+      WHERE printed_at IS NULL
+        AND estado_pedido = ANY($1)
+      ORDER BY created_at ASC
+    `, [statuses]);
+
+    const orderNumbers = result.rows.map(r => r.order_number);
+
+    res.json({
+      ok: true,
+      orderNumbers,
+      count: orderNumbers.length
+    });
+
+  } catch (error) {
+    console.error('❌ /orders/to-print error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+/* =====================================================
    GET — LISTAR TODOS LOS PEDIDOS
 ===================================================== */
 app.get('/orders', authenticate, requirePermission('orders.view'), async (req, res) => {

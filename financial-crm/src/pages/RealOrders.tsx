@@ -11,7 +11,7 @@ import {
   TableHead,
   TableCell,
 } from '../components/ui';
-import { fetchOrders, fetchPrintCounts, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus, PaginationInfo, OrderFilters } from '../services/api';
+import { fetchOrders, fetchPrintCounts, fetchOrdersToPrint, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus, PaginationInfo, OrderFilters } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -241,21 +241,37 @@ export function RealOrders() {
     });
   };
 
-  const handlePrintSelected = () => {
-    const ordersToPrint = permittedOrders.filter(
-      (order) =>
-        !order.printed_at &&
-        selectedPrintStatuses.has(mapEstadoPedido(order.estado_pedido))
-    );
+  const [isPrinting, setIsPrinting] = useState(false);
 
-    if (ordersToPrint.length === 0) {
-      alert('No hay pedidos para imprimir con los filtros seleccionados');
+  const handlePrintSelected = async () => {
+    if (selectedPrintStatuses.size === 0) {
+      alert('Seleccioná al menos un estado para imprimir');
       return;
     }
 
-    console.log('Imprimiendo pedidos:', ordersToPrint.map(o => o.order_number));
-    alert(`Imprimiendo ${ordersToPrint.length} pedidos:\n${ordersToPrint.map(o => '#' + o.order_number).join(', ')}`);
-    setIsPrintModalOpen(false);
+    setIsPrinting(true);
+    try {
+      // Obtener TODOS los pedidos a imprimir desde el backend
+      const statuses = Array.from(selectedPrintStatuses);
+      const { orderNumbers, count } = await fetchOrdersToPrint(statuses);
+
+      if (count === 0) {
+        alert('No hay pedidos para imprimir con los estados seleccionados');
+        return;
+      }
+
+      // Navegar a la página de impresión con los order_numbers
+      const params = new URLSearchParams();
+      params.set('orders', orderNumbers.join(','));
+      navigate(`/orders/print?${params.toString()}`);
+
+      setIsPrintModalOpen(false);
+    } catch (err) {
+      console.error('Error al obtener pedidos:', err);
+      alert(err instanceof Error ? err.message : 'Error al obtener pedidos para imprimir');
+    } finally {
+      setIsPrinting(false);
+    }
   };
 
   return (
@@ -691,16 +707,17 @@ export function RealOrders() {
               variant="secondary"
               className="flex-1"
               onClick={() => setIsPrintModalOpen(false)}
+              disabled={isPrinting}
             >
               Cancelar
             </Button>
             <Button
               className="flex-1"
               onClick={handlePrintSelected}
-              disabled={selectedPrintCount === 0}
-              leftIcon={<Printer size={16} />}
+              disabled={selectedPrintCount === 0 || isPrinting}
+              leftIcon={isPrinting ? <RefreshCw size={16} className="animate-spin" /> : <Printer size={16} />}
             >
-              Imprimir ({selectedPrintCount})
+              {isPrinting ? 'Cargando...' : `Imprimir (${selectedPrintCount})`}
             </Button>
           </div>
         </div>

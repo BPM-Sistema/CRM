@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/layout';
 import { Dashboard, RealOrders, RealOrderDetail, RealReceipts, RealReceiptDetail, Analytics, Settings, AdminUsers } from './pages';
 import ActivityLog from './pages/ActivityLog';
+import BatchPrint from './pages/BatchPrint';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginPage } from './pages/LoginPage';
 import { getDefaultRoute } from './utils/navigation';
@@ -20,21 +21,29 @@ function AppRoutes() {
   }
 
   return (
-    <Layout>
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/orders" element={<RealOrders />} />
-        <Route path="/orders/:orderNumber" element={<RealOrderDetail />} />
-        <Route path="/receipts" element={<RealReceipts />} />
-        <Route path="/receipts/:id" element={<RealReceiptDetail />} />
-        <Route path="/analytics" element={<Analytics />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/admin/users" element={<AdminUsers />} />
-        <Route path="/admin/activity" element={<ActivityLog />} />
-        {/* Ruta catch-all: redirige a la primera sección permitida */}
-        <Route path="*" element={<DefaultRedirect />} />
-      </Routes>
-    </Layout>
+    <Routes>
+      {/* Página de impresión masiva - sin Layout (para imprimir limpio) */}
+      <Route path="/orders/print" element={<BatchPrint />} />
+
+      {/* Resto de la app con Layout */}
+      <Route path="*" element={
+        <Layout>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/orders" element={<RealOrders />} />
+            <Route path="/orders/:orderNumber" element={<RealOrderDetail />} />
+            <Route path="/receipts" element={<RealReceipts />} />
+            <Route path="/receipts/:id" element={<RealReceiptDetail />} />
+            <Route path="/analytics" element={<Analytics />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/admin/users" element={<AdminUsers />} />
+            <Route path="/admin/activity" element={<ActivityLog />} />
+            {/* Ruta catch-all: redirige a la primera sección permitida */}
+            <Route path="*" element={<DefaultRedirect />} />
+          </Routes>
+        </Layout>
+      } />
+    </Routes>
   );
 }
 

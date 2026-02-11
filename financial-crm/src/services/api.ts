@@ -286,6 +286,22 @@ export async function fetchPrintCounts(): Promise<Record<OrderStatus, number>> {
   return data.counts;
 }
 
+// Obtener pedidos para imprimir (por estados seleccionados)
+export async function fetchOrdersToPrint(statuses: OrderStatus[]): Promise<{ orderNumbers: string[]; count: number }> {
+  const response = await authFetch(`${API_BASE_URL}/orders/to-print`, {
+    method: 'POST',
+    body: JSON.stringify({ statuses }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Error al obtener pedidos para imprimir');
+  }
+
+  const data = await response.json();
+  return { orderNumbers: data.orderNumbers, count: data.count };
+}
+
 // Obtener detalle de un pedido
 export async function fetchOrderDetail(orderNumber: string): Promise<ApiOrderDetail> {
   const response = await authFetch(`${API_BASE_URL}/orders/${orderNumber}`);
