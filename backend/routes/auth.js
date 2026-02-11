@@ -52,13 +52,14 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
-    // Cargar permisos
+    // Cargar permisos (desde user_permissions, con fallback a role_permissions si tiene role_id)
     const permissionsResult = await pool.query(`
-      SELECT p.key
+      SELECT DISTINCT p.key
       FROM permissions p
-      JOIN role_permissions rp ON p.id = rp.permission_id
-      WHERE rp.role_id = $1
-    `, [user.role_id]);
+      LEFT JOIN user_permissions up ON p.id = up.permission_id AND up.user_id = $1
+      LEFT JOIN role_permissions rp ON p.id = rp.permission_id AND rp.role_id = $2
+      WHERE up.user_id IS NOT NULL OR rp.role_id IS NOT NULL
+    `, [user.id, user.role_id]);
 
     const token = generateToken(user.id);
 
