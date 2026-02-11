@@ -22,19 +22,19 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
               .print-container {
                 padding: 0 !important;
                 max-width: 100% !important;
-                font-size: 11px !important;
+                font-size: 18px !important;
               }
               table { page-break-inside: auto; }
               thead { display: table-header-group; }
               tr { page-break-inside: avoid; }
               .print-no-break { page-break-inside: avoid; }
             }
-            .print-container { font-size: 11px; padding: 12px; max-width: 800px; margin: 0 auto; }
-            .print-container h1 { font-size: 18px; }
-            .print-container h2 { font-size: 11px; }
+            .print-container { font-size: 18px; padding: 12px; max-width: 800px; margin: 0 auto; }
+            .print-container h1 { font-size: 23px; }
+            .print-container h2 { font-size: 18px; }
             .print-container p { margin: 0; line-height: 1.3; }
-            .print-container table { font-size: 13px; }
-            .print-container th, .print-container td { padding: 5px 8px; }
+            .print-container table { font-size: 18px; }
+            .print-container th, .print-container td { padding: 6px 10px; }
           `}
         </style>
 
@@ -42,15 +42,15 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
         <div className="print-no-break border-b border-black pb-2 mb-3 flex justify-between items-end">
           <div>
             <h1 className="font-bold font-mono">#{data.order_number}</h1>
-            <p className="text-[10px] text-gray-600 uppercase">Hoja de Picking</p>
+            <p className="text-[16px] text-gray-600 uppercase">Hoja de Picking</p>
           </div>
-          <p className="text-[10px] text-gray-600">
+          <p className="text-[16px] text-gray-600">
             {format(new Date(data.created_at), "dd/MM/yyyy HH:mm", { locale: es })}
           </p>
         </div>
 
         {/* Cliente y Envío en línea */}
-        <div className="print-no-break grid grid-cols-2 gap-3 mb-3 text-[11px]">
+        <div className="print-no-break grid grid-cols-2 gap-3 mb-3 text-[16px]">
           <div className="border border-gray-400 p-2">
             <h2 className="font-bold text-gray-500 uppercase mb-1">Cliente</h2>
             <p className="font-semibold">{data.customer.name}</p>
@@ -73,7 +73,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
         </div>
 
         {/* Método de envío */}
-        <div className="mb-3 py-1 px-2 bg-gray-100 text-[10px]">
+        <div className="mb-3 py-1 px-2 bg-gray-100 text-[16px]">
           <span className="text-gray-500">Método: </span>
           <span className="font-semibold">{data.shipping.type}</span>
         </div>
@@ -99,9 +99,9 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
                   </td>
                   <td className="border border-gray-300">
                     <span className="font-medium">{product.name}</span>
-                    {product.variant && <span className="text-gray-500 text-[11px] ml-1">({product.variant})</span>}
+                    {product.variant && <span className="text-gray-500 text-[16px] ml-1">({product.variant})</span>}
                   </td>
-                  <td className="border border-gray-300 font-mono text-[11px] text-gray-600">
+                  <td className="border border-gray-300 font-mono text-[16px] text-gray-600">
                     {product.sku || '-'}
                   </td>
                 </tr>
@@ -112,7 +112,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
 
         {/* Notas del cliente (si existen) */}
         {data.note && (
-          <div className="print-no-break mb-3 p-2 border border-gray-400 bg-yellow-50 text-[10px]">
+          <div className="print-no-break mb-3 p-2 border border-gray-400 bg-yellow-50 text-[16px]">
             <span className="font-bold">Nota cliente: </span>
             <span>{data.note}</span>
           </div>
@@ -120,7 +120,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
 
         {/* Firma compacta */}
         <div className="print-no-break mt-4 pt-2 border-t border-gray-400">
-          <div className="grid grid-cols-2 gap-4 text-[10px]">
+          <div className="grid grid-cols-2 gap-4 text-[16px]">
             <div>
               <p className="text-gray-500 mb-4">Armado:</p>
               <div className="border-b border-gray-400"></div>
@@ -132,7 +132,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
           </div>
         </div>
 
-        <p className="mt-3 text-[9px] text-gray-400 text-center">
+        <p className="mt-3 text-[14px] text-gray-400 text-center">
           {format(new Date(), "dd/MM/yyyy HH:mm", { locale: es })}
         </p>
       </div>
