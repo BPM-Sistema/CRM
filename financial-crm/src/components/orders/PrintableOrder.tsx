@@ -86,6 +86,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
           <table className="w-full border-collapse border border-gray-400">
             <thead>
               <tr className="bg-black text-white">
+                <th className="text-center border border-gray-400 w-8"></th>
                 <th className="text-center border border-gray-400 w-12">Cant.</th>
                 <th className="text-left border border-gray-400">Producto</th>
                 <th className="text-left border border-gray-400 w-24">SKU</th>
@@ -94,6 +95,9 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
             <tbody>
               {data.products.map((product, index) => (
                 <tr key={product.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="text-center border border-gray-300">
+                    <span className="inline-block w-4 h-4 border-2 border-gray-400"></span>
+                  </td>
                   <td className="text-center border border-gray-300 font-mono font-bold">
                     {product.quantity}
                   </td>
