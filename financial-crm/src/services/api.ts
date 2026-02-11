@@ -276,7 +276,9 @@ export async function fetchOrders(page = 1, limit = 50, filters?: OrderFilters):
 
 // Obtener conteos para modal de impresión (sin filtros)
 export async function fetchPrintCounts(): Promise<Record<OrderStatus, number>> {
-  const response = await authFetch(`${API_BASE_URL}/orders/print-counts`);
+  // Cache-buster para forzar datos frescos
+  const timestamp = Date.now();
+  const response = await authFetch(`${API_BASE_URL}/orders/print-counts?_t=${timestamp}`);
 
   if (!response.ok) {
     throw new Error('Error al obtener conteos de impresión');
@@ -288,7 +290,9 @@ export async function fetchPrintCounts(): Promise<Record<OrderStatus, number>> {
 
 // Obtener pedidos para imprimir (por estados seleccionados)
 export async function fetchOrdersToPrint(statuses: OrderStatus[]): Promise<{ orderNumbers: string[]; count: number }> {
-  const response = await authFetch(`${API_BASE_URL}/orders/to-print`, {
+  // Cache-buster para forzar datos frescos
+  const timestamp = Date.now();
+  const response = await authFetch(`${API_BASE_URL}/orders/to-print?_t=${timestamp}`, {
     method: 'POST',
     body: JSON.stringify({ statuses }),
   });

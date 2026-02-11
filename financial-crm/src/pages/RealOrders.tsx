@@ -87,8 +87,9 @@ export function RealOrders() {
     }
   };
 
-  // Abrir modal y cargar conteos
+  // Abrir modal y cargar conteos (reset para forzar refresh visual)
   const openPrintModal = () => {
+    setPrintCounts(null); // Reset para mostrar loading y forzar datos frescos
     setIsPrintModalOpen(true);
     loadPrintCounts();
   };
