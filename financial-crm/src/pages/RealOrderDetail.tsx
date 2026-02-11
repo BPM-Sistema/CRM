@@ -559,27 +559,16 @@ export function RealOrderDetail() {
 
                 {/* A imprimir */}
                 {orderStatus === 'a_imprimir' && (
-                  <>
-                    <Button
-                      variant="secondary"
-                      className="w-full mb-2"
-                      leftIcon={isLoadingPrint ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
-                      onClick={handlePrintOrder}
-                      disabled={isLoadingPrint}
-                    >
-                      {order.printed_at ? 'Re-imprimir Hoja' : 'Imprimir Hoja'}
-                    </Button>
-                    <Button
+                  <Button
                     variant="primary"
                     className="w-full"
                     size="lg"
-                    leftIcon={<Package size={18} />}
-                    onClick={() => handleUpdateOrderStatus('armado')}
-                    disabled={isUpdatingStatus}
+                    leftIcon={isLoadingPrint ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
+                    onClick={handlePrintOrder}
+                    disabled={isLoadingPrint}
                   >
-                    {isUpdatingStatus ? 'Procesando...' : 'Marcar como Armado'}
+                    {order.printed_at ? 'Re-imprimir Hoja' : 'Imprimir Hoja'}
                   </Button>
-                  </>
                 )}
 
                 {/* Etiqueta impresa */}
