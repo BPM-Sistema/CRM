@@ -272,6 +272,14 @@ async function detectarFinancieraDesdeOCR(textoOcr) {
 
 
 async function enviarWhatsAppPlantilla({ telefono, plantilla, variables }) {
+  // 🔒 Filtro de testing - solo enviar a número de prueba
+  const TESTING_PHONE = '+5491123945965';
+  if (telefono !== TESTING_PHONE) {
+    console.log('📵 WhatsApp ignorado (testing):', telefono);
+    return { data: { skipped: true, reason: 'testing_filter' } };
+  }
+  console.log('📤 Enviando WhatsApp a:', telefono, 'plantilla:', plantilla);
+
   const contactIdClean = telefono.replace('+', '');
 
   return axios.post(
