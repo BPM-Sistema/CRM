@@ -17,7 +17,6 @@ import {
   MapPin,
   UserCheck,
   Package,
-  MessageSquare,
   ShoppingBag,
 } from 'lucide-react';
 import { Header } from '../components/layout';
@@ -225,23 +224,14 @@ export function RealOrderDetail() {
         }
         subtitle={`Creado ${formatDistanceToNow(new Date(order.created_at), { addSuffix: true, locale: es })}`}
         actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              leftIcon={<MessageSquare size={14} />}
-            >
-              WhatsApp
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              leftIcon={<RefreshCw size={14} className={loading ? 'animate-spin' : ''} />}
-              onClick={loadOrder}
-            >
-              Actualizar
-            </Button>
-          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            leftIcon={<RefreshCw size={14} className={loading ? 'animate-spin' : ''} />}
+            onClick={loadOrder}
+          >
+            Actualizar
+          </Button>
         }
       />
 
