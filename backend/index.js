@@ -989,13 +989,6 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
     const pedido = orderRes.rows[0];
 
     // Validar reglas de negocio
-    // No se puede marcar como armado sin haber impreso la hoja primero
-    if (estado_pedido === 'armado' && pedido.estado_pedido !== 'hoja_impresa') {
-      return res.status(400).json({
-        error: 'No se puede marcar como armado sin imprimir la hoja primero'
-      });
-    }
-
     // No se puede enviar (enviado, en_calle) si el pago no es total
     if (['enviado', 'en_calle'].includes(estado_pedido)) {
       if (pedido.estado_pago !== 'confirmado_total' && pedido.estado_pago !== 'a_favor') {
