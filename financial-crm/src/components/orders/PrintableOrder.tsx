@@ -30,7 +30,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
               .print-no-break { page-break-inside: avoid; }
             }
             .print-container { font-size: 11px; padding: 12px; max-width: 800px; margin: 0 auto; }
-            .print-container h1 { font-size: 18px; }
+            .print-container h1 { font-size: 28px; }
             .print-container h2 { font-size: 11px; }
             .print-container p { margin: 0; line-height: 1.3; }
             .print-container table { font-size: 13px; }
@@ -98,7 +98,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
                     {product.quantity}
                   </td>
                   <td className="border border-gray-300">
-                    <span className="font-medium">{product.name}</span>
+                    <span className="font-medium text-[13px]">{product.name}</span>
                     {product.variant && <span className="text-gray-500 text-[11px] ml-1">({product.variant})</span>}
                   </td>
                   <td className="border border-gray-300 font-mono text-[11px] text-gray-600">
