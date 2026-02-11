@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/layout';
 import { Dashboard, RealOrders, RealOrderDetail, RealReceipts, RealReceiptDetail, Analytics, Settings, AdminUsers } from './pages';
+import ActivityLog from './pages/ActivityLog';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginPage } from './pages/LoginPage';
 import { getDefaultRoute } from './utils/navigation';
@@ -29,6 +30,7 @@ function AppRoutes() {
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/admin/users" element={<AdminUsers />} />
+        <Route path="/admin/activity" element={<ActivityLog />} />
         {/* Ruta catch-all: redirige a la primera sección permitida */}
         <Route path="*" element={<DefaultRedirect />} />
       </Routes>

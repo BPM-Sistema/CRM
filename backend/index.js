@@ -71,12 +71,12 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-async function logEvento({ comprobanteId, accion, origen }) {
+async function logEvento({ comprobanteId, orderNumber, accion, origen, userId, username }) {
   try {
     await pool.query(
-      `INSERT INTO logs (comprobante_id, accion, origen)
-       VALUES ($1, $2, $3)`,
-      [comprobanteId, accion, origen]
+      `INSERT INTO logs (comprobante_id, order_number, accion, origen, user_id, username)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [comprobanteId || null, orderNumber || null, accion, origen, userId || null, username || null]
     );
   } catch (err) {
     console.error('❌ Error guardando log:', err.message);
@@ -366,6 +366,106 @@ app.get('/health', (_, res) => res.json({ ok: true }));
 
 
 /* =====================================================
+   GET — HISTORIAL DE ACTIVIDAD
+===================================================== */
+app.get('/activity-log', authenticate, requirePermission('activity.view'), async (req, res) => {
+  try {
+    const { page = 1, limit = 50, user_id, accion, order_number, fecha_desde, fecha_hasta } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+
+    // Construir WHERE dinámico
+    let conditions = [];
+    let params = [];
+    let paramIndex = 1;
+
+    if (user_id) {
+      conditions.push(`l.user_id = $${paramIndex++}`);
+      params.push(user_id);
+    }
+
+    if (accion) {
+      conditions.push(`l.accion ILIKE $${paramIndex++}`);
+      params.push(`%${accion}%`);
+    }
+
+    if (order_number) {
+      conditions.push(`l.order_number ILIKE $${paramIndex++}`);
+      params.push(`%${order_number}%`);
+    }
+
+    if (fecha_desde) {
+      conditions.push(`l.created_at >= $${paramIndex++}`);
+      params.push(fecha_desde);
+    }
+
+    if (fecha_hasta) {
+      conditions.push(`l.created_at <= $${paramIndex++}`);
+      params.push(fecha_hasta + ' 23:59:59');
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // Contar total
+    const countRes = await pool.query(
+      `SELECT COUNT(*) FROM logs l ${whereClause}`,
+      params
+    );
+    const total = Number(countRes.rows[0].count);
+
+    // Obtener logs con paginación
+    const logsRes = await pool.query(`
+      SELECT
+        l.id,
+        l.comprobante_id,
+        l.order_number,
+        l.accion,
+        l.origen,
+        l.user_id,
+        l.username,
+        l.created_at,
+        u.name as user_name,
+        u.email as user_email
+      FROM logs l
+      LEFT JOIN users u ON l.user_id = u.id
+      ${whereClause}
+      ORDER BY l.created_at DESC
+      LIMIT $${paramIndex++} OFFSET $${paramIndex}
+    `, [...params, Number(limit), offset]);
+
+    // Obtener usuarios para filtro
+    const usersRes = await pool.query(`
+      SELECT DISTINCT l.user_id, l.username, u.name, u.email
+      FROM logs l
+      LEFT JOIN users u ON l.user_id = u.id
+      WHERE l.user_id IS NOT NULL
+      ORDER BY u.name
+    `);
+
+    // Obtener acciones distintas para filtro
+    const accionesRes = await pool.query(`
+      SELECT DISTINCT accion FROM logs ORDER BY accion
+    `);
+
+    res.json({
+      logs: logsRes.rows,
+      total,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(total / Number(limit)),
+      filters: {
+        users: usersRes.rows,
+        acciones: accionesRes.rows.map(r => r.accion)
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ /activity-log error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+/* =====================================================
    GET — LISTAR TODOS LOS PEDIDOS
 ===================================================== */
 app.get('/orders', authenticate, requirePermission('orders.view'), async (req, res) => {
@@ -635,7 +735,14 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
     );
 
     // 8️⃣ Log
-    await logEvento({ comprobanteId: id, accion: 'confirmado', origen: 'operador' });
+    await logEvento({
+      comprobanteId: id,
+      orderNumber: comprobante.order_number,
+      accion: 'comprobante_confirmado',
+      origen: 'operador',
+      userId: req.user?.id,
+      username: req.user?.name
+    });
 
     console.log(`✅ Comprobante ${id} confirmado`);
     if (nuevoEstadoPedido !== estadoPedidoActual) {
@@ -688,8 +795,11 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
     // Log
     await logEvento({
       comprobanteId: id,
-      accion: motivo ? `rechazado: ${motivo}` : 'rechazado',
-      origen: 'operador'
+      orderNumber: comprobante.order_number,
+      accion: motivo ? `comprobante_rechazado: ${motivo}` : 'comprobante_rechazado',
+      origen: 'operador',
+      userId: req.user?.id,
+      username: req.user?.name
     });
 
     console.log(`❌ Comprobante ${id} rechazado`);
@@ -1019,6 +1129,23 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
     );
 
     // Log del evento
+    const accionesEstado = {
+      'hoja_impresa': 'hoja_impresa',
+      'armado': 'pedido_armado',
+      'enviado': 'pedido_enviado',
+      'en_calle': 'pedido_en_calle',
+      'retirado': 'pedido_retirado'
+    };
+    const accionLog = accionesEstado[estado_pedido] || `estado_${estado_pedido}`;
+
+    await logEvento({
+      orderNumber,
+      accion: accionLog,
+      origen: 'logistica',
+      userId: req.user?.id,
+      username: req.user?.name
+    });
+
     console.log(`📦 Estado de pedido ${orderNumber} actualizado a: ${estado_pedido}`);
 
     // Obtener pedido actualizado
@@ -1932,6 +2059,15 @@ app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_p
        WHERE order_number = $5`,
       [totalPagado, saldo, estadoPago, nuevoEstadoPedido, orderNumber]
     );
+
+    // Log de actividad
+    await logEvento({
+      orderNumber,
+      accion: 'pago_efectivo_registrado',
+      origen: 'caja',
+      userId: req.user?.id,
+      username: req.user?.name
+    });
 
     console.log('✅ Pago en efectivo procesado');
     console.log('Total pagado:', totalPagado);

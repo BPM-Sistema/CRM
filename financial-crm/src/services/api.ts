@@ -804,3 +804,68 @@ export async function deleteUser(id: string): Promise<void> {
     throw new Error(data.error || 'Error al eliminar usuario');
   }
 }
+
+// ============================================
+// ACTIVITY LOG - Historial de actividad
+// ============================================
+
+export interface ActivityLog {
+  id: number;
+  comprobante_id: string | null;
+  order_number: string | null;
+  accion: string;
+  origen: string;
+  user_id: string | null;
+  username: string | null;
+  created_at: string;
+  user_name: string | null;
+  user_email: string | null;
+}
+
+export interface ActivityLogFilters {
+  user_id?: string;
+  accion?: string;
+  order_number?: string;
+  fecha_desde?: string;
+  fecha_hasta?: string;
+}
+
+export interface ActivityLogResponse {
+  logs: ActivityLog[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  filters: {
+    users: Array<{ user_id: string; username: string; name: string; email: string }>;
+    acciones: string[];
+  };
+}
+
+// Obtener historial de actividad
+export async function fetchActivityLog(
+  page: number = 1,
+  limit: number = 50,
+  filters: ActivityLogFilters = {}
+): Promise<ActivityLogResponse> {
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+  });
+
+  if (filters.user_id) params.append('user_id', filters.user_id);
+  if (filters.accion) params.append('accion', filters.accion);
+  if (filters.order_number) params.append('order_number', filters.order_number);
+  if (filters.fecha_desde) params.append('fecha_desde', filters.fecha_desde);
+  if (filters.fecha_hasta) params.append('fecha_hasta', filters.fecha_hasta);
+
+  const response = await authFetch(`${API_BASE_URL}/activity-log?${params.toString()}`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al obtener historial de actividad');
+  }
+
+  return data;
+}
