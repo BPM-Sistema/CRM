@@ -1434,28 +1434,29 @@ app.post('/webhook/tiendanube', async (req, res) => {
       const paymentStatusAnterior = db.tn_payment_status;
       const shippingStatusAnterior = db.tn_shipping_status;
 
-      // Detectar cambios
+      // Detectar cambios REALES (ignorar inicialización desde null)
       const cambios = [];
       if (montoAnterior !== montoNuevo) {
         cambios.push(`monto: $${montoAnterior} → $${montoNuevo}`);
       }
-      if (paymentStatusAnterior !== paymentStatusNuevo) {
+      // Solo contar como cambio si el valor anterior NO era null
+      if (paymentStatusAnterior && paymentStatusAnterior !== paymentStatusNuevo) {
         cambios.push(`payment: ${paymentStatusAnterior} → ${paymentStatusNuevo}`);
       }
-      if (shippingStatusAnterior !== shippingStatusNuevo) {
+      if (shippingStatusAnterior && shippingStatusAnterior !== shippingStatusNuevo) {
         cambios.push(`shipping: ${shippingStatusAnterior} → ${shippingStatusNuevo}`);
       }
 
-      // Si no hay cambios relevantes, ignorar silenciosamente
+      // Siempre actualizar la DB para llenar los nulls
+      await guardarPedidoCompleto(pedido);
+
+      // Si no hay cambios relevantes, no loguear
       if (cambios.length === 0) {
         return;
       }
 
-      // Hay cambios - procesar
+      // Hay cambios reales - loguear
       console.log(`📝 #${pedido.number} cambió: ${cambios.join(', ')}`);
-
-      // Actualizar pedido completo (datos + productos)
-      await guardarPedidoCompleto(pedido);
 
       // Si cambió el monto, recalcular saldo y estado_pago
       if (montoAnterior !== montoNuevo) {
