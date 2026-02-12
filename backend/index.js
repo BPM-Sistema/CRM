@@ -251,7 +251,7 @@ async function guardarPedidoCompleto(pedido) {
     pedido.note || null,
     pedido.owner_note || null,
     pedido.payment_status || null,
-    pedido.shipping_status || null,
+    pedido.shipping || null,  // El campo es "shipping", no "shipping_status"
     pedido.created_at || null
   ]);
 
@@ -1409,12 +1409,11 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
     // 4️⃣ Procesar según el evento
     if (event === 'order/updated') {
-      // 🔍 LOG DIAGNÓSTICO: Campos clave en UNA línea
-      console.log(`🔍 #${pedido.number} | total:${pedido.total} | payment:${pedido.payment_status} | shipping:${pedido.shipping} | updated:${pedido.updated_at}`);
-
       // Verificar si existe en nuestra DB
       const existente = await pool.query(
-        'SELECT order_number, monto_tiendanube, total_pagado, estado_pago FROM orders_validated WHERE order_number = $1',
+        `SELECT order_number, monto_tiendanube, total_pagado, estado_pago,
+                tn_payment_status, tn_shipping_status
+         FROM orders_validated WHERE order_number = $1`,
         [String(pedido.number)]
       );
 
@@ -1423,49 +1422,67 @@ app.post('/webhook/tiendanube', async (req, res) => {
         return;
       }
 
-      const montoAnterior = existente.rows[0].monto_tiendanube;
-      const estadoPagoAnterior = existente.rows[0].estado_pago;
+      const db = existente.rows[0];
+
+      // Valores nuevos de Tiendanube
       const montoNuevo = Math.round(Number(pedido.total));
+      const paymentStatusNuevo = pedido.payment_status || null;
+      const shippingStatusNuevo = pedido.shipping || null; // El campo es "shipping", no "shipping_status"
+
+      // Valores actuales en DB
+      const montoAnterior = Number(db.monto_tiendanube);
+      const paymentStatusAnterior = db.tn_payment_status;
+      const shippingStatusAnterior = db.tn_shipping_status;
+
+      // Detectar cambios
+      const cambios = [];
+      if (montoAnterior !== montoNuevo) {
+        cambios.push(`monto: $${montoAnterior} → $${montoNuevo}`);
+      }
+      if (paymentStatusAnterior !== paymentStatusNuevo) {
+        cambios.push(`payment: ${paymentStatusAnterior} → ${paymentStatusNuevo}`);
+      }
+      if (shippingStatusAnterior !== shippingStatusNuevo) {
+        cambios.push(`shipping: ${shippingStatusAnterior} → ${shippingStatusNuevo}`);
+      }
+
+      // Si no hay cambios relevantes, ignorar silenciosamente
+      if (cambios.length === 0) {
+        return;
+      }
+
+      // Hay cambios - procesar
+      console.log(`📝 #${pedido.number} cambió: ${cambios.join(', ')}`);
 
       // Actualizar pedido completo (datos + productos)
       await guardarPedidoCompleto(pedido);
 
-      // Recalcular saldo Y estado_pago
-      // Solo recalcular estado_pago si ya había pagos confirmados
-      await pool.query(`
-        UPDATE orders_validated
-        SET
-          saldo = monto_tiendanube - total_pagado,
-          estado_pago = CASE
-            WHEN estado_pago IN ('confirmado_total', 'confirmado_parcial', 'a_favor') THEN
-              CASE
-                WHEN monto_tiendanube - total_pagado <= 0 THEN 'confirmado_total'
-                WHEN total_pagado > 0 THEN 'confirmado_parcial'
-                ELSE 'pendiente'
-              END
-            ELSE estado_pago
-          END
-        WHERE order_number = $1
-      `, [String(pedido.number)]);
-
-      // Obtener el nuevo estado_pago para el log
-      const actualizado = await pool.query(
-        'SELECT estado_pago FROM orders_validated WHERE order_number = $1',
-        [String(pedido.number)]
-      );
-      const estadoPagoNuevo = actualizado.rows[0]?.estado_pago;
+      // Si cambió el monto, recalcular saldo y estado_pago
+      if (montoAnterior !== montoNuevo) {
+        await pool.query(`
+          UPDATE orders_validated
+          SET
+            saldo = monto_tiendanube - total_pagado,
+            estado_pago = CASE
+              WHEN estado_pago IN ('confirmado_total', 'confirmado_parcial', 'a_favor') THEN
+                CASE
+                  WHEN monto_tiendanube - total_pagado <= 0 THEN 'confirmado_total'
+                  WHEN total_pagado > 0 THEN 'confirmado_parcial'
+                  ELSE 'pendiente'
+                END
+              ELSE estado_pago
+            END
+          WHERE order_number = $1
+        `, [String(pedido.number)]);
+      }
 
       // Log del cambio
-      const cambioEstado = estadoPagoAnterior !== estadoPagoNuevo
-        ? `, estado_pago: ${estadoPagoAnterior} → ${estadoPagoNuevo}`
-        : '';
       await logEvento({
         orderNumber: String(pedido.number),
-        accion: `pedido_actualizado: monto $${montoAnterior} → $${montoNuevo}${cambioEstado}`,
+        accion: `pedido_actualizado: ${cambios.join(', ')}`,
         origen: 'webhook_tiendanube'
       });
 
-      console.log(`📝 Pedido #${pedido.number} actualizado (order/updated): monto $${montoAnterior} → $${montoNuevo}${cambioEstado}`);
       return;
     }
 
