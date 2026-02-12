@@ -1411,7 +1411,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
     if (event === 'order/updated') {
       // Verificar si existe en nuestra DB
       const existente = await pool.query(
-        'SELECT order_number, monto_tiendanube FROM orders_validated WHERE order_number = $1',
+        'SELECT order_number, monto_tiendanube, total_pagado, estado_pago FROM orders_validated WHERE order_number = $1',
         [String(pedido.number)]
       );
 
@@ -1421,26 +1421,48 @@ app.post('/webhook/tiendanube', async (req, res) => {
       }
 
       const montoAnterior = existente.rows[0].monto_tiendanube;
+      const estadoPagoAnterior = existente.rows[0].estado_pago;
       const montoNuevo = Math.round(Number(pedido.total));
 
       // Actualizar pedido completo (datos + productos)
       await guardarPedidoCompleto(pedido);
 
-      // Recalcular saldo
+      // Recalcular saldo Y estado_pago
+      // Solo recalcular estado_pago si ya había pagos confirmados
       await pool.query(`
         UPDATE orders_validated
-        SET saldo = monto_tiendanube - total_pagado
+        SET
+          saldo = monto_tiendanube - total_pagado,
+          estado_pago = CASE
+            WHEN estado_pago IN ('confirmado_total', 'confirmado_parcial', 'a_favor') THEN
+              CASE
+                WHEN monto_tiendanube - total_pagado <= 0 THEN 'confirmado_total'
+                WHEN total_pagado > 0 THEN 'confirmado_parcial'
+                ELSE 'pendiente'
+              END
+            ELSE estado_pago
+          END
         WHERE order_number = $1
       `, [String(pedido.number)]);
 
+      // Obtener el nuevo estado_pago para el log
+      const actualizado = await pool.query(
+        'SELECT estado_pago FROM orders_validated WHERE order_number = $1',
+        [String(pedido.number)]
+      );
+      const estadoPagoNuevo = actualizado.rows[0]?.estado_pago;
+
       // Log del cambio
+      const cambioEstado = estadoPagoAnterior !== estadoPagoNuevo
+        ? `, estado_pago: ${estadoPagoAnterior} → ${estadoPagoNuevo}`
+        : '';
       await logEvento({
         orderNumber: String(pedido.number),
-        accion: `pedido_actualizado: monto $${montoAnterior} → $${montoNuevo}`,
+        accion: `pedido_actualizado: monto $${montoAnterior} → $${montoNuevo}${cambioEstado}`,
         origen: 'webhook_tiendanube'
       });
 
-      console.log(`📝 Pedido #${pedido.number} actualizado (order/updated): monto $${montoAnterior} → $${montoNuevo}`);
+      console.log(`📝 Pedido #${pedido.number} actualizado (order/updated): monto $${montoAnterior} → $${montoNuevo}${cambioEstado}`);
       return;
     }
 
