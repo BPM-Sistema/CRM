@@ -154,6 +154,113 @@ async function obtenerPedidoPorId(storeId, orderId) {
   }
 }
 
+/* =====================================================
+   UTIL — GUARDAR PRODUCTOS DE UN PEDIDO EN DB
+===================================================== */
+async function guardarProductos(orderNumber, products) {
+  // Eliminar productos existentes (para updates)
+  await pool.query('DELETE FROM order_products WHERE order_number = $1', [orderNumber]);
+
+  if (!products || products.length === 0) return;
+
+  for (const p of products) {
+    await pool.query(`
+      INSERT INTO order_products (order_number, product_id, name, variant, quantity, price, sku)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `, [
+      orderNumber,
+      p.id || null,
+      p.name,
+      p.variant_values ? p.variant_values.join(' / ') : null,
+      p.quantity,
+      Number(p.price),
+      p.sku || null
+    ]);
+  }
+}
+
+/* =====================================================
+   UTIL — GUARDAR PEDIDO COMPLETO EN DB (UPSERT)
+===================================================== */
+async function guardarPedidoCompleto(pedido) {
+  const orderNumber = String(pedido.number);
+
+  // Estructurar shipping_address como JSON
+  const shippingAddress = pedido.shipping_address ? {
+    name: pedido.shipping_address.name,
+    address: pedido.shipping_address.address,
+    number: pedido.shipping_address.number,
+    floor: pedido.shipping_address.floor,
+    locality: pedido.shipping_address.locality,
+    city: pedido.shipping_address.city,
+    province: pedido.shipping_address.province,
+    zipcode: pedido.shipping_address.zipcode,
+    phone: pedido.shipping_address.phone,
+    between_streets: pedido.shipping_address.between_streets,
+    reference: pedido.shipping_address.reference,
+  } : null;
+
+  // Extraer datos del cliente
+  const customerName = pedido.customer?.name || pedido.contact_name || null;
+  const customerEmail = pedido.customer?.email || pedido.contact_email || null;
+  const customerPhone = pedido.contact_phone || pedido.customer?.phone ||
+                        pedido.shipping_address?.phone || pedido.customer?.default_address?.phone || null;
+
+  // Upsert en orders_validated con todos los datos
+  await pool.query(`
+    INSERT INTO orders_validated (
+      order_number, tn_order_id, monto_tiendanube, subtotal, discount, shipping_cost,
+      currency, customer_name, customer_email, customer_phone,
+      shipping_type, shipping_tracking, shipping_address,
+      note, owner_note, tn_payment_status, tn_shipping_status,
+      estado_pedido, tn_created_at, updated_at
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'pendiente_pago', $18, NOW())
+    ON CONFLICT (order_number) DO UPDATE SET
+      tn_order_id = COALESCE(EXCLUDED.tn_order_id, orders_validated.tn_order_id),
+      monto_tiendanube = EXCLUDED.monto_tiendanube,
+      subtotal = EXCLUDED.subtotal,
+      discount = EXCLUDED.discount,
+      shipping_cost = EXCLUDED.shipping_cost,
+      customer_name = COALESCE(EXCLUDED.customer_name, orders_validated.customer_name),
+      customer_email = COALESCE(EXCLUDED.customer_email, orders_validated.customer_email),
+      customer_phone = COALESCE(EXCLUDED.customer_phone, orders_validated.customer_phone),
+      shipping_type = EXCLUDED.shipping_type,
+      shipping_tracking = EXCLUDED.shipping_tracking,
+      shipping_address = EXCLUDED.shipping_address,
+      note = EXCLUDED.note,
+      owner_note = EXCLUDED.owner_note,
+      tn_payment_status = EXCLUDED.tn_payment_status,
+      tn_shipping_status = EXCLUDED.tn_shipping_status,
+      tn_created_at = COALESCE(orders_validated.tn_created_at, EXCLUDED.tn_created_at),
+      updated_at = NOW()
+  `, [
+    orderNumber,
+    pedido.id,
+    Math.round(Number(pedido.total)),
+    Number(pedido.subtotal) || 0,
+    Number(pedido.discount) || 0,
+    Number(pedido.shipping_cost_customer) || 0,
+    pedido.currency || 'ARS',
+    customerName,
+    customerEmail,
+    customerPhone,
+    pedido.shipping_option?.name || pedido.shipping || null,
+    pedido.shipping_tracking_number || null,
+    shippingAddress ? JSON.stringify(shippingAddress) : null,
+    pedido.note || null,
+    pedido.owner_note || null,
+    pedido.payment_status || null,
+    pedido.shipping_status || null,
+    pedido.created_at || null
+  ]);
+
+  // Guardar productos
+  await guardarProductos(orderNumber, pedido.products);
+
+  return orderNumber;
+}
+
 
 /* =====================================================
    UTIL — DETECTAR MONTO DESDE OCR (LÓGICA PROBADA)
@@ -908,107 +1015,117 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
 
 
 /* =====================================================
-   GET — DATOS PARA IMPRIMIR PEDIDO (DESDE TIENDANUBE)
+   GET — DATOS PARA IMPRIMIR PEDIDO (DESDE DB LOCAL)
 ===================================================== */
 app.get('/orders/:orderNumber/print', authenticate, requirePermission('orders.print'), async (req, res) => {
   try {
     const { orderNumber } = req.params;
-    const storeId = process.env.TIENDANUBE_STORE_ID;
 
     console.log(`🖨️ Obteniendo datos de impresión para pedido #${orderNumber}`);
 
-    // 1️⃣ Buscar el pedido en Tiendanube por número
-    const tnResponse = await axios.get(
-      `https://api.tiendanube.com/v1/${storeId}/orders`,
-      {
-        headers: {
-          authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
-          'User-Agent': 'bpm-validator'
-        },
-        params: { q: orderNumber }
-      }
-    );
+    // 1️⃣ Obtener pedido completo de la DB
+    const orderRes = await pool.query(`
+      SELECT
+        order_number,
+        monto_tiendanube,
+        subtotal,
+        discount,
+        shipping_cost,
+        currency,
+        customer_name,
+        customer_email,
+        customer_phone,
+        shipping_type,
+        shipping_tracking,
+        shipping_address,
+        note,
+        owner_note,
+        tn_payment_status,
+        tn_shipping_status,
+        tn_created_at,
+        estado_pago,
+        estado_pedido,
+        total_pagado,
+        saldo
+      FROM orders_validated
+      WHERE order_number = $1
+    `, [orderNumber]);
 
-    if (!tnResponse.data || tnResponse.data.length === 0) {
-      return res.status(404).json({ error: 'Pedido no encontrado en Tiendanube' });
+    if (orderRes.rowCount === 0) {
+      return res.status(404).json({ error: 'Pedido no encontrado' });
     }
 
-    const pedido = tnResponse.data[0];
+    const order = orderRes.rows[0];
 
-    // 2️⃣ Obtener datos de nuestra DB
-    const dbOrder = await pool.query(
-      `SELECT estado_pago, estado_pedido, total_pagado, saldo FROM orders_validated WHERE order_number = $1`,
-      [orderNumber]
-    );
+    // 2️⃣ Obtener productos de la DB
+    const productosRes = await pool.query(`
+      SELECT
+        product_id as id,
+        name,
+        variant,
+        quantity,
+        price,
+        price * quantity as total,
+        sku
+      FROM order_products
+      WHERE order_number = $1
+      ORDER BY name ASC
+    `, [orderNumber]);
 
-    // 3️⃣ Ordenar productos alfabéticamente por nombre
-    const productos = (pedido.products || [])
-      .map(p => ({
-        id: p.id,
-        name: p.name,
-        variant: p.variant_values ? p.variant_values.join(' / ') : null,
-        quantity: p.quantity,
-        price: Number(p.price),
-        total: Number(p.price) * p.quantity,
-        sku: p.sku || null,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    const productos = productosRes.rows.map(p => ({
+      ...p,
+      price: Number(p.price),
+      total: Number(p.total)
+    }));
 
-    // 4️⃣ Estructurar respuesta
+    // 3️⃣ Estructurar respuesta
     const printData = {
       // Info del pedido
-      order_number: pedido.number,
-      created_at: pedido.created_at,
-      payment_status: pedido.payment_status,
-      shipping_status: pedido.shipping_status,
+      order_number: order.order_number,
+      created_at: order.tn_created_at,
+      payment_status: order.tn_payment_status,
+      shipping_status: order.tn_shipping_status,
 
       // Cliente
       customer: {
-        name: pedido.customer?.name || pedido.contact_name || 'Sin nombre',
-        email: pedido.customer?.email || pedido.contact_email || null,
-        phone: pedido.contact_phone || pedido.customer?.phone || null,
-        identification: pedido.customer?.identification || null,
+        name: order.customer_name || 'Sin nombre',
+        email: order.customer_email || null,
+        phone: order.customer_phone || null,
+        identification: null,
       },
 
-      // Dirección de envío
-      shipping_address: pedido.shipping_address ? {
-        name: pedido.shipping_address.name,
-        address: pedido.shipping_address.address,
-        number: pedido.shipping_address.number,
-        floor: pedido.shipping_address.floor,
-        locality: pedido.shipping_address.locality,
-        city: pedido.shipping_address.city,
-        province: pedido.shipping_address.province,
-        zipcode: pedido.shipping_address.zipcode,
-        phone: pedido.shipping_address.phone,
-        between_streets: pedido.shipping_address.between_streets,
-        reference: pedido.shipping_address.reference,
-      } : null,
+      // Dirección de envío (viene como JSONB)
+      shipping_address: order.shipping_address || null,
 
       // Envío
       shipping: {
-        type: pedido.shipping_option?.name || pedido.shipping || 'No especificado',
-        cost: Number(pedido.shipping_cost_customer) || 0,
-        tracking_number: pedido.shipping_tracking_number || null,
+        type: order.shipping_type || 'No especificado',
+        cost: Number(order.shipping_cost) || 0,
+        tracking_number: order.shipping_tracking || null,
       },
 
-      // Productos (ordenados alfabéticamente)
+      // Productos (ya ordenados alfabéticamente)
       products: productos,
 
       // Totales
       totals: {
-        subtotal: Number(pedido.subtotal),
-        discount: Number(pedido.discount) || 0,
-        shipping: Number(pedido.shipping_cost_customer) || 0,
-        total: Number(pedido.total),
+        subtotal: Number(order.subtotal) || 0,
+        discount: Number(order.discount) || 0,
+        shipping: Number(order.shipping_cost) || 0,
+        total: Number(order.monto_tiendanube) || 0,
       },
 
       // Notas
-      note: pedido.note || null,
-      owner_note: pedido.owner_note || null,
+      note: order.note || null,
+      owner_note: order.owner_note || null,
 
-      // Estado interno (de nuestra DB)
-      internal: dbOrder.rows[0] || null,
+      // Estado interno
+      internal: {
+        estado_pago: order.estado_pago,
+        estado_pedido: order.estado_pedido,
+        total_pagado: order.total_pagado,
+        saldo: order.saldo
+      },
     };
 
     res.json({
@@ -1111,38 +1228,26 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
       ORDER BY created_at DESC
     `, [orderNumber]);
 
-    // Obtener productos de Tiendanube
-    let productos = [];
-    try {
-      const storeId = process.env.TIENDANUBE_STORE_ID;
-      const tnResponse = await axios.get(
-        `https://api.tiendanube.com/v1/${storeId}/orders`,
-        {
-          headers: {
-            authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
-            'User-Agent': 'bpm-validator'
-          },
-          params: { q: orderNumber }
-        }
-      );
+    // Obtener productos de la DB local
+    const productosRes = await pool.query(`
+      SELECT
+        product_id as id,
+        name,
+        variant,
+        quantity,
+        price,
+        price * quantity as total,
+        sku
+      FROM order_products
+      WHERE order_number = $1
+      ORDER BY name ASC
+    `, [orderNumber]);
 
-      if (tnResponse.data && tnResponse.data.length > 0) {
-        const pedido = tnResponse.data[0];
-        productos = (pedido.products || [])
-          .map(p => ({
-            id: p.id,
-            name: p.name,
-            variant: p.variant_values ? p.variant_values.join(' / ') : null,
-            quantity: p.quantity,
-            price: Number(p.price),
-            total: Number(p.price) * p.quantity,
-            sku: p.sku || null,
-          }))
-          .sort((a, b) => a.name.localeCompare(b.name, 'es'));
-      }
-    } catch (tnError) {
-      console.warn('⚠️ No se pudieron obtener productos de Tiendanube:', tnError.message);
-    }
+    const productos = productosRes.rows.map(p => ({
+      ...p,
+      price: Number(p.price),
+      total: Number(p.total)
+    }));
 
     res.json({
       ok: true,
@@ -1291,45 +1396,56 @@ app.post('/webhook/tiendanube', async (req, res) => {
   try {
     const { event, store_id, id: orderId } = req.body;
 
-    // Solo procesar order/created - todos los demás eventos se ignoran
-    // Los pagos se gestionan desde Petlove, no desde Tiendanube
-    if (event !== 'order/created') return;
+    // Solo procesar order/created y order/updated
+    if (event !== 'order/created' && event !== 'order/updated') return;
 
-    // 3️⃣ Buscar pedido REAL (como antes)
+    // 3️⃣ Buscar pedido en Tiendanube
     const pedido = await obtenerPedidoPorId(store_id, orderId);
 
     if (!pedido) {
-      console.log('❌ Pedido no encontrado');
+      console.log('❌ Pedido no encontrado en Tiendanube');
       return;
     }
 
-    // 4️⃣ Guardar pedido en orders_validated (UNA sola vez) con datos del cliente
-    const customerName = pedido.customer?.name || pedido.contact_name || null;
-    const customerEmail = pedido.customer?.email || pedido.contact_email || null;
-    const customerPhone = pedido.contact_phone || pedido.customer?.phone ||
-                          pedido.shipping_address?.phone || pedido.customer?.default_address?.phone || null;
+    // 4️⃣ Procesar según el evento
+    if (event === 'order/updated') {
+      // Verificar si existe en nuestra DB
+      const existente = await pool.query(
+        'SELECT order_number, monto_tiendanube FROM orders_validated WHERE order_number = $1',
+        [String(pedido.number)]
+      );
 
-    await pool.query(
-      `
-      INSERT INTO orders_validated (order_number, monto_tiendanube, currency, customer_name, customer_email, customer_phone, estado_pedido, tn_created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, 'pendiente_pago', $7)
-      ON CONFLICT (order_number) DO UPDATE SET
-        customer_name = COALESCE(orders_validated.customer_name, EXCLUDED.customer_name),
-        customer_email = COALESCE(orders_validated.customer_email, EXCLUDED.customer_email),
-        customer_phone = COALESCE(orders_validated.customer_phone, EXCLUDED.customer_phone),
-        tn_created_at = COALESCE(orders_validated.tn_created_at, EXCLUDED.tn_created_at)
-      `,
-      [
-        pedido.number,
-        Math.round(Number(pedido.total)),
-        pedido.currency || 'ARS',
-        customerName,
-        customerEmail,
-        customerPhone,
-        pedido.created_at || null
-      ]
-    );
+      if (existente.rowCount === 0) {
+        console.log(`⚠️ order/updated para pedido #${pedido.number} que no existe en DB, ignorando`);
+        return;
+      }
 
+      const montoAnterior = existente.rows[0].monto_tiendanube;
+      const montoNuevo = Math.round(Number(pedido.total));
+
+      // Actualizar pedido completo (datos + productos)
+      await guardarPedidoCompleto(pedido);
+
+      // Recalcular saldo
+      await pool.query(`
+        UPDATE orders_validated
+        SET saldo = monto_tiendanube - total_pagado
+        WHERE order_number = $1
+      `, [String(pedido.number)]);
+
+      // Log del cambio
+      await logEvento({
+        orderNumber: String(pedido.number),
+        accion: `pedido_actualizado: monto $${montoAnterior} → $${montoNuevo}`,
+        origen: 'webhook_tiendanube'
+      });
+
+      console.log(`📝 Pedido #${pedido.number} actualizado (order/updated): monto $${montoAnterior} → $${montoNuevo}`);
+      return;
+    }
+
+    // order/created: Guardar pedido completo (datos + productos)
+    await guardarPedidoCompleto(pedido);
     console.log(`✅ Pedido #${pedido.number} guardado en DB (order/created)`);
 
     // 5️⃣ Teléfono
