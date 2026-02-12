@@ -1409,15 +1409,9 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
     // 4️⃣ Procesar según el evento
     if (event === 'order/updated') {
-      // 🔍 LOG DIAGNÓSTICO: Ver qué envía Tiendanube
-      console.log(`🔍 order/updated #${pedido.number}:`, JSON.stringify({
-        total: pedido.total,
-        payment_status: pedido.payment_status,
-        shipping_status: pedido.shipping_status,
-        fulfillment_status: pedido.fulfillment_status,
-        status: pedido.status,
-        updated_at: pedido.updated_at
-      }, null, 2));
+      // 🔍 LOG DIAGNÓSTICO: Ver TODO lo que envía Tiendanube
+      console.log(`🔍 order/updated #${pedido.number} - PAYLOAD COMPLETO:`);
+      console.log(JSON.stringify(pedido, null, 2));
 
       // Verificar si existe en nuestra DB
       const existente = await pool.query(
