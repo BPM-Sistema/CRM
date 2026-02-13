@@ -1434,6 +1434,42 @@ app.post('/webhook/tiendanube', async (req, res) => {
       const paymentStatusAnterior = db.tn_payment_status;
       const shippingStatusAnterior = db.tn_shipping_status;
 
+      // ========== DIAGNÓSTICO: COMPARACIÓN DE PRODUCTOS ==========
+      // Obtener productos ANTES de actualizar
+      const productosDB = await pool.query(
+        `SELECT product_id, name, quantity FROM order_products WHERE order_number = $1`,
+        [String(pedido.number)]
+      );
+
+      console.log(`\n🔍 DIAGNÓSTICO #${pedido.number} ==================`);
+      console.log(`\n📦 OLD (DB order_products):`);
+      for (const p of productosDB.rows) {
+        console.log(`  - product_id: ${p.product_id} | name: "${p.name}" | qty: ${p.quantity}`);
+      }
+
+      console.log(`\n📦 NEW (Tiendanube payload):`);
+      for (const p of pedido.products || []) {
+        console.log(`  - id: ${p.id} | product_id: ${p.product_id} | variant_id: ${p.variant_id} | name: "${p.name}" | qty: ${p.quantity}`);
+      }
+
+      // Mostrar qué keys se usarían en el diff
+      const oldKeys = productosDB.rows.map(p => String(p.product_id));
+      const newKeysById = (pedido.products || []).map(p => String(p.id));
+      const newKeysByProductId = (pedido.products || []).map(p => String(p.product_id));
+
+      console.log(`\n🔑 KEYS:`);
+      console.log(`  OLD (DB.product_id):     [${oldKeys.join(', ')}]`);
+      console.log(`  NEW (payload.id):        [${newKeysById.join(', ')}]`);
+      console.log(`  NEW (payload.product_id): [${newKeysByProductId.join(', ')}]`);
+
+      // Mostrar coincidencias
+      const matchWithId = oldKeys.filter(k => newKeysById.includes(k));
+      const matchWithProductId = oldKeys.filter(k => newKeysByProductId.includes(k));
+      console.log(`\n✅ Coincidencias OLD vs NEW.id:         [${matchWithId.join(', ')}] (${matchWithId.length}/${oldKeys.length})`);
+      console.log(`✅ Coincidencias OLD vs NEW.product_id: [${matchWithProductId.join(', ')}] (${matchWithProductId.length}/${oldKeys.length})`);
+      console.log(`==========================================\n`);
+      // ========== FIN DIAGNÓSTICO ==========
+
       // Detectar cambios REALES (ignorar inicialización desde null)
       const cambios = [];
       if (montoAnterior !== montoNuevo) {
