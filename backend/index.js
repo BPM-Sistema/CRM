@@ -460,123 +460,107 @@ function extractDestinationAccount(textoOcr) {
     'para', 'cuenta destino', 'transferiste a', 'enviaste a', 'le enviaste'
   ];
 
-  // Keywords que indican FIN de sección destino
+  // Keywords que indican FIN de sección destino (NO incluir cuit porque viene después del nombre)
   const finSeccionKeywords = [
     'origen', 'desde', 'remitente', 'ordenante', 'monto', 'importe',
-    'fecha', 'concepto', 'motivo', 'cuit', 'banco'
+    'fecha', 'concepto', 'motivo', 'banco'
   ];
 
   // 1) BUSCAR POR SECCIONES
+  let enSeccionDestino = false;
+  let lineasDesdeDestino = 0;
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineLower = line.toLowerCase();
 
-    // Detectar keyword de destino
+    // Detectar INICIO de sección destino
     const isDestinoLine = destinoKeywords.some(k => lineLower.includes(k));
+    // Detectar INICIO de sección origen (para ignorar sus datos)
+    const isOrigenLine = finSeccionKeywords.some(k => lineLower.includes(k));
+
+    if (isOrigenLine && enSeccionDestino) {
+      console.log(`🚫 Fin sección destino en línea ${i}: "${line}"`);
+      enSeccionDestino = false;
+    }
 
     if (isDestinoLine) {
+      console.log(`✅ Inicio sección destino en línea ${i}: "${line}"`);
+      enSeccionDestino = true;
+      lineasDesdeDestino = 0;
+
       // Buscar valor en misma línea después de ":"
       const colonIndex = line.indexOf(':');
       if (colonIndex !== -1) {
         const valor = line.substring(colonIndex + 1).trim();
         if (valor.length > 3 && !titular) {
+          console.log(`📝 Titular en misma línea: "${valor}"`);
           titular = valor;
         }
       }
+      continue;
+    }
 
-      // Buscar en líneas siguientes (lookahead 1-3 líneas)
-      for (let j = 1; j <= 3 && i + j < lines.length; j++) {
-        const nextLine = lines[i + j];
-        const nextLower = nextLine.toLowerCase();
+    // Si estamos en sección destino, buscar datos (hasta 6 líneas)
+    if (enSeccionDestino && lineasDesdeDestino < 6) {
+      lineasDesdeDestino++;
+      console.log(`  → Línea destino ${lineasDesdeDestino}: "${line}"`);
 
-        // Parar si encontramos otra sección
-        if (finSeccionKeywords.some(k => nextLower.includes(k))) break;
-        if (destinoKeywords.some(k => nextLower === k)) break;
-
-        // Si es un nombre (mayúsculas, 2+ palabras, sin números)
-        if (!titular && /^[A-ZÁÉÍÓÚÑ\s]{5,50}$/.test(nextLine) && nextLine.includes(' ')) {
-          titular = nextLine;
+      // Si es un nombre (letras y espacios, 2+ palabras) - MÁS FLEXIBLE
+      if (!titular) {
+        // Aceptar mayúsculas, minúsculas, tildes, y que tenga al menos 2 palabras
+        const esNombre = /^[A-Za-zÁÉÍÓÚÑáéíóúñ\s]{5,60}$/.test(line) &&
+                         line.trim().split(/\s+/).length >= 2 &&
+                         !lineLower.includes('cbu') &&
+                         !lineLower.includes('cvu') &&
+                         !lineLower.includes('alias');
+        if (esNombre) {
+          console.log(`📝 Titular detectado: "${line}"`);
+          titular = line;
         }
+      }
 
-        // Si es alias (palabra.palabra.palabra)
-        const aliasMatch = nextLine.match(/([a-zA-Z0-9]+\.[a-zA-Z0-9]+\.[a-zA-Z0-9]+)/);
-        if (aliasMatch && !alias) {
-          alias = aliasMatch[1].toUpperCase();
-        }
+      // Si es alias (palabra.palabra.palabra)
+      const aliasMatch = line.match(/([a-zA-Z0-9]+\.[a-zA-Z0-9]+\.[a-zA-Z0-9]+)/);
+      if (aliasMatch && !alias) {
+        console.log(`📝 Alias detectado: "${aliasMatch[1]}"`);
+        alias = aliasMatch[1].toUpperCase();
+      }
 
-        // Si es CBU/CVU (22 dígitos)
-        const cbuMatch = nextLine.match(/(\d{22})/);
-        if (cbuMatch && !cbu && !cvu) {
-          if (cbuMatch[1].startsWith('000')) cvu = cbuMatch[1];
-          else cbu = cbuMatch[1];
-        }
+      // Si es CBU/CVU (22 dígitos) - SOLO en sección destino
+      const cbuMatch = line.match(/(\d{22})/);
+      if (cbuMatch && !cbu && !cvu) {
+        console.log(`📝 CBU/CVU detectado en sección destino: "${cbuMatch[1]}"`);
+        if (cbuMatch[1].startsWith('000')) cvu = cbuMatch[1];
+        else cbu = cbuMatch[1];
+      }
+
+      // CBU/CVU con espacios o separadores
+      const cbuSeparado = line.replace(/[\s\-\.]/g, '');
+      if (cbuSeparado.length === 22 && /^\d+$/.test(cbuSeparado) && !cbu && !cvu) {
+        console.log(`📝 CBU/CVU (separado) detectado: "${cbuSeparado}"`);
+        if (cbuSeparado.startsWith('000')) cvu = cbuSeparado;
+        else cbu = cbuSeparado;
       }
     }
   }
 
-  // 2) FALLBACK GLOBAL - buscar en todo el texto
+  // 2) FALLBACK GLOBAL - buscar en todo el texto (SOLO si no encontramos en sección destino)
   const textoCompleto = texto;
 
-  // Alias en cualquier parte
+  // Alias en cualquier parte (si no lo encontramos en sección destino)
   if (!alias) {
     const aliasMatches = textoCompleto.match(/[a-zA-Z0-9]+\.[a-zA-Z0-9]+\.[a-zA-Z0-9]+/g);
     if (aliasMatches) {
+      console.log(`🔍 Alias por fallback global: "${aliasMatches[0]}"`);
       alias = aliasMatches[0].toUpperCase();
     }
   }
 
-  // CBU/CVU - Detección robusta
+  // CBU/CVU - NO buscar en fallback global porque podría tomar el ORIGEN
+  // Solo loguear las secuencias encontradas para debug
   if (!cbu && !cvu) {
-    const textoLower = textoCompleto.toLowerCase();
-
-    // 1) Buscar por keyword "CBU" o "CVU" y tomar dígitos cercanos
-    const cbuKeywordMatch = textoLower.match(/cbu[:\s]*(\d[\d\s\-\.]{18,25}\d)/i);
-    const cvuKeywordMatch = textoLower.match(/cvu[:\s]*(\d[\d\s\-\.]{18,25}\d)/i);
-
-    if (cbuKeywordMatch) {
-      const cleaned = cbuKeywordMatch[1].replace(/\D/g, '');
-      console.log(`🔍 CBU por keyword: "${cbuKeywordMatch[1]}" → ${cleaned} (${cleaned.length} dígitos)`);
-      if (cleaned.length === 22) cbu = cleaned;
-    }
-    if (cvuKeywordMatch) {
-      const cleaned = cvuKeywordMatch[1].replace(/\D/g, '');
-      console.log(`🔍 CVU por keyword: "${cvuKeywordMatch[1]}" → ${cleaned} (${cleaned.length} dígitos)`);
-      if (cleaned.length === 22) cvu = cleaned;
-    }
-
-    // 2) Fallback: buscar 22 dígitos exactos (sin espacios)
-    if (!cbu && !cvu) {
-      const exactMatch = textoCompleto.match(/\d{22}/g);
-      if (exactMatch) {
-        for (const num of exactMatch) {
-          console.log(`🔍 CBU/CVU exacto encontrado: ${num}`);
-          if (num.startsWith('000')) cvu = num;
-          else cbu = num;
-          break;
-        }
-      }
-    }
-
-    // 3) Fallback: buscar secuencias largas y normalizar
-    if (!cbu && !cvu) {
-      // Buscar cualquier secuencia que pueda ser CBU/CVU (con espacios/guiones)
-      const sequences = textoCompleto.match(/\d[\d\s\-\.]{18,28}\d/g) || [];
-      for (const seq of sequences) {
-        const cleaned = seq.replace(/\D/g, '');
-        // Debe ser exactamente 22 dígitos y NO ser CUIT (11 dígitos repetido)
-        if (cleaned.length === 22) {
-          console.log(`🔍 CBU/CVU por secuencia: "${seq}" → ${cleaned}`);
-          if (cleaned.startsWith('000')) cvu = cleaned;
-          else cbu = cleaned;
-          break;
-        }
-      }
-    }
-
-    // Log final
-    if (!cbu && !cvu) {
-      console.log('⚠️ No se encontró CBU/CVU en el OCR');
-    }
+    console.log('⚠️ No se encontró CBU/CVU en sección destino (no se busca en texto completo para evitar tomar el origen)');
   }
 
   // Nombres en mayúsculas (posibles titulares)
