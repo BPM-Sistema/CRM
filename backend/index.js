@@ -447,6 +447,13 @@ function extractDestinationAccount(textoOcr) {
   let titular = null;
   const nombres = []; // Guardar todos los posibles nombres encontrados
 
+  // DEBUG: Buscar secuencias numéricas largas en el OCR
+  const digitSequences = texto.match(/\d[\d\s\-\.]{15,30}\d/g) || [];
+  console.log('🔢 Secuencias numéricas encontradas:', digitSequences.map(s => {
+    const clean = s.replace(/\D/g, '');
+    return `"${s}" → ${clean} (${clean.length} dígitos)`;
+  }));
+
   // Keywords que indican sección destino (case insensitive, sin depender de ":")
   const destinoKeywords = [
     'destinatario', 'destino', 'beneficiario', 'receptor', 'titular',
@@ -518,15 +525,57 @@ function extractDestinationAccount(textoOcr) {
     }
   }
 
-  // CBU/CVU en cualquier parte
+  // CBU/CVU - Detección robusta
   if (!cbu && !cvu) {
-    const cbuMatches = textoCompleto.match(/\d{22}/g);
-    if (cbuMatches) {
-      for (const num of cbuMatches) {
-        if (num.startsWith('000')) cvu = num;
-        else cbu = num;
-        break;
+    const textoLower = textoCompleto.toLowerCase();
+
+    // 1) Buscar por keyword "CBU" o "CVU" y tomar dígitos cercanos
+    const cbuKeywordMatch = textoLower.match(/cbu[:\s]*(\d[\d\s\-\.]{18,25}\d)/i);
+    const cvuKeywordMatch = textoLower.match(/cvu[:\s]*(\d[\d\s\-\.]{18,25}\d)/i);
+
+    if (cbuKeywordMatch) {
+      const cleaned = cbuKeywordMatch[1].replace(/\D/g, '');
+      console.log(`🔍 CBU por keyword: "${cbuKeywordMatch[1]}" → ${cleaned} (${cleaned.length} dígitos)`);
+      if (cleaned.length === 22) cbu = cleaned;
+    }
+    if (cvuKeywordMatch) {
+      const cleaned = cvuKeywordMatch[1].replace(/\D/g, '');
+      console.log(`🔍 CVU por keyword: "${cvuKeywordMatch[1]}" → ${cleaned} (${cleaned.length} dígitos)`);
+      if (cleaned.length === 22) cvu = cleaned;
+    }
+
+    // 2) Fallback: buscar 22 dígitos exactos (sin espacios)
+    if (!cbu && !cvu) {
+      const exactMatch = textoCompleto.match(/\d{22}/g);
+      if (exactMatch) {
+        for (const num of exactMatch) {
+          console.log(`🔍 CBU/CVU exacto encontrado: ${num}`);
+          if (num.startsWith('000')) cvu = num;
+          else cbu = num;
+          break;
+        }
       }
+    }
+
+    // 3) Fallback: buscar secuencias largas y normalizar
+    if (!cbu && !cvu) {
+      // Buscar cualquier secuencia que pueda ser CBU/CVU (con espacios/guiones)
+      const sequences = textoCompleto.match(/\d[\d\s\-\.]{18,28}\d/g) || [];
+      for (const seq of sequences) {
+        const cleaned = seq.replace(/\D/g, '');
+        // Debe ser exactamente 22 dígitos y NO ser CUIT (11 dígitos repetido)
+        if (cleaned.length === 22) {
+          console.log(`🔍 CBU/CVU por secuencia: "${seq}" → ${cleaned}`);
+          if (cleaned.startsWith('000')) cvu = cleaned;
+          else cbu = cleaned;
+          break;
+        }
+      }
+    }
+
+    // Log final
+    if (!cbu && !cvu) {
+      console.log('⚠️ No se encontró CBU/CVU en el OCR');
     }
   }
 
