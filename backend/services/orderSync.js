@@ -331,11 +331,145 @@ async function runSyncJob() {
   }
 }
 
+/**
+ * DIAGNÓSTICO: Probar endpoint de Tiendanube con diferentes parámetros
+ * NO usar en producción - solo para testing manual
+ */
+async function testTiendanubeOrdersEndpoint() {
+  const perPageOptions = [10, 25, 50, 100];
+  const timeWindowsHours = [1, 6, 12, 24];
+
+  const results = [];
+
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('🔬 DIAGNÓSTICO: Testing Tiendanube /orders endpoint');
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log(`Store ID: ${TIENDANUBE_STORE_ID}`);
+  console.log(`Token (primeros 10 chars): ${TIENDANUBE_ACCESS_TOKEN?.substring(0, 10)}...`);
+  console.log('═══════════════════════════════════════════════════════════════\n');
+
+  for (const hours of timeWindowsHours) {
+    for (const perPage of perPageOptions) {
+      const testId = `${hours}h_${perPage}pp`;
+      const createdAtMin = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+
+      console.log(`\n─── Test: ${testId} ───`);
+      console.log(`per_page: ${perPage}`);
+      console.log(`ventana: ${hours} horas`);
+      console.log(`created_at_min: ${createdAtMin}`);
+
+      const startTime = Date.now();
+
+      try {
+        const response = await axios.get(
+          `https://api.tiendanube.com/v1/${TIENDANUBE_STORE_ID}/orders`,
+          {
+            headers: {
+              authentication: `bearer ${TIENDANUBE_ACCESS_TOKEN}`,
+              'User-Agent': 'bpm-validator'
+            },
+            params: {
+              per_page: perPage,
+              created_at_min: createdAtMin
+            },
+            timeout: 15000
+          }
+        );
+
+        const duration = Date.now() - startTime;
+        const payloadSize = JSON.stringify(response.data).length;
+        const orderCount = Array.isArray(response.data) ? response.data.length : 0;
+
+        console.log(`✅ STATUS: ${response.status}`);
+        console.log(`⏱️  DURACIÓN: ${duration}ms`);
+        console.log(`📦 PEDIDOS: ${orderCount}`);
+        console.log(`📏 PAYLOAD SIZE: ${payloadSize} bytes`);
+
+        results.push({
+          testId,
+          perPage,
+          hours,
+          status: response.status,
+          duration,
+          orderCount,
+          payloadSize,
+          error: null
+        });
+
+      } catch (error) {
+        const duration = Date.now() - startTime;
+
+        console.log(`❌ ERROR`);
+        console.log(`⏱️  DURACIÓN HASTA FALLO: ${duration}ms`);
+        console.log(`📛 MESSAGE: ${error.message}`);
+        console.log(`🔢 CODE: ${error.code || 'N/A'}`);
+        console.log(`📡 RESPONSE STATUS: ${error.response?.status || 'N/A'}`);
+        console.log(`📄 RESPONSE DATA: ${JSON.stringify(error.response?.data) || 'N/A'}`);
+        console.log(`📋 RESPONSE HEADERS: ${JSON.stringify(error.response?.headers) || 'N/A'}`);
+
+        results.push({
+          testId,
+          perPage,
+          hours,
+          status: error.response?.status || null,
+          duration,
+          orderCount: null,
+          payloadSize: null,
+          error: {
+            message: error.message,
+            code: error.code,
+            responseStatus: error.response?.status,
+            responseData: error.response?.data
+          }
+        });
+      }
+
+      // Pausa de 2 segundos entre requests para no saturar
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+
+  // Resumen final
+  console.log('\n═══════════════════════════════════════════════════════════════');
+  console.log('📊 RESUMEN DE RESULTADOS');
+  console.log('═══════════════════════════════════════════════════════════════\n');
+
+  const successful = results.filter(r => !r.error);
+  const failed = results.filter(r => r.error);
+
+  console.log(`Total tests: ${results.length}`);
+  console.log(`Exitosos: ${successful.length}`);
+  console.log(`Fallidos: ${failed.length}`);
+
+  if (successful.length > 0) {
+    console.log('\n✅ EXITOSOS:');
+    console.log('─────────────────────────────────────────────────────────────');
+    console.log('TEST         | STATUS | DURATION | ORDERS | PAYLOAD');
+    console.log('─────────────────────────────────────────────────────────────');
+    for (const r of successful) {
+      console.log(`${r.testId.padEnd(12)} | ${r.status}    | ${String(r.duration).padStart(6)}ms | ${String(r.orderCount).padStart(6)} | ${r.payloadSize} bytes`);
+    }
+  }
+
+  if (failed.length > 0) {
+    console.log('\n❌ FALLIDOS:');
+    console.log('─────────────────────────────────────────────────────────────');
+    for (const r of failed) {
+      console.log(`${r.testId}: ${r.error.responseStatus || r.error.code} - ${r.error.message} (${r.duration}ms)`);
+    }
+  }
+
+  console.log('\n═══════════════════════════════════════════════════════════════');
+
+  return results;
+}
+
 module.exports = {
   pollForMissingOrders,
   processQueue,
   runWorker,
   runSyncJob,
   fetchOrderFromTiendaNube,
-  fetchRecentOrders
+  fetchRecentOrders,
+  testTiendanubeOrdersEndpoint
 };

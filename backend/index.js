@@ -2437,15 +2437,129 @@ app.get('/sync/status', authenticate, async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// SYNC LOCK: Estado en memoria para evitar ejecución paralela
+// ═══════════════════════════════════════════════════════════════
+let syncRunning = false;
+let syncRunId = 0;
+let syncQueued = false;
+let syncQueuedSource = null;
+let lastStartAt = null;
+let lastEndAt = null;
+let lastSource = null;
+let lastError = null;
+let lastResult = null;
+
+/**
+ * Wrapper único para ejecutar sync desde cualquier punto de entrada
+ * Garantiza máximo 1 sync corriendo a la vez
+ * Si llega otro mientras corre, queda encolado (1 solo)
+ */
+async function triggerSync(source) {
+  const timestamp = new Date().toISOString();
+
+  // Si ya está corriendo, encolar y salir
+  if (syncRunning) {
+    syncQueued = true;
+    syncQueuedSource = source;
+    console.log(`[SYNC] ${timestamp} | SKIP | source=${source} | reason=already_running | runId=${syncRunId} | queued=true`);
+    return { status: 'queued', runId: syncRunId, message: 'Sync already running, queued for next run' };
+  }
+
+  // Ejecutar sync
+  syncRunning = true;
+  syncQueued = false;
+  syncQueuedSource = null;
+  const currentRunId = ++syncRunId;
+  const startTime = Date.now();
+  lastStartAt = timestamp;
+  lastSource = source;
+  lastError = null;
+  lastResult = null;
+
+  console.log(`[SYNC] ${timestamp} | START | runId=${currentRunId} | source=${source}`);
+
+  try {
+    const result = await runSyncJob();
+    lastResult = result;
+    return { status: 'completed', runId: currentRunId, result };
+
+  } catch (error) {
+    lastError = error.message;
+    console.error(`[SYNC] ERROR | runId=${currentRunId} | source=${source} | error=${error.message}`);
+    throw error;
+
+  } finally {
+    const duration = Date.now() - startTime;
+    lastEndAt = new Date().toISOString();
+    syncRunning = false;
+
+    console.log(`[SYNC] ${lastEndAt} | END | runId=${currentRunId} | source=${source} | duration=${duration}ms`);
+
+    // Si hay queued, ejecutar UNA vez más
+    if (syncQueued) {
+      const queuedSource = syncQueuedSource || 'queued';
+      syncQueued = false;
+      syncQueuedSource = null;
+      console.log(`[SYNC] ${new Date().toISOString()} | QUEUED_RERUN | originalSource=${queuedSource}`);
+
+      // Ejecutar de forma asíncrona para no bloquear el finally
+      setImmediate(() => {
+        triggerSync(`queued-from-${queuedSource}`).catch(err => {
+          console.error(`[SYNC] QUEUED_RERUN ERROR | error=${err.message}`);
+        });
+      });
+    }
+  }
+}
+
+/**
+ * Obtener estado actual del sync (para debugging/monitoring)
+ */
+function getSyncStatus() {
+  return {
+    running: syncRunning,
+    runId: syncRunId,
+    queued: syncQueued,
+    queuedSource: syncQueuedSource,
+    lastStartAt,
+    lastEndAt,
+    lastSource,
+    lastError,
+    lastResult
+  };
+}
+// ═══════════════════════════════════════════════════════════════
+
 // Ejecutar sincronización manual
 app.post('/sync/run', authenticate, requirePermission('users.view'), async (req, res) => {
+  const source = `manual-${req.user.email}`;
+  console.log(`🔄 Sincronización manual solicitada por: ${req.user.email}`);
+
   try {
-    console.log('🔄 Sincronización manual iniciada por:', req.user.email);
-    const result = await runSyncJob();
-    res.json({ ok: true, result });
+    const result = await triggerSync(source);
+
+    if (result.status === 'queued') {
+      // Ya hay uno corriendo, este quedó encolado
+      return res.status(202).json({
+        ok: true,
+        status: 'queued',
+        message: 'Sync en curso, tu request quedó encolada',
+        currentRunId: result.runId
+      });
+    }
+
+    // Completado exitosamente
+    res.json({ ok: true, status: 'completed', result: result.result });
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// Endpoint para ver estado del sync (debugging)
+app.get('/sync/lock-status', authenticate, (req, res) => {
+  res.json({ ok: true, ...getSyncStatus() });
 });
 
 // Scheduler: ejecutar sync cada 5 minutos
@@ -2457,22 +2571,18 @@ function startSyncScheduler() {
 
   console.log('⏰ Scheduler de sincronización iniciado (cada 5 min)');
 
-  // Primera ejecución después de 30 segundos (dar tiempo a que arranque todo)
-  setTimeout(async () => {
-    try {
-      await runSyncJob();
-    } catch (err) {
+  // Primera ejecución después de 30 segundos
+  setTimeout(() => {
+    triggerSync('startup-30s').catch(err => {
       console.error('❌ Error en sync inicial:', err.message);
-    }
+    });
   }, 30000);
 
   // Luego cada 5 minutos
-  syncInterval = setInterval(async () => {
-    try {
-      await runSyncJob();
-    } catch (err) {
+  syncInterval = setInterval(() => {
+    triggerSync('interval-5min').catch(err => {
       console.error('❌ Error en sync programado:', err.message);
-    }
+    });
   }, SYNC_INTERVAL);
 }
 
