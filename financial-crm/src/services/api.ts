@@ -901,3 +901,139 @@ export async function fetchActivityLog(
 
   return data;
 }
+
+// ============================================
+// FINANCIERAS - Gestión de entidades financieras
+// ============================================
+
+export interface Financiera {
+  id: number;
+  nombre: string;
+  titular_principal: string | null;
+  celular: string | null;
+  palabras_clave: string[];
+  activa: boolean;
+  created_at: string;
+  cbu: string | null;
+  porcentaje: number | null;
+  alias: string | null;
+  is_default: boolean;
+}
+
+// Listar financieras
+export async function fetchFinancieras(): Promise<Financiera[]> {
+  const response = await authFetch(`${API_BASE_URL}/financieras`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al obtener financieras');
+  }
+
+  return data.financieras;
+}
+
+// Obtener una financiera
+export async function fetchFinanciera(id: number): Promise<Financiera> {
+  const response = await authFetch(`${API_BASE_URL}/financieras/${id}`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al obtener financiera');
+  }
+
+  return data.financiera;
+}
+
+// Crear financiera
+export async function createFinanciera(financieraData: {
+  nombre: string;
+  titular_principal?: string;
+  celular?: string;
+  palabras_clave?: string[];
+  cbu?: string;
+  porcentaje?: number;
+  alias?: string;
+}): Promise<Financiera> {
+  const response = await authFetch(`${API_BASE_URL}/financieras`, {
+    method: 'POST',
+    body: JSON.stringify(financieraData),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al crear financiera');
+  }
+
+  return data.financiera;
+}
+
+// Actualizar financiera
+export async function updateFinanciera(id: number, financieraData: {
+  nombre: string;
+  titular_principal?: string;
+  celular?: string;
+  palabras_clave?: string[];
+  cbu?: string;
+  porcentaje?: number;
+  alias?: string;
+}): Promise<Financiera> {
+  const response = await authFetch(`${API_BASE_URL}/financieras/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(financieraData),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al actualizar financiera');
+  }
+
+  return data.financiera;
+}
+
+// Eliminar financiera
+export async function deleteFinanciera(id: number): Promise<void> {
+  const response = await authFetch(`${API_BASE_URL}/financieras/${id}`, {
+    method: 'DELETE',
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al eliminar financiera');
+  }
+}
+
+// Activar/desactivar financiera
+export async function toggleFinancieraActiva(id: number, activa: boolean): Promise<Financiera> {
+  const response = await authFetch(`${API_BASE_URL}/financieras/${id}/activar`, {
+    method: 'PATCH',
+    body: JSON.stringify({ activa }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al cambiar estado de financiera');
+  }
+
+  return data.financiera;
+}
+
+// Marcar financiera como default
+export async function setFinancieraDefault(id: number): Promise<Financiera> {
+  const response = await authFetch(`${API_BASE_URL}/financieras/${id}/default`, {
+    method: 'PATCH',
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al marcar financiera como predeterminada');
+  }
+
+  return data.financiera;
+}

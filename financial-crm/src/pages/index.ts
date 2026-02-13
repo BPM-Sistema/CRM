@@ -6,3 +6,4 @@ export { RealReceiptDetail } from './RealReceiptDetail';
 export { Analytics } from './Analytics';
 export { Settings } from './Settings';
 export { AdminUsers } from './AdminUsers';
+export { Financieras } from './Financieras';

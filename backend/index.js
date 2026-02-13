@@ -2730,10 +2730,12 @@ app.get('/pagos/:orderNumber', authenticate, requirePermission('orders.view'), a
 const authRoutes = require('./routes/auth');
 const usersRoutes = require('./routes/users');
 const rolesRoutes = require('./routes/roles');
+const financierasRoutes = require('./routes/financieras');
 
 app.use('/auth', authRoutes);
 app.use('/users', usersRoutes);
 app.use('/roles', rolesRoutes);
+app.use('/financieras', financierasRoutes);
 
 /* =====================================================
    SYNC QUEUE - Endpoints y Scheduler

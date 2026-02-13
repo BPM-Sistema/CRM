@@ -16,6 +16,7 @@ import {
   Receipt,
   Trash2,
   Activity,
+  Landmark,
 } from 'lucide-react';
 import {
   fetchUsers,
@@ -62,6 +63,11 @@ const PERMISSION_LABELS: Record<string, string> = {
   'users.disable': 'Desactivar usuario',
   'users.assign_role': 'Gestionar permisos',
   'activity.view': 'Ver historial de actividad',
+  'financieras.view': 'Ver financieras',
+  'financieras.create': 'Crear financiera',
+  'financieras.update': 'Editar financiera',
+  'financieras.delete': 'Eliminar financiera',
+  'financieras.set_default': 'Marcar predeterminada',
 };
 
 const SECTIONS = [
@@ -102,6 +108,15 @@ const SECTIONS = [
     color: 'bg-violet-50 text-violet-600',
     subsections: [
       { title: 'Gestión', permissions: ['users.view', 'users.create', 'users.edit', 'users.disable', 'users.assign_role'] }
+    ]
+  },
+  {
+    id: 'financieras',
+    title: 'Financieras',
+    icon: Landmark,
+    color: 'bg-cyan-50 text-cyan-600',
+    subsections: [
+      { title: 'Gestión', permissions: ['financieras.view', 'financieras.create', 'financieras.update', 'financieras.delete', 'financieras.set_default'] }
     ]
   },
   {
