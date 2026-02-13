@@ -84,6 +84,51 @@ async function logEvento({ comprobanteId, orderNumber, accion, origen, userId, u
 }
 
 /* =====================================================
+   UTIL — MENSAJE DE ACTUALIZACIÓN DE PEDIDO
+===================================================== */
+function buildOrderUpdateMessage(oldProducts, newProducts, montoNuevo) {
+  const lineas = [];
+
+  // Mapas por p.id (line item ID) - es lo que está guardado en DB como product_id
+  const oldMap = new Map();
+  const newMap = new Map();
+
+  for (const p of oldProducts) {
+    oldMap.set(String(p.product_id), { name: p.name, qty: Number(p.quantity) });
+  }
+
+  for (const p of newProducts) {
+    // Usar p.id (line item ID), NO p.product_id (catalog ID)
+    newMap.set(String(p.id), { name: p.name, qty: Number(p.quantity) });
+  }
+
+  // Productos eliminados
+  for (const [id, old] of oldMap) {
+    if (!newMap.has(id)) {
+      lineas.push(`${old.name} — eliminado −${old.qty}`);
+    }
+  }
+
+  // Productos agregados o cantidad modificada
+  for (const [id, nuevo] of newMap) {
+    const old = oldMap.get(id);
+    if (!old) {
+      lineas.push(`${nuevo.name} — añadido +${nuevo.qty}`);
+    } else if (nuevo.qty > old.qty) {
+      lineas.push(`${nuevo.name} — añadido +${nuevo.qty - old.qty}`);
+    } else if (nuevo.qty < old.qty) {
+      lineas.push(`${nuevo.name} — disminuido −${old.qty - nuevo.qty}`);
+    }
+  }
+
+  // Siempre agregar monto al final
+  const montoFormateado = montoNuevo.toLocaleString('es-AR');
+  lineas.push(`Nuevo monto: $${montoFormateado}`);
+
+  return lineas.join('\n');
+}
+
+/* =====================================================
    UTIL — WATERMARK RECEIPT IMAGE
 ===================================================== */
 async function watermarkReceipt(filePath, { id, orderNumber }) {
@@ -1434,80 +1479,35 @@ app.post('/webhook/tiendanube', async (req, res) => {
       const paymentStatusAnterior = db.tn_payment_status;
       const shippingStatusAnterior = db.tn_shipping_status;
 
-      // ========== DIAGNÓSTICO: COMPARACIÓN DE PRODUCTOS ==========
       // Obtener productos ANTES de actualizar
       const productosDB = await pool.query(
         `SELECT product_id, name, quantity FROM order_products WHERE order_number = $1`,
         [String(pedido.number)]
       );
 
-      // Construir diagnóstico para historial
-      let diagLines = [];
-      diagLines.push(`🔍 DIAGNÓSTICO DIFF`);
-      diagLines.push(``);
-      diagLines.push(`OLD (DB):`);
-      for (const p of productosDB.rows) {
-        diagLines.push(`• id:${p.product_id} "${p.name}" x${p.quantity}`);
-      }
-      diagLines.push(``);
-      diagLines.push(`NEW (Tiendanube):`);
-      for (const p of pedido.products || []) {
-        diagLines.push(`• id:${p.id} prod:${p.product_id} "${p.name}" x${p.quantity}`);
-      }
+      // Generar mensaje de cambios
+      const mensaje = buildOrderUpdateMessage(
+        productosDB.rows,
+        pedido.products || [],
+        montoNuevo
+      );
 
-      const oldKeys = productosDB.rows.map(p => String(p.product_id));
-      const newKeysById = (pedido.products || []).map(p => String(p.id));
-      const newKeysByProductId = (pedido.products || []).map(p => String(p.product_id));
-
-      diagLines.push(``);
-      diagLines.push(`KEYS:`);
-      diagLines.push(`OLD: [${oldKeys.join(', ')}]`);
-      diagLines.push(`NEW.id: [${newKeysById.join(', ')}]`);
-      diagLines.push(`NEW.product_id: [${newKeysByProductId.join(', ')}]`);
-
-      const matchWithId = oldKeys.filter(k => newKeysById.includes(k));
-      const matchWithProductId = oldKeys.filter(k => newKeysByProductId.includes(k));
-      diagLines.push(``);
-      diagLines.push(`Match OLD↔NEW.id: ${matchWithId.length}/${oldKeys.length}`);
-      diagLines.push(`Match OLD↔NEW.product_id: ${matchWithProductId.length}/${oldKeys.length}`);
-
-      const diagText = diagLines.join('\n');
-      console.log(diagText);
-
-      // Guardar diagnóstico en historial
-      await logEvento({
-        orderNumber: String(pedido.number),
-        accion: diagText,
-        origen: 'diagnostico_diff'
-      });
-      // ========== FIN DIAGNÓSTICO ==========
-
-      // Detectar cambios REALES (ignorar inicialización desde null)
-      const cambios = [];
-      if (montoAnterior !== montoNuevo) {
-        cambios.push(`monto: $${montoAnterior} → $${montoNuevo}`);
-      }
-      // Solo contar como cambio si el valor anterior NO era null
-      if (paymentStatusAnterior && paymentStatusAnterior !== paymentStatusNuevo) {
-        cambios.push(`payment: ${paymentStatusAnterior} → ${paymentStatusNuevo}`);
-      }
-      if (shippingStatusAnterior && shippingStatusAnterior !== shippingStatusNuevo) {
-        cambios.push(`shipping: ${shippingStatusAnterior} → ${shippingStatusNuevo}`);
-      }
-
-      // Siempre actualizar la DB para llenar los nulls
+      // Actualizar DB
       await guardarPedidoCompleto(pedido);
 
-      // Si no hay cambios relevantes, no loguear
-      if (cambios.length === 0) {
-        return;
+      // Verificar si hubo cambios en productos (más de solo la línea del monto)
+      const lineas = mensaje.split('\n');
+      const hayProductosCambiados = lineas.length > 1;
+      const cambioMonto = montoAnterior !== montoNuevo;
+
+      if (!hayProductosCambiados && !cambioMonto) {
+        return; // Sin cambios relevantes
       }
 
-      // Hay cambios reales - loguear
-      console.log(`📝 #${pedido.number} cambió: ${cambios.join(', ')}`);
+      console.log(`📝 #${pedido.number}:\n${mensaje}`);
 
       // Si cambió el monto, recalcular saldo y estado_pago
-      if (montoAnterior !== montoNuevo) {
+      if (cambioMonto) {
         await pool.query(`
           UPDATE orders_validated
           SET
@@ -1525,10 +1525,10 @@ app.post('/webhook/tiendanube', async (req, res) => {
         `, [String(pedido.number)]);
       }
 
-      // Log del cambio
+      // Guardar en historial
       await logEvento({
         orderNumber: String(pedido.number),
-        accion: `pedido_actualizado: ${cambios.join(', ')}`,
+        accion: mensaje,
         origen: 'webhook_tiendanube'
       });
 
