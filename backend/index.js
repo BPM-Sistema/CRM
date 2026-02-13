@@ -529,21 +529,22 @@ function extractDestinationAccount(textoOcr) {
    UTIL — VALIDAR CUENTA DESTINO
 ===================================================== */
 async function isValidDestination(account) {
-  const { alias, cbu } = account;
+  const { titular, cbu } = account;
 
   // Si no hay datos de cuenta destino, no podemos validar
-  if (!alias && !cbu) {
+  if (!titular && !cbu) {
     return { valid: false, reason: 'no_destination_found' };
   }
 
-  // Buscar en tabla financieras (solo alias y cbu)
+  // Buscar en tabla financieras por titular_principal o cbu
   const conditions = [];
   const params = [];
   let paramIndex = 1;
 
-  if (alias) {
-    conditions.push(`UPPER(alias) = $${paramIndex++}`);
-    params.push(alias.toUpperCase());
+  if (titular) {
+    // Normalizar: quitar acentos, mayúsculas, espacios extras
+    conditions.push(`UPPER(TRIM(titular_principal)) = $${paramIndex++}`);
+    params.push(titular.toUpperCase().trim());
   }
   if (cbu) {
     conditions.push(`cbu = $${paramIndex++}`);
