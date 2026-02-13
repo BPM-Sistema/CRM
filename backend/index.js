@@ -421,7 +421,154 @@ async function detectarFinancieraDesdeOCR(textoOcr) {
   return null;
 }
 
+/* =====================================================
+   UTIL — EXTRAER CUENTA DESTINO DEL OCR
+===================================================== */
+function extractDestinationAccount(textoOcr) {
+  const texto = textoOcr.replace(/\r/g, '\n');
+  const lines = texto.split('\n').map(l => l.trim()).filter(Boolean);
 
+  let alias = null;
+  let cbu = null;
+  let cvu = null;
+  let titular = null;
+
+  // Patrones para identificar sección DESTINO
+  const destinoPatterns = [
+    /^para[:\s]/i,
+    /^destino[:\s]/i,
+    /^cuenta destino/i,
+    /^beneficiario/i,
+    /^receptor/i,
+    /^a[:\s]/i,
+    /transferiste a/i,
+    /enviaste a/i,
+  ];
+
+  // Buscar sección de destino
+  let inDestinoSection = false;
+  let destinoLineIndex = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Detectar inicio de sección destino
+    if (destinoPatterns.some(p => p.test(line))) {
+      inDestinoSection = true;
+      destinoLineIndex = i;
+
+      // Extraer titular si está en la misma línea (ej: "Para: JUAN PEREZ")
+      const matchTitular = line.match(/(?:para|destino|a)[:\s]+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+)/i);
+      if (matchTitular) {
+        titular = matchTitular[1].trim();
+      }
+      continue;
+    }
+
+    // Si estamos en sección destino, buscar datos
+    if (inDestinoSection && i <= destinoLineIndex + 8) {
+      // Buscar Alias (formato PALABRA.PALABRA.PALABRA)
+      const aliasMatch = line.match(/([A-Z0-9]+\.[A-Z0-9]+\.[A-Z0-9]+)/i);
+      if (aliasMatch && !alias) {
+        alias = aliasMatch[1].toUpperCase();
+      }
+
+      // Buscar CBU/CVU (22 dígitos)
+      const cbuMatch = line.match(/\b(\d{22})\b/);
+      if (cbuMatch) {
+        const numero = cbuMatch[1];
+        // CBU empieza con código de banco (ej: 0170), CVU empieza con 000
+        if (numero.startsWith('000')) {
+          cvu = numero;
+        } else {
+          cbu = numero;
+        }
+      }
+
+      // Buscar titular si aún no lo tenemos (nombre en mayúsculas)
+      if (!titular) {
+        const nombreMatch = line.match(/^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]{5,40})$/);
+        if (nombreMatch && !line.includes('CVU') && !line.includes('CBU') && !line.includes('ALIAS')) {
+          titular = nombreMatch[1].trim();
+        }
+      }
+    }
+
+    // Detectar fin de sección destino (nueva sección)
+    if (inDestinoSection && i > destinoLineIndex + 2) {
+      if (/^(origen|desde|de:|monto|importe|fecha|concepto)/i.test(line)) {
+        inDestinoSection = false;
+      }
+    }
+  }
+
+  // Si no encontramos sección destino explícita, buscar después de "Para" en todo el texto
+  if (!alias && !cbu && !cvu) {
+    const textoLower = texto.toLowerCase();
+    const paraIndex = textoLower.indexOf('para');
+    if (paraIndex !== -1) {
+      const despuesDePara = texto.substring(paraIndex, paraIndex + 500);
+
+      // Alias
+      const aliasMatch = despuesDePara.match(/([A-Z0-9]+\.[A-Z0-9]+\.[A-Z0-9]+)/i);
+      if (aliasMatch) alias = aliasMatch[1].toUpperCase();
+
+      // CBU/CVU
+      const cbuMatch = despuesDePara.match(/\b(\d{22})\b/);
+      if (cbuMatch) {
+        if (cbuMatch[1].startsWith('000')) cvu = cbuMatch[1];
+        else cbu = cbuMatch[1];
+      }
+    }
+  }
+
+  return { alias, cbu, cvu, titular };
+}
+
+/* =====================================================
+   UTIL — VALIDAR CUENTA DESTINO
+===================================================== */
+async function isValidDestination(account) {
+  const { alias, cbu, cvu } = account;
+
+  // Si no hay datos de cuenta destino, no podemos validar
+  if (!alias && !cbu && !cvu) {
+    return { valid: false, reason: 'no_destination_found' };
+  }
+
+  // Buscar en tabla financieras
+  const conditions = [];
+  const params = [];
+  let paramIndex = 1;
+
+  if (alias) {
+    conditions.push(`UPPER(alias) = $${paramIndex++}`);
+    params.push(alias.toUpperCase());
+  }
+  if (cbu) {
+    conditions.push(`cbu = $${paramIndex++}`);
+    params.push(cbu);
+  }
+  if (cvu) {
+    conditions.push(`cvu = $${paramIndex++}`);
+    params.push(cvu);
+  }
+
+  const query = `
+    SELECT id, nombre, alias, cbu, titular_principal
+    FROM financieras
+    WHERE activa = true AND (${conditions.join(' OR ')})
+    LIMIT 1
+  `;
+
+  const result = await pool.query(query, params);
+
+  if (result.rows.length > 0) {
+    return { valid: true, cuenta: result.rows[0] };
+  }
+
+  return { valid: false, reason: 'destination_not_registered', extracted: account };
+}
 
 async function enviarWhatsAppPlantilla({ telefono, plantilla, variables }) {
   // 🔒 Filtro de testing - solo enviar a número de prueba
@@ -1761,6 +1908,24 @@ app.post('/upload', (req, res, next) => {
 
     validarComprobante(textoOcr);
     console.log('🧠 OCR OK');
+
+    /* ===============================
+       2.5️⃣ VALIDAR CUENTA DESTINO
+    ================================ */
+    const cuentaDestino = extractDestinationAccount(textoOcr);
+    console.log('🔍 Cuenta destino extraída:', cuentaDestino);
+
+    const destinoValidation = await isValidDestination(cuentaDestino);
+    if (!destinoValidation.valid) {
+      fs.unlinkSync(file.path);
+      console.log('❌ Cuenta destino inválida:', destinoValidation);
+      return res.status(400).json({
+        error: 'El comprobante no corresponde a una cuenta válida de la empresa',
+        reason: destinoValidation.reason,
+        extracted: cuentaDestino
+      });
+    }
+    console.log('✅ Cuenta destino válida:', destinoValidation.cuenta?.alias || destinoValidation.cuenta?.cbu);
 
     /* ===============================
        3️⃣ HASH (DUPLICADOS)
