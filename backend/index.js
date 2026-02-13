@@ -529,14 +529,14 @@ function extractDestinationAccount(textoOcr) {
    UTIL — VALIDAR CUENTA DESTINO
 ===================================================== */
 async function isValidDestination(account) {
-  const { alias, cbu, cvu } = account;
+  const { alias, cbu } = account;
 
   // Si no hay datos de cuenta destino, no podemos validar
-  if (!alias && !cbu && !cvu) {
+  if (!alias && !cbu) {
     return { valid: false, reason: 'no_destination_found' };
   }
 
-  // Buscar en tabla financieras
+  // Buscar en tabla financieras (solo alias y cbu)
   const conditions = [];
   const params = [];
   let paramIndex = 1;
@@ -548,10 +548,6 @@ async function isValidDestination(account) {
   if (cbu) {
     conditions.push(`cbu = $${paramIndex++}`);
     params.push(cbu);
-  }
-  if (cvu) {
-    conditions.push(`cvu = $${paramIndex++}`);
-    params.push(cvu);
   }
 
   const query = `
