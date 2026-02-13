@@ -439,7 +439,7 @@ export function RealOrderDetail() {
                         <Clock size={14} className="text-neutral-500" />
                       </div>
                       <div>
-                        <p className="text-sm text-neutral-900">{log.accion}</p>
+                        <p className="text-sm text-neutral-900 whitespace-pre-line">{log.accion}</p>
                         <p className="text-xs text-neutral-500">
                           {format(new Date(log.created_at), 'dd/MM/yyyy HH:mm', { locale: es })} · {log.origen}
                         </p>

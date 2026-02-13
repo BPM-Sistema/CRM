@@ -1441,33 +1441,45 @@ app.post('/webhook/tiendanube', async (req, res) => {
         [String(pedido.number)]
       );
 
-      console.log(`\n🔍 DIAGNÓSTICO #${pedido.number} ==================`);
-      console.log(`\n📦 OLD (DB order_products):`);
+      // Construir diagnóstico para historial
+      let diagLines = [];
+      diagLines.push(`🔍 DIAGNÓSTICO DIFF`);
+      diagLines.push(``);
+      diagLines.push(`OLD (DB):`);
       for (const p of productosDB.rows) {
-        console.log(`  - product_id: ${p.product_id} | name: "${p.name}" | qty: ${p.quantity}`);
+        diagLines.push(`• id:${p.product_id} "${p.name}" x${p.quantity}`);
       }
-
-      console.log(`\n📦 NEW (Tiendanube payload):`);
+      diagLines.push(``);
+      diagLines.push(`NEW (Tiendanube):`);
       for (const p of pedido.products || []) {
-        console.log(`  - id: ${p.id} | product_id: ${p.product_id} | variant_id: ${p.variant_id} | name: "${p.name}" | qty: ${p.quantity}`);
+        diagLines.push(`• id:${p.id} prod:${p.product_id} "${p.name}" x${p.quantity}`);
       }
 
-      // Mostrar qué keys se usarían en el diff
       const oldKeys = productosDB.rows.map(p => String(p.product_id));
       const newKeysById = (pedido.products || []).map(p => String(p.id));
       const newKeysByProductId = (pedido.products || []).map(p => String(p.product_id));
 
-      console.log(`\n🔑 KEYS:`);
-      console.log(`  OLD (DB.product_id):     [${oldKeys.join(', ')}]`);
-      console.log(`  NEW (payload.id):        [${newKeysById.join(', ')}]`);
-      console.log(`  NEW (payload.product_id): [${newKeysByProductId.join(', ')}]`);
+      diagLines.push(``);
+      diagLines.push(`KEYS:`);
+      diagLines.push(`OLD: [${oldKeys.join(', ')}]`);
+      diagLines.push(`NEW.id: [${newKeysById.join(', ')}]`);
+      diagLines.push(`NEW.product_id: [${newKeysByProductId.join(', ')}]`);
 
-      // Mostrar coincidencias
       const matchWithId = oldKeys.filter(k => newKeysById.includes(k));
       const matchWithProductId = oldKeys.filter(k => newKeysByProductId.includes(k));
-      console.log(`\n✅ Coincidencias OLD vs NEW.id:         [${matchWithId.join(', ')}] (${matchWithId.length}/${oldKeys.length})`);
-      console.log(`✅ Coincidencias OLD vs NEW.product_id: [${matchWithProductId.join(', ')}] (${matchWithProductId.length}/${oldKeys.length})`);
-      console.log(`==========================================\n`);
+      diagLines.push(``);
+      diagLines.push(`Match OLD↔NEW.id: ${matchWithId.length}/${oldKeys.length}`);
+      diagLines.push(`Match OLD↔NEW.product_id: ${matchWithProductId.length}/${oldKeys.length}`);
+
+      const diagText = diagLines.join('\n');
+      console.log(diagText);
+
+      // Guardar diagnóstico en historial
+      await logEvento({
+        orderNumber: String(pedido.number),
+        accion: diagText,
+        origen: 'diagnostico_diff'
+      });
       // ========== FIN DIAGNÓSTICO ==========
 
       // Detectar cambios REALES (ignorar inicialización desde null)
