@@ -422,7 +422,20 @@ async function detectarFinancieraDesdeOCR(textoOcr) {
 }
 
 /* =====================================================
-   UTIL — EXTRAER CUENTA DESTINO DEL OCR
+   UTIL — NORMALIZAR TEXTO (quitar tildes, lowercase, trim)
+===================================================== */
+function normalizeText(str) {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // quitar tildes
+    .replace(/\s+/g, ' ')            // colapsar espacios
+    .trim();
+}
+
+/* =====================================================
+   UTIL — EXTRAER CUENTA DESTINO DEL OCR (ROBUSTO)
 ===================================================== */
 function extractDestinationAccount(textoOcr) {
   const texto = textoOcr.replace(/\r/g, '\n');
@@ -432,136 +445,200 @@ function extractDestinationAccount(textoOcr) {
   let cbu = null;
   let cvu = null;
   let titular = null;
+  const nombres = []; // Guardar todos los posibles nombres encontrados
 
-  // Patrones para identificar sección DESTINO
-  const destinoPatterns = [
-    /^para[:\s]/i,
-    /^destino[:\s]/i,
-    /^cuenta destino/i,
-    /^beneficiario/i,
-    /^receptor/i,
-    /^a[:\s]/i,
-    /transferiste a/i,
-    /enviaste a/i,
+  // Keywords que indican sección destino (case insensitive, sin depender de ":")
+  const destinoKeywords = [
+    'destinatario', 'destino', 'beneficiario', 'receptor', 'titular',
+    'para', 'cuenta destino', 'transferiste a', 'enviaste a', 'le enviaste'
   ];
 
-  // Buscar sección de destino
-  let inDestinoSection = false;
-  let destinoLineIndex = -1;
+  // Keywords que indican FIN de sección destino
+  const finSeccionKeywords = [
+    'origen', 'desde', 'remitente', 'ordenante', 'monto', 'importe',
+    'fecha', 'concepto', 'motivo', 'cuit', 'banco'
+  ];
 
+  // 1) BUSCAR POR SECCIONES
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    const lineLower = line.toLowerCase();
 
-    // Detectar inicio de sección destino
-    if (destinoPatterns.some(p => p.test(line))) {
-      inDestinoSection = true;
-      destinoLineIndex = i;
+    // Detectar keyword de destino
+    const isDestinoLine = destinoKeywords.some(k => lineLower.includes(k));
 
-      // Extraer titular si está en la misma línea (ej: "Para: JUAN PEREZ")
-      const matchTitular = line.match(/(?:para|destino|a)[:\s]+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+)/i);
-      if (matchTitular) {
-        titular = matchTitular[1].trim();
-      }
-      continue;
-    }
-
-    // Si estamos en sección destino, buscar datos
-    if (inDestinoSection && i <= destinoLineIndex + 8) {
-      // Buscar Alias (formato PALABRA.PALABRA.PALABRA)
-      const aliasMatch = line.match(/([A-Z0-9]+\.[A-Z0-9]+\.[A-Z0-9]+)/i);
-      if (aliasMatch && !alias) {
-        alias = aliasMatch[1].toUpperCase();
-      }
-
-      // Buscar CBU/CVU (22 dígitos)
-      const cbuMatch = line.match(/\b(\d{22})\b/);
-      if (cbuMatch) {
-        const numero = cbuMatch[1];
-        // CBU empieza con código de banco (ej: 0170), CVU empieza con 000
-        if (numero.startsWith('000')) {
-          cvu = numero;
-        } else {
-          cbu = numero;
+    if (isDestinoLine) {
+      // Buscar valor en misma línea después de ":"
+      const colonIndex = line.indexOf(':');
+      if (colonIndex !== -1) {
+        const valor = line.substring(colonIndex + 1).trim();
+        if (valor.length > 3 && !titular) {
+          titular = valor;
         }
       }
 
-      // Buscar titular si aún no lo tenemos (nombre en mayúsculas)
-      if (!titular) {
-        const nombreMatch = line.match(/^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]{5,40})$/);
-        if (nombreMatch && !line.includes('CVU') && !line.includes('CBU') && !line.includes('ALIAS')) {
-          titular = nombreMatch[1].trim();
-        }
-      }
-    }
+      // Buscar en líneas siguientes (lookahead 1-3 líneas)
+      for (let j = 1; j <= 3 && i + j < lines.length; j++) {
+        const nextLine = lines[i + j];
+        const nextLower = nextLine.toLowerCase();
 
-    // Detectar fin de sección destino (nueva sección)
-    if (inDestinoSection && i > destinoLineIndex + 2) {
-      if (/^(origen|desde|de:|monto|importe|fecha|concepto)/i.test(line)) {
-        inDestinoSection = false;
+        // Parar si encontramos otra sección
+        if (finSeccionKeywords.some(k => nextLower.includes(k))) break;
+        if (destinoKeywords.some(k => nextLower === k)) break;
+
+        // Si es un nombre (mayúsculas, 2+ palabras, sin números)
+        if (!titular && /^[A-ZÁÉÍÓÚÑ\s]{5,50}$/.test(nextLine) && nextLine.includes(' ')) {
+          titular = nextLine;
+        }
+
+        // Si es alias (palabra.palabra.palabra)
+        const aliasMatch = nextLine.match(/([a-zA-Z0-9]+\.[a-zA-Z0-9]+\.[a-zA-Z0-9]+)/);
+        if (aliasMatch && !alias) {
+          alias = aliasMatch[1].toUpperCase();
+        }
+
+        // Si es CBU/CVU (22 dígitos)
+        const cbuMatch = nextLine.match(/(\d{22})/);
+        if (cbuMatch && !cbu && !cvu) {
+          if (cbuMatch[1].startsWith('000')) cvu = cbuMatch[1];
+          else cbu = cbuMatch[1];
+        }
       }
     }
   }
 
-  // Si no encontramos sección destino explícita, buscar después de "Para" en todo el texto
-  if (!alias && !cbu && !cvu) {
-    const textoLower = texto.toLowerCase();
-    const paraIndex = textoLower.indexOf('para');
-    if (paraIndex !== -1) {
-      const despuesDePara = texto.substring(paraIndex, paraIndex + 500);
+  // 2) FALLBACK GLOBAL - buscar en todo el texto
+  const textoCompleto = texto;
 
-      // Alias
-      const aliasMatch = despuesDePara.match(/([A-Z0-9]+\.[A-Z0-9]+\.[A-Z0-9]+)/i);
-      if (aliasMatch) alias = aliasMatch[1].toUpperCase();
+  // Alias en cualquier parte
+  if (!alias) {
+    const aliasMatches = textoCompleto.match(/[a-zA-Z0-9]+\.[a-zA-Z0-9]+\.[a-zA-Z0-9]+/g);
+    if (aliasMatches) {
+      alias = aliasMatches[0].toUpperCase();
+    }
+  }
 
-      // CBU/CVU
-      const cbuMatch = despuesDePara.match(/\b(\d{22})\b/);
-      if (cbuMatch) {
-        if (cbuMatch[1].startsWith('000')) cvu = cbuMatch[1];
-        else cbu = cbuMatch[1];
+  // CBU/CVU en cualquier parte
+  if (!cbu && !cvu) {
+    const cbuMatches = textoCompleto.match(/\d{22}/g);
+    if (cbuMatches) {
+      for (const num of cbuMatches) {
+        if (num.startsWith('000')) cvu = num;
+        else cbu = num;
+        break;
       }
     }
   }
 
-  return { alias, cbu, cvu, titular };
+  // Nombres en mayúsculas (posibles titulares)
+  if (!titular) {
+    for (const line of lines) {
+      // Nombre: 2+ palabras en mayúsculas, sin números, sin keywords
+      if (/^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]{5,50}$/.test(line) && line.includes(' ')) {
+        const lower = line.toLowerCase();
+        const esKeyword = [...destinoKeywords, ...finSeccionKeywords, 'alias', 'cbu', 'cvu', 'banco', 'santander', 'nacion', 'galicia'].some(k => lower.includes(k));
+        if (!esKeyword) {
+          nombres.push(line);
+        }
+      }
+    }
+    // Tomar el primer nombre encontrado
+    if (nombres.length > 0) {
+      titular = nombres[0];
+    }
+  }
+
+  return { alias, cbu, cvu, titular, nombres };
 }
 
 /* =====================================================
-   UTIL — VALIDAR CUENTA DESTINO
+   UTIL — VALIDAR CUENTA DESTINO CONTRA DB
 ===================================================== */
-async function isValidDestination(account) {
-  const { titular, cbu } = account;
+async function isValidDestination(account, textoOcr) {
+  const { alias, cbu, cvu, titular, nombres = [] } = account;
 
-  // Si no hay datos de cuenta destino, no podemos validar
-  if (!titular && !cbu) {
-    return { valid: false, reason: 'no_destination_found' };
-  }
-
-  // Buscar en tabla financieras por titular_principal o cbu
-  const conditions = [];
-  const params = [];
-  let paramIndex = 1;
-
-  if (titular) {
-    // Normalizar: quitar acentos, mayúsculas, espacios extras
-    conditions.push(`UPPER(TRIM(titular_principal)) = $${paramIndex++}`);
-    params.push(titular.toUpperCase().trim());
-  }
-  if (cbu) {
-    conditions.push(`cbu = $${paramIndex++}`);
-    params.push(cbu);
-  }
-
-  const query = `
-    SELECT id, nombre, alias, cbu, titular_principal
+  // Obtener TODAS las financieras activas de la DB
+  const result = await pool.query(`
+    SELECT id, nombre, alias, cbu, titular_principal, palabras_clave
     FROM financieras
-    WHERE activa = true AND (${conditions.join(' OR ')})
-    LIMIT 1
-  `;
+    WHERE activa = true
+  `);
 
-  const result = await pool.query(query, params);
+  if (result.rows.length === 0) {
+    // No hay financieras configuradas, permitir todo
+    return { valid: true, reason: 'no_financieras_configured' };
+  }
 
-  if (result.rows.length > 0) {
-    return { valid: true, cuenta: result.rows[0] };
+  const textoNormalizado = normalizeText(textoOcr);
+
+  for (const fin of result.rows) {
+    // 1) Match por ALIAS (exacto)
+    if (alias && fin.alias) {
+      if (normalizeText(alias) === normalizeText(fin.alias)) {
+        return { valid: true, cuenta: fin, matchedBy: 'alias' };
+      }
+    }
+
+    // 2) Match por CBU
+    if (cbu && fin.cbu) {
+      if (cbu === fin.cbu) {
+        return { valid: true, cuenta: fin, matchedBy: 'cbu' };
+      }
+    }
+
+    // 3) Match por CVU (si existe en DB)
+    if (cvu && fin.cvu) {
+      if (cvu === fin.cvu) {
+        return { valid: true, cuenta: fin, matchedBy: 'cvu' };
+      }
+    }
+
+    // 4) Match por TITULAR (flexible - todas las palabras presentes)
+    if (fin.titular_principal) {
+      const titularDbNorm = normalizeText(fin.titular_principal);
+      const palabrasDb = titularDbNorm.split(' ').filter(p => p.length > 2);
+
+      // Verificar contra titular extraído
+      if (titular) {
+        const titularOcrNorm = normalizeText(titular);
+        const todasPresentes = palabrasDb.every(p => titularOcrNorm.includes(p));
+        if (todasPresentes) {
+          return { valid: true, cuenta: fin, matchedBy: 'titular' };
+        }
+      }
+
+      // Verificar contra todos los posibles nombres encontrados
+      for (const nombre of nombres) {
+        const nombreNorm = normalizeText(nombre);
+        const todasPresentes = palabrasDb.every(p => nombreNorm.includes(p));
+        if (todasPresentes) {
+          return { valid: true, cuenta: fin, matchedBy: 'titular_alternativo' };
+        }
+      }
+
+      // Verificar si el titular de la DB aparece en el texto completo del OCR
+      const todasEnTexto = palabrasDb.every(p => textoNormalizado.includes(p));
+      if (todasEnTexto) {
+        return { valid: true, cuenta: fin, matchedBy: 'titular_en_texto' };
+      }
+    }
+
+    // 5) Match por PALABRAS CLAVE
+    if (fin.palabras_clave && Array.isArray(fin.palabras_clave)) {
+      for (const keyword of fin.palabras_clave) {
+        if (textoNormalizado.includes(normalizeText(keyword))) {
+          return { valid: true, cuenta: fin, matchedBy: 'palabra_clave' };
+        }
+      }
+    }
+
+    // 6) Match por ALIAS en texto completo (por si OCR no lo parseó bien)
+    if (fin.alias) {
+      const aliasNorm = normalizeText(fin.alias);
+      if (textoNormalizado.includes(aliasNorm)) {
+        return { valid: true, cuenta: fin, matchedBy: 'alias_en_texto' };
+      }
+    }
   }
 
   return { valid: false, reason: 'destination_not_registered', extracted: account };
@@ -1912,7 +1989,7 @@ app.post('/upload', (req, res, next) => {
     const cuentaDestino = extractDestinationAccount(textoOcr);
     console.log('🔍 Cuenta destino extraída:', cuentaDestino);
 
-    const destinoValidation = await isValidDestination(cuentaDestino);
+    const destinoValidation = await isValidDestination(cuentaDestino, textoOcr);
     if (!destinoValidation.valid) {
       fs.unlinkSync(file.path);
       console.log('❌ Cuenta destino inválida:', destinoValidation);
