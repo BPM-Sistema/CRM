@@ -901,8 +901,8 @@ app.get('/orders/print-counts', authenticate, requirePermission('orders.view'), 
       hoja_impresa: 0,
       armado: 0,
       retirado: 0,
-      enviado: 0,
       en_calle: 0,
+      enviado: 0,
     };
 
     countsRes.rows.forEach(row => {
@@ -932,7 +932,7 @@ app.post('/orders/to-print', authenticate, requirePermission('orders.print'), as
     }
 
     // Validar que los estados sean válidos
-    const validStatuses = ['pendiente_pago', 'a_imprimir', 'hoja_impresa', 'armado', 'retirado', 'enviado', 'en_calle'];
+    const validStatuses = ['pendiente_pago', 'a_imprimir', 'hoja_impresa', 'armado', 'retirado', 'en_calle', 'enviado'];
     const invalidStatuses = statuses.filter(s => !validStatuses.includes(s));
     if (invalidStatuses.length > 0) {
       return res.status(400).json({ error: `Estados inválidos: ${invalidStatuses.join(', ')}` });
@@ -995,9 +995,9 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
       'orders.view_a_imprimir': 'a_imprimir',
       'orders.view_hoja_impresa': 'hoja_impresa',
       'orders.view_armado': 'armado',
-      'orders.view_enviado': 'enviado',
-      'orders.view_en_calle': 'en_calle',
       'orders.view_retirado': 'retirado',
+      'orders.view_en_calle': 'en_calle',
+      'orders.view_enviado': 'enviado',
     };
 
     // Obtener estados permitidos según permisos del usuario
@@ -1537,9 +1537,9 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
       'a_imprimir': 'orders.view_a_imprimir',
       'hoja_impresa': 'orders.view_hoja_impresa',
       'armado': 'orders.view_armado',
-      'enviado': 'orders.view_enviado',
-      'en_calle': 'orders.view_en_calle',
       'retirado': 'orders.view_retirado',
+      'en_calle': 'orders.view_en_calle',
+      'enviado': 'orders.view_enviado',
     };
 
     const userPerms = req.user.permissions || [];
@@ -1656,7 +1656,7 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
     const { estado_pedido } = req.body;
 
     // Validar estado_pedido
-    const estadosValidos = ['pendiente_pago', 'a_imprimir', 'hoja_impresa', 'armado', 'retirado', 'enviado', 'en_calle'];
+    const estadosValidos = ['pendiente_pago', 'a_imprimir', 'hoja_impresa', 'armado', 'retirado', 'en_calle', 'enviado'];
     if (!estado_pedido || !estadosValidos.includes(estado_pedido)) {
       return res.status(400).json({
         error: `Estado inválido. Valores permitidos: ${estadosValidos.join(', ')}`
@@ -1709,9 +1709,9 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
     const accionesEstado = {
       'hoja_impresa': 'hoja_impresa',
       'armado': 'pedido_armado',
-      'enviado': 'pedido_enviado',
+      'retirado': 'pedido_retirado',
       'en_calle': 'pedido_en_calle',
-      'retirado': 'pedido_retirado'
+      'enviado': 'pedido_enviado'
     };
     const accionLog = accionesEstado[estado_pedido] || `estado_${estado_pedido}`;
 

@@ -59,7 +59,7 @@ async function authFetch(url: string, options: RequestInit = {}): Promise<Respon
 
 // Tipos de estado
 export type PaymentStatus = 'pendiente' | 'a_confirmar' | 'parcial' | 'total' | 'rechazado';
-export type OrderStatus = 'pendiente_pago' | 'a_imprimir' | 'hoja_impresa' | 'armado' | 'retirado' | 'enviado' | 'en_calle';
+export type OrderStatus = 'pendiente_pago' | 'a_imprimir' | 'hoja_impresa' | 'armado' | 'retirado' | 'en_calle' | 'enviado';
 
 // Tipos para las respuestas de la API
 export interface ApiOrder {
@@ -451,8 +451,8 @@ export function mapEstadoPedido(estadoPedido: string | null): OrderStatus {
     'hoja_impresa': 'hoja_impresa',
     'armado': 'armado',
     'retirado': 'retirado',
-    'enviado': 'enviado',
     'en_calle': 'en_calle',
+    'enviado': 'enviado',
   };
 
   return estados[estadoPedido] || 'pendiente_pago';
