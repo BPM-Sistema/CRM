@@ -44,7 +44,6 @@ export function RealOrderDetail() {
   const [data, setData] = useState<ApiOrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isAccessDenied, setIsAccessDenied] = useState(false);
 
   // Estado para pago en efectivo
   const [isCashModalOpen, setIsCashModalOpen] = useState(false);
@@ -67,17 +66,11 @@ export function RealOrderDetail() {
 
     setLoading(true);
     setError(null);
-    setIsAccessDenied(false);
     try {
       const orderData = await fetchOrderDetail(orderNumber);
       setData(orderData);
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Error al cargar pedido';
-      // Detectar errores de acceso/permisos
-      if (errorMsg.toLowerCase().includes('permiso') || errorMsg.toLowerCase().includes('acceso')) {
-        setIsAccessDenied(true);
-      }
-      setError(errorMsg);
+      setError(err instanceof Error ? err.message : 'Error al cargar pedido');
     } finally {
       setLoading(false);
     }
@@ -191,13 +184,13 @@ export function RealOrderDetail() {
         <Card className="text-center py-8 px-12">
           <AlertCircle size={48} className="mx-auto text-red-400 mb-4" />
           <h3 className="text-lg font-semibold text-neutral-900 mb-2">
-            {isAccessDenied ? 'No tenés acceso a esta sección' : (error || 'Pedido no encontrado')}
+            {error || 'Pedido no encontrado'}
           </h3>
           <div className="flex gap-3 justify-center mt-4">
             <Button variant="secondary" onClick={() => navigate('/orders')}>
               Volver
             </Button>
-            {!isAccessDenied && <Button onClick={loadOrder}>Reintentar</Button>}
+            <Button onClick={loadOrder}>Reintentar</Button>
           </div>
         </Card>
       </div>
