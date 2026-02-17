@@ -9,6 +9,16 @@ function getAuthHeaders(): HeadersInit {
   };
 }
 
+// Flag para evitar loops al refrescar permisos
+let isRefreshingPermissions = false;
+
+// Callback para notificar cambios de permisos al contexto de Auth
+let onPermissionsChangeCallback: (() => void) | null = null;
+
+export function setOnPermissionsChangeCallback(callback: () => void) {
+  onPermissionsChangeCallback = callback;
+}
+
 // Fetch con autenticación (sin cache para datos en tiempo real)
 async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const response = await fetch(url, {
@@ -25,6 +35,23 @@ async function authFetch(url: string, options: RequestInit = {}): Promise<Respon
     localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_user');
     window.location.href = '/login';
+  }
+
+  // Verificar si los permisos cambiaron (comparar hash)
+  const newHash = response.headers.get('X-Permissions-Hash');
+  if (newHash && !isRefreshingPermissions) {
+    const storedHash = localStorage.getItem('permissions_hash');
+    if (storedHash && storedHash !== newHash) {
+      console.log('[API] Permissions changed, refreshing...', { old: storedHash, new: newHash });
+      // Actualizar hash y notificar al contexto
+      localStorage.setItem('permissions_hash', newHash);
+      if (onPermissionsChangeCallback) {
+        onPermissionsChangeCallback();
+      }
+    } else if (!storedHash) {
+      // Primera vez, guardar el hash
+      localStorage.setItem('permissions_hash', newHash);
+    }
   }
 
   return response;
@@ -642,7 +669,14 @@ export function hasPermission(permission: string): boolean {
 
 // Refrescar permisos del usuario desde el backend
 export async function refreshUserPermissions(): Promise<AuthUser | null> {
+  if (isRefreshingPermissions) {
+    console.log('[API] Already refreshing permissions, skipping');
+    return null;
+  }
+
   try {
+    isRefreshingPermissions = true;
+
     const currentUser = getStoredUser();
     if (!currentUser) {
       console.log('[API] No current user, skipping refresh');
@@ -660,6 +694,8 @@ export async function refreshUserPermissions(): Promise<AuthUser | null> {
   } catch (error) {
     console.error('[API] Error refreshing permissions:', error);
     return null;
+  } finally {
+    isRefreshingPermissions = false;
   }
 }
 

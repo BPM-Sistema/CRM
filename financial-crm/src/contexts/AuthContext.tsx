@@ -1,10 +1,11 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import {
   login as apiLogin,
   logout as apiLogout,
   getStoredUser,
   isAuthenticated as checkIsAuthenticated,
   refreshUserPermissions,
+  setOnPermissionsChangeCallback,
   AuthUser,
 } from '../services/api';
 
@@ -36,6 +37,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setLoading(false);
   }, []);
+
+  // Callback para refrescar permisos cuando cambia el hash
+  const handlePermissionsChange = useCallback(async () => {
+    console.log('[Auth] Permissions hash changed, refreshing...');
+    const freshUser = await refreshUserPermissions();
+    if (freshUser) {
+      console.log('[Auth] Permissions updated:', freshUser.permissions);
+      setUser(freshUser);
+    }
+  }, []);
+
+  // Registrar callback para detectar cambios de permisos via hash
+  useEffect(() => {
+    setOnPermissionsChangeCallback(handlePermissionsChange);
+    return () => setOnPermissionsChangeCallback(() => {});
+  }, [handlePermissionsChange]);
 
   // Refrescar permisos cuando el usuario vuelve a la pestaña
   useEffect(() => {

@@ -4,6 +4,15 @@
 
 const pool = require('../db');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+
+/**
+ * Calcula un hash de los permisos para detectar cambios
+ */
+function calculatePermissionsHash(permissions) {
+  const sorted = [...permissions].sort().join(',');
+  return crypto.createHash('md5').update(sorted).digest('hex').substring(0, 16);
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || 'finops-secret-key-change-in-production';
 
@@ -48,10 +57,17 @@ async function authenticate(req, res, next) {
       WHERE up.user_id = $1
     `, [decoded.userId]);
 
+    const permissions = permissionsResult.rows.map(p => p.key);
+    const permissionsHash = calculatePermissionsHash(permissions);
+
     req.user = {
       ...userResult.rows[0],
-      permissions: permissionsResult.rows.map(p => p.key)
+      permissions,
+      permissionsHash
     };
+
+    // Agregar header con hash de permisos a todas las respuestas
+    res.set('X-Permissions-Hash', permissionsHash);
 
     next();
   } catch (error) {
