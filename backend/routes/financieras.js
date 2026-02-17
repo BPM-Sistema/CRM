@@ -31,7 +31,7 @@ router.get('/', requirePermission('financieras.view'), async (req, res) => {
         alias,
         is_default
       FROM financieras
-      ORDER BY is_default DESC, nombre ASC
+      ORDER BY is_default DESC, id ASC
     `);
 
     res.json({
