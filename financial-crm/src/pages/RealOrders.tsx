@@ -33,8 +33,8 @@ const orderStatusButtons: { value: OrderStatus | 'all'; label: string; color: st
   { value: 'hoja_impresa', label: 'Hoja Impr.', color: 'bg-violet-50 text-violet-700', permission: 'orders.view_hoja_impresa' },
   { value: 'armado', label: 'Armado', color: 'bg-cyan-50 text-cyan-700', permission: 'orders.view_armado' },
   { value: 'retirado', label: 'Retirado', color: 'bg-purple-50 text-purple-700', permission: 'orders.view_retirado' },
-  { value: 'enviado', label: 'Enviado', color: 'bg-emerald-50 text-emerald-700', permission: 'orders.view_enviado' },
   { value: 'en_calle', label: 'En Calle', color: 'bg-orange-50 text-orange-700', permission: 'orders.view_en_calle' },
+  { value: 'enviado', label: 'Enviado', color: 'bg-emerald-50 text-emerald-700', permission: 'orders.view_enviado' },
 ];
 
 export function RealOrders() {
@@ -768,20 +768,6 @@ export function RealOrders() {
                 <span className="text-sm text-neutral-500">{printCounts?.retirado ?? 0} pedidos</span>
               </label>
 
-              {/* Opción: Enviado */}
-              <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedPrintStatuses.has('enviado')}
-                    onChange={() => togglePrintStatus('enviado')}
-                    className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
-                  />
-                  <span className="font-medium text-neutral-900">Enviado</span>
-                </div>
-                <span className="text-sm text-neutral-500">{printCounts?.enviado ?? 0} pedidos</span>
-              </label>
-
               {/* Opción: En Calle */}
               <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
                 <div className="flex items-center gap-3">
@@ -794,6 +780,20 @@ export function RealOrders() {
                   <span className="font-medium text-neutral-900">En Calle</span>
                 </div>
                 <span className="text-sm text-neutral-500">{printCounts?.en_calle ?? 0} pedidos</span>
+              </label>
+
+              {/* Opción: Enviado */}
+              <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedPrintStatuses.has('enviado')}
+                    onChange={() => togglePrintStatus('enviado')}
+                    className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
+                  />
+                  <span className="font-medium text-neutral-900">Enviado</span>
+                </div>
+                <span className="text-sm text-neutral-500">{printCounts?.enviado ?? 0} pedidos</span>
               </label>
             </div>
           )}
