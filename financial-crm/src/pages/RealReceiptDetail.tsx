@@ -53,6 +53,7 @@ export function RealReceiptDetail() {
   const [logs, setLogs] = useState<ApiLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAccessDenied, setIsAccessDenied] = useState(false);
 
   // Estados para acciones
   const [isConfirming, setIsConfirming] = useState(false);
@@ -69,12 +70,17 @@ export function RealReceiptDetail() {
 
     setLoading(true);
     setError(null);
+    setIsAccessDenied(false);
     try {
       const data = await fetchComprobanteDetail(id);
       setComprobante(data.comprobante);
       setLogs(data.logs);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al cargar comprobante');
+      const errorMsg = err instanceof Error ? err.message : 'Error al cargar comprobante';
+      if (errorMsg.toLowerCase().includes('permiso') || errorMsg.toLowerCase().includes('acceso')) {
+        setIsAccessDenied(true);
+      }
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -140,13 +146,13 @@ export function RealReceiptDetail() {
         <Card className="text-center py-8 px-12">
           <AlertCircle size={48} className="mx-auto text-red-400 mb-4" />
           <h3 className="text-lg font-semibold text-neutral-900 mb-2">
-            {error || 'Comprobante no encontrado'}
+            {isAccessDenied ? 'No tenés acceso a esta sección' : (error || 'Comprobante no encontrado')}
           </h3>
           <div className="flex gap-3 justify-center mt-4">
             <Button variant="secondary" onClick={() => navigate('/receipts')}>
               Volver
             </Button>
-            <Button onClick={loadComprobante}>Reintentar</Button>
+            {!isAccessDenied && <Button onClick={loadComprobante}>Reintentar</Button>}
           </div>
         </Card>
       </div>
