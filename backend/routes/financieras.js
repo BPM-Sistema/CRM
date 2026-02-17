@@ -105,15 +105,20 @@ router.post('/', requirePermission('financieras.create'), async (req, res) => {
     // Si es la primera financiera, marcarla como default
     const isDefault = count === 0;
 
+    // Formatear palabras_clave como array de PostgreSQL
+    const palabrasArray = Array.isArray(palabras_clave) && palabras_clave.length > 0
+      ? palabras_clave
+      : null;
+
     const result = await pool.query(`
       INSERT INTO financieras (nombre, titular_principal, celular, palabras_clave, activa, cbu, porcentaje, alias, is_default)
-      VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8)
+      VALUES ($1, $2, $3, $4::text[], true, $5, $6, $7, $8)
       RETURNING id, nombre, titular_principal, celular, palabras_clave, activa, created_at, cbu, porcentaje, alias, is_default
     `, [
       nombre,
       titular_principal || null,
       celular || null,
-      palabras_clave || [],
+      palabrasArray,
       cbu || null,
       porcentaje || null,
       alias || null,
@@ -153,12 +158,17 @@ router.put('/:id', requirePermission('financieras.update'), async (req, res) => 
       return res.status(400).json({ error: 'El nombre es requerido' });
     }
 
+    // Formatear palabras_clave como array de PostgreSQL
+    const palabrasArray = Array.isArray(palabras_clave) && palabras_clave.length > 0
+      ? palabras_clave
+      : null;
+
     const result = await pool.query(`
       UPDATE financieras
       SET nombre = $1,
           titular_principal = $2,
           celular = $3,
-          palabras_clave = $4,
+          palabras_clave = $4::text[],
           cbu = $5,
           porcentaje = $6,
           alias = $7
@@ -168,7 +178,7 @@ router.put('/:id', requirePermission('financieras.update'), async (req, res) => 
       nombre,
       titular_principal || null,
       celular || null,
-      palabras_clave || [],
+      palabrasArray,
       cbu || null,
       porcentaje || null,
       alias || null,
