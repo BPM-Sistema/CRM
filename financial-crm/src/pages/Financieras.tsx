@@ -267,6 +267,9 @@ export function Financieras() {
           <table className="w-full">
             <thead className="bg-neutral-50 border-b border-neutral-200">
               <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+                  ID
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-500 uppercase tracking-wider">
                   Financiera
                 </th>
@@ -290,6 +293,11 @@ export function Financieras() {
             <tbody className="divide-y divide-neutral-100">
               {financieras.map(financiera => (
                 <tr key={financiera.id} className={`hover:bg-neutral-50 ${!financiera.activa ? 'opacity-60' : ''}`}>
+                  <td className="px-4 py-4">
+                    <span className="inline-flex items-center justify-center w-8 h-8 bg-neutral-100 text-neutral-600 rounded-full text-sm font-mono font-medium">
+                      {financiera.id}
+                    </span>
+                  </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
