@@ -981,10 +981,52 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
     // Filtros
     const { estado_pago, estado_pedido, search, fecha } = req.query;
 
+    // Mapeo de permisos granulares a estados
+    const estadoPagoPermisos = {
+      'orders.view_pendiente': 'pendiente',
+      'orders.view_a_confirmar': 'a_confirmar',
+      'orders.view_parcial': 'parcial',
+      'orders.view_total': 'total',
+      'orders.view_rechazado': 'rechazado',
+    };
+    const estadoPedidoPermisos = {
+      'orders.view_pendiente_pago': 'pendiente_pago',
+      'orders.view_a_imprimir': 'a_imprimir',
+      'orders.view_hoja_impresa': 'hoja_impresa',
+      'orders.view_armado': 'armado',
+      'orders.view_enviado': 'enviado',
+      'orders.view_en_calle': 'en_calle',
+      'orders.view_retirado': 'retirado',
+    };
+
+    // Obtener estados permitidos según permisos del usuario
+    const userPerms = req.user.permissions || [];
+    const estadosPagoPermitidos = Object.entries(estadoPagoPermisos)
+      .filter(([perm]) => userPerms.includes(perm))
+      .map(([, estado]) => estado);
+    const estadosPedidoPermitidos = Object.entries(estadoPedidoPermisos)
+      .filter(([perm]) => userPerms.includes(perm))
+      .map(([, estado]) => estado);
+
+    // Si no tiene ningún permiso granular, no puede ver nada
+    if (estadosPagoPermitidos.length === 0 || estadosPedidoPermitidos.length === 0) {
+      return res.json({
+        ok: true,
+        orders: [],
+        pagination: { page, limit, total: 0, totalPages: 0 }
+      });
+    }
+
     // Construir WHERE dinámico
     const conditions = [];
     const params = [];
     let paramIndex = 1;
+
+    // Filtro obligatorio por permisos granulares
+    conditions.push(`o.estado_pago = ANY($${paramIndex++})`);
+    params.push(estadosPagoPermitidos);
+    conditions.push(`o.estado_pedido = ANY($${paramIndex++})`);
+    params.push(estadosPedidoPermitidos);
 
     if (estado_pago && estado_pago !== 'all') {
       conditions.push(`o.estado_pago = $${paramIndex++}`);
@@ -1471,6 +1513,37 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
       return res.status(404).json({ error: 'Pedido no encontrado' });
     }
 
+    const order = orderRes.rows[0];
+
+    // Verificar permisos granulares para este pedido
+    const estadoPagoPermisos = {
+      'pendiente': 'orders.view_pendiente',
+      'a_confirmar': 'orders.view_a_confirmar',
+      'parcial': 'orders.view_parcial',
+      'total': 'orders.view_total',
+      'rechazado': 'orders.view_rechazado',
+    };
+    const estadoPedidoPermisos = {
+      'pendiente_pago': 'orders.view_pendiente_pago',
+      'a_imprimir': 'orders.view_a_imprimir',
+      'hoja_impresa': 'orders.view_hoja_impresa',
+      'armado': 'orders.view_armado',
+      'enviado': 'orders.view_enviado',
+      'en_calle': 'orders.view_en_calle',
+      'retirado': 'orders.view_retirado',
+    };
+
+    const userPerms = req.user.permissions || [];
+    const requiredPagoPerm = estadoPagoPermisos[order.estado_pago];
+    const requiredPedidoPerm = estadoPedidoPermisos[order.estado_pedido];
+
+    if (requiredPagoPerm && !userPerms.includes(requiredPagoPerm)) {
+      return res.status(403).json({ error: 'No tienes permiso para ver pedidos con este estado de pago' });
+    }
+    if (requiredPedidoPerm && !userPerms.includes(requiredPedidoPerm)) {
+      return res.status(403).json({ error: 'No tienes permiso para ver pedidos con este estado de pedido' });
+    }
+
     // Obtener comprobantes del pedido (transferencias)
     const comprobantesRes = await pool.query(`
       SELECT
@@ -1550,7 +1623,7 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
 
     res.json({
       ok: true,
-      order: orderRes.rows[0],
+      order: order,
       comprobantes: comprobantesRes.rows,
       pagos_efectivo: pagosEfectivoRes.rows,
       logs: logsRes.rows,
