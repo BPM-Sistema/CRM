@@ -619,35 +619,35 @@ export function RealOrderDetail() {
                         variant="primary"
                         className="w-full"
                         leftIcon={<Truck size={16} />}
-                        onClick={() => handleUpdateOrderStatus('enviado')}
+                        onClick={() => handleUpdateOrderStatus('en_calle')}
                         disabled={isUpdatingStatus || !canShip}
                       >
-                        Enviado
+                        En Calle
                       </Button>
                     </div>
                   </>
                 )}
 
-                {/* Enviado */}
-                {orderStatus === 'enviado' && (
+                {/* En Calle - siguiente paso es Enviado */}
+                {orderStatus === 'en_calle' && (
                   <Button
                     variant="primary"
                     className="w-full"
                     size="lg"
                     leftIcon={<MapPin size={18} />}
-                    onClick={() => handleUpdateOrderStatus('en_calle')}
+                    onClick={() => handleUpdateOrderStatus('enviado')}
                     disabled={isUpdatingStatus || !canShip}
                   >
-                    {isUpdatingStatus ? 'Procesando...' : 'Marcar En Calle'}
+                    {isUpdatingStatus ? 'Procesando...' : 'Marcar Enviado'}
                   </Button>
                 )}
 
                 {/* Estados finales */}
-                {(orderStatus === 'en_calle' || orderStatus === 'retirado') && (
+                {(orderStatus === 'enviado' || orderStatus === 'retirado') && (
                   <div className="p-4 bg-emerald-50 rounded-xl text-center">
                     <Check size={24} className="mx-auto text-emerald-600 mb-2" />
                     <p className="text-sm font-medium text-emerald-700">
-                      {orderStatus === 'retirado' ? 'Pedido retirado por el cliente' : 'Pedido en camino al cliente'}
+                      {orderStatus === 'retirado' ? 'Pedido retirado por el cliente' : 'Pedido enviado al cliente'}
                     </p>
                   </div>
                 )}
