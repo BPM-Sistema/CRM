@@ -91,8 +91,8 @@ const orderStatusVariants: Record<OrderStatus, BadgeVariant> = {
   hoja_impresa: 'purple',
   armado: 'cyan',
   retirado: 'success',
-  enviado: 'success',
   en_calle: 'orange',
+  enviado: 'success',
 };
 
 const orderStatusLabels: Record<OrderStatus, string> = {
@@ -101,8 +101,8 @@ const orderStatusLabels: Record<OrderStatus, string> = {
   hoja_impresa: 'Hoja impresa',
   armado: 'Armado',
   retirado: 'Retirado',
-  enviado: 'Enviado',
   en_calle: 'En calle',
+  enviado: 'Enviado',
 };
 
 // Etiquetas cortas para tamaño pequeño
@@ -112,8 +112,8 @@ const orderStatusLabelsShort: Record<OrderStatus, string> = {
   hoja_impresa: 'Hoja impr.',
   armado: 'Armado',
   retirado: 'Retirado',
-  enviado: 'Enviado',
   en_calle: 'En calle',
+  enviado: 'Enviado',
 };
 
 interface OrderStatusBadgeProps {
