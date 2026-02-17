@@ -32,9 +32,9 @@ const ACCION_CONFIG: Record<string, { label: string; icon: typeof Activity; colo
   'pago_efectivo_registrado': { label: 'Pago efectivo', icon: Banknote, color: 'text-amber-600 bg-amber-50' },
   'hoja_impresa': { label: 'Hoja impresa', icon: Printer, color: 'text-blue-600 bg-blue-50' },
   'pedido_armado': { label: 'Pedido armado', icon: Package, color: 'text-purple-600 bg-purple-50' },
-  'pedido_enviado': { label: 'Pedido enviado', icon: Truck, color: 'text-indigo-600 bg-indigo-50' },
   'pedido_retirado': { label: 'Pedido retirado', icon: Truck, color: 'text-teal-600 bg-teal-50' },
   'pedido_en_calle': { label: 'Pedido en calle', icon: Truck, color: 'text-cyan-600 bg-cyan-50' },
+  'pedido_enviado': { label: 'Pedido enviado', icon: Truck, color: 'text-indigo-600 bg-indigo-50' },
   'upload': { label: 'Comprobante subido', icon: Activity, color: 'text-gray-600 bg-gray-50' },
   'whatsapp_cliente_enviado': { label: 'WhatsApp enviado', icon: Activity, color: 'text-green-600 bg-green-50' },
 };
