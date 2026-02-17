@@ -192,11 +192,11 @@ export function RealOrders() {
       const paymentStatus = mapEstadoPago(order.estado_pago);
       const orderStatus = mapEstadoPedido(order.estado_pedido);
 
-      // Verificar que el usuario tiene permiso para ver este estado de pago Y este estado de pedido
+      // Verificar que el usuario tiene permiso para ver este estado de pago O este estado de pedido
       const hasPaymentPermission = hasPermission(paymentStatusPermissions[paymentStatus]);
       const hasOrderStatusPermission = hasPermission(orderStatusPermissions[orderStatus]);
 
-      return hasPaymentPermission && hasOrderStatusPermission;
+      return hasPaymentPermission || hasOrderStatusPermission;
     });
   }, [orders, hasPermission]);
 

@@ -1008,8 +1008,8 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
       .filter(([perm]) => userPerms.includes(perm))
       .map(([, estado]) => estado);
 
-    // Si no tiene ningún permiso granular, no puede ver nada
-    if (estadosPagoPermitidos.length === 0 || estadosPedidoPermitidos.length === 0) {
+    // Si no tiene NINGÚN permiso granular (ni de pago ni de pedido), no puede ver nada
+    if (estadosPagoPermitidos.length === 0 && estadosPedidoPermitidos.length === 0) {
       return res.json({
         ok: true,
         orders: [],
@@ -1022,11 +1022,19 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
     const params = [];
     let paramIndex = 1;
 
-    // Filtro obligatorio por permisos granulares
-    conditions.push(`o.estado_pago = ANY($${paramIndex++})`);
-    params.push(estadosPagoPermitidos);
-    conditions.push(`o.estado_pedido = ANY($${paramIndex++})`);
-    params.push(estadosPedidoPermitidos);
+    // Filtro por permisos granulares (OR): puede ver si tiene permiso de estado_pago O estado_pedido
+    const permConditions = [];
+    if (estadosPagoPermitidos.length > 0) {
+      permConditions.push(`o.estado_pago = ANY($${paramIndex++})`);
+      params.push(estadosPagoPermitidos);
+    }
+    if (estadosPedidoPermitidos.length > 0) {
+      permConditions.push(`o.estado_pedido = ANY($${paramIndex++})`);
+      params.push(estadosPedidoPermitidos);
+    }
+    if (permConditions.length > 0) {
+      conditions.push(`(${permConditions.join(' OR ')})`);
+    }
 
     if (estado_pago && estado_pago !== 'all') {
       conditions.push(`o.estado_pago = $${paramIndex++}`);
@@ -1537,11 +1545,12 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
     const requiredPagoPerm = estadoPagoPermisos[order.estado_pago];
     const requiredPedidoPerm = estadoPedidoPermisos[order.estado_pedido];
 
-    if (requiredPagoPerm && !userPerms.includes(requiredPagoPerm)) {
-      return res.status(403).json({ error: 'No tienes permiso para ver pedidos con este estado de pago' });
-    }
-    if (requiredPedidoPerm && !userPerms.includes(requiredPedidoPerm)) {
-      return res.status(403).json({ error: 'No tienes permiso para ver pedidos con este estado de pedido' });
+    // Lógica OR: puede ver si tiene permiso para el estado_pago O para el estado_pedido
+    const hasPagoPerm = requiredPagoPerm && userPerms.includes(requiredPagoPerm);
+    const hasPedidoPerm = requiredPedidoPerm && userPerms.includes(requiredPedidoPerm);
+
+    if (!hasPagoPerm && !hasPedidoPerm) {
+      return res.status(403).json({ error: 'No tienes permiso para ver este pedido' });
     }
 
     // Obtener comprobantes del pedido (transferencias)
