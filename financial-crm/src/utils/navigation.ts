@@ -14,14 +14,6 @@ const navItems = [
     to: '/receipts',
     permissions: ['receipts.view', 'receipts.confirm', 'receipts.reject', 'receipts.download', 'receipts.upload_manual']
   },
-  {
-    to: '/analytics',
-    permissions: ['dashboard.view']
-  },
-  {
-    to: '/settings',
-    permissions: [] // Siempre visible
-  },
 ];
 
 const adminItems = [
@@ -59,6 +51,6 @@ export function getDefaultRoute(): string {
     }
   }
 
-  // Si no tiene acceso a nada, ir a settings (siempre disponible)
-  return '/settings';
+  // Si no tiene acceso a nada, ir al dashboard
+  return '/';
 }

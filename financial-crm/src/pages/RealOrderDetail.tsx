@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useReactToPrint } from 'react-to-print';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -21,14 +20,12 @@ import {
 } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card, PaymentStatusBadge, OrderStatusBadge, Modal, Input } from '../components/ui';
-import { PrintableOrder } from '../components/orders';
 import {
   fetchOrderDetail,
   fetchOrderPrintData,
   registerCashPayment,
   updateOrderStatus,
   ApiOrderDetail,
-  ApiOrderPrintData,
   mapEstadoPago,
   mapEstadoPedido,
   OrderStatus,
@@ -56,10 +53,7 @@ export function RealOrderDetail() {
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   // Estado para impresión
-  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-  const [printData, setPrintData] = useState<ApiOrderPrintData | null>(null);
   const [isLoadingPrint, setIsLoadingPrint] = useState(false);
-  const printRef = useRef<HTMLDivElement>(null);
 
   const loadOrder = async () => {
     if (!orderNumber) return;
@@ -130,30 +124,138 @@ export function RealOrderDetail() {
     }
   };
 
-  // Manejar impresión de pedido
+  // Manejar impresión de pedido en ventana nueva
   const handlePrintOrder = async () => {
     if (!orderNumber) return;
 
     setIsLoadingPrint(true);
     try {
-      const data = await fetchOrderPrintData(orderNumber);
-      setPrintData(data);
-      setIsPrintModalOpen(true);
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Error al obtener datos de impresión');
-    } finally {
-      setIsLoadingPrint(false);
-    }
-  };
+      const printData = await fetchOrderPrintData(orderNumber);
 
-  // Hook de react-to-print
-  const handlePrint = useReactToPrint({
-    contentRef: printRef,
-    documentTitle: `Pedido-${orderNumber}`,
-    onAfterPrint: useCallback(async () => {
-      setIsPrintModalOpen(false);
-      setPrintData(null);
-      // Si el estado actual es a_imprimir, pasar a hoja_impresa
+      // Abrir ventana nueva
+      const printWindow = window.open('', '_blank', 'width=800,height=900');
+      if (!printWindow) {
+        alert('No se pudo abrir la ventana de impresión. Verificá que no estén bloqueados los popups.');
+        return;
+      }
+
+      const formatDate = (dateStr: string) => {
+        const d = new Date(dateStr);
+        return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      };
+
+      const nowFormatted = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+      const totalUnits = printData.products.reduce((sum: number, p: { quantity: number }) => sum + p.quantity, 0);
+
+      const productsRows = printData.products.map((product: { id: number; name: string; variant?: string | null; quantity: number; sku?: string | null }, index: number) =>
+        `<tr style="background: ${index % 2 === 0 ? '#fff' : '#f9f9f9'}">
+          <td style="text-align:center;border:1px solid #ccc;padding:5px 8px;">
+            <span style="display:inline-block;width:14px;height:14px;border:2px solid #999;"></span>
+          </td>
+          <td style="text-align:center;border:1px solid #ccc;padding:5px 8px;font-family:monospace;font-weight:bold;">
+            ${product.quantity}
+          </td>
+          <td style="border:1px solid #ccc;padding:5px 8px;">
+            <span style="font-weight:500;font-size:13px;">${product.name}</span>
+            ${product.variant ? `<span style="color:#666;font-size:11px;margin-left:4px;">(${product.variant})</span>` : ''}
+          </td>
+          <td style="border:1px solid #ccc;padding:5px 8px;font-family:monospace;font-size:11px;color:#666;">
+            ${product.sku || '-'}
+          </td>
+        </tr>`
+      ).join('');
+
+      const shippingHtml = printData.shipping_address
+        ? `<p>${printData.shipping_address.address} ${printData.shipping_address.number}${printData.shipping_address.floor ? `, ${printData.shipping_address.floor}` : ''}</p>
+           <p>${printData.shipping_address.locality}, ${printData.shipping_address.city}</p>
+           <p>${printData.shipping_address.province} - CP ${printData.shipping_address.zipcode}</p>
+           ${printData.shipping_address.phone ? `<p>Tel: ${printData.shipping_address.phone}</p>` : ''}`
+        : `<p style="font-weight:bold;">RETIRO EN LOCAL</p>`;
+
+      printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <title>Pedido #${printData.order_number}</title>
+  <style>
+    @page { size: A4; margin: 8mm; }
+    body { font-family: Arial, sans-serif; font-size: 11px; margin: 12px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    h1 { font-size: 28px; font-family: monospace; margin: 0; }
+    h2 { font-size: 11px; font-weight: bold; color: #666; text-transform: uppercase; margin: 0 0 4px 0; }
+    p { margin: 0; line-height: 1.3; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 5px 8px; }
+    .no-print { display: block; }
+    @media print { .no-print { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="padding:12px 0;margin-bottom:16px;border-bottom:2px solid #eee;display:flex;justify-content:space-between;align-items:center;">
+    <span style="font-size:14px;color:#333;">Pedido <strong>#${printData.order_number}</strong> - Vista de impresión</span>
+    <button onclick="window.print()" style="padding:8px 24px;background:#111;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;">Imprimir</button>
+  </div>
+
+  <div style="border-bottom:1px solid #000;padding-bottom:8px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:flex-end;">
+    <div>
+      <h1>#${printData.order_number}</h1>
+      <p style="font-size:10px;color:#666;text-transform:uppercase;">Hoja de Picking</p>
+    </div>
+    <p style="font-size:10px;color:#666;">${formatDate(printData.created_at)}</p>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+    <div style="border:1px solid #999;padding:8px;">
+      <h2>Cliente</h2>
+      <p style="font-weight:bold;">${printData.customer.name}</p>
+      ${printData.customer.phone ? `<p>Tel: ${printData.customer.phone}</p>` : ''}
+    </div>
+    <div style="border:1px solid #999;padding:8px;">
+      <h2>Envío</h2>
+      ${shippingHtml}
+    </div>
+  </div>
+
+  <div style="margin-bottom:12px;padding:4px 8px;background:#f0f0f0;font-size:10px;">
+    <span style="color:#666;">Método: </span>
+    <span style="font-weight:bold;">${printData.shipping.type}</span>
+  </div>
+
+  <div style="margin-bottom:12px;">
+    <h2>Productos (${totalUnits} unidades)</h2>
+    <table style="border:1px solid #999;">
+      <thead>
+        <tr style="background:#000;color:#fff;">
+          <th style="text-align:center;border:1px solid #999;width:30px;"></th>
+          <th style="text-align:center;border:1px solid #999;width:45px;">Cant.</th>
+          <th style="text-align:left;border:1px solid #999;">Producto</th>
+          <th style="text-align:left;border:1px solid #999;width:90px;">SKU</th>
+        </tr>
+      </thead>
+      <tbody>${productsRows}</tbody>
+    </table>
+  </div>
+
+  ${printData.note ? `<div style="margin-bottom:12px;padding:8px;border:1px solid #999;background:#fefce8;font-size:10px;"><span style="font-weight:bold;">Nota cliente: </span><span>${printData.note}</span></div>` : ''}
+
+  <div style="margin-top:16px;padding-top:8px;border-top:1px solid #999;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:10px;">
+      <div>
+        <p style="color:#666;margin-bottom:16px;">Armado:</p>
+        <div style="border-bottom:1px solid #999;"></div>
+      </div>
+      <div>
+        <p style="color:#666;margin-bottom:16px;">Verificado:</p>
+        <div style="border-bottom:1px solid #999;"></div>
+      </div>
+    </div>
+  </div>
+
+  <p style="margin-top:12px;font-size:9px;color:#aaa;text-align:center;">${nowFormatted}</p>
+</body>
+</html>`);
+      printWindow.document.close();
+
+      // Actualizar estado después de abrir la ventana de impresión
       if (data?.order.estado_pedido === 'a_imprimir' && orderNumber) {
         try {
           await updateOrderStatus(orderNumber, 'hoja_impresa');
@@ -162,12 +264,11 @@ export function RealOrderDetail() {
           console.error('Error al actualizar estado después de imprimir:', error);
         }
       }
-    }, [data?.order.estado_pedido, orderNumber]),
-  });
-
-  // Confirmar impresión
-  const handleConfirmPrint = () => {
-    handlePrint();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Error al obtener datos de impresión');
+    } finally {
+      setIsLoadingPrint(false);
+    }
   };
 
   if (loading) {
@@ -785,40 +886,6 @@ export function RealOrderDetail() {
         </div>
       </Modal>
 
-      {/* Modal de Impresión */}
-      {isPrintModalOpen && printData && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-auto">
-          <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[95vh] overflow-auto">
-            {/* Header del modal */}
-            <div className="sticky top-0 bg-white border-b border-neutral-200 p-4 flex items-center justify-between z-10">
-              <h2 className="text-lg font-semibold">Vista Previa de Impresión</h2>
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setIsPrintModalOpen(false);
-                    setPrintData(null);
-                  }}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  variant="primary"
-                  leftIcon={<Printer size={16} />}
-                  onClick={handleConfirmPrint}
-                >
-                  Imprimir y Confirmar
-                </Button>
-              </div>
-            </div>
-
-            {/* Contenido imprimible */}
-            <div className="p-4">
-              <PrintableOrder ref={printRef} data={printData} />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/layout';
-import { Dashboard, RealOrders, RealOrderDetail, RealReceipts, RealReceiptDetail, Analytics, Settings, AdminUsers, Financieras } from './pages';
+import { Dashboard, RealOrders, RealOrderDetail, RealReceipts, RealReceiptDetail, AdminUsers, Financieras } from './pages';
 import ActivityLog from './pages/ActivityLog';
 import BatchPrint from './pages/BatchPrint';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -34,8 +34,6 @@ function AppRoutes() {
             <Route path="/orders/:orderNumber" element={<RealOrderDetail />} />
             <Route path="/receipts" element={<RealReceipts />} />
             <Route path="/receipts/:id" element={<RealReceiptDetail />} />
-            <Route path="/analytics" element={<Analytics />} />
-            <Route path="/settings" element={<Settings />} />
             <Route path="/admin/users" element={<AdminUsers />} />
             <Route path="/admin/activity" element={<ActivityLog />} />
             <Route path="/admin/financieras" element={<Financieras />} />

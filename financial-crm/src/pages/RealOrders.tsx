@@ -273,7 +273,7 @@ export function RealOrders() {
     if (selectedOrderNumbers.size === 0) return;
     const params = new URLSearchParams();
     params.set('orders', Array.from(selectedOrderNumbers).join(','));
-    navigate(`/orders/print?${params.toString()}`);
+    window.open(`/orders/print?${params.toString()}`, '_blank', 'width=900,height=800');
     clearSelection();
   };
 
@@ -296,10 +296,10 @@ export function RealOrders() {
         return;
       }
 
-      // Navegar a la página de impresión con los order_numbers
+      // Abrir la página de impresión en ventana nueva
       const params = new URLSearchParams();
       params.set('orders', orderNumbers.join(','));
-      navigate(`/orders/print?${params.toString()}`);
+      window.open(`/orders/print?${params.toString()}`, '_blank', 'width=900,height=800');
 
       setIsPrintModalOpen(false);
     } catch (err) {
