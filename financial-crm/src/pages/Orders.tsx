@@ -21,9 +21,10 @@ const orderStatusPermissions: Record<OrderStatus, string> = {
   a_imprimir: 'orders.view_a_imprimir',
   hoja_impresa: 'orders.view_hoja_impresa',
   armado: 'orders.view_armado',
-  enviado: 'orders.view_enviado',
-  en_calle: 'orders.view_en_calle',
   retirado: 'orders.view_retirado',
+  en_calle: 'orders.view_en_calle',
+  enviado: 'orders.view_enviado',
+  cancelado: 'orders.view_cancelado',
 };
 
 export function Orders() {
