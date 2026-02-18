@@ -1778,6 +1778,18 @@ app.post('/webhook/tiendanube', async (req, res) => {
   try {
     const { event, store_id, id: orderId } = req.body;
 
+    // 📛 order/cancelled - Solo log por ahora
+    if (event === 'order/cancelled') {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🚫 PEDIDO CANCELADO');
+      console.log(`   Store ID: ${store_id}`);
+      console.log(`   Order ID: ${orderId}`);
+      console.log(`   Timestamp: ${new Date().toISOString()}`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      // TODO: Implementar persistencia en DB
+      return;
+    }
+
     // Solo procesar order/created y order/updated
     if (event !== 'order/created' && event !== 'order/updated') return;
 
