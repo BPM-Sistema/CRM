@@ -1230,8 +1230,24 @@ app.get('/comprobantes/:id', authenticate, requirePermission('receipts.view'), a
 /* =====================================================
    POST — CONFIRMAR COMPROBANTE (API JSON)
 ===================================================== */
+// Cache para prevenir requests duplicados (key: comprobante_id, value: timestamp)
+const confirmRequestCache = new Map();
+const DUPLICATE_THRESHOLD_MS = 5000; // 5 segundos
+
 app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipts.confirm'), async (req, res) => {
   const { id } = req.params;
+  const requestTime = Date.now();
+  const requestId = `${id}-${req.user?.id}-${requestTime}`;
+
+  console.log(`🔔 [${requestId}] Iniciando confirmación de comprobante ${id}`);
+
+  // Verificar si hay un request reciente para el mismo comprobante
+  const lastRequest = confirmRequestCache.get(id);
+  if (lastRequest && (requestTime - lastRequest) < DUPLICATE_THRESHOLD_MS) {
+    console.log(`⚠️ [${requestId}] Request duplicado detectado (${requestTime - lastRequest}ms desde último)`);
+    return res.status(429).json({ error: 'Request duplicado, espere unos segundos' });
+  }
+  confirmRequestCache.set(id, requestTime);
 
   try {
     // 1️⃣ Buscar comprobante
@@ -1247,6 +1263,7 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
     const comprobante = compRes.rows[0];
 
     if (comprobante.estado !== 'pendiente' && comprobante.estado !== 'a_confirmar') {
+      console.log(`⚠️ [${requestId}] Comprobante ya procesado (estado: ${comprobante.estado})`);
       return res.status(400).json({ error: 'Este comprobante ya fue procesado' });
     }
 
@@ -1286,6 +1303,7 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
     );
 
     // 8️⃣ Log
+    console.log(`📝 [${requestId}] Insertando log de confirmación`);
     await logEvento({
       comprobanteId: id,
       orderNumber: comprobante.order_number,
@@ -1295,7 +1313,7 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
       username: req.user?.name
     });
 
-    console.log(`✅ Comprobante ${id} confirmado`);
+    console.log(`✅ [${requestId}] Comprobante ${id} confirmado exitosamente`);
     if (nuevoEstadoPedido !== estadoPedidoActual) {
       console.log(`📦 Estado pedido: ${estadoPedidoActual} → ${nuevoEstadoPedido}`);
     }
@@ -1311,7 +1329,7 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
     });
 
   } catch (error) {
-    console.error('❌ /comprobantes/:id/confirmar error:', error.message);
+    console.error(`❌ [${requestId}] /comprobantes/:id/confirmar error:`, error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1320,9 +1338,24 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
 /* =====================================================
    POST — RECHAZAR COMPROBANTE (API JSON)
 ===================================================== */
+// Cache para prevenir requests duplicados
+const rejectRequestCache = new Map();
+
 app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts.reject'), async (req, res) => {
   const { id } = req.params;
   const { motivo } = req.body;
+  const requestTime = Date.now();
+  const requestId = `${id}-${req.user?.id}-${requestTime}`;
+
+  console.log(`🔔 [${requestId}] Iniciando rechazo de comprobante ${id}`);
+
+  // Verificar si hay un request reciente para el mismo comprobante
+  const lastRequest = rejectRequestCache.get(id);
+  if (lastRequest && (requestTime - lastRequest) < DUPLICATE_THRESHOLD_MS) {
+    console.log(`⚠️ [${requestId}] Request duplicado detectado (${requestTime - lastRequest}ms desde último)`);
+    return res.status(429).json({ error: 'Request duplicado, espere unos segundos' });
+  }
+  rejectRequestCache.set(id, requestTime);
 
   try {
     const compRes = await pool.query(
@@ -1337,6 +1370,7 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
     const comprobante = compRes.rows[0];
 
     if (comprobante.estado !== 'pendiente' && comprobante.estado !== 'a_confirmar') {
+      console.log(`⚠️ [${requestId}] Comprobante ya procesado (estado: ${comprobante.estado})`);
       return res.status(400).json({ error: 'Este comprobante ya fue procesado' });
     }
 
@@ -1344,6 +1378,7 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
     await pool.query(`UPDATE comprobantes SET estado = 'rechazado' WHERE id = $1`, [id]);
 
     // Log
+    console.log(`📝 [${requestId}] Insertando log de rechazo`);
     await logEvento({
       comprobanteId: id,
       orderNumber: comprobante.order_number,
@@ -1353,7 +1388,7 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
       username: req.user?.name
     });
 
-    console.log(`❌ Comprobante ${id} rechazado`);
+    console.log(`❌ [${requestId}] Comprobante ${id} rechazado exitosamente`);
 
     res.json({
       ok: true,
@@ -1362,7 +1397,7 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
     });
 
   } catch (error) {
-    console.error('❌ /comprobantes/:id/rechazar error:', error.message);
+    console.error(`❌ [${requestId}] /comprobantes/:id/rechazar error:`, error.message);
     res.status(500).json({ error: error.message });
   }
 });
