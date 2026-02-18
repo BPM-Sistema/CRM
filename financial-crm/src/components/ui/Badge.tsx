@@ -93,6 +93,7 @@ const orderStatusVariants: Record<OrderStatus, BadgeVariant> = {
   retirado: 'success',
   en_calle: 'orange',
   enviado: 'success',
+  cancelado: 'danger',
 };
 
 const orderStatusLabels: Record<OrderStatus, string> = {
@@ -103,6 +104,7 @@ const orderStatusLabels: Record<OrderStatus, string> = {
   retirado: 'Retirado',
   en_calle: 'En calle',
   enviado: 'Enviado',
+  cancelado: 'Cancelado',
 };
 
 // Etiquetas cortas para tamaño pequeño
@@ -114,6 +116,7 @@ const orderStatusLabelsShort: Record<OrderStatus, string> = {
   retirado: 'Retirado',
   en_calle: 'En calle',
   enviado: 'Enviado',
+  cancelado: 'Cancelado',
 };
 
 interface OrderStatusBadgeProps {

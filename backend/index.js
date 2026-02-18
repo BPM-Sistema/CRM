@@ -903,6 +903,7 @@ app.get('/orders/print-counts', authenticate, requirePermission('orders.view'), 
       retirado: 0,
       en_calle: 0,
       enviado: 0,
+      cancelado: 0,
     };
 
     countsRes.rows.forEach(row => {
@@ -932,7 +933,7 @@ app.post('/orders/to-print', authenticate, requirePermission('orders.print'), as
     }
 
     // Validar que los estados sean válidos
-    const validStatuses = ['pendiente_pago', 'a_imprimir', 'hoja_impresa', 'armado', 'retirado', 'en_calle', 'enviado'];
+    const validStatuses = ['pendiente_pago', 'a_imprimir', 'hoja_impresa', 'armado', 'retirado', 'en_calle', 'enviado', 'cancelado'];
     const invalidStatuses = statuses.filter(s => !validStatuses.includes(s));
     if (invalidStatuses.length > 0) {
       return res.status(400).json({ error: `Estados inválidos: ${invalidStatuses.join(', ')}` });
@@ -998,6 +999,7 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
       'orders.view_retirado': 'retirado',
       'orders.view_en_calle': 'en_calle',
       'orders.view_enviado': 'enviado',
+      'orders.view_cancelado': 'cancelado',
     };
 
     // Obtener estados permitidos según permisos del usuario
@@ -1540,6 +1542,7 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
       'retirado': 'orders.view_retirado',
       'en_calle': 'orders.view_en_calle',
       'enviado': 'orders.view_enviado',
+      'cancelado': 'orders.view_cancelado',
     };
 
     const userPerms = req.user.permissions || [];
@@ -1656,7 +1659,7 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
     const { estado_pedido } = req.body;
 
     // Validar estado_pedido
-    const estadosValidos = ['pendiente_pago', 'a_imprimir', 'hoja_impresa', 'armado', 'retirado', 'en_calle', 'enviado'];
+    const estadosValidos = ['pendiente_pago', 'a_imprimir', 'hoja_impresa', 'armado', 'retirado', 'en_calle', 'enviado', 'cancelado'];
     if (!estado_pedido || !estadosValidos.includes(estado_pedido)) {
       return res.status(400).json({
         error: `Estado inválido. Valores permitidos: ${estadosValidos.join(', ')}`
@@ -1711,7 +1714,8 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
       'armado': 'pedido_armado',
       'retirado': 'pedido_retirado',
       'en_calle': 'pedido_en_calle',
-      'enviado': 'pedido_enviado'
+      'enviado': 'pedido_enviado',
+      'cancelado': 'pedido_cancelado'
     };
     const accionLog = accionesEstado[estado_pedido] || `estado_${estado_pedido}`;
 
@@ -1778,15 +1782,37 @@ app.post('/webhook/tiendanube', async (req, res) => {
   try {
     const { event, store_id, id: orderId } = req.body;
 
-    // 📛 order/cancelled - Solo log por ahora
+    // 📛 order/cancelled - Marcar pedido como cancelado
     if (event === 'order/cancelled') {
+      // Buscar el número de pedido desde TiendaNube
+      const pedido = await obtenerPedidoPorId(store_id, orderId);
+      const orderNumber = pedido?.number ? String(pedido.number) : null;
+
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log('🚫 PEDIDO CANCELADO');
       console.log(`   Store ID: ${store_id}`);
       console.log(`   Order ID: ${orderId}`);
+      console.log(`   Order Number: ${orderNumber || 'N/A'}`);
       console.log(`   Timestamp: ${new Date().toISOString()}`);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      // TODO: Implementar persistencia en DB
+
+      if (orderNumber) {
+        // Actualizar estado en DB
+        await pool.query(`
+          UPDATE orders_validated
+          SET estado_pedido = 'cancelado'
+          WHERE order_number = $1
+        `, [orderNumber]);
+
+        // Registrar en log de actividad
+        await logEvento({
+          orderNumber,
+          accion: 'pedido_cancelado',
+          origen: 'webhook_tiendanube'
+        });
+
+        console.log(`✅ Pedido #${orderNumber} marcado como cancelado en DB`);
+      }
       return;
     }
 

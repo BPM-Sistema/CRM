@@ -35,6 +35,7 @@ const orderStatusButtons: { value: OrderStatus | 'all'; label: string; color: st
   { value: 'retirado', label: 'Retirado', color: 'bg-purple-50 text-purple-700', permission: 'orders.view_retirado' },
   { value: 'en_calle', label: 'En Calle', color: 'bg-orange-50 text-orange-700', permission: 'orders.view_en_calle' },
   { value: 'enviado', label: 'Enviado', color: 'bg-emerald-50 text-emerald-700', permission: 'orders.view_enviado' },
+  { value: 'cancelado', label: 'Cancelado', color: 'bg-red-50 text-red-700', permission: 'orders.view_cancelado' },
 ];
 
 export function RealOrders() {

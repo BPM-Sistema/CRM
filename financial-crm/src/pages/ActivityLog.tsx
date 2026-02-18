@@ -17,6 +17,7 @@ import {
   Printer,
   Truck,
   Clock,
+  XCircle,
 } from 'lucide-react';
 import {
   fetchActivityLog,
@@ -35,6 +36,7 @@ const ACCION_CONFIG: Record<string, { label: string; icon: typeof Activity; colo
   'pedido_retirado': { label: 'Pedido retirado', icon: Truck, color: 'text-teal-600 bg-teal-50' },
   'pedido_en_calle': { label: 'Pedido en calle', icon: Truck, color: 'text-cyan-600 bg-cyan-50' },
   'pedido_enviado': { label: 'Pedido enviado', icon: Truck, color: 'text-indigo-600 bg-indigo-50' },
+  'pedido_cancelado': { label: 'Pedido cancelado', icon: XCircle, color: 'text-red-600 bg-red-50' },
   'upload': { label: 'Comprobante subido', icon: Activity, color: 'text-gray-600 bg-gray-50' },
   'whatsapp_cliente_enviado': { label: 'WhatsApp enviado', icon: Activity, color: 'text-green-600 bg-green-50' },
 };

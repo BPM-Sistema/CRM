@@ -47,6 +47,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   'orders.view_retirado': 'Retirado',
   'orders.view_en_calle': 'En calle',
   'orders.view_enviado': 'Enviado',
+  'orders.view_cancelado': 'Cancelado',
   'receipts.view': 'Ver comprobantes',
   'receipts.download': 'Descargar imágenes',
   'receipts.upload_manual': 'Subir manual',
@@ -88,7 +89,7 @@ const SECTIONS = [
     subsections: [
       { title: 'Acciones', permissions: ['orders.view', 'orders.print', 'orders.update_status', 'orders.create_cash_payment'] },
       { title: 'Filtro por Estado de Pago', permissions: ['orders.view_pendiente', 'orders.view_a_confirmar', 'orders.view_parcial', 'orders.view_total', 'orders.view_rechazado'] },
-      { title: 'Filtro por Estado Logístico', permissions: ['orders.view_pendiente_pago', 'orders.view_a_imprimir', 'orders.view_hoja_impresa', 'orders.view_armado', 'orders.view_retirado', 'orders.view_en_calle', 'orders.view_enviado'] }
+      { title: 'Filtro por Estado Logístico', permissions: ['orders.view_pendiente_pago', 'orders.view_a_imprimir', 'orders.view_hoja_impresa', 'orders.view_armado', 'orders.view_retirado', 'orders.view_en_calle', 'orders.view_enviado', 'orders.view_cancelado'] }
     ]
   },
   {
