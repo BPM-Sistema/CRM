@@ -155,12 +155,33 @@ export function getTotalUnits(products: { quantity: number }[]): number {
   return products.reduce((sum, p) => sum + p.quantity, 0);
 }
 
+export interface ApiOrderInconsistency {
+  id: string;
+  type: 'product_missing' | 'product_extra' | 'quantity_mismatch' | 'total_mismatch';
+  detail: {
+    message: string;
+    product_id?: string;
+    variant_id?: string | null;
+    name?: string;
+    quantity_db?: number;
+    quantity_tn?: number;
+    expected_quantity?: number;
+    quantity_in_db?: number;
+    total_db?: number;
+    total_tn?: number;
+    difference?: number;
+  };
+  detected_at: string;
+}
+
 export interface ApiOrderDetail {
   order: ApiOrder;
   comprobantes: ApiComprobante[];
   pagos_efectivo: ApiPagoEfectivo[];
   logs: ApiLog[];
   productos: ApiOrderProduct[];
+  has_inconsistency: boolean;
+  inconsistencies: ApiOrderInconsistency[];
 }
 
 // Datos para impresión de pedido
@@ -350,7 +371,9 @@ export async function fetchOrderDetail(orderNumber: string): Promise<ApiOrderDet
     comprobantes: data.comprobantes,
     pagos_efectivo: data.pagos_efectivo || [],
     logs: data.logs,
-    productos: data.productos || []
+    productos: data.productos || [],
+    has_inconsistency: data.has_inconsistency || false,
+    inconsistencies: data.inconsistencies || []
   };
 }
 

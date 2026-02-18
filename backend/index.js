@@ -20,6 +20,7 @@ const crypto = require('crypto');
 const sharp = require('sharp');
 const { runSyncJob } = require('./services/orderSync');
 const { getQueueStats, getSyncState } = require('./services/syncQueue');
+const { verificarConsistencia, getInconsistencias } = require('./utils/orderVerification');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -1634,13 +1635,18 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
       total: Number(p.total)
     }));
 
+    // 🔍 Verificar si hay inconsistencias activas
+    const inconsistencias = await getInconsistencias(orderNumber);
+
     res.json({
       ok: true,
       order: order,
       comprobantes: comprobantesRes.rows,
       pagos_efectivo: pagosEfectivoRes.rows,
       logs: logsRes.rows,
-      productos: productos
+      productos: productos,
+      has_inconsistency: inconsistencias.length > 0,
+      inconsistencies: inconsistencias
     });
 
   } catch (error) {
@@ -1870,6 +1876,9 @@ app.post('/webhook/tiendanube', async (req, res) => {
       // Actualizar DB
       await guardarPedidoCompleto(pedido);
 
+      // 🔍 Verificar consistencia con TiendaNube
+      await verificarConsistencia(String(pedido.number), pedido);
+
       // Verificar si hubo cambios en productos (más de solo la línea del monto)
       const lineas = mensaje.split('\n');
       const hayProductosCambiados = lineas.length > 1;
@@ -1913,6 +1922,9 @@ app.post('/webhook/tiendanube', async (req, res) => {
     // order/created: Guardar pedido completo (datos + productos)
     await guardarPedidoCompleto(pedido);
     console.log(`✅ Pedido #${pedido.number} guardado en DB (order/created)`);
+
+    // 🔍 Verificar consistencia con TiendaNube
+    await verificarConsistencia(String(pedido.number), pedido);
 
     // 5️⃣ Teléfono
     const telefono =

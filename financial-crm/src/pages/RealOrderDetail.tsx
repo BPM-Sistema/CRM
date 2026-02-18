@@ -197,7 +197,7 @@ export function RealOrderDetail() {
     );
   }
 
-  const { order, comprobantes, pagos_efectivo, logs, productos } = data;
+  const { order, comprobantes, pagos_efectivo, logs, productos, has_inconsistency, inconsistencies } = data;
   const saldoPendiente = (order.monto_tiendanube || 0) - (order.total_pagado || 0);
   const paymentStatus = mapEstadoPago(order.estado_pago);
   const orderStatus = mapEstadoPedido(order.estado_pedido);
@@ -275,6 +275,36 @@ export function RealOrderDetail() {
                 </div>
               </div>
             </Card>
+
+            {/* Alerta de inconsistencia con TiendaNube */}
+            {has_inconsistency && inconsistencies.length > 0 && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={20} />
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-red-800">
+                      Inconsistencia detectada con TiendaNube
+                    </h4>
+                    <p className="text-sm text-red-700 mt-1">
+                      Los productos de este pedido no coinciden con los datos de TiendaNube:
+                    </p>
+                    <ul className="mt-2 space-y-1 text-sm text-red-700">
+                      {inconsistencies.map((inc) => (
+                        <li key={inc.id} className="flex items-start gap-2">
+                          <span className="text-red-400">•</span>
+                          <span>
+                            {inc.type === 'product_missing' && `Producto faltante: ${inc.detail.name || 'ID: ' + inc.detail.product_id}`}
+                            {inc.type === 'product_extra' && `Producto extra en DB: ${inc.detail.name || 'ID: ' + inc.detail.product_id}`}
+                            {inc.type === 'quantity_mismatch' && `Cantidad incorrecta en "${inc.detail.name}": DB tiene ${inc.detail.quantity_db}, TN tiene ${inc.detail.quantity_tn}`}
+                            {inc.type === 'total_mismatch' && `Total de unidades: DB tiene ${inc.detail.total_db}, TN tiene ${inc.detail.total_tn}`}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Productos */}
             {productos && productos.length > 0 && (
