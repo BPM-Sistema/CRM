@@ -21,6 +21,7 @@ const sharp = require('sharp');
 const { runSyncJob } = require('./services/orderSync');
 const { getQueueStats, getSyncState } = require('./services/syncQueue');
 const { verificarConsistencia, getInconsistencias } = require('./utils/orderVerification');
+const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas } = require('./utils/notifications');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -3040,6 +3041,49 @@ function startSyncScheduler() {
     });
   }, SYNC_INTERVAL);
 }
+
+/* =====================================================
+   NOTIFICACIONES
+===================================================== */
+
+// Obtener notificaciones del usuario
+app.get('/notifications', authenticate, async (req, res) => {
+  try {
+    const notifications = await getNotificaciones(req.user.id);
+    const unreadCount = await contarNoLeidas(req.user.id);
+
+    res.json({
+      ok: true,
+      notifications,
+      unread_count: unreadCount
+    });
+  } catch (error) {
+    console.error('❌ /notifications error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Marcar una notificación como leída
+app.patch('/notifications/:id/read', authenticate, async (req, res) => {
+  try {
+    await marcarLeida(req.params.id, req.user.id);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('❌ /notifications/:id/read error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Marcar todas las notificaciones como leídas
+app.post('/notifications/read-all', authenticate, async (req, res) => {
+  try {
+    await marcarTodasLeidas(req.user.id);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('❌ /notifications/read-all error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 /* =====================================================
    SERVER

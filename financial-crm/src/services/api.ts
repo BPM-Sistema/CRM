@@ -184,6 +184,24 @@ export interface ApiOrderDetail {
   inconsistencies: ApiOrderInconsistency[];
 }
 
+// Notificaciones
+export interface ApiNotification {
+  id: string;
+  tipo: string;
+  titulo: string;
+  descripcion: string | null;
+  referencia_tipo: string | null;
+  referencia_id: string | null;
+  leida: boolean;
+  created_at: string;
+}
+
+export interface ApiNotificationsResponse {
+  ok: boolean;
+  notifications: ApiNotification[];
+  unread_count: number;
+}
+
 // Datos para impresión de pedido
 export interface ApiOrderPrintProduct {
   id: number;
@@ -1096,4 +1114,41 @@ export async function setFinancieraDefault(id: number): Promise<Financiera> {
   }
 
   return data.financiera;
+}
+
+// ============================================
+// NOTIFICACIONES
+// ============================================
+
+// Obtener notificaciones del usuario
+export async function fetchNotifications(): Promise<ApiNotificationsResponse> {
+  const response = await authFetch(`${API_BASE_URL}/notifications`);
+
+  if (!response.ok) {
+    throw new Error('Error al obtener notificaciones');
+  }
+
+  return response.json();
+}
+
+// Marcar notificación como leída
+export async function markNotificationRead(id: string): Promise<void> {
+  const response = await authFetch(`${API_BASE_URL}/notifications/${id}/read`, {
+    method: 'PATCH',
+  });
+
+  if (!response.ok) {
+    throw new Error('Error al marcar notificación como leída');
+  }
+}
+
+// Marcar todas las notificaciones como leídas
+export async function markAllNotificationsRead(): Promise<void> {
+  const response = await authFetch(`${API_BASE_URL}/notifications/read-all`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    throw new Error('Error al marcar notificaciones como leídas');
+  }
 }

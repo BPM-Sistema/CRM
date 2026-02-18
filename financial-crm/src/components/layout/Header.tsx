@@ -1,3 +1,5 @@
+import { NotificationBell } from '../ui';
+
 interface HeaderProps {
   title: React.ReactNode;
   subtitle?: string;
@@ -16,6 +18,7 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-4">
+          <NotificationBell />
           {actions}
         </div>
       </div>

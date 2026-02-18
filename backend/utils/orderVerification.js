@@ -4,6 +4,7 @@
  */
 
 const pool = require('../db');
+const { notificarUsuariosConPermiso } = require('./notifications');
 
 /**
  * Compara productos del pedido en DB vs TiendaNube
@@ -135,6 +136,15 @@ async function verificarConsistencia(orderNumber, pedidoTN) {
       }
 
       console.log(`⚠️ Inconsistencia detectada en pedido #${orderNumber}:`, inconsistencies.length, 'problema(s)');
+
+      // Crear notificación para usuarios con permiso orders.view
+      await notificarUsuariosConPermiso('orders.view', {
+        tipo: 'inconsistencia',
+        titulo: `Inconsistencia en pedido #${orderNumber}`,
+        descripcion: `Se detectaron ${inconsistencies.length} diferencia(s) con TiendaNube`,
+        referenciaTipo: 'order',
+        referenciaId: orderNumber
+      });
     }
 
     return {
