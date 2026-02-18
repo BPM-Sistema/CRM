@@ -16,15 +16,11 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
             @media print {
               @page {
                 size: A4;
-                margin: 10mm 8mm 20mm 8mm;
+                margin: 15mm 10mm 20mm 10mm;
               }
               body {
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
-              }
-              html {
-                /* Inicializar contador en la raíz para Chrome/Safari */
-                counter-reset: page;
               }
               .print-container {
                 padding: 0 !important;
@@ -36,73 +32,23 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
               tr { page-break-inside: avoid; }
               .print-no-break { page-break-inside: avoid; }
 
-              /* Header fijo en cada página - compacto */
-              .print-running-header {
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                height: 8mm;
-                background: white;
-                border-bottom: 1px solid #999;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding: 0 2mm;
-                font-size: 9px;
-                color: #333;
-              }
-
-              /* Footer fijo en cada página con número */
-              .print-running-footer {
-                position: fixed;
-                bottom: 0;
-                left: 0;
-                right: 0;
-                height: 12mm;
-                background: white;
+              /* Footer con número de página - flujo normal */
+              .print-page-footer {
+                display: block !important;
+                text-align: center;
+                padding-top: 10px;
+                margin-top: 20px;
                 border-top: 1px solid #ccc;
-                display: flex;
-                justify-content: center;
-                align-items: center;
                 font-size: 9px;
                 color: #666;
               }
-
-              /* Número de página usando CSS counter */
-              .print-running-footer .page-number::after {
+              .print-page-footer::after {
                 content: "Hoja " counter(page);
-              }
-
-              /* Espaciador superior - compensa el header fijo */
-              .print-spacer-top {
-                height: 10mm;
-                display: block !important;
-              }
-
-              /* Espaciador inferior - compensa el footer fijo */
-              .print-spacer-bottom {
-                height: 12mm;
-                display: block !important;
-              }
-
-              /* Mostrar elementos solo en impresión */
-              .print-only {
-                display: flex !important;
-              }
-              .print-only-block {
-                display: block !important;
-              }
-
-              /* Header principal - OCULTO en impresión para evitar duplicación */
-              /* El header compacto fijo ya contiene la info necesaria */
-              .print-main-header {
-                display: none !important;
               }
             }
 
-            /* Ocultar en pantalla, mostrar solo al imprimir */
-            .print-only, .print-only-block {
+            /* Ocultar footer en pantalla */
+            .print-page-footer {
               display: none;
             }
 
@@ -115,25 +61,8 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
           `}
         </style>
 
-        {/* Header running (compacto) - aparece en TODAS las páginas al imprimir */}
-        <div className="print-only print-running-header">
-          <span style={{ fontWeight: 700, fontSize: '11px' }}>#{data.order_number}</span>
-          <span>Hoja de Picking</span>
-          <span style={{ fontSize: '8px' }}>
-            {format(new Date(data.created_at), "dd/MM/yy", { locale: es })}
-          </span>
-        </div>
-
-        {/* Footer running - aparece en TODAS las páginas con número de hoja */}
-        <div className="print-only print-running-footer">
-          <span className="page-number"></span>
-        </div>
-
-        {/* Espaciador superior para que el contenido no se solape con header fijo */}
-        <div className="print-only-block print-spacer-top"></div>
-
         {/* Header principal del documento */}
-        <div className="print-main-header print-no-break border-b border-black pb-2 mb-3 flex justify-between items-end">
+        <div className="print-no-break border-b border-black pb-2 mb-3 flex justify-between items-end">
           <div>
             <h1 className="font-bold font-mono">#{data.order_number}</h1>
             <p className="text-[10px] text-gray-600 uppercase">Hoja de Picking</p>
@@ -172,7 +101,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
           <span className="font-semibold">{data.shipping.type}</span>
         </div>
 
-        {/* Tabla de productos - SOLO cantidad, producto, SKU */}
+        {/* Tabla de productos */}
         <div className="mb-3">
           <h2 className="font-bold text-gray-500 uppercase mb-1">
             Productos ({getTotalUnits(data.products)} unidades)
@@ -234,8 +163,8 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
           {format(new Date(), "dd/MM/yyyy HH:mm", { locale: es })}
         </p>
 
-        {/* Espaciador inferior para que el contenido no se solape con footer fijo */}
-        <div className="print-only-block print-spacer-bottom"></div>
+        {/* Footer con número de página - flujo normal del documento */}
+        <div className="print-page-footer"></div>
       </div>
     );
   }
