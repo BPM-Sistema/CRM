@@ -16,9 +16,16 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
             @media print {
               @page {
                 size: A4;
-                margin: 15mm 8mm 20mm 8mm;
+                margin: 10mm 8mm 20mm 8mm;
               }
-              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+              html {
+                /* Inicializar contador en la raíz para Chrome/Safari */
+                counter-reset: page;
+              }
               .print-container {
                 padding: 0 !important;
                 max-width: 100% !important;
@@ -29,24 +36,25 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
               tr { page-break-inside: avoid; }
               .print-no-break { page-break-inside: avoid; }
 
-              /* Header fijo en cada página */
-              .print-page-header {
+              /* Header fijo en cada página - compacto */
+              .print-running-header {
                 position: fixed;
                 top: 0;
                 left: 0;
                 right: 0;
-                height: 12mm;
+                height: 8mm;
                 background: white;
-                border-bottom: 1px solid #000;
+                border-bottom: 1px solid #999;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 0 8mm;
-                font-size: 10px;
+                padding: 0 2mm;
+                font-size: 9px;
+                color: #333;
               }
 
-              /* Footer fijo en cada página */
-              .print-page-footer {
+              /* Footer fijo en cada página con número */
+              .print-running-footer {
                 position: fixed;
                 bottom: 0;
                 left: 0;
@@ -61,27 +69,40 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
                 color: #666;
               }
 
-              /* Contador de páginas */
-              .print-page-footer::after {
+              /* Número de página usando CSS counter */
+              .print-running-footer .page-number::after {
                 content: "Hoja " counter(page);
               }
 
-              /* Espaciado para el contenido */
-              .print-content-spacer-top {
-                height: 15mm;
-              }
-              .print-content-spacer-bottom {
-                height: 15mm;
+              /* Espaciador superior - compensa el header fijo */
+              .print-spacer-top {
+                height: 10mm;
+                display: block !important;
               }
 
-              /* Ocultar header/footer en pantalla */
+              /* Espaciador inferior - compensa el footer fijo */
+              .print-spacer-bottom {
+                height: 12mm;
+                display: block !important;
+              }
+
+              /* Mostrar elementos solo en impresión */
               .print-only {
                 display: flex !important;
+              }
+              .print-only-block {
+                display: block !important;
+              }
+
+              /* Header principal - OCULTO en impresión para evitar duplicación */
+              /* El header compacto fijo ya contiene la info necesaria */
+              .print-main-header {
+                display: none !important;
               }
             }
 
             /* Ocultar en pantalla, mostrar solo al imprimir */
-            .print-only {
+            .print-only, .print-only-block {
               display: none;
             }
 
@@ -94,22 +115,25 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
           `}
         </style>
 
-        {/* Header fijo para impresión - aparece en cada página */}
-        <div className="print-only print-page-header">
-          <span style={{ fontWeight: 'bold', fontSize: '14px' }}>Pedido #{data.order_number}</span>
+        {/* Header running (compacto) - aparece en TODAS las páginas al imprimir */}
+        <div className="print-only print-running-header">
+          <span style={{ fontWeight: 700, fontSize: '11px' }}>#{data.order_number}</span>
           <span>Hoja de Picking</span>
+          <span style={{ fontSize: '8px' }}>
+            {format(new Date(data.created_at), "dd/MM/yy", { locale: es })}
+          </span>
         </div>
 
-        {/* Footer fijo para impresión - aparece en cada página */}
-        <div className="print-only print-page-footer">
-          {/* El número de página se agrega via CSS ::after */}
+        {/* Footer running - aparece en TODAS las páginas con número de hoja */}
+        <div className="print-only print-running-footer">
+          <span className="page-number"></span>
         </div>
 
-        {/* Espaciador superior para el header fijo */}
-        <div className="print-content-spacer-top print-only"></div>
+        {/* Espaciador superior para que el contenido no se solape con header fijo */}
+        <div className="print-only-block print-spacer-top"></div>
 
-        {/* Header compacto */}
-        <div className="print-no-break border-b border-black pb-2 mb-3 flex justify-between items-end">
+        {/* Header principal del documento */}
+        <div className="print-main-header print-no-break border-b border-black pb-2 mb-3 flex justify-between items-end">
           <div>
             <h1 className="font-bold font-mono">#{data.order_number}</h1>
             <p className="text-[10px] text-gray-600 uppercase">Hoja de Picking</p>
@@ -210,8 +234,8 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
           {format(new Date(), "dd/MM/yyyy HH:mm", { locale: es })}
         </p>
 
-        {/* Espaciador inferior para el footer fijo */}
-        <div className="print-content-spacer-bottom print-only"></div>
+        {/* Espaciador inferior para que el contenido no se solape con footer fijo */}
+        <div className="print-only-block print-spacer-bottom"></div>
       </div>
     );
   }
