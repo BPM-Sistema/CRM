@@ -47,9 +47,6 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
                 font-size: 9px;
                 color: #666;
               }
-              .print-footer-fixed::after {
-                content: "Hoja " counter(page);
-              }
             }
 
             /* Ocultar footer en pantalla */
