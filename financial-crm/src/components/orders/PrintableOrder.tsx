@@ -16,7 +16,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
             @media print {
               @page {
                 size: A4;
-                margin: 15mm 10mm 20mm 10mm;
+                margin: 15mm 10mm 18mm 10mm;
               }
               body {
                 -webkit-print-color-adjust: exact;
@@ -32,23 +32,28 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
               tr { page-break-inside: avoid; }
               .print-no-break { page-break-inside: avoid; }
 
-              /* Footer con número de página - flujo normal */
-              .print-page-footer {
-                display: block !important;
-                text-align: center;
-                padding-top: 10px;
-                margin-top: 20px;
+              /* Footer fijo - aparece en CADA página */
+              .print-footer-fixed {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                height: 12mm;
+                display: flex !important;
+                justify-content: center;
+                align-items: center;
                 border-top: 1px solid #ccc;
+                background: white;
                 font-size: 9px;
                 color: #666;
               }
-              .print-page-footer::after {
+              .print-footer-fixed::after {
                 content: "Hoja " counter(page);
               }
             }
 
             /* Ocultar footer en pantalla */
-            .print-page-footer {
+            .print-footer-fixed {
               display: none;
             }
 
@@ -60,6 +65,9 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
             .print-container th, .print-container td { padding: 5px 8px; }
           `}
         </style>
+
+        {/* Footer fijo - aparece en CADA página con número */}
+        <div className="print-footer-fixed"></div>
 
         {/* Header principal del documento */}
         <div className="print-no-break border-b border-black pb-2 mb-3 flex justify-between items-end">
@@ -162,9 +170,6 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
         <p className="mt-3 text-[9px] text-gray-400 text-center">
           {format(new Date(), "dd/MM/yyyy HH:mm", { locale: es })}
         </p>
-
-        {/* Footer con número de página - flujo normal del documento */}
-        <div className="print-page-footer"></div>
       </div>
     );
   }
