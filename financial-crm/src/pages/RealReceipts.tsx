@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RefreshCw, AlertCircle, Eye, Banknote, FileText, Download, Calendar, CheckSquare, Square, X, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { RefreshCw, AlertCircle, Eye, Banknote, FileText, Download, Calendar, CheckSquare, Square, X, Search, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
-import { fetchComprobantes, ApiComprobanteList, PaginationInfo } from '../services/api';
+import { fetchComprobantes, fetchFinancieras, ApiComprobanteList, PaginationInfo, Financiera } from '../services/api';
 import { formatDistanceToNow, format, isToday, isSameDay, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { clsx } from 'clsx';
@@ -214,12 +214,17 @@ export function RealReceipts() {
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 50;
 
-  const loadComprobantes = async (page?: number) => {
+  // Filtro por financiera
+  const [financieras, setFinancieras] = useState<Financiera[]>([]);
+  const [financieraFilter, setFinancieraFilter] = useState<number | null>(null);
+
+  const loadComprobantes = async (page?: number, financieraId?: number | null) => {
     const pageToLoad = page ?? currentPage;
+    const finId = financieraId !== undefined ? financieraId : financieraFilter;
     setLoading(true);
     setError(null);
     try {
-      const response = await fetchComprobantes(pageToLoad, ITEMS_PER_PAGE);
+      const response = await fetchComprobantes(pageToLoad, ITEMS_PER_PAGE, finId);
       setComprobantes(response.data);
       setPagination(response.pagination);
     } catch (err) {
@@ -235,6 +240,17 @@ export function RealReceipts() {
     setCurrentPage(page);
     loadComprobantes(page);
   };
+
+  const handleFinancieraChange = (id: number | null) => {
+    setFinancieraFilter(id);
+    setCurrentPage(1);
+    loadComprobantes(1, id);
+  };
+
+  // Cargar financieras al montar
+  useEffect(() => {
+    fetchFinancieras().then(setFinancieras).catch(console.error);
+  }, []);
 
   useEffect(() => {
     loadComprobantes();
@@ -484,6 +500,41 @@ export function RealReceipts() {
               ))}
             </div>
           </div>
+
+          {/* Filtro por financiera */}
+          {financieras.length > 0 && (
+            <div>
+              <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block">Financiera</span>
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0">
+                <button
+                  onClick={() => handleFinancieraChange(null)}
+                  className={clsx(
+                    'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap flex items-center gap-1.5',
+                    financieraFilter === null
+                      ? 'bg-neutral-100 text-neutral-700 ring-2 ring-neutral-900/10'
+                      : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
+                  )}
+                >
+                  Todas
+                </button>
+                {financieras.filter(f => f.activa).map((fin) => (
+                  <button
+                    key={fin.id}
+                    onClick={() => handleFinancieraChange(fin.id)}
+                    className={clsx(
+                      'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap flex items-center gap-1.5',
+                      financieraFilter === fin.id
+                        ? 'bg-violet-50 text-violet-700 ring-2 ring-violet-900/10'
+                        : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
+                    )}
+                  >
+                    <Building2 size={14} />
+                    {fin.nombre}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           </div>
 

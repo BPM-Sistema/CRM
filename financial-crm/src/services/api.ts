@@ -103,6 +103,8 @@ export interface ApiComprobanteList {
   created_at: string;
   customer_name: string | null;
   orden_estado_pago: string | null;
+  financiera_id: number | null;
+  financiera_nombre: string | null;
 }
 
 export interface ApiComprobanteDetail {
@@ -123,6 +125,8 @@ export interface ApiComprobanteDetail {
   orden_pagado: number | null;
   orden_saldo: number | null;
   orden_estado_pago: string | null;
+  financiera_id: number | null;
+  financiera_nombre: string | null;
 }
 
 export interface ApiLog {
@@ -501,8 +505,17 @@ export function mapEstadoPedido(estadoPedido: string | null): OrderStatus {
 }
 
 // Obtener todos los comprobantes (con paginación)
-export async function fetchComprobantes(page = 1, limit = 50): Promise<PaginatedResponse<ApiComprobanteList>> {
-  const response = await authFetch(`${API_BASE_URL}/comprobantes?page=${page}&limit=${limit}`);
+export async function fetchComprobantes(
+  page = 1,
+  limit = 50,
+  financieraId?: number | null
+): Promise<PaginatedResponse<ApiComprobanteList>> {
+  let url = `${API_BASE_URL}/comprobantes?page=${page}&limit=${limit}`;
+  if (financieraId) {
+    url += `&financiera_id=${financieraId}`;
+  }
+
+  const response = await authFetch(url);
 
   if (!response.ok) {
     throw new Error('Error al obtener comprobantes');

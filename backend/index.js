@@ -1206,10 +1206,26 @@ app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
     const offset = (page - 1) * limit;
 
-    // Contar total
-    const countRes = await pool.query(`SELECT COUNT(*) as total FROM comprobantes`);
+    // Filtro por financiera (opcional)
+    const financieraId = req.query.financiera_id ? parseInt(req.query.financiera_id) : null;
+
+    // Construir WHERE dinámico
+    let whereClause = '';
+    const params = [];
+    if (financieraId) {
+      whereClause = 'WHERE c.financiera_id = $1';
+      params.push(financieraId);
+    }
+
+    // Contar total (con filtro si aplica)
+    const countRes = await pool.query(
+      `SELECT COUNT(*) as total FROM comprobantes c ${whereClause}`,
+      params
+    );
     const total = parseInt(countRes.rows[0].total);
 
+    // Query principal con JOIN a financieras
+    const queryParams = financieraId ? [financieraId, limit, offset] : [limit, offset];
     const comprobantesRes = await pool.query(`
       SELECT
         c.id,
@@ -1221,13 +1237,17 @@ app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async
         c.file_url,
         NULL as registrado_por,
         c.created_at,
+        c.financiera_id,
+        f.nombre as financiera_nombre,
         o.customer_name,
         o.estado_pago as orden_estado_pago
       FROM comprobantes c
       LEFT JOIN orders_validated o ON c.order_number = o.order_number
+      LEFT JOIN financieras f ON c.financiera_id = f.id
+      ${financieraId ? 'WHERE c.financiera_id = $1' : ''}
       ORDER BY c.created_at DESC
-      LIMIT $1 OFFSET $2
-    `, [limit, offset]);
+      LIMIT $${financieraId ? '2' : '1'} OFFSET $${financieraId ? '3' : '2'}
+    `, queryParams);
 
     res.json({
       ok: true,
@@ -1266,6 +1286,8 @@ app.get('/comprobantes/:id', authenticate, requirePermission('receipts.view'), a
         c.texto_ocr,
         NULL as registrado_por,
         c.created_at,
+        c.financiera_id,
+        f.nombre as financiera_nombre,
         o.customer_name,
         o.customer_email,
         o.customer_phone,
@@ -1275,6 +1297,7 @@ app.get('/comprobantes/:id', authenticate, requirePermission('receipts.view'), a
         o.estado_pago as orden_estado_pago
       FROM comprobantes c
       LEFT JOIN orders_validated o ON c.order_number = o.order_number
+      LEFT JOIN financieras f ON c.financiera_id = f.id
       WHERE c.id = $1
     `, [id]);
 
@@ -2327,10 +2350,12 @@ app.post('/upload', (req, res, next) => {
     /* ===============================
        6️⃣ INSERTAR COMPROBANTE
     ================================ */
+    const financieraId = destinoValidation.cuenta?.id || null;
+
     const insert = await pool.query(
       `insert into comprobantes
-       (order_number, hash_ocr, texto_ocr, monto, monto_tiendanube, file_url, estado)
-       values ($1,$2,$3,$4,$5,$6,'a_confirmar')
+       (order_number, hash_ocr, texto_ocr, monto, monto_tiendanube, file_url, estado, financiera_id)
+       values ($1,$2,$3,$4,$5,$6,'a_confirmar',$7)
        returning id`,
       [
         orderNumber,
@@ -2338,7 +2363,8 @@ app.post('/upload', (req, res, next) => {
         textoOcr,
         montoDetectado,
         montoTiendanube,
-        fileUrl
+        fileUrl,
+        financieraId
       ]
     );
 
