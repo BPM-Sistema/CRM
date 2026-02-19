@@ -700,6 +700,31 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables }) {
   }
   console.log('📤 Enviando WhatsApp a:', telefono, 'plantilla:', plantilla);
 
+  // Obtener financiera default para agregar a variables
+  let variablesFinales = { ...variables };
+  try {
+    const finResult = await pool.query(`
+      SELECT nombre, alias, cbu
+      FROM financieras
+      WHERE is_default = true
+      LIMIT 1
+    `);
+
+    if (finResult.rows.length > 0) {
+      const financiera = finResult.rows[0];
+      variablesFinales = {
+        ...variables,
+        financiera_nombre: financiera.nombre || '',
+        financiera_alias: financiera.alias || '',
+        financiera_cbu: financiera.cbu || ''
+      };
+      console.log('🏦 Financiera default agregada:', financiera.nombre);
+    }
+  } catch (err) {
+    console.error('⚠️ Error obteniendo financiera default:', err.message);
+    // Continuar sin financiera - no bloquear el envío
+  }
+
   const contactIdClean = telefono.replace('+', '');
 
   return axios.post(
@@ -710,7 +735,7 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables }) {
         contactId: contactIdClean
       },
       intentIdOrName: plantilla,
-      variables
+      variables: variablesFinales
     },
     {
       headers: {
