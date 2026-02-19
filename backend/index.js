@@ -700,11 +700,11 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables }) {
   }
   console.log('📤 Enviando WhatsApp a:', telefono, 'plantilla:', plantilla);
 
-  // Obtener financiera default para agregar a variables
+  // Obtener financiera default para agregar datos de transferencia como variable '4'
   let variablesFinales = { ...variables };
   try {
     const finResult = await pool.query(`
-      SELECT nombre, alias, cbu
+      SELECT nombre, datos_transferencia
       FROM financieras
       WHERE is_default = true
       LIMIT 1
@@ -712,13 +712,11 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables }) {
 
     if (finResult.rows.length > 0) {
       const financiera = finResult.rows[0];
-      variablesFinales = {
-        ...variables,
-        financiera_nombre: financiera.nombre || '',
-        financiera_alias: financiera.alias || '',
-        financiera_cbu: financiera.cbu || ''
-      };
-      console.log('🏦 Financiera default agregada:', financiera.nombre);
+      // Agregar datos_transferencia como variable '4' si existe y no fue definida
+      if (financiera.datos_transferencia && !variables['4']) {
+        variablesFinales['4'] = financiera.datos_transferencia;
+      }
+      console.log('🏦 Financiera default:', financiera.nombre);
     }
   } catch (err) {
     console.error('⚠️ Error obteniendo financiera default:', err.message);
