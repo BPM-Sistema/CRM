@@ -9,7 +9,6 @@ import {
   Check,
   Loader2,
   FileText,
-  Clock,
   Phone,
   Mail,
   Printer,
@@ -19,6 +18,7 @@ import {
   Package,
   ShoppingBag,
 } from 'lucide-react';
+import { getEventConfig, formatEventLabel } from '../utils/eventConfig';
 import { Header } from '../components/layout';
 import { Button, Card, PaymentStatusBadge, OrderStatusBadge, Modal, Input } from '../components/ui';
 import { PrintableOrder } from '../components/orders';
@@ -463,19 +463,22 @@ export function RealOrderDetail() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {logs.map((log) => (
-                    <div key={log.id} className="flex items-start gap-3">
-                      <div className="p-1.5 bg-neutral-100 rounded-full mt-0.5">
-                        <Clock size={14} className="text-neutral-500" />
+                  {logs.map((log) => {
+                    const eventConfig = getEventConfig(log.accion);
+                    return (
+                      <div key={log.id} className="flex items-start gap-3">
+                        <div className={`w-8 h-8 ${eventConfig.color} rounded-full flex items-center justify-center text-base`}>
+                          {eventConfig.emoji}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-neutral-900 whitespace-pre-line">{formatEventLabel(log.accion)}</p>
+                          <p className="text-xs text-neutral-500">
+                            {format(new Date(log.created_at), 'dd/MM/yyyy HH:mm', { locale: es })} · {log.origen}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm text-neutral-900 whitespace-pre-line">{log.accion}</p>
-                        <p className="text-xs text-neutral-500">
-                          {format(new Date(log.created_at), 'dd/MM/yyyy HH:mm', { locale: es })} · {log.origen}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </Card>

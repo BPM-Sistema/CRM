@@ -3,7 +3,6 @@ import { Header } from '../components/layout';
 import {
   RefreshCw,
   AlertCircle,
-  Activity,
   Search,
   Filter,
   ChevronLeft,
@@ -11,13 +10,8 @@ import {
   User,
   Calendar,
   Package,
-  FileCheck,
-  FileX,
-  Banknote,
-  Printer,
-  Truck,
   Clock,
-  XCircle,
+  Activity,
 } from 'lucide-react';
 import {
   fetchActivityLog,
@@ -26,30 +20,7 @@ import {
 } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-
-const ACCION_CONFIG: Record<string, { label: string; icon: typeof Activity; color: string }> = {
-  'comprobante_confirmado': { label: 'Comprobante confirmado', icon: FileCheck, color: 'text-green-600 bg-green-50' },
-  'comprobante_rechazado': { label: 'Comprobante rechazado', icon: FileX, color: 'text-red-600 bg-red-50' },
-  'pago_efectivo_registrado': { label: 'Pago efectivo', icon: Banknote, color: 'text-amber-600 bg-amber-50' },
-  'hoja_impresa': { label: 'Hoja impresa', icon: Printer, color: 'text-blue-600 bg-blue-50' },
-  'pedido_armado': { label: 'Pedido armado', icon: Package, color: 'text-purple-600 bg-purple-50' },
-  'pedido_retirado': { label: 'Pedido retirado', icon: Truck, color: 'text-teal-600 bg-teal-50' },
-  'pedido_en_calle': { label: 'Pedido en calle', icon: Truck, color: 'text-cyan-600 bg-cyan-50' },
-  'pedido_enviado': { label: 'Pedido enviado', icon: Truck, color: 'text-indigo-600 bg-indigo-50' },
-  'pedido_cancelado': { label: 'Pedido cancelado', icon: XCircle, color: 'text-red-600 bg-red-50' },
-  'upload': { label: 'Comprobante subido', icon: Activity, color: 'text-gray-600 bg-gray-50' },
-  'whatsapp_cliente_enviado': { label: 'WhatsApp enviado', icon: Activity, color: 'text-green-600 bg-green-50' },
-};
-
-function getAccionConfig(accion: string) {
-  // Buscar match exacto o parcial
-  for (const [key, config] of Object.entries(ACCION_CONFIG)) {
-    if (accion.startsWith(key)) {
-      return config;
-    }
-  }
-  return { label: accion, icon: Activity, color: 'text-gray-600 bg-gray-50' };
-}
+import { getEventConfig, formatEventLabel } from '../utils/eventConfig';
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
@@ -215,7 +186,7 @@ export default function ActivityLog() {
                   <option value="">Todas</option>
                   {availableAcciones.map((a) => (
                     <option key={a} value={a}>
-                      {getAccionConfig(a).label}
+                      {getEventConfig(a).emoji} {getEventConfig(a).label}
                     </option>
                   ))}
                 </select>
@@ -333,8 +304,7 @@ export default function ActivityLog() {
                   </tr>
                 ) : (
                   logs.map((log) => {
-                    const config = getAccionConfig(log.accion);
-                    const Icon = config.icon;
+                    const config = getEventConfig(log.accion);
 
                     return (
                       <tr key={log.id} className="hover:bg-gray-50">
@@ -346,8 +316,8 @@ export default function ActivityLog() {
                         </td>
                         <td className="px-4 py-3">
                           <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-sm ${config.color}`}>
-                            <Icon className="w-4 h-4" />
-                            {config.label}
+                            <span className="text-base">{config.emoji}</span>
+                            {formatEventLabel(log.accion)}
                           </div>
                         </td>
                         <td className="px-4 py-3">
