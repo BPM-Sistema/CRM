@@ -219,7 +219,7 @@ export default function SyncQueue() {
                       <td className="px-4 py-3">
                         {order.tn_order_id ? (
                           <a
-                            href={`https://petlovearg.mitiendanube.com/admin/orders/${order.tn_order_id}`}
+                            href={`https://blanqueriaxmayor2.mitiendanube.com/admin/orders/${order.tn_order_id}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-violet-600 bg-violet-50 rounded-lg hover:bg-violet-100 transition-colors"
