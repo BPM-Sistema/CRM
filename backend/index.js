@@ -2226,6 +2226,14 @@ app.post('/upload', (req, res, next) => {
     );
 
     if (dup.rows.length > 0) {
+      // Loguear intento de duplicado para auditoría
+      await logEvento({
+        orderNumber,
+        accion: 'comprobante_duplicado',
+        origen: 'sistema'
+      });
+      console.log(`⚠️ Comprobante duplicado detectado - Order: ${orderNumber}, Hash: ${hash}, Original ID: ${dup.rows[0].id}`);
+
       fs.unlinkSync(file.path);
       return res.status(409).json({ error: 'Comprobante duplicado' });
     }
