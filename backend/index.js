@@ -841,6 +841,7 @@ app.get('/sync-queue/payments', authenticate, requirePermission('activity.view')
       FROM orders_validated
       WHERE estado_pago IN ('confirmado_total', 'confirmado_parcial')
         AND (tn_payment_status IS NULL OR tn_payment_status != 'paid')
+        AND estado_pedido != 'cancelado'
       ORDER BY created_at DESC
     `);
 
