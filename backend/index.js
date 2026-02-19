@@ -826,6 +826,7 @@ app.get('/sync-queue/payments', authenticate, requirePermission('activity.view')
     const result = await pool.query(`
       SELECT
         order_number,
+        tn_order_id,
         customer_name,
         customer_email,
         customer_phone,

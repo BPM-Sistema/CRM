@@ -14,6 +14,7 @@ import { authFetch } from '../services/api';
 
 interface SyncQueueOrder {
   order_number: string;
+  tn_order_id: string | null;
   customer_name: string;
   customer_email: string;
   customer_phone: string;
@@ -216,15 +217,19 @@ export default function SyncQueue() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <a
-                          href={`https://petlovearg.mitiendanube.com/admin/orders/${order.order_number}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-violet-600 bg-violet-50 rounded-lg hover:bg-violet-100 transition-colors"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          Ver en TN
-                        </a>
+                        {order.tn_order_id ? (
+                          <a
+                            href={`https://petlovearg.mitiendanube.com/admin/orders/${order.tn_order_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-violet-600 bg-violet-50 rounded-lg hover:bg-violet-100 transition-colors"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            Ver en TN
+                          </a>
+                        ) : (
+                          <span className="text-xs text-gray-400">Sin ID TN</span>
+                        )}
                       </td>
                     </tr>
                   ))
