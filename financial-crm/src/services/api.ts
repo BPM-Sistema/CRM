@@ -20,7 +20,7 @@ export function setOnPermissionsChangeCallback(callback: () => void) {
 }
 
 // Fetch con autenticación (sin cache para datos en tiempo real)
-async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const response = await fetch(url, {
     ...options,
     cache: 'no-store', // Forzar datos frescos, nunca usar cache

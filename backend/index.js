@@ -817,6 +817,46 @@ app.get('/health', (_, res) => res.json({ ok: true }));
 
 
 /* =====================================================
+   GET — COLA DE SINCRONIZACIÓN DE PAGOS
+   Pedidos pagados en nuestro sistema pero no en Tiendanube
+===================================================== */
+app.get('/sync-queue/payments', authenticate, requirePermission('activity.view'), async (req, res) => {
+  try {
+    // Pedidos que están pagados en nuestro sistema pero NO en Tiendanube
+    const result = await pool.query(`
+      SELECT
+        order_number,
+        customer_name,
+        customer_email,
+        customer_phone,
+        monto_tiendanube,
+        total_pagado,
+        saldo,
+        estado_pago,
+        estado_pedido,
+        tn_payment_status,
+        created_at,
+        tn_created_at
+      FROM orders_validated
+      WHERE estado_pago IN ('confirmado_total', 'confirmado_parcial')
+        AND (tn_payment_status IS NULL OR tn_payment_status != 'paid')
+      ORDER BY created_at DESC
+    `);
+
+    res.json({
+      ok: true,
+      count: result.rowCount,
+      orders: result.rows
+    });
+
+  } catch (error) {
+    console.error('❌ /sync-queue/payments error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+/* =====================================================
    GET — HISTORIAL DE ACTIVIDAD
 ===================================================== */
 app.get('/activity-log', authenticate, requirePermission('activity.view'), async (req, res) => {

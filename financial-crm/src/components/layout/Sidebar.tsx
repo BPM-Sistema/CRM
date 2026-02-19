@@ -13,6 +13,7 @@ import {
   Users,
   Activity,
   Landmark,
+  RefreshCw,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -83,6 +84,7 @@ const adminItems = [
   { to: '/admin/users', icon: <Users size={20} />, label: 'Usuarios', permissions: ['users.view'] },
   { to: '/admin/financieras', icon: <Landmark size={20} />, label: 'Financieras', permissions: ['financieras.view'] },
   { to: '/admin/activity', icon: <Activity size={20} />, label: 'Actividad', permissions: ['activity.view'] },
+  { to: '/admin/sync-queue', icon: <RefreshCw size={20} />, label: 'Sincronización', permissions: ['activity.view'] },
 ];
 
 export function Sidebar() {
