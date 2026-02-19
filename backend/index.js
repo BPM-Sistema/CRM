@@ -75,12 +75,23 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public')));
 
 async function logEvento({ comprobanteId, orderNumber, accion, origen, userId, username }) {
+  // DEBUG: Stack trace para encontrar duplicados
+  const stack = new Error().stack;
+  const timestamp = new Date().toISOString();
+  console.log(`\n🔍 [${timestamp}] logEvento llamado:`);
+  console.log(`   Acción: ${accion}`);
+  console.log(`   ComprobanteId: ${comprobanteId}`);
+  console.log(`   OrderNumber: ${orderNumber}`);
+  console.log(`   Stack trace:\n${stack.split('\n').slice(1, 5).join('\n')}`);
+
   try {
-    await pool.query(
+    const result = await pool.query(
       `INSERT INTO logs (comprobante_id, order_number, accion, origen, user_id, username)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, created_at`,
       [comprobanteId || null, orderNumber || null, accion, origen, userId || null, username || null]
     );
+    console.log(`   ✅ Log insertado con ID: ${result.rows[0].id}`);
   } catch (err) {
     console.error('❌ Error guardando log:', err.message);
   }
