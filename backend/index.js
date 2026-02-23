@@ -228,7 +228,7 @@ async function guardarProductos(orderNumber, products) {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     `, [
       orderNumber,
-      p.id || null,
+      p.product_id || null,
       p.variant_id || null,
       p.name,
       p.variant_values ? p.variant_values.join(' / ') : null,
