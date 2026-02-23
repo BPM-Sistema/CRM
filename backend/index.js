@@ -1,6 +1,22 @@
 
 require('dotenv').config();
 
+// Sentry - Error monitoring (inicializar ANTES de todo lo demás)
+const Sentry = require('@sentry/node');
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  environment: process.env.NODE_ENV || 'development',
+  tracesSampleRate: 0.1, // 10% de transacciones para performance
+  beforeSend(event) {
+    // No enviar errores en desarrollo local
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔍 Sentry (dev mode - not sent):', event.exception?.values?.[0]?.value);
+      return null;
+    }
+    return event;
+  }
+});
+
 // Forzar IPv4 (Windows / pooler)
 const dns = require('dns');
 dns.setDefaultResultOrder('ipv4first');
@@ -3487,10 +3503,44 @@ app.post('/notifications/read-all', authenticate, async (req, res) => {
 });
 
 /* =====================================================
+   SENTRY ERROR HANDLING
+===================================================== */
+
+// Endpoint de prueba para verificar que Sentry funciona
+app.get('/debug-sentry', (req, res) => {
+  throw new Error('Sentry test error - this is intentional!');
+});
+
+// Sentry error handler - DEBE ir después de todas las rutas
+Sentry.setupExpressErrorHandler(app);
+
+// Fallback error handler
+app.use((err, req, res, next) => {
+  console.error('❌ Express error:', err.message);
+  res.status(500).json({ error: 'Error interno del servidor' });
+});
+
+// Capturar errores no manejados globalmente
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection:', reason);
+  Sentry.captureException(reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  Sentry.captureException(error);
+  // Dar tiempo a Sentry para enviar antes de crashear
+  setTimeout(() => process.exit(1), 2000);
+});
+
+/* =====================================================
    SERVER
 ===================================================== */
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  if (process.env.SENTRY_DSN) {
+    console.log('✅ Sentry error monitoring enabled');
+  }
 
   // Iniciar scheduler de sincronización
   startSyncScheduler();
