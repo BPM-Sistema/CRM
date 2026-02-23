@@ -1920,6 +1920,109 @@ app.post('/orders/:orderNumber/resync', authenticate, requirePermission('orders.
 
 
 /* =====================================================
+   POST — RESYNC MASIVO DE TODOS LOS PEDIDOS
+===================================================== */
+app.post('/admin/resync-all-orders', authenticate, requirePermission('users.view'), async (req, res) => {
+  try {
+    const storeId = process.env.TIENDANUBE_STORE_ID;
+
+    // 1. Obtener todos los pedidos con tn_order_id
+    const ordersRes = await pool.query(`
+      SELECT order_number, tn_order_id
+      FROM orders_validated
+      WHERE tn_order_id IS NOT NULL
+      ORDER BY created_at DESC
+    `);
+
+    const orders = ordersRes.rows;
+    console.log(`🔄 Iniciando resync masivo de ${orders.length} pedidos...`);
+
+    // Responder inmediatamente para evitar timeout
+    res.json({
+      ok: true,
+      message: `Resync iniciado para ${orders.length} pedidos. Revisá los logs de Railway para ver el progreso.`,
+      total_pedidos: orders.length
+    });
+
+    // 2. Procesar en background
+    let exitosos = 0;
+    let fallidos = 0;
+    const errores = [];
+
+    for (let i = 0; i < orders.length; i++) {
+      const { order_number, tn_order_id } = orders[i];
+
+      try {
+        // Obtener pedido de TiendaNube
+        const pedidoRes = await axios.get(
+          `https://api.tiendanube.com/v1/${storeId}/orders/${tn_order_id}`,
+          {
+            headers: {
+              authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
+              'User-Agent': 'bpm-validator'
+            },
+            timeout: 10000
+          }
+        );
+
+        const pedido = pedidoRes.data;
+        const products = pedido.products || [];
+
+        // Actualizar productos
+        await pool.query('DELETE FROM order_products WHERE order_number = $1', [order_number]);
+
+        for (const p of products) {
+          await pool.query(`
+            INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          `, [
+            order_number,
+            p.product_id || null,
+            p.variant_id || null,
+            p.name,
+            p.variant_values ? p.variant_values.join(' / ') : null,
+            p.quantity,
+            Number(p.price),
+            p.sku || null
+          ]);
+        }
+
+        // Resolver inconsistencias
+        await pool.query(`
+          UPDATE order_inconsistencies
+          SET resolved = TRUE, resolved_at = NOW()
+          WHERE order_number = $1 AND resolved = FALSE
+        `, [order_number]);
+
+        exitosos++;
+
+        // Log progreso cada 50 pedidos
+        if ((i + 1) % 50 === 0) {
+          console.log(`📊 Progreso: ${i + 1}/${orders.length} (${exitosos} OK, ${fallidos} errores)`);
+        }
+
+        // Delay para respetar rate limit (200ms = 300 req/min)
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+      } catch (err) {
+        fallidos++;
+        errores.push({ order_number, error: err.message });
+      }
+    }
+
+    console.log(`✅ Resync masivo completado: ${exitosos} exitosos, ${fallidos} fallidos`);
+    if (errores.length > 0) {
+      console.log('❌ Errores:', errores.slice(0, 10)); // Solo los primeros 10
+    }
+
+  } catch (error) {
+    console.error('❌ /admin/resync-all-orders error:', error.message);
+    // Si ya respondimos, solo loguear
+  }
+});
+
+
+/* =====================================================
    PATCH — ACTUALIZAR ESTADO DE PEDIDO
 ===================================================== */
 app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders.update_status'), async (req, res) => {
