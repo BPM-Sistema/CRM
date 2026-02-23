@@ -1174,7 +1174,7 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
       LEFT JOIN comprobantes c ON o.order_number = c.order_number
       ${whereClause}
       GROUP BY o.order_number, o.monto_tiendanube, o.total_pagado, o.saldo, o.estado_pago, o.estado_pedido, o.currency, o.tn_created_at, o.created_at, o.customer_name, o.customer_email, o.customer_phone, o.printed_at, o.packed_at, o.shipped_at
-      ORDER BY CAST(REGEXP_REPLACE(o.order_number, '[^0-9]', '', 'g') AS INTEGER) DESC
+      ORDER BY CAST(NULLIF(REGEXP_REPLACE(o.order_number, '[^0-9]', '', 'g'), '') AS INTEGER) DESC NULLS LAST
       LIMIT $${paramIndex++} OFFSET $${paramIndex}
     `, [...params, limit, offset]);
 
@@ -1966,6 +1966,12 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
     if (!pedido) {
       console.log('❌ Pedido no encontrado en Tiendanube');
+      return;
+    }
+
+    // Validar que el pedido tenga number antes de procesar
+    if (!pedido.number) {
+      console.log(`⚠️ Webhook recibido sin order number (orderId: ${orderId}), ignorando`);
       return;
     }
 

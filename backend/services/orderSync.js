@@ -70,7 +70,8 @@ async function fetchRecentOrders(limit = 50, sinceId = null) {
       }
     );
 
-    return response.data || [];
+    // Validar que sea array (TN puede devolver objeto de error)
+    return Array.isArray(response.data) ? response.data : [];
   } catch (error) {
     console.error('❌ Error obteniendo pedidos de TiendaNube:', error.message);
     throw error;
