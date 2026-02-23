@@ -171,6 +171,31 @@ async function processOrderCreated(orderId, orderNumber) {
     pedido.created_at || null
   ]);
 
+  // Guardar productos (misma lógica que webhook)
+  const products = pedido.products || [];
+  if (products.length > 0) {
+    // Eliminar productos existentes (para evitar duplicados)
+    await pool.query('DELETE FROM order_products WHERE order_number = $1', [String(pedido.number)]);
+
+    console.log(`📦 Guardando ${products.length} productos para pedido #${pedido.number} (cola)`);
+
+    for (const p of products) {
+      await pool.query(`
+        INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [
+        String(pedido.number),
+        p.product_id || null,
+        p.variant_id || null,
+        p.name,
+        p.variant_values ? p.variant_values.join(' / ') : null,
+        p.quantity,
+        Number(p.price),
+        p.sku || null
+      ]);
+    }
+  }
+
   console.log(`✅ Pedido #${pedido.number} sincronizado desde cola`);
 
   // ❌ WhatsApp DESACTIVADO en sync - solo guardar pedido en DB
