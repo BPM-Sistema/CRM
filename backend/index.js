@@ -103,17 +103,18 @@ async function logEvento({ comprobanteId, orderNumber, accion, origen, userId, u
 function buildOrderUpdateMessage(oldProducts, newProducts, montoNuevo) {
   const lineas = [];
 
-  // Mapas por p.id (line item ID) - es lo que está guardado en DB como product_id
+  // Mapas por product_id + variant_id para comparación correcta
   const oldMap = new Map();
   const newMap = new Map();
 
   for (const p of oldProducts) {
-    oldMap.set(String(p.product_id), { name: p.name, qty: Number(p.quantity) });
+    const key = `${p.product_id}_${p.variant_id || 'null'}`;
+    oldMap.set(key, { name: p.name, qty: Number(p.quantity) });
   }
 
   for (const p of newProducts) {
-    // Usar p.id (line item ID), NO p.product_id (catalog ID)
-    newMap.set(String(p.id), { name: p.name, qty: Number(p.quantity) });
+    const key = `${p.product_id}_${p.variant_id || 'null'}`;
+    newMap.set(key, { name: p.name, qty: Number(p.quantity) });
   }
 
   // Productos eliminados
@@ -2123,7 +2124,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
       // Obtener productos ANTES de actualizar
       const productosDB = await pool.query(
-        `SELECT product_id, name, quantity FROM order_products WHERE order_number = $1`,
+        `SELECT product_id, variant_id, name, quantity FROM order_products WHERE order_number = $1`,
         [String(pedido.number)]
       );
 
