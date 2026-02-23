@@ -1908,22 +1908,6 @@ function verifyTiendaNubeSignature(req) {
 }
 
 
-// 🧪 TEST ENDPOINT - Simula webhook sin order number (BORRAR DESPUÉS DE PROBAR)
-app.post('/test/webhook-sin-number', async (req, res) => {
-  console.log('🧪 TEST: Simulando webhook sin order number...');
-
-  // Simular pedido sin number (como cuando TN falla)
-  const pedidoSinNumber = { id: 9999999, total: 1000 }; // Sin "number"
-
-  if (!pedidoSinNumber.number) {
-    console.log(`⚠️ Webhook recibido sin order number (orderId: ${pedidoSinNumber.id}), ignorando`);
-    return res.json({ ok: true, test: 'Fix funcionando - pedido rechazado por falta de number' });
-  }
-
-  // Si llegara acá, el fix no funcionó
-  res.json({ ok: false, test: 'ERROR - el fix no funcionó' });
-});
-
 app.post('/webhook/tiendanube', async (req, res) => {
   // 1️⃣ Validación de firma (dejamos lo que ya funcionaba)
   if (!verifyTiendaNubeSignature(req)) {
