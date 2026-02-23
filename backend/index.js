@@ -225,9 +225,6 @@ async function obtenerPedidoPorId(storeId, orderId) {
    UTIL — GUARDAR PRODUCTOS DE UN PEDIDO EN DB
 ===================================================== */
 async function guardarProductos(orderNumber, products) {
-  // Eliminar productos existentes (para updates)
-  await pool.query('DELETE FROM order_products WHERE order_number = $1', [orderNumber]);
-
   if (!products || products.length === 0) {
     console.log(`⚠️ Pedido #${orderNumber} sin productos para guardar`);
     return;
@@ -237,9 +234,18 @@ async function guardarProductos(orderNumber, products) {
 
   for (const p of products) {
     try {
+      // Usar UPSERT para evitar duplicados en caso de race condition
       await pool.query(`
         INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (order_number, sku) WHERE sku IS NOT NULL
+        DO UPDATE SET
+          product_id = EXCLUDED.product_id,
+          variant_id = EXCLUDED.variant_id,
+          name = EXCLUDED.name,
+          variant = EXCLUDED.variant,
+          quantity = EXCLUDED.quantity,
+          price = EXCLUDED.price
       `, [
         orderNumber,
         p.product_id || null,
@@ -1873,9 +1879,8 @@ app.post('/orders/:orderNumber/resync', authenticate, requirePermission('orders.
 
     const pedido = pedidoRes.data;
 
-    // 4. Actualizar productos
+    // 4. Actualizar productos con UPSERT (evita duplicados en race conditions)
     const products = pedido.products || [];
-    await pool.query('DELETE FROM order_products WHERE order_number = $1', [orderNumber]);
 
     if (products.length > 0) {
       console.log(`🔄 Resync: Guardando ${products.length} productos para pedido #${orderNumber}`);
@@ -1884,6 +1889,14 @@ app.post('/orders/:orderNumber/resync', authenticate, requirePermission('orders.
         await pool.query(`
           INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          ON CONFLICT (order_number, sku) WHERE sku IS NOT NULL
+          DO UPDATE SET
+            product_id = EXCLUDED.product_id,
+            variant_id = EXCLUDED.variant_id,
+            name = EXCLUDED.name,
+            variant = EXCLUDED.variant,
+            quantity = EXCLUDED.quantity,
+            price = EXCLUDED.price
         `, [
           orderNumber,
           p.product_id || null,
@@ -1968,13 +1981,19 @@ app.post('/admin/resync-all-orders', authenticate, requirePermission('users.view
         const pedido = pedidoRes.data;
         const products = pedido.products || [];
 
-        // Actualizar productos
-        await pool.query('DELETE FROM order_products WHERE order_number = $1', [order_number]);
-
+        // Actualizar productos con UPSERT (evita duplicados en race conditions)
         for (const p of products) {
           await pool.query(`
             INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (order_number, sku) WHERE sku IS NOT NULL
+            DO UPDATE SET
+              product_id = EXCLUDED.product_id,
+              variant_id = EXCLUDED.variant_id,
+              name = EXCLUDED.name,
+              variant = EXCLUDED.variant,
+              quantity = EXCLUDED.quantity,
+              price = EXCLUDED.price
           `, [
             order_number,
             p.product_id || null,

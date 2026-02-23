@@ -171,18 +171,23 @@ async function processOrderCreated(orderId, orderNumber) {
     pedido.created_at || null
   ]);
 
-  // Guardar productos (misma lógica que webhook)
+  // Guardar productos con UPSERT (evita duplicados en race conditions)
   const products = pedido.products || [];
   if (products.length > 0) {
-    // Eliminar productos existentes (para evitar duplicados)
-    await pool.query('DELETE FROM order_products WHERE order_number = $1', [String(pedido.number)]);
-
     console.log(`📦 Guardando ${products.length} productos para pedido #${pedido.number} (cola)`);
 
     for (const p of products) {
       await pool.query(`
         INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (order_number, sku) WHERE sku IS NOT NULL
+        DO UPDATE SET
+          product_id = EXCLUDED.product_id,
+          variant_id = EXCLUDED.variant_id,
+          name = EXCLUDED.name,
+          variant = EXCLUDED.variant,
+          quantity = EXCLUDED.quantity,
+          price = EXCLUDED.price
       `, [
         String(pedido.number),
         p.product_id || null,
