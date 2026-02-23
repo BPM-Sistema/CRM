@@ -224,11 +224,12 @@ async function guardarProductos(orderNumber, products) {
 
   for (const p of products) {
     await pool.query(`
-      INSERT INTO order_products (order_number, product_id, name, variant, quantity, price, sku)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     `, [
       orderNumber,
-      p.id || null,
+      p.product_id || p.id || null,
+      p.variant_id || null,
       p.name,
       p.variant_values ? p.variant_values.join(' / ') : null,
       p.quantity,
