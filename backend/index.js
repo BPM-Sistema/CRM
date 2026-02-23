@@ -1804,6 +1804,114 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
 
 
 /* =====================================================
+   POST — RESYNC PEDIDO DESDE TIENDANUBE
+===================================================== */
+app.post('/orders/:orderNumber/resync', authenticate, requirePermission('orders.view'), async (req, res) => {
+  try {
+    const { orderNumber } = req.params;
+
+    // 1. Buscar tn_order_id en nuestra DB
+    const orderRes = await pool.query(
+      'SELECT tn_order_id FROM orders_validated WHERE order_number = $1',
+      [orderNumber]
+    );
+
+    if (orderRes.rowCount === 0) {
+      return res.status(404).json({ error: 'Pedido no encontrado en DB' });
+    }
+
+    let tnOrderId = orderRes.rows[0].tn_order_id;
+
+    // 2. Si no tenemos tn_order_id, buscar en TiendaNube por número
+    if (!tnOrderId) {
+      const storeId = process.env.TIENDANUBE_STORE_ID;
+      const searchRes = await axios.get(
+        `https://api.tiendanube.com/v1/${storeId}/orders`,
+        {
+          headers: {
+            authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
+            'User-Agent': 'bpm-validator'
+          },
+          params: { q: orderNumber },
+          timeout: 10000
+        }
+      );
+
+      const found = searchRes.data.find(o => String(o.number) === orderNumber);
+      if (!found) {
+        return res.status(404).json({ error: 'Pedido no encontrado en TiendaNube' });
+      }
+      tnOrderId = found.id;
+
+      // Guardar tn_order_id para futuras consultas
+      await pool.query(
+        'UPDATE orders_validated SET tn_order_id = $1 WHERE order_number = $2',
+        [tnOrderId, orderNumber]
+      );
+    }
+
+    // 3. Obtener pedido completo de TiendaNube
+    const storeId = process.env.TIENDANUBE_STORE_ID;
+    const pedidoRes = await axios.get(
+      `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}`,
+      {
+        headers: {
+          authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
+          'User-Agent': 'bpm-validator'
+        },
+        timeout: 10000
+      }
+    );
+
+    const pedido = pedidoRes.data;
+
+    // 4. Actualizar productos
+    const products = pedido.products || [];
+    await pool.query('DELETE FROM order_products WHERE order_number = $1', [orderNumber]);
+
+    if (products.length > 0) {
+      console.log(`🔄 Resync: Guardando ${products.length} productos para pedido #${orderNumber}`);
+
+      for (const p of products) {
+        await pool.query(`
+          INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `, [
+          orderNumber,
+          p.product_id || null,
+          p.variant_id || null,
+          p.name,
+          p.variant_values ? p.variant_values.join(' / ') : null,
+          p.quantity,
+          Number(p.price),
+          p.sku || null
+        ]);
+      }
+    }
+
+    // 5. Resolver inconsistencias previas
+    await pool.query(`
+      UPDATE order_inconsistencies
+      SET resolved = TRUE, resolved_at = NOW()
+      WHERE order_number = $1 AND resolved = FALSE
+    `, [orderNumber]);
+
+    console.log(`✅ Pedido #${orderNumber} re-sincronizado correctamente`);
+
+    res.json({
+      ok: true,
+      message: `Pedido #${orderNumber} re-sincronizado`,
+      productos_actualizados: products.length
+    });
+
+  } catch (error) {
+    console.error('❌ /orders/:orderNumber/resync error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+/* =====================================================
    PATCH — ACTUALIZAR ESTADO DE PEDIDO
 ===================================================== */
 app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders.update_status'), async (req, res) => {
