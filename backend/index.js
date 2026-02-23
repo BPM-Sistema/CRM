@@ -220,22 +220,32 @@ async function guardarProductos(orderNumber, products) {
   // Eliminar productos existentes (para updates)
   await pool.query('DELETE FROM order_products WHERE order_number = $1', [orderNumber]);
 
-  if (!products || products.length === 0) return;
+  if (!products || products.length === 0) {
+    console.log(`⚠️ Pedido #${orderNumber} sin productos para guardar`);
+    return;
+  }
+
+  console.log(`📦 Guardando ${products.length} productos para pedido #${orderNumber}`);
 
   for (const p of products) {
-    await pool.query(`
-      INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    `, [
-      orderNumber,
-      p.product_id || null,
-      p.variant_id || null,
-      p.name,
-      p.variant_values ? p.variant_values.join(' / ') : null,
-      p.quantity,
-      Number(p.price),
-      p.sku || null
-    ]);
+    try {
+      await pool.query(`
+        INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [
+        orderNumber,
+        p.product_id || null,
+        p.variant_id || null,
+        p.name,
+        p.variant_values ? p.variant_values.join(' / ') : null,
+        p.quantity,
+        Number(p.price),
+        p.sku || null
+      ]);
+    } catch (err) {
+      console.error(`❌ Error INSERT producto en #${orderNumber}:`, err.message);
+      console.error('   Producto:', JSON.stringify(p));
+    }
   }
 }
 
