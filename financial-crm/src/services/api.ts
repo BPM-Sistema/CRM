@@ -399,6 +399,20 @@ export async function fetchOrderDetail(orderNumber: string): Promise<ApiOrderDet
   };
 }
 
+// Re-sincronizar pedido desde TiendaNube
+export async function resyncOrder(orderNumber: string): Promise<{ ok: boolean; productos_actualizados: number }> {
+  const response = await authFetch(`${API_BASE_URL}/orders/${orderNumber}/resync`, {
+    method: 'POST'
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Error al re-sincronizar pedido');
+  }
+
+  return response.json();
+}
+
 // Obtener datos para impresión de pedido
 export async function fetchOrderPrintData(orderNumber: string): Promise<ApiOrderPrintData> {
   const response = await authFetch(`${API_BASE_URL}/orders/${orderNumber}/print`);

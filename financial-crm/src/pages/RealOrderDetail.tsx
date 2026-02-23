@@ -27,6 +27,7 @@ import {
   fetchOrderPrintData,
   registerCashPayment,
   updateOrderStatus,
+  resyncOrder,
   ApiOrderDetail,
   ApiOrderPrintData,
   mapEstadoPago,
@@ -61,6 +62,9 @@ export function RealOrderDetail() {
   const [isLoadingPrint, setIsLoadingPrint] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
+  // Estado para resync
+  const [isResyncing, setIsResyncing] = useState(false);
+
   const loadOrder = async () => {
     if (!orderNumber) return;
 
@@ -73,6 +77,21 @@ export function RealOrderDetail() {
       setError(err instanceof Error ? err.message : 'Error al cargar pedido');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResync = async () => {
+    if (!orderNumber || isResyncing) return;
+
+    setIsResyncing(true);
+    setError(null);
+    try {
+      await resyncOrder(orderNumber);
+      await loadOrder();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al sincronizar');
+    } finally {
+      setIsResyncing(false);
     }
   };
 
@@ -227,10 +246,11 @@ export function RealOrderDetail() {
           <Button
             variant="secondary"
             size="sm"
-            leftIcon={<RefreshCw size={14} className={loading ? 'animate-spin' : ''} />}
-            onClick={loadOrder}
+            leftIcon={<RefreshCw size={14} className={isResyncing ? 'animate-spin' : ''} />}
+            onClick={handleResync}
+            disabled={isResyncing}
           >
-            Actualizar
+            {isResyncing ? 'Sincronizando...' : 'Actualizar'}
           </Button>
         }
       />
