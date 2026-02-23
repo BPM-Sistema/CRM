@@ -98,23 +98,30 @@ async function logEvento({ comprobanteId, orderNumber, accion, origen, userId, u
 }
 
 /* =====================================================
+   UTIL — CLAVE ÚNICA DE PRODUCTO (centralizado)
+===================================================== */
+function getProductKey(p) {
+  // Usar product_id + variant_id como identificador único
+  // Si viene de TiendaNube: p.product_id, p.variant_id
+  // Si viene de DB: p.product_id, p.variant_id
+  return `${p.product_id}_${p.variant_id || 'null'}`;
+}
+
+/* =====================================================
    UTIL — MENSAJE DE ACTUALIZACIÓN DE PEDIDO
 ===================================================== */
 function buildOrderUpdateMessage(oldProducts, newProducts, montoNuevo) {
   const lineas = [];
 
-  // Mapas por product_id + variant_id para comparación correcta
   const oldMap = new Map();
   const newMap = new Map();
 
   for (const p of oldProducts) {
-    const key = `${p.product_id}_${p.variant_id || 'null'}`;
-    oldMap.set(key, { name: p.name, qty: Number(p.quantity) });
+    oldMap.set(getProductKey(p), { name: p.name, qty: Number(p.quantity) });
   }
 
   for (const p of newProducts) {
-    const key = `${p.product_id}_${p.variant_id || 'null'}`;
-    newMap.set(key, { name: p.name, qty: Number(p.quantity) });
+    newMap.set(getProductKey(p), { name: p.name, qty: Number(p.quantity) });
   }
 
   // Productos eliminados
