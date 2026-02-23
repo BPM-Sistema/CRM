@@ -223,19 +223,24 @@ async function guardarProductos(orderNumber, products) {
   if (!products || products.length === 0) return;
 
   for (const p of products) {
-    await pool.query(`
-      INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    `, [
-      orderNumber,
-      p.product_id || p.id || null,
-      p.variant_id || null,
-      p.name,
-      p.variant_values ? p.variant_values.join(' / ') : null,
-      p.quantity,
-      Number(p.price),
-      p.sku || null
-    ]);
+    try {
+      await pool.query(`
+        INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [
+        orderNumber,
+        p.product_id || p.id || null,
+        p.variant_id || null,
+        p.name,
+        p.variant_values ? p.variant_values.join(' / ') : null,
+        p.quantity,
+        Number(p.price),
+        p.sku || null
+      ]);
+    } catch (err) {
+      console.error(`❌ Error guardando producto en pedido #${orderNumber}:`, err.message);
+      console.error('   Producto:', JSON.stringify(p));
+    }
   }
 }
 
