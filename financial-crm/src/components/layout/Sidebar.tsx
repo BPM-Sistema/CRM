@@ -4,8 +4,6 @@ import {
   LayoutDashboard,
   ShoppingCart,
   Receipt,
-  BarChart3,
-  Settings,
   Building2,
   ChevronLeft,
   ChevronRight,
@@ -65,18 +63,6 @@ const navItems = [
     icon: <Receipt size={20} />,
     label: 'Comprobantes',
     permissions: ['receipts.view', 'receipts.confirm', 'receipts.reject', 'receipts.download', 'receipts.upload_manual']
-  },
-  {
-    to: '/analytics',
-    icon: <BarChart3 size={20} />,
-    label: 'Estadísticas',
-    permissions: ['dashboard.view'] // Requiere ver dashboard para ver estadísticas
-  },
-  {
-    to: '/settings',
-    icon: <Settings size={20} />,
-    label: 'Configuración',
-    permissions: [] // Siempre visible
   },
 ];
 

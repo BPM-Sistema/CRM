@@ -70,19 +70,3 @@ export interface ActivityLogEntry {
   timestamp: string;
 }
 
-export interface DailyStats {
-  date: string;
-  paid: number;
-  pending: number;
-  rejected: number;
-  total: number;
-}
-
-export interface KPIData {
-  totalOrdersToday: number;
-  paidToday: number;
-  pendingToday: number;
-  rejectedToday: number;
-  moneyCollected: number;
-  avgValidationTime: number;
-}

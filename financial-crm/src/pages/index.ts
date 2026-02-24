@@ -3,7 +3,5 @@ export { RealOrders } from './RealOrders';
 export { RealOrderDetail } from './RealOrderDetail';
 export { RealReceipts } from './RealReceipts';
 export { RealReceiptDetail } from './RealReceiptDetail';
-export { Analytics } from './Analytics';
-export { Settings } from './Settings';
 export { AdminUsers } from './AdminUsers';
 export { Financieras } from './Financieras';

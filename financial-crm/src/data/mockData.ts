@@ -1,4 +1,4 @@
-import { Order, Receipt, ActivityLogEntry, DailyStats, KPIData, PaymentStatus, OrderProduct } from '../types';
+import { Order, Receipt, ActivityLogEntry, PaymentStatus, OrderProduct } from '../types';
 
 const customers = [
   { id: 'c1', name: 'María González', email: 'maria@email.com', phone: '+54 11 4567-8901' },
@@ -419,25 +419,6 @@ export const mockActivityLog: ActivityLogEntry[] = [
     timestamp: new Date(Date.now() - 3600000 * 11).toISOString(),
   },
 ];
-
-export const mockDailyStats: DailyStats[] = [
-  { date: '2024-01-08', paid: 12, pending: 5, rejected: 2, total: 19 },
-  { date: '2024-01-09', paid: 15, pending: 3, rejected: 1, total: 19 },
-  { date: '2024-01-10', paid: 18, pending: 7, rejected: 3, total: 28 },
-  { date: '2024-01-11', paid: 14, pending: 4, rejected: 2, total: 20 },
-  { date: '2024-01-12', paid: 20, pending: 6, rejected: 1, total: 27 },
-  { date: '2024-01-13', paid: 16, pending: 8, rejected: 4, total: 28 },
-  { date: '2024-01-14', paid: 22, pending: 5, rejected: 2, total: 29 },
-];
-
-export const mockKPIData: KPIData = {
-  totalOrdersToday: 29,
-  paidToday: 22,
-  pendingToday: 5,
-  rejectedToday: 2,
-  moneyCollected: 1247500.00,
-  avgValidationTime: 4.2,
-};
 
 export const getAllReceipts = (): Receipt[] => {
   return mockOrders.flatMap(order => order.receipts);
