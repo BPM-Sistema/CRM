@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useReactToPrint } from 'react-to-print';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -165,28 +164,30 @@ export function RealOrderDetail() {
     }
   };
 
-  // Hook de react-to-print
-  const handlePrint = useReactToPrint({
-    contentRef: printRef,
-    documentTitle: `Pedido-${orderNumber}`,
-    onAfterPrint: useCallback(async () => {
-      setIsPrintModalOpen(false);
-      setPrintData(null);
-      // Si el estado actual es a_imprimir, pasar a hoja_impresa
-      if (data?.order.estado_pedido === 'a_imprimir' && orderNumber) {
-        try {
-          await updateOrderStatus(orderNumber, 'hoja_impresa');
-          loadOrder();
-        } catch (error) {
-          console.error('Error al actualizar estado después de imprimir:', error);
-        }
-      }
-    }, [data?.order.estado_pedido, orderNumber]),
-  });
+  // Confirmar impresión - abre en nueva pestaña
+  const handleConfirmPrint = async () => {
+    // 1. Abrir nueva pestaña primero
+    const printWindow = window.open(`/orders/print?orders=${orderNumber}`, '_blank');
 
-  // Confirmar impresión
-  const handleConfirmPrint = () => {
-    handlePrint();
+    // 2. Verificar si se abrió (puede estar bloqueado)
+    if (!printWindow) {
+      alert('Permite las ventanas emergentes para imprimir');
+      return;
+    }
+
+    // 3. Actualizar estado si corresponde
+    if (data?.order.estado_pedido === 'a_imprimir' && orderNumber) {
+      try {
+        await updateOrderStatus(orderNumber, 'hoja_impresa');
+      } catch (error) {
+        console.error('Error al actualizar estado:', error);
+      }
+    }
+
+    // 4. Cerrar modal y recargar datos
+    setIsPrintModalOpen(false);
+    setPrintData(null);
+    loadOrder();
   };
 
   if (loading) {
