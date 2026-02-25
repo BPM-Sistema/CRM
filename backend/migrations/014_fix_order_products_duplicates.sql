@@ -6,8 +6,9 @@
 
 -- 1. Agregar columna derivada para manejar NULL en variant_id
 -- PostgreSQL no permite expresiones en ON CONFLICT, así que usamos columna generada
+-- Nota: variant_id es TEXT en la tabla, usamos COALESCE con string '0'
 ALTER TABLE order_products
-ADD COLUMN IF NOT EXISTS variant_id_safe BIGINT GENERATED ALWAYS AS (COALESCE(variant_id, 0)) STORED;
+ADD COLUMN IF NOT EXISTS variant_id_safe TEXT GENERATED ALWAYS AS (COALESCE(variant_id, '0')) STORED;
 
 -- 2. Eliminar duplicados existentes (mantener el más reciente por id)
 -- Usamos una CTE para identificar los IDs a eliminar
@@ -16,7 +17,7 @@ WHERE id IN (
   SELECT id FROM (
     SELECT id,
            ROW_NUMBER() OVER (
-             PARTITION BY order_number, product_id, COALESCE(variant_id, 0)
+             PARTITION BY order_number, product_id, COALESCE(variant_id, '0')
              ORDER BY id DESC
            ) as rn
     FROM order_products
