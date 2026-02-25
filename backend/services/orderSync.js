@@ -173,10 +173,10 @@ async function processOrderCreated(orderId, orderNumber) {
 
   // Sincronizar productos (UPSERT + DELETE de removidos)
   const products = pedido.products || [];
-  const orderNumber = String(pedido.number);
+  const pedidoNumber = String(pedido.number);
 
   if (products.length > 0) {
-    console.log(`📦 Guardando ${products.length} productos para pedido #${orderNumber} (cola)`);
+    console.log(`📦 Guardando ${products.length} productos para pedido #${pedidoNumber} (cola)`);
 
     // 1. Crear Set de claves de productos que vienen de TiendaNube
     const productKeys = new Set(
@@ -186,7 +186,7 @@ async function processOrderCreated(orderId, orderNumber) {
     // 2. Obtener productos actuales en DB para este pedido
     const currentProducts = await pool.query(
       `SELECT id, product_id, variant_id FROM order_products WHERE order_number = $1`,
-      [orderNumber]
+      [pedidoNumber]
     );
 
     // 3. Eliminar productos que ya no existen en TiendaNube
@@ -202,7 +202,7 @@ async function processOrderCreated(orderId, orderNumber) {
         `DELETE FROM order_products WHERE id = ANY($1)`,
         [idsToDelete]
       );
-      console.log(`🗑️ Eliminados ${idsToDelete.length} productos removidos del pedido #${orderNumber}`);
+      console.log(`🗑️ Eliminados ${idsToDelete.length} productos removidos del pedido #${pedidoNumber}`);
     }
 
     // 4. UPSERT productos actuales
@@ -218,7 +218,7 @@ async function processOrderCreated(orderId, orderNumber) {
           price = EXCLUDED.price,
           sku = EXCLUDED.sku
       `, [
-        orderNumber,
+        pedidoNumber,
         p.product_id || null,
         p.variant_id || null,
         p.name,
