@@ -889,6 +889,12 @@ async function enviarComprobanteAFinanciera({
   comprobanteId
 }) {
   try {
+    // Validar que la financiera tenga celular configurado
+    if (!financiera.celular) {
+      console.log(`⚠️ Financiera "${financiera.nombre}" no tiene celular configurado, no se envía WhatsApp`);
+      return false;
+    }
+
     const contactIdClean = financiera.celular.replace('+', '');
 
     console.log('🏦 Enviando comprobante a financiera:', financiera.nombre);
