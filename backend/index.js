@@ -1938,7 +1938,7 @@ app.post('/orders/:orderNumber/resync', authenticate, requirePermission('orders.
     res.json({
       ok: true,
       message: `Pedido #${orderNumber} re-sincronizado`,
-      productos_actualizados: products.length
+      productos_actualizados: (pedido.products || []).length
     });
 
   } catch (error) {
