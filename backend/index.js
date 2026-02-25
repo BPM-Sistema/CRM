@@ -1949,6 +1949,85 @@ app.post('/orders/:orderNumber/resync', authenticate, requirePermission('orders.
 
 
 /* =====================================================
+   POST — RESYNC SOLO PEDIDOS CON INCONSISTENCIAS
+===================================================== */
+app.post('/admin/resync-inconsistent-orders', authenticate, requirePermission('users.view'), async (req, res) => {
+  try {
+    const storeId = process.env.TIENDANUBE_STORE_ID;
+
+    // 1. Obtener pedidos con inconsistencias no resueltas
+    const ordersRes = await pool.query(`
+      SELECT DISTINCT oi.order_number, ov.tn_order_id
+      FROM order_inconsistencies oi
+      JOIN orders_validated ov ON oi.order_number = ov.order_number
+      WHERE oi.resolved = FALSE AND ov.tn_order_id IS NOT NULL
+    `);
+
+    const orders = ordersRes.rows;
+    console.log(`🔄 Resync de ${orders.length} pedidos con inconsistencias...`);
+
+    if (orders.length === 0) {
+      return res.json({ ok: true, message: 'No hay pedidos con inconsistencias', total: 0 });
+    }
+
+    // Responder inmediatamente
+    res.json({
+      ok: true,
+      message: `Resync iniciado para ${orders.length} pedidos con inconsistencias. Revisá los logs.`,
+      total_pedidos: orders.length
+    });
+
+    // 2. Procesar en background
+    let exitosos = 0;
+    let fallidos = 0;
+
+    for (const { order_number, tn_order_id } of orders) {
+      try {
+        const pedidoRes = await axios.get(
+          `https://api.tiendanube.com/v1/${storeId}/orders/${tn_order_id}`,
+          {
+            headers: {
+              authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
+              'User-Agent': 'bpm-validator'
+            },
+            timeout: 10000
+          }
+        );
+
+        const pedido = pedidoRes.data;
+        await guardarProductos(order_number, pedido.products || []);
+
+        // Marcar inconsistencias como resueltas
+        await pool.query(`
+          UPDATE order_inconsistencies
+          SET resolved = TRUE, resolved_at = NOW()
+          WHERE order_number = $1 AND resolved = FALSE
+        `, [order_number]);
+
+        exitosos++;
+        console.log(`✅ Resync #${order_number} OK (${exitosos}/${orders.length})`);
+
+        // Rate limit
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+      } catch (err) {
+        fallidos++;
+        console.error(`❌ Resync #${order_number} error:`, err.message);
+      }
+    }
+
+    console.log(`🏁 Resync completado: ${exitosos} OK, ${fallidos} errores`);
+
+  } catch (error) {
+    console.error('❌ /admin/resync-inconsistent-orders error:', error.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+});
+
+
+/* =====================================================
    POST — RESYNC MASIVO DE TODOS LOS PEDIDOS
 ===================================================== */
 app.post('/admin/resync-all-orders', authenticate, requirePermission('users.view'), async (req, res) => {
