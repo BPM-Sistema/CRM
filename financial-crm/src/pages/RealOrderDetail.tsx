@@ -36,10 +36,12 @@ import {
 } from '../services/api';
 import { formatDistanceToNow, format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useAuth } from '../contexts/AuthContext';
 
 export function RealOrderDetail() {
   const { orderNumber } = useParams<{ orderNumber: string }>();
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
 
   const [data, setData] = useState<ApiOrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -745,6 +747,19 @@ export function RealOrderDetail() {
                   </div>
                 )}
               </div>
+
+              {/* Botón de resync solo para admins */}
+              {hasPermission('users.view') && (
+                <div className="mt-4 pt-4 border-t border-neutral-100">
+                  <button
+                    onClick={handleResync}
+                    disabled={isResyncing}
+                    className="w-full text-xs text-neutral-400 hover:text-neutral-600 py-2 transition-colors disabled:opacity-50"
+                  >
+                    {isResyncing ? 'Sincronizando...' : '↻ Forzar resync desde TiendaNube'}
+                  </button>
+                </div>
+              )}
             </Card>
           </div>
         </div>
