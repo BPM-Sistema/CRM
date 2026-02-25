@@ -250,18 +250,18 @@ async function guardarProductos(orderNumber, products) {
 
   for (const p of products) {
     try {
-      // Usar UPSERT para evitar duplicados en caso de race condition
+      // UPSERT usando (order_number, product_id, variant_id_safe) como clave única
+      // variant_id_safe es columna generada: COALESCE(variant_id, 0)
       await pool.query(`
         INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        ON CONFLICT (order_number, sku) WHERE sku IS NOT NULL
+        ON CONFLICT (order_number, product_id, variant_id_safe)
         DO UPDATE SET
-          product_id = EXCLUDED.product_id,
-          variant_id = EXCLUDED.variant_id,
           name = EXCLUDED.name,
           variant = EXCLUDED.variant,
           quantity = EXCLUDED.quantity,
-          price = EXCLUDED.price
+          price = EXCLUDED.price,
+          sku = EXCLUDED.sku
       `, [
         orderNumber,
         p.product_id || null,
@@ -1902,17 +1902,17 @@ app.post('/orders/:orderNumber/resync', authenticate, requirePermission('orders.
       console.log(`🔄 Resync: Guardando ${products.length} productos para pedido #${orderNumber}`);
 
       for (const p of products) {
+        // UPSERT usando (order_number, product_id, variant_id_safe) como clave única
         await pool.query(`
           INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          ON CONFLICT (order_number, sku) WHERE sku IS NOT NULL
+          ON CONFLICT (order_number, product_id, variant_id_safe)
           DO UPDATE SET
-            product_id = EXCLUDED.product_id,
-            variant_id = EXCLUDED.variant_id,
             name = EXCLUDED.name,
             variant = EXCLUDED.variant,
             quantity = EXCLUDED.quantity,
-            price = EXCLUDED.price
+            price = EXCLUDED.price,
+            sku = EXCLUDED.sku
         `, [
           orderNumber,
           p.product_id || null,
@@ -1997,19 +1997,18 @@ app.post('/admin/resync-all-orders', authenticate, requirePermission('users.view
         const pedido = pedidoRes.data;
         const products = pedido.products || [];
 
-        // Actualizar productos con UPSERT (evita duplicados en race conditions)
+        // UPSERT usando (order_number, product_id, variant_id_safe) como clave única
         for (const p of products) {
           await pool.query(`
             INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (order_number, sku) WHERE sku IS NOT NULL
+            ON CONFLICT (order_number, product_id, variant_id_safe)
             DO UPDATE SET
-              product_id = EXCLUDED.product_id,
-              variant_id = EXCLUDED.variant_id,
               name = EXCLUDED.name,
               variant = EXCLUDED.variant,
               quantity = EXCLUDED.quantity,
-              price = EXCLUDED.price
+              price = EXCLUDED.price,
+              sku = EXCLUDED.sku
           `, [
             order_number,
             p.product_id || null,

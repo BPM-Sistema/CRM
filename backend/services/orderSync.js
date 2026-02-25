@@ -171,7 +171,7 @@ async function processOrderCreated(orderId, orderNumber) {
     pedido.created_at || null
   ]);
 
-  // Guardar productos con UPSERT (evita duplicados en race conditions)
+  // UPSERT usando (order_number, product_id, variant_id_safe) como clave única
   const products = pedido.products || [];
   if (products.length > 0) {
     console.log(`📦 Guardando ${products.length} productos para pedido #${pedido.number} (cola)`);
@@ -180,14 +180,13 @@ async function processOrderCreated(orderId, orderNumber) {
       await pool.query(`
         INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        ON CONFLICT (order_number, sku) WHERE sku IS NOT NULL
+        ON CONFLICT (order_number, product_id, variant_id_safe)
         DO UPDATE SET
-          product_id = EXCLUDED.product_id,
-          variant_id = EXCLUDED.variant_id,
           name = EXCLUDED.name,
           variant = EXCLUDED.variant,
           quantity = EXCLUDED.quantity,
-          price = EXCLUDED.price
+          price = EXCLUDED.price,
+          sku = EXCLUDED.sku
       `, [
         String(pedido.number),
         p.product_id || null,
