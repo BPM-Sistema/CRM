@@ -2035,13 +2035,13 @@ app.post('/temp-fix-inconsistencies-xyz789', async (req, res) => {
   try {
     const storeId = process.env.TIENDANUBE_STORE_ID;
 
-    // 1. Obtener pedidos con inconsistencias no resueltas
+    // Obtener todos los pedidos que tienen productos en DB (para resincronizar)
     const ordersRes = await pool.query(`
       SELECT DISTINCT ov.order_number, ov.tn_order_id
       FROM orders_validated ov
-      JOIN product_consistency_log pcl ON ov.order_number = pcl.order_number
-      WHERE pcl.resolved = false
-        AND ov.tn_order_id IS NOT NULL
+      JOIN order_products op ON ov.order_number = op.order_number
+      WHERE ov.tn_order_id IS NOT NULL
+      ORDER BY ov.order_number DESC
     `);
 
     const orders = ordersRes.rows;
