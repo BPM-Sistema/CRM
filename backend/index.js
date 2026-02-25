@@ -305,6 +305,33 @@ async function guardarProductos(orderNumber, products) {
       console.error('   Producto:', JSON.stringify(p));
     }
   }
+
+  // 5. Auto-resolver inconsistencias pendientes para este pedido
+  try {
+    const resolved = await pool.query(`
+      UPDATE order_inconsistencies
+      SET resolved = true, resolved_at = NOW()
+      WHERE order_number = $1 AND resolved = false
+      RETURNING id
+    `, [orderNumber]);
+
+    if (resolved.rowCount > 0) {
+      console.log(`✅ Auto-resueltas ${resolved.rowCount} inconsistencias del pedido #${orderNumber}`);
+
+      // También marcar notificaciones relacionadas como leídas
+      await pool.query(`
+        UPDATE notifications
+        SET leida = true
+        WHERE tipo = 'inconsistencia'
+          AND referencia_tipo = 'order'
+          AND referencia_id = $1
+          AND leida = false
+      `, [orderNumber]);
+    }
+  } catch (err) {
+    // No bloquear el flujo si falla la auto-resolución
+    console.error(`⚠️ Error auto-resolviendo inconsistencias #${orderNumber}:`, err.message);
+  }
 }
 
 /* =====================================================
