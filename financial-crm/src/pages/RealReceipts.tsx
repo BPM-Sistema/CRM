@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RefreshCw, AlertCircle, Eye, Banknote, FileText, Download, Calendar, CheckSquare, Square, X, Search, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
 import { Header } from '../components/layout';
@@ -217,6 +217,7 @@ export function RealReceipts() {
   // Filtro por financiera
   const [financieras, setFinancieras] = useState<Financiera[]>([]);
   const [financieraFilter, setFinancieraFilter] = useState<number | null>(null);
+  const financieraFilterRef = useRef<number | null>(null);
 
   const loadComprobantes = async (page?: number, financieraId?: number | null) => {
     const pageToLoad = page ?? currentPage;
@@ -243,6 +244,7 @@ export function RealReceipts() {
 
   const handleFinancieraChange = (id: number | null) => {
     setFinancieraFilter(id);
+    financieraFilterRef.current = id;
     setCurrentPage(1);
     loadComprobantes(1, id);
   };
@@ -258,7 +260,7 @@ export function RealReceipts() {
     // Refetch al enfocar la ventana
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        loadComprobantes();
+        loadComprobantes(undefined, financieraFilterRef.current);
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -266,7 +268,7 @@ export function RealReceipts() {
     // Polling cada 15 segundos para datos en tiempo real
     const pollInterval = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        loadComprobantes();
+        loadComprobantes(undefined, financieraFilterRef.current);
       }
     }, 15000);
 
