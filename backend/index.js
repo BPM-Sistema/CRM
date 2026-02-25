@@ -2256,6 +2256,122 @@ app.post('/admin/resync-all-orders', authenticate, requirePermission('users.view
 
 
 /* =====================================================
+   POST — SYNC PEDIDOS CANCELADOS (RÁPIDO)
+   Solo sincroniza el estado cancelado, no productos
+===================================================== */
+app.post('/admin/sync-cancelled', authenticate, requirePermission('users.view'), async (req, res) => {
+  try {
+    const storeId = process.env.TIENDANUBE_STORE_ID;
+    const accessToken = process.env.TIENDANUBE_ACCESS_TOKEN;
+
+    console.log('🔄 Iniciando sync de pedidos cancelados...');
+
+    // 1. Obtener pedidos cancelados de TiendaNube (paginado)
+    let allCancelled = [];
+    let page = 1;
+    const perPage = 200;
+
+    while (true) {
+      const tnResponse = await axios.get(
+        `https://api.tiendanube.com/v1/${storeId}/orders`,
+        {
+          headers: {
+            authentication: `bearer ${accessToken}`,
+            'User-Agent': 'bpm-validator'
+          },
+          params: {
+            status: 'cancelled',
+            per_page: perPage,
+            page
+          },
+          timeout: 15000
+        }
+      );
+
+      const orders = Array.isArray(tnResponse.data) ? tnResponse.data : [];
+
+      if (orders.length === 0) break;
+
+      allCancelled = allCancelled.concat(orders);
+      console.log(`   Página ${page}: ${orders.length} cancelados`);
+
+      if (orders.length < perPage) break;
+      page++;
+
+      // Rate limit
+      await new Promise(r => setTimeout(r, 200));
+    }
+
+    console.log(`📋 Total cancelados en TiendaNube: ${allCancelled.length}`);
+
+    if (allCancelled.length === 0) {
+      return res.json({
+        ok: true,
+        message: 'No hay pedidos cancelados en TiendaNube',
+        total_tn: 0,
+        actualizados: 0
+      });
+    }
+
+    // 2. Obtener order_numbers de cancelados en TN
+    const cancelledNumbers = allCancelled.map(o => String(o.number));
+
+    // 3. Buscar cuáles NO están cancelados en nuestra DB
+    const dbResult = await pool.query(`
+      SELECT order_number
+      FROM orders_validated
+      WHERE order_number = ANY($1)
+        AND estado_pedido != 'cancelado'
+    `, [cancelledNumbers]);
+
+    const toUpdate = dbResult.rows.map(r => r.order_number);
+
+    console.log(`🔍 Pedidos a actualizar: ${toUpdate.length}`);
+
+    if (toUpdate.length === 0) {
+      return res.json({
+        ok: true,
+        message: 'Todos los pedidos cancelados ya están sincronizados',
+        total_tn: allCancelled.length,
+        actualizados: 0
+      });
+    }
+
+    // 4. Actualizar en batch
+    const updateResult = await pool.query(`
+      UPDATE orders_validated
+      SET estado_pedido = 'cancelado'
+      WHERE order_number = ANY($1)
+      RETURNING order_number
+    `, [toUpdate]);
+
+    // 5. Log de cada actualización
+    for (const row of updateResult.rows) {
+      await logEvento({
+        orderNumber: row.order_number,
+        accion: 'pedido_cancelado (sync)',
+        origen: 'admin_sync'
+      });
+    }
+
+    console.log(`✅ Sync completado: ${updateResult.rowCount} pedidos actualizados`);
+
+    res.json({
+      ok: true,
+      message: `${updateResult.rowCount} pedidos marcados como cancelados`,
+      total_tn: allCancelled.length,
+      actualizados: updateResult.rowCount,
+      pedidos: updateResult.rows.map(r => r.order_number)
+    });
+
+  } catch (error) {
+    console.error('❌ /admin/sync-cancelled error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+/* =====================================================
    PATCH — ACTUALIZAR ESTADO DE PEDIDO
 ===================================================== */
 app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders.update_status'), async (req, res) => {
