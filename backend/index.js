@@ -760,6 +760,48 @@ async function isValidDestination(account, textoOcr) {
   return { valid: false, reason: 'destination_not_registered', extracted: account };
 }
 
+/* =====================================================
+   UTIL — DETECTAR FINANCIERA DESDE TEXTO OCR (para backfill)
+   Retorna financiera_id si hay match único, null si hay dudas
+===================================================== */
+async function detectarFinancieraDesdeOCR(textoOcr) {
+  if (!textoOcr) return null;
+
+  const result = await pool.query(`
+    SELECT id, nombre, palabras_clave
+    FROM financieras
+    WHERE activa = true AND palabras_clave IS NOT NULL
+  `);
+
+  if (result.rows.length === 0) return null;
+
+  const textoNormalizado = normalizeText(textoOcr);
+  const matches = [];
+
+  for (const fin of result.rows) {
+    if (!fin.palabras_clave || !Array.isArray(fin.palabras_clave)) continue;
+
+    for (const keyword of fin.palabras_clave) {
+      if (textoNormalizado.includes(normalizeText(keyword))) {
+        matches.push({ id: fin.id, nombre: fin.nombre, keyword });
+        break; // Solo contar una vez por financiera
+      }
+    }
+  }
+
+  // Match único → asignar
+  if (matches.length === 1) {
+    return { financieraId: matches[0].id, nombre: matches[0].nombre, keyword: matches[0].keyword };
+  }
+
+  // Múltiples matches o ninguno → no asignar
+  if (matches.length > 1) {
+    console.log(`⚠️ Múltiples matches de financiera: ${matches.map(m => m.nombre).join(', ')}`);
+  }
+
+  return null;
+}
+
 async function enviarWhatsAppPlantilla({ telefono, plantilla, variables }) {
   // 🔒 Filtro de testing - solo enviar a número de prueba
   const TESTING_PHONE = '+5491123945965';
@@ -2023,6 +2065,73 @@ app.post('/admin/resync-inconsistent-orders', authenticate, requirePermission('u
     if (!res.headersSent) {
       res.status(500).json({ error: error.message });
     }
+  }
+});
+
+
+/* =====================================================
+   POST — BACKFILL FINANCIERAS EN COMPROBANTES
+   Detecta financiera desde OCR para comprobantes sin asignar
+===================================================== */
+app.post('/admin/backfill-financieras', authenticate, requirePermission('users.view'), async (req, res) => {
+  try {
+    // 1. Obtener comprobantes sin financiera pero con texto OCR
+    const comprobantesRes = await pool.query(`
+      SELECT id, texto_ocr
+      FROM comprobantes
+      WHERE financiera_id IS NULL
+        AND texto_ocr IS NOT NULL
+        AND texto_ocr != ''
+    `);
+
+    const comprobantes = comprobantesRes.rows;
+    console.log(`🔄 Backfill: ${comprobantes.length} comprobantes sin financiera`);
+
+    if (comprobantes.length === 0) {
+      return res.json({
+        message: 'No hay comprobantes pendientes de asignar',
+        total: 0,
+        assigned: 0
+      });
+    }
+
+    let assigned = 0;
+    let skipped = 0;
+    const details = [];
+
+    for (const comp of comprobantes) {
+      const detection = await detectarFinancieraDesdeOCR(comp.texto_ocr);
+
+      if (detection) {
+        await pool.query(
+          'UPDATE comprobantes SET financiera_id = $1 WHERE id = $2',
+          [detection.financieraId, comp.id]
+        );
+        assigned++;
+        details.push({
+          id: comp.id,
+          financiera: detection.nombre,
+          keyword: detection.keyword
+        });
+        console.log(`✅ Comprobante #${comp.id} → ${detection.nombre} (keyword: "${detection.keyword}")`);
+      } else {
+        skipped++;
+      }
+    }
+
+    console.log(`🏁 Backfill completado: ${assigned} asignados, ${skipped} sin match`);
+
+    res.json({
+      message: 'Backfill completado',
+      total: comprobantes.length,
+      assigned,
+      skipped,
+      details
+    });
+
+  } catch (error) {
+    console.error('❌ /admin/backfill-financieras error:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
