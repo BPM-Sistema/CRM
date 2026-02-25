@@ -3694,6 +3694,43 @@ app.post('/notifications/read-all', authenticate, async (req, res) => {
   }
 });
 
+// Eliminar una notificación específica
+app.delete('/notifications/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      'DELETE FROM notifications WHERE id = $1 AND user_id = $2 RETURNING id',
+      [id, req.user.id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Notificación no encontrada' });
+    }
+
+    console.log(`🗑️ Notificación ${id} eliminada por usuario ${req.user.id}`);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('❌ DELETE /notifications/:id error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Eliminar todas las notificaciones leídas
+app.delete('/notifications/read', authenticate, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'DELETE FROM notifications WHERE user_id = $1 AND leida = true RETURNING id',
+      [req.user.id]
+    );
+
+    console.log(`🗑️ ${result.rowCount} notificaciones leídas eliminadas por usuario ${req.user.id}`);
+    res.json({ ok: true, deleted: result.rowCount });
+  } catch (error) {
+    console.error('❌ DELETE /notifications/read error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 /* =====================================================
    SENTRY ERROR HANDLING
 ===================================================== */

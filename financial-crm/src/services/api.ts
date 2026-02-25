@@ -1179,3 +1179,27 @@ export async function markAllNotificationsRead(): Promise<void> {
     throw new Error('Error al marcar notificaciones como leídas');
   }
 }
+
+// Eliminar una notificación
+export async function deleteNotification(id: string): Promise<void> {
+  const response = await authFetch(`${API_BASE_URL}/notifications/${id}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error('Error al eliminar notificación');
+  }
+}
+
+// Eliminar todas las notificaciones leídas
+export async function deleteReadNotifications(): Promise<{ deleted: number }> {
+  const response = await authFetch(`${API_BASE_URL}/notifications/read`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error('Error al eliminar notificaciones leídas');
+  }
+
+  return response.json();
+}

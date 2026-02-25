@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, AlertCircle } from 'lucide-react';
-import { fetchNotifications, markNotificationRead, markAllNotificationsRead, ApiNotification } from '../../services/api';
+import { Bell, AlertCircle, X, Trash2 } from 'lucide-react';
+import { fetchNotifications, markNotificationRead, markAllNotificationsRead, deleteNotification, deleteReadNotifications, ApiNotification } from '../../services/api';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -76,6 +76,31 @@ export function NotificationBell() {
     setNotifications(prev => prev.map(n => ({ ...n, leida: true })));
   };
 
+  // Eliminar una notificación
+  const handleDeleteNotification = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation(); // Evitar que se dispare el click del padre
+    try {
+      await deleteNotification(id);
+      const notification = notifications.find(n => n.id === id);
+      if (notification && !notification.leida) {
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    } catch (error) {
+      console.error('Error eliminando notificación:', error);
+    }
+  };
+
+  // Eliminar todas las leídas
+  const handleDeleteReadNotifications = async () => {
+    try {
+      await deleteReadNotifications();
+      setNotifications(prev => prev.filter(n => !n.leida));
+    } catch (error) {
+      console.error('Error eliminando notificaciones leídas:', error);
+    }
+  };
+
   // Icono según tipo
   const getIcon = (tipo: string) => {
     switch (tipo) {
@@ -107,14 +132,26 @@ export function NotificationBell() {
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
             <h3 className="font-semibold text-neutral-900">Notificaciones</h3>
-            {unreadCount > 0 && (
-              <button
-                onClick={handleMarkAllRead}
-                className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-              >
-                Marcar todas como leídas
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {notifications.some(n => n.leida) && (
+                <button
+                  onClick={handleDeleteReadNotifications}
+                  className="text-xs text-red-500 hover:text-red-600 font-medium flex items-center gap-1"
+                  title="Eliminar leídas"
+                >
+                  <Trash2 size={12} />
+                  Limpiar
+                </button>
+              )}
+              {unreadCount > 0 && (
+                <button
+                  onClick={handleMarkAllRead}
+                  className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  Marcar leídas
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Lista */}
@@ -130,37 +167,49 @@ export function NotificationBell() {
               </div>
             ) : (
               notifications.map(notification => (
-                <button
+                <div
                   key={notification.id}
-                  onClick={() => handleNotificationClick(notification)}
-                  className={`w-full text-left px-4 py-3 hover:bg-neutral-50 transition-colors border-b border-neutral-50 last:border-0 ${
+                  className={`relative group w-full text-left px-4 py-3 hover:bg-neutral-50 transition-colors border-b border-neutral-50 last:border-0 ${
                     !notification.leida ? 'bg-blue-50/50' : ''
                   }`}
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5">
-                      {getIcon(notification.tipo)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className={`text-sm truncate ${!notification.leida ? 'font-semibold text-neutral-900' : 'text-neutral-700'}`}>
-                          {notification.titulo}
-                        </p>
-                        {!notification.leida && (
-                          <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0" />
-                        )}
+                  <button
+                    onClick={() => handleNotificationClick(notification)}
+                    className="w-full text-left"
+                  >
+                    <div className="flex items-start gap-3 pr-6">
+                      <div className="mt-0.5">
+                        {getIcon(notification.tipo)}
                       </div>
-                      {notification.descripcion && (
-                        <p className="text-xs text-neutral-500 mt-0.5 line-clamp-2">
-                          {notification.descripcion}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className={`text-sm truncate ${!notification.leida ? 'font-semibold text-neutral-900' : 'text-neutral-700'}`}>
+                            {notification.titulo}
+                          </p>
+                          {!notification.leida && (
+                            <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0" />
+                          )}
+                        </div>
+                        {notification.descripcion && (
+                          <p className="text-xs text-neutral-500 mt-0.5 line-clamp-2">
+                            {notification.descripcion}
+                          </p>
+                        )}
+                        <p className="text-xs text-neutral-400 mt-1">
+                          {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true, locale: es })}
                         </p>
-                      )}
-                      <p className="text-xs text-neutral-400 mt-1">
-                        {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true, locale: es })}
-                      </p>
+                      </div>
                     </div>
-                  </div>
-                </button>
+                  </button>
+                  {/* Botón eliminar */}
+                  <button
+                    onClick={(e) => handleDeleteNotification(e, notification.id)}
+                    className="absolute top-3 right-3 p-1 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Eliminar"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
               ))
             )}
           </div>
