@@ -9,7 +9,9 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "jest --detectOpenHandles --forceExit"
+    "test": "jest --runInBand --detectOpenHandles --forceExit",
+    "test:ci": "jest --runInBand --detectOpenHandles --forceExit --ci",
+    "build": "npm test"
   },
   "keywords": [],
   "author": "Netu",
