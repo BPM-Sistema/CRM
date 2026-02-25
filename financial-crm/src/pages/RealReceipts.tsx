@@ -193,6 +193,13 @@ function ComprobanteCard({ comp, onClick, selectionMode, isSelected, onToggleSel
             #{comp.order_number}
           </span>
         </div>
+        {comp.financiera_nombre && (
+          <div className="mt-2 pt-2 border-t border-neutral-100">
+            <span className="text-[10px] uppercase tracking-wider text-neutral-400">
+              {comp.financiera_nombre}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
