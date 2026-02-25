@@ -239,6 +239,8 @@ async function obtenerPedidoPorId(storeId, orderId) {
 
 /* =====================================================
    UTIL — GUARDAR PRODUCTOS DE UN PEDIDO EN DB
+   - UPSERT productos que existen en TiendaNube
+   - DELETE productos que ya no existen en TiendaNube
 ===================================================== */
 async function guardarProductos(orderNumber, products) {
   if (!products || products.length === 0) {
@@ -248,10 +250,36 @@ async function guardarProductos(orderNumber, products) {
 
   console.log(`📦 Guardando ${products.length} productos para pedido #${orderNumber}`);
 
+  // 1. Crear Set de claves de productos que vienen de TiendaNube
+  const productKeys = new Set(
+    products.map(p => `${p.product_id || 'null'}_${p.variant_id || 'null'}`)
+  );
+
+  // 2. Obtener productos actuales en DB para este pedido
+  const currentProducts = await pool.query(
+    `SELECT id, product_id, variant_id FROM order_products WHERE order_number = $1`,
+    [orderNumber]
+  );
+
+  // 3. Eliminar productos que ya no existen en TiendaNube
+  const idsToDelete = currentProducts.rows
+    .filter(row => {
+      const key = `${row.product_id || 'null'}_${row.variant_id || 'null'}`;
+      return !productKeys.has(key);
+    })
+    .map(row => row.id);
+
+  if (idsToDelete.length > 0) {
+    await pool.query(
+      `DELETE FROM order_products WHERE id = ANY($1)`,
+      [idsToDelete]
+    );
+    console.log(`🗑️ Eliminados ${idsToDelete.length} productos removidos del pedido #${orderNumber}`);
+  }
+
+  // 4. UPSERT productos actuales
   for (const p of products) {
     try {
-      // UPSERT usando (order_number, product_id, variant_id_safe) como clave única
-      // variant_id_safe es columna generada: COALESCE(variant_id, 0)
       await pool.query(`
         INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -1895,36 +1923,8 @@ app.post('/orders/:orderNumber/resync', authenticate, requirePermission('orders.
 
     const pedido = pedidoRes.data;
 
-    // 4. Actualizar productos con UPSERT (evita duplicados en race conditions)
-    const products = pedido.products || [];
-
-    if (products.length > 0) {
-      console.log(`🔄 Resync: Guardando ${products.length} productos para pedido #${orderNumber}`);
-
-      for (const p of products) {
-        // UPSERT usando (order_number, product_id, variant_id_safe) como clave única
-        await pool.query(`
-          INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          ON CONFLICT (order_number, product_id, variant_id_safe)
-          DO UPDATE SET
-            name = EXCLUDED.name,
-            variant = EXCLUDED.variant,
-            quantity = EXCLUDED.quantity,
-            price = EXCLUDED.price,
-            sku = EXCLUDED.sku
-        `, [
-          orderNumber,
-          p.product_id || null,
-          p.variant_id || null,
-          p.name,
-          p.variant_values ? p.variant_values.join(' / ') : null,
-          p.quantity,
-          Number(p.price),
-          p.sku || null
-        ]);
-      }
-    }
+    // 4. Sincronizar productos (UPSERT + DELETE de removidos)
+    await guardarProductos(orderNumber, pedido.products || []);
 
     // 5. Resolver inconsistencias previas
     await pool.query(`
@@ -1995,31 +1995,9 @@ app.post('/admin/resync-all-orders', authenticate, requirePermission('users.view
         );
 
         const pedido = pedidoRes.data;
-        const products = pedido.products || [];
 
-        // UPSERT usando (order_number, product_id, variant_id_safe) como clave única
-        for (const p of products) {
-          await pool.query(`
-            INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (order_number, product_id, variant_id_safe)
-            DO UPDATE SET
-              name = EXCLUDED.name,
-              variant = EXCLUDED.variant,
-              quantity = EXCLUDED.quantity,
-              price = EXCLUDED.price,
-              sku = EXCLUDED.sku
-          `, [
-            order_number,
-            p.product_id || null,
-            p.variant_id || null,
-            p.name,
-            p.variant_values ? p.variant_values.join(' / ') : null,
-            p.quantity,
-            Number(p.price),
-            p.sku || null
-          ]);
-        }
+        // Sincronizar productos (UPSERT + DELETE de removidos)
+        await guardarProductos(order_number, pedido.products || []);
 
         // Resolver inconsistencias
         await pool.query(`

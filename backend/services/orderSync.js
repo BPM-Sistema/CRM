@@ -171,11 +171,41 @@ async function processOrderCreated(orderId, orderNumber) {
     pedido.created_at || null
   ]);
 
-  // UPSERT usando (order_number, product_id, variant_id_safe) como clave única
+  // Sincronizar productos (UPSERT + DELETE de removidos)
   const products = pedido.products || [];
-  if (products.length > 0) {
-    console.log(`📦 Guardando ${products.length} productos para pedido #${pedido.number} (cola)`);
+  const orderNumber = String(pedido.number);
 
+  if (products.length > 0) {
+    console.log(`📦 Guardando ${products.length} productos para pedido #${orderNumber} (cola)`);
+
+    // 1. Crear Set de claves de productos que vienen de TiendaNube
+    const productKeys = new Set(
+      products.map(p => `${p.product_id || 'null'}_${p.variant_id || 'null'}`)
+    );
+
+    // 2. Obtener productos actuales en DB para este pedido
+    const currentProducts = await pool.query(
+      `SELECT id, product_id, variant_id FROM order_products WHERE order_number = $1`,
+      [orderNumber]
+    );
+
+    // 3. Eliminar productos que ya no existen en TiendaNube
+    const idsToDelete = currentProducts.rows
+      .filter(row => {
+        const key = `${row.product_id || 'null'}_${row.variant_id || 'null'}`;
+        return !productKeys.has(key);
+      })
+      .map(row => row.id);
+
+    if (idsToDelete.length > 0) {
+      await pool.query(
+        `DELETE FROM order_products WHERE id = ANY($1)`,
+        [idsToDelete]
+      );
+      console.log(`🗑️ Eliminados ${idsToDelete.length} productos removidos del pedido #${orderNumber}`);
+    }
+
+    // 4. UPSERT productos actuales
     for (const p of products) {
       await pool.query(`
         INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
@@ -188,7 +218,7 @@ async function processOrderCreated(orderId, orderNumber) {
           price = EXCLUDED.price,
           sku = EXCLUDED.sku
       `, [
-        String(pedido.number),
+        orderNumber,
         p.product_id || null,
         p.variant_id || null,
         p.name,
