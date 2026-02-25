@@ -28,6 +28,7 @@ const fs = require('fs');
 const axios = require('axios');
 
 const supabase = require('./supabase');
+const { calcularEstadoCuenta } = require('./utils/calcularEstadoCuenta');
 const pool = require('./db');
 const { ocrFromUrl } = require('./services/ocrFromUrl');
 const { hashText } = require('./hash');
@@ -3000,18 +3001,10 @@ app.post('/upload', (req, res, next) => {
     );
 
     const totalPagado = Number(totalPagadoResult.rows[0].total_pagado);
-    const cuentaActual = Math.round(montoTiendanube - totalPagado);
 
-    let estadoCuenta = 'pendiente';
-    const TOLERANCIA = 1000;
-
-    if (Math.abs(cuentaActual) <= TOLERANCIA) {
-      estadoCuenta = 'ok';
-    } else if (cuentaActual > 0) {
-      estadoCuenta = 'debe';
-    } else {
-      estadoCuenta = 'a_favor';
-    }
+    const resultado = calcularEstadoCuenta(totalPagado, montoTiendanube);
+    const estadoCuenta = resultado.estado;
+    const cuentaActual = resultado.cuenta;
 
     /* ===============================
        1️⃣1️⃣ WHATSAPP AL CLIENTE
