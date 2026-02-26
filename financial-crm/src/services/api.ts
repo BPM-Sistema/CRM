@@ -518,18 +518,31 @@ export function mapEstadoPedido(estadoPedido: string | null): OrderStatus {
   return estados[estadoPedido] || 'pendiente_pago';
 }
 
-// Obtener todos los comprobantes (con paginación)
+// Filtros para comprobantes
+export interface ComprobantesFilters {
+  financieraId?: number | null;
+  estado?: 'a_confirmar' | 'confirmado' | 'rechazado' | null;
+}
+
+// Obtener todos los comprobantes (con paginación y filtros server-side)
 export async function fetchComprobantes(
   page = 1,
   limit = 50,
-  financieraId?: number | null
+  filters?: ComprobantesFilters
 ): Promise<PaginatedResponse<ApiComprobanteList>> {
-  let url = `${API_BASE_URL}/comprobantes?page=${page}&limit=${limit}`;
-  if (financieraId) {
-    url += `&financiera_id=${financieraId}`;
+  const params = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString()
+  });
+
+  if (filters?.financieraId) {
+    params.append('financiera_id', filters.financieraId.toString());
+  }
+  if (filters?.estado) {
+    params.append('estado', filters.estado);
   }
 
-  const response = await authFetch(url);
+  const response = await authFetch(`${API_BASE_URL}/comprobantes?${params}`);
 
   if (!response.ok) {
     throw new Error('Error al obtener comprobantes');

@@ -1353,18 +1353,35 @@ app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
     const offset = (page - 1) * limit;
 
-    // Filtro por financiera (opcional)
+    // Filtros opcionales
     const financieraId = req.query.financiera_id ? parseInt(req.query.financiera_id) : null;
+    const estado = req.query.estado || null; // 'a_confirmar', 'confirmado', 'rechazado'
 
     // Construir WHERE dinámico
-    let whereClause = '';
+    const conditions = [];
     const params = [];
+    let paramIndex = 1;
+
     if (financieraId) {
-      whereClause = 'WHERE c.financiera_id = $1';
+      conditions.push(`c.financiera_id = $${paramIndex++}`);
       params.push(financieraId);
     }
 
-    // Contar total (con filtro si aplica)
+    if (estado) {
+      // 'a_confirmar' también matchea 'pendiente' (datos legacy)
+      if (estado === 'a_confirmar') {
+        conditions.push(`(c.estado = $${paramIndex} OR c.estado = 'pendiente' OR c.estado IS NULL)`);
+        params.push('a_confirmar');
+        paramIndex++;
+      } else {
+        conditions.push(`c.estado = $${paramIndex++}`);
+        params.push(estado);
+      }
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // Contar total (con filtros)
     const countRes = await pool.query(
       `SELECT COUNT(*) as total FROM comprobantes c ${whereClause}`,
       params
@@ -1372,7 +1389,10 @@ app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async
     const total = parseInt(countRes.rows[0].total);
 
     // Query principal con JOIN a financieras
-    const queryParams = financieraId ? [financieraId, limit, offset] : [limit, offset];
+    const queryParams = [...params, limit, offset];
+    const limitParam = paramIndex;
+    const offsetParam = paramIndex + 1;
+
     const comprobantesRes = await pool.query(`
       SELECT
         c.id,
@@ -1391,9 +1411,9 @@ app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async
       FROM comprobantes c
       LEFT JOIN orders_validated o ON c.order_number = o.order_number
       LEFT JOIN financieras f ON c.financiera_id = f.id
-      ${financieraId ? 'WHERE c.financiera_id = $1' : ''}
+      ${whereClause}
       ORDER BY c.created_at DESC
-      LIMIT $${financieraId ? '2' : '1'} OFFSET $${financieraId ? '3' : '2'}
+      LIMIT $${limitParam} OFFSET $${offsetParam}
     `, queryParams);
 
     res.json({

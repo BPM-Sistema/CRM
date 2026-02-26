@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { RefreshCw, AlertCircle, Eye, Banknote, FileText, Download, Calendar, CheckSquare, Square, X, Search, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
-import { fetchComprobantes, fetchFinancieras, ApiComprobanteList, PaginationInfo, Financiera } from '../services/api';
+import { fetchComprobantes, fetchFinancieras, ApiComprobanteList, PaginationInfo, Financiera, ComprobantesFilters } from '../services/api';
 import { formatDistanceToNow, format, isToday, isSameDay, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { clsx } from 'clsx';
@@ -221,18 +221,23 @@ export function RealReceipts() {
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 50;
 
-  // Filtro por financiera
+  // Filtros (con refs para polling)
   const [financieras, setFinancieras] = useState<Financiera[]>([]);
   const [financieraFilter, setFinancieraFilter] = useState<number | null>(null);
   const financieraFilterRef = useRef<number | null>(null);
+  const estadoFilterRef = useRef<ComprobanteEstado | 'all'>('all');
 
-  const loadComprobantes = async (page?: number, financieraId?: number | null) => {
+  const loadComprobantes = async (page?: number, filters?: Partial<ComprobantesFilters>) => {
     const pageToLoad = page ?? currentPage;
-    const finId = financieraId !== undefined ? financieraId : financieraFilter;
+    const currentFilters: ComprobantesFilters = {
+      financieraId: filters?.financieraId !== undefined ? filters.financieraId : financieraFilterRef.current,
+      estado: filters?.estado !== undefined ? filters.estado : (estadoFilterRef.current === 'all' ? null : estadoFilterRef.current),
+    };
+
     setLoading(true);
     setError(null);
     try {
-      const response = await fetchComprobantes(pageToLoad, ITEMS_PER_PAGE, finId);
+      const response = await fetchComprobantes(pageToLoad, ITEMS_PER_PAGE, currentFilters);
       setComprobantes(response.data);
       setPagination(response.pagination);
     } catch (err) {
@@ -246,14 +251,26 @@ export function RealReceipts() {
 
   const goToPage = (page: number) => {
     setCurrentPage(page);
+    setSelectedIds(new Set()); // Reset selección al cambiar página
     loadComprobantes(page);
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleEstadoChange = (estado: ComprobanteEstado | 'all') => {
+    setEstadoFilter(estado);
+    estadoFilterRef.current = estado;
+    setCurrentPage(1);
+    setSelectedIds(new Set());
+    loadComprobantes(1, { estado: estado === 'all' ? null : estado });
   };
 
   const handleFinancieraChange = (id: number | null) => {
     setFinancieraFilter(id);
     financieraFilterRef.current = id;
     setCurrentPage(1);
-    loadComprobantes(1, id);
+    setSelectedIds(new Set());
+    loadComprobantes(1, { financieraId: id });
   };
 
   // Cargar financieras al montar
@@ -267,7 +284,7 @@ export function RealReceipts() {
     // Refetch al enfocar la ventana
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        loadComprobantes(undefined, financieraFilterRef.current);
+        loadComprobantes();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -275,7 +292,7 @@ export function RealReceipts() {
     // Polling cada 15 segundos para datos en tiempo real
     const pollInterval = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        loadComprobantes(undefined, financieraFilterRef.current);
+        loadComprobantes();
       }
     }, 15000);
 
@@ -285,11 +302,10 @@ export function RealReceipts() {
     };
   }, []);
 
+  // Filtros client-side: solo fecha y búsqueda (estado ya se filtra server-side)
   const filteredComprobantes = useMemo(() => {
     return comprobantes.filter((comp) => {
-      // Mapear estado del comprobante (pendiente → a_confirmar para datos viejos)
-      const compEstado = mapComprobanteEstado(comp.estado);
-      const matchesEstado = estadoFilter === 'all' || compEstado === estadoFilter;
+      // Filtro de fecha (client-side)
       let matchesFecha = true;
       if (fechaFilter === 'hoy') {
         matchesFecha = isToday(new Date(comp.created_at));
@@ -304,28 +320,9 @@ export function RealReceipts() {
         comp.id.toString().includes(query) ||
         (comp.customer_name?.toLowerCase().includes(query));
 
-      return matchesEstado && matchesFecha && matchesSearch;
+      return matchesFecha && matchesSearch;
     });
-  }, [comprobantes, estadoFilter, fechaFilter, customDate, searchQuery]);
-
-  const estadoCounts = useMemo(() => {
-    let filtered = comprobantes;
-    if (fechaFilter === 'hoy') {
-      filtered = comprobantes.filter(c => isToday(new Date(c.created_at)));
-    } else if (fechaFilter === 'custom' && customDate) {
-      filtered = comprobantes.filter(c => isSameDay(new Date(c.created_at), parseISO(customDate)));
-    }
-
-    return filtered.reduce(
-      (acc, comp) => {
-        const estado = mapComprobanteEstado(comp.estado);
-        acc[estado] = (acc[estado] || 0) + 1;
-        acc.total += 1;
-        return acc;
-      },
-      { total: 0 } as Record<string, number>
-    );
-  }, [comprobantes, fechaFilter, customDate]);
+  }, [comprobantes, fechaFilter, customDate, searchQuery]);
 
   const toggleSelect = (id: number) => {
     setSelectedIds(prev => {
@@ -355,17 +352,17 @@ export function RealReceipts() {
   };
 
   const downloadPending = () => {
-    const pendientes = filteredComprobantes.filter(c =>
-      (c.estado === 'pendiente' || c.estado === 'a_confirmar') && c.file_url
-    );
-    downloadComprobantesAsZip(pendientes, setDownloading, 'comprobantes_pendientes');
+    // Descargar todos los comprobantes visibles con imagen
+    const conImagen = filteredComprobantes.filter(c => c.file_url);
+    const folderName = estadoFilter !== 'all' ? `comprobantes_${estadoFilter}` : 'comprobantes';
+    downloadComprobantesAsZip(conImagen, setDownloading, folderName);
   };
 
   return (
     <div className="min-h-screen">
       <Header
         title="Comprobantes"
-        subtitle={`${estadoCounts.total} comprobantes · ${estadoCounts.a_confirmar || 0} a confirmar`}
+        subtitle={pagination ? `${pagination.total} comprobantes${estadoFilter !== 'all' ? ` (${estadoFilter === 'a_confirmar' ? 'a confirmar' : estadoFilter})` : ''}` : 'Cargando...'}
         actions={
           <div className="flex items-center gap-2">
             {selectionMode ? (
@@ -408,9 +405,9 @@ export function RealReceipts() {
                   variant="secondary"
                   leftIcon={<Download size={16} className={downloading ? 'animate-bounce' : ''} />}
                   onClick={downloadPending}
-                  disabled={loading || downloading || (estadoCounts.a_confirmar || 0) === 0}
+                  disabled={loading || downloading || filteredComprobantes.length === 0}
                 >
-                  {downloading ? 'Descargando...' : `A confirmar (${estadoCounts.a_confirmar || 0})`}
+                  {downloading ? 'Descargando...' : `Descargar visible (${filteredComprobantes.filter(c => c.file_url).length})`}
                 </Button>
                 <Button
                   variant="secondary"
@@ -489,19 +486,21 @@ export function RealReceipts() {
             </div>
           </div>
 
-          {/* Filtro de estado del comprobante */}
+          {/* Filtro de estado del comprobante (server-side) */}
           <div>
             <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block">Estado</span>
             <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0">
               {estadoButtons.map((btn) => (
                 <button
                   key={btn.value}
-                  onClick={() => setEstadoFilter(btn.value)}
+                  onClick={() => handleEstadoChange(btn.value)}
+                  disabled={loading}
                   className={clsx(
                     'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
                     estadoFilter === btn.value
                       ? clsx(btn.color, 'ring-2 ring-neutral-900/10')
-                      : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
+                      : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200',
+                    loading && 'opacity-50 cursor-not-allowed'
                   )}
                 >
                   {btn.label}
@@ -585,7 +584,12 @@ export function RealReceipts() {
         {pagination && (
           <div className="flex items-center justify-between">
             <span className="text-sm text-neutral-500">
-              Mostrando {filteredComprobantes.length} de {pagination.total} comprobantes (página {pagination.page} de {pagination.totalPages})
+              {/* Si hay filtros client-side activos, mostrar cuántos se filtran */}
+              {filteredComprobantes.length !== comprobantes.length ? (
+                <>Mostrando {filteredComprobantes.length} de {comprobantes.length} en página (total: {pagination.total})</>
+              ) : (
+                <>Mostrando {comprobantes.length} de {pagination.total} (página {pagination.page} de {pagination.totalPages})</>
+              )}
             </span>
             <div className="flex items-center gap-2">
               <Button
