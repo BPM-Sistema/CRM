@@ -219,7 +219,7 @@ export function RealReceipts() {
   const [searchQuery, setSearchQuery] = useState('');
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 50;
+  const ITEMS_PER_PAGE = 48; // Divisible by 2,3,4,6 columns - avoids incomplete last row
 
   // Filtros (con refs para polling)
   const [financieras, setFinancieras] = useState<Financiera[]>([]);
