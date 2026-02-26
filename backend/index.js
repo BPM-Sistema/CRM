@@ -967,7 +967,8 @@ app.get('/health', (_, res) => res.json({ ok: true }));
 ===================================================== */
 app.get('/sync-queue/payments', authenticate, requirePermission('activity.view'), async (req, res) => {
   try {
-    // Pedidos que están pagados en nuestro sistema pero NO en Tiendanube
+    // Pedidos que están COMPLETAMENTE pagados en nuestro sistema pero NO en Tiendanube
+    // Solo confirmado_total (no parcial) y verificamos saldo <= 0 por seguridad
     const result = await pool.query(`
       SELECT
         order_number,
@@ -984,7 +985,8 @@ app.get('/sync-queue/payments', authenticate, requirePermission('activity.view')
         created_at,
         tn_created_at
       FROM orders_validated
-      WHERE estado_pago IN ('confirmado_total', 'confirmado_parcial')
+      WHERE estado_pago = 'confirmado_total'
+        AND (saldo IS NULL OR saldo <= 0)
         AND (tn_payment_status IS NULL OR tn_payment_status != 'paid')
         AND estado_pedido != 'cancelado'
       ORDER BY created_at DESC
