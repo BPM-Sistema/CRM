@@ -66,7 +66,7 @@ async function fetchRecentOrders(limit = 50, sinceId = null) {
           'User-Agent': 'bpm-validator'
         },
         params,
-        timeout: 15000
+        timeout: 45000
       }
     );
 
@@ -432,7 +432,7 @@ async function testTiendanubeOrdersEndpoint() {
               per_page: perPage,
               created_at_min: createdAtMin
             },
-            timeout: 15000
+            timeout: 45000
           }
         );
 

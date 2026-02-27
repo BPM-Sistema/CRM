@@ -4,4 +4,4 @@ google-vision-key.json
 *.key
 uploads/
 tmp/
-logs/
+logs/env.yaml

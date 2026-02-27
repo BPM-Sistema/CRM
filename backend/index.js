@@ -2487,14 +2487,20 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
 
 function verifyTiendaNubeSignature(req) {
   const received = req.headers['x-linkedstore-hmac-sha256'];
+
+  // Si no existe el header, rechazar
   if (!received) return false;
 
   const secret = process.env.TIENDANUBE_CLIENT_SECRET;
+  if (!secret) return false;
 
   const computed = crypto
     .createHmac('sha256', secret)
     .update(req.rawBody)
     .digest('hex');
+
+  // Si largos no coinciden, rechazar (evita crash de timingSafeEqual)
+  if (received.length !== computed.length) return false;
 
   return crypto.timingSafeEqual(
     Buffer.from(received),
@@ -2504,20 +2510,38 @@ function verifyTiendaNubeSignature(req) {
 
 
 app.post('/webhook/tiendanube', async (req, res) => {
-  // 1️⃣ Validación de firma (dejamos lo que ya funcionaba)
+  // 1️⃣ Validación de firma
   if (!verifyTiendaNubeSignature(req)) {
     console.error('❌ Firma de Tiendanube inválida');
     return res.status(401).send('Invalid signature');
   }
 
-  console.log('📥 WEBHOOK TIENDANUBE OK');
-  console.log('Body:', req.body);
+  const { event, store_id, id: orderId } = req.body;
 
-  // 2️⃣ Respuesta inmediata
+  console.log('📥 WEBHOOK TIENDANUBE:', event, 'orderId:', orderId);
+
+  // 2️⃣ Registro durable ANTES de responder 200
+  // Si el procesamiento falla después, el polling lo recupera
+  try {
+    await pool.query(`
+      INSERT INTO sync_queue (type, resource_id, order_number, payload, status, max_attempts)
+      VALUES ($1, $2, NULL, $3, 'pending', 5)
+      ON CONFLICT (type, resource_id, status) DO UPDATE SET
+        payload = EXCLUDED.payload
+    `, [
+      event.replace('/', '_'),
+      String(orderId),
+      JSON.stringify({ orderId, event, store_id, received_at: new Date().toISOString() })
+    ]);
+  } catch (qErr) {
+    console.error('⚠️ Error encolando webhook:', qErr.message);
+  }
+
+  // 3️⃣ Respuesta inmediata
   res.status(200).json({ ok: true });
 
+  // 4️⃣ Procesar async
   try {
-    const { event, store_id, id: orderId } = req.body;
 
     // 📛 order/cancelled - Marcar pedido como cancelado
     if (event === 'order/cancelled') {
@@ -3757,8 +3781,8 @@ app.get('/sync/lock-status', authenticate, (req, res) => {
   res.json({ ok: true, ...getSyncStatus() });
 });
 
-// Scheduler: ejecutar sync cada 5 minutos
-const SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutos
+// Scheduler: ejecutar sync cada 15 minutos
+const SYNC_INTERVAL = 15 * 60 * 1000; // 15 minutos
 let syncInterval = null;
 
 function startSyncScheduler() {
@@ -3824,7 +3848,39 @@ app.post('/notifications/read-all', authenticate, async (req, res) => {
   }
 });
 
-// Eliminar una notificación específica
+// Eliminar TODAS las notificaciones del usuario (debe ir ANTES de :id)
+app.delete('/notifications/all', authenticate, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'DELETE FROM notifications WHERE user_id = $1 RETURNING id',
+      [req.user.id]
+    );
+
+    console.log(`🗑️ ${result.rowCount} notificaciones eliminadas por usuario ${req.user.id}`);
+    res.json({ ok: true, deleted: result.rowCount });
+  } catch (error) {
+    console.error('❌ DELETE /notifications/all error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Eliminar todas las notificaciones leídas (debe ir ANTES de :id)
+app.delete('/notifications/read', authenticate, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'DELETE FROM notifications WHERE user_id = $1 AND leida = true RETURNING id',
+      [req.user.id]
+    );
+
+    console.log(`🗑️ ${result.rowCount} notificaciones leídas eliminadas por usuario ${req.user.id}`);
+    res.json({ ok: true, deleted: result.rowCount });
+  } catch (error) {
+    console.error('❌ DELETE /notifications/read error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Eliminar una notificación específica (debe ir DESPUÉS de rutas específicas)
 app.delete('/notifications/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -3841,22 +3897,6 @@ app.delete('/notifications/:id', authenticate, async (req, res) => {
     res.json({ ok: true });
   } catch (error) {
     console.error('❌ DELETE /notifications/:id error:', error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Eliminar todas las notificaciones leídas
-app.delete('/notifications/read', authenticate, async (req, res) => {
-  try {
-    const result = await pool.query(
-      'DELETE FROM notifications WHERE user_id = $1 AND leida = true RETURNING id',
-      [req.user.id]
-    );
-
-    console.log(`🗑️ ${result.rowCount} notificaciones leídas eliminadas por usuario ${req.user.id}`);
-    res.json({ ok: true, deleted: result.rowCount });
-  } catch (error) {
-    console.error('❌ DELETE /notifications/read error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
