@@ -186,27 +186,23 @@ export function RealOrders() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Ref para guardar la función loadOrders actualizada (evita stale closures)
+  const loadOrdersRef = useRef(loadOrders);
   useEffect(() => {
-    // Refetch al enfocar la ventana
+    loadOrdersRef.current = loadOrders;
+  });
+
+  // Refetch al volver a la pestaña (sin polling para evitar sync issues)
+  useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        loadOrders();
+        // Usar ref para siempre tener la función actualizada
+        loadOrdersRef.current();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    // Polling cada 15 segundos para datos en tiempo real
-    const pollInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        loadOrders();
-      }
-    }, 15000);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      clearInterval(pollInterval);
-    };
-  }, [paymentFilter, orderStatusFilter, searchQuery]); // fechaFilter usa refs para polling
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []); // Sin dependencias - el ref siempre tiene la función actual
 
   // Mapeo de estados a permisos
   const paymentStatusPermissions: Record<PaymentStatus, string> = {

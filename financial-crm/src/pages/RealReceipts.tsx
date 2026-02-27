@@ -307,29 +307,28 @@ export function RealReceipts() {
     fetchFinancieras().then(setFinancieras).catch(console.error);
   }, []);
 
+  // Ref para guardar la función loadComprobantes actualizada (evita stale closures)
+  const loadComprobantesRef = useRef(loadComprobantes);
+  useEffect(() => {
+    loadComprobantesRef.current = loadComprobantes;
+  });
+
+  // Carga inicial
   useEffect(() => {
     loadComprobantes();
+  }, []);
 
-    // Refetch al enfocar la ventana
+  // Refetch al volver a la pestaña (sin polling para evitar sync issues)
+  useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        loadComprobantes();
+        // Usar ref para siempre tener la función actualizada
+        loadComprobantesRef.current();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    // Polling cada 15 segundos para datos en tiempo real
-    const pollInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        loadComprobantes();
-      }
-    }, 15000);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      clearInterval(pollInterval);
-    };
-  }, []);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []); // Sin dependencias - el ref siempre tiene la función actual
 
   // Filtros client-side: solo búsqueda (fecha y estado ya se filtran server-side)
   const filteredComprobantes = useMemo(() => {
