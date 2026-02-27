@@ -107,7 +107,7 @@ export function RealOrders() {
     const pageToLoad = page ?? currentPage;
 
     // Calcular fecha usando refs para mantener consistencia durante polling
-    let fechaParam: string | null = null;
+    let fechaParam: string | undefined = undefined;
     const currentFecha = filters?.fecha !== undefined ? filters.fecha : fechaFilterRef.current;
     if (currentFecha === 'hoy') {
       fechaParam = 'hoy';
@@ -151,7 +151,7 @@ export function RealOrders() {
     setCurrentPage(1);
 
     // Calcular el valor a enviar al backend
-    let fechaParam: string | null = null;
+    let fechaParam: string | undefined = undefined;
     if (fecha === 'hoy') fechaParam = 'hoy';
     if (fecha === 'custom' && (customValue || customDateRef.current)) {
       fechaParam = customValue || customDateRef.current;
