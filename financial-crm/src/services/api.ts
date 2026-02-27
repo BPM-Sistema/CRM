@@ -1216,3 +1216,16 @@ export async function deleteReadNotifications(): Promise<{ deleted: number }> {
 
   return response.json();
 }
+
+// Eliminar TODAS las notificaciones
+export async function deleteAllNotifications(): Promise<{ deleted: number }> {
+  const response = await authFetch(`${API_BASE_URL}/notifications/all`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error('Error al eliminar notificaciones');
+  }
+
+  return response.json();
+}

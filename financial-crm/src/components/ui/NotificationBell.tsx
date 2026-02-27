@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, AlertCircle, X, Trash2 } from 'lucide-react';
-import { fetchNotifications, markNotificationRead, markAllNotificationsRead, deleteNotification, deleteReadNotifications, ApiNotification } from '../../services/api';
+import { fetchNotifications, markNotificationRead, markAllNotificationsRead, deleteNotification, deleteAllNotifications, ApiNotification } from '../../services/api';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -11,6 +11,7 @@ export function NotificationBell() {
   const [notifications, setNotifications] = useState<ApiNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Cargar notificaciones
@@ -91,13 +92,17 @@ export function NotificationBell() {
     }
   };
 
-  // Eliminar todas las leídas
-  const handleDeleteReadNotifications = async () => {
+  // Eliminar TODAS las notificaciones
+  const handleClearAllNotifications = async () => {
     try {
-      await deleteReadNotifications();
-      setNotifications(prev => prev.filter(n => !n.leida));
+      setClearing(true);
+      await deleteAllNotifications();
+      setNotifications([]);
+      setUnreadCount(0);
     } catch (error) {
-      console.error('Error eliminando notificaciones leídas:', error);
+      console.error('Error eliminando notificaciones:', error);
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -133,14 +138,15 @@ export function NotificationBell() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
             <h3 className="font-semibold text-neutral-900">Notificaciones</h3>
             <div className="flex items-center gap-3">
-              {notifications.some(n => n.leida) && (
+              {notifications.length > 0 && (
                 <button
-                  onClick={handleDeleteReadNotifications}
-                  className="text-xs text-red-500 hover:text-red-600 font-medium flex items-center gap-1"
-                  title="Eliminar leídas"
+                  onClick={handleClearAllNotifications}
+                  disabled={clearing}
+                  className="text-xs text-red-500 hover:text-red-600 font-medium flex items-center gap-1 disabled:opacity-50"
+                  title="Eliminar todas"
                 >
-                  <Trash2 size={12} />
-                  Limpiar
+                  <Trash2 size={12} className={clearing ? 'animate-spin' : ''} />
+                  {clearing ? 'Limpiando...' : 'Limpiar'}
                 </button>
               )}
               {unreadCount > 0 && (
