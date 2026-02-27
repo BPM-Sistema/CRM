@@ -4,7 +4,7 @@ import { RefreshCw, AlertCircle, Eye, Banknote, FileText, Download, Calendar, Ch
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
 import { fetchComprobantes, fetchFinancieras, ApiComprobanteList, PaginationInfo, Financiera, ComprobantesFilters } from '../services/api';
-import { formatDistanceToNow, format, isToday, isSameDay, parseISO } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { clsx } from 'clsx';
 import JSZip from 'jszip';
@@ -226,12 +226,23 @@ export function RealReceipts() {
   const [financieraFilter, setFinancieraFilter] = useState<number | null>(null);
   const financieraFilterRef = useRef<number | null>(null);
   const estadoFilterRef = useRef<ComprobanteEstado | 'all'>('all');
+  const fechaFilterRef = useRef<'all' | 'hoy' | 'custom'>('all');
+  const customDateRef = useRef<string>('');
+
+  // Calcular valor de fecha para enviar al servidor
+  const getFechaParam = (): string | null => {
+    const fecha = fechaFilterRef.current;
+    if (fecha === 'hoy') return 'hoy';
+    if (fecha === 'custom' && customDateRef.current) return customDateRef.current;
+    return null;
+  };
 
   const loadComprobantes = async (page?: number, filters?: Partial<ComprobantesFilters>) => {
     const pageToLoad = page ?? currentPage;
     const currentFilters: ComprobantesFilters = {
       financieraId: filters?.financieraId !== undefined ? filters.financieraId : financieraFilterRef.current,
       estado: filters?.estado !== undefined ? filters.estado : (estadoFilterRef.current === 'all' ? null : estadoFilterRef.current),
+      fecha: filters?.fecha !== undefined ? filters.fecha : getFechaParam(),
     };
 
     setLoading(true);
@@ -273,6 +284,24 @@ export function RealReceipts() {
     loadComprobantes(1, { financieraId: id });
   };
 
+  const handleFechaChange = (fecha: 'all' | 'hoy' | 'custom', customValue?: string) => {
+    setFechaFilter(fecha);
+    fechaFilterRef.current = fecha;
+    if (customValue !== undefined) {
+      setCustomDate(customValue);
+      customDateRef.current = customValue;
+    }
+    setCurrentPage(1);
+    setSelectedIds(new Set());
+    // Calcular valor para server
+    let fechaParam: string | null = null;
+    if (fecha === 'hoy') fechaParam = 'hoy';
+    if (fecha === 'custom' && (customValue || customDateRef.current)) {
+      fechaParam = customValue || customDateRef.current;
+    }
+    loadComprobantes(1, { fecha: fechaParam });
+  };
+
   // Cargar financieras al montar
   useEffect(() => {
     fetchFinancieras().then(setFinancieras).catch(console.error);
@@ -302,17 +331,9 @@ export function RealReceipts() {
     };
   }, []);
 
-  // Filtros client-side: solo fecha y búsqueda (estado ya se filtra server-side)
+  // Filtros client-side: solo búsqueda (fecha y estado ya se filtran server-side)
   const filteredComprobantes = useMemo(() => {
     return comprobantes.filter((comp) => {
-      // Filtro de fecha (client-side)
-      let matchesFecha = true;
-      if (fechaFilter === 'hoy') {
-        matchesFecha = isToday(new Date(comp.created_at));
-      } else if (fechaFilter === 'custom' && customDate) {
-        matchesFecha = isSameDay(new Date(comp.created_at), parseISO(customDate));
-      }
-
       // Búsqueda por número de pedido, ID de comprobante o nombre de cliente
       const query = searchQuery.toLowerCase().trim();
       const matchesSearch = !query ||
@@ -320,9 +341,9 @@ export function RealReceipts() {
         comp.id.toString().includes(query) ||
         (comp.customer_name?.toLowerCase().includes(query));
 
-      return matchesFecha && matchesSearch;
+      return matchesSearch;
     });
-  }, [comprobantes, fechaFilter, customDate, searchQuery]);
+  }, [comprobantes, searchQuery]);
 
   const toggleSelect = (id: number) => {
     setSelectedIds(prev => {
@@ -438,28 +459,32 @@ export function RealReceipts() {
             />
           </div>
 
-          {/* Filtro de fecha */}
+          {/* Filtro de fecha (server-side) */}
           <div>
             <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block">Fecha</span>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setFechaFilter('all')}
+                onClick={() => handleFechaChange('all')}
+                disabled={loading}
                 className={clsx(
                   'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
                   fechaFilter === 'all'
                     ? 'bg-neutral-100 text-neutral-700 ring-2 ring-neutral-900/10'
-                    : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
+                    : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200',
+                  loading && 'opacity-50 cursor-not-allowed'
                 )}
               >
                 Todos
               </button>
               <button
-                onClick={() => setFechaFilter('hoy')}
+                onClick={() => handleFechaChange('hoy')}
+                disabled={loading}
                 className={clsx(
                   'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap flex items-center gap-1.5',
                   fechaFilter === 'hoy'
                     ? 'bg-blue-50 text-blue-700 ring-2 ring-blue-900/10'
-                    : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
+                    : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200',
+                  loading && 'opacity-50 cursor-not-allowed'
                 )}
               >
                 <Calendar size={14} />
@@ -469,17 +494,18 @@ export function RealReceipts() {
                 <input
                   type="date"
                   value={customDate}
+                  disabled={loading}
                   onChange={(e) => {
-                    setCustomDate(e.target.value);
                     if (e.target.value) {
-                      setFechaFilter('custom');
+                      handleFechaChange('custom', e.target.value);
                     }
                   }}
                   className={clsx(
                     'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150',
                     fechaFilter === 'custom' && customDate
                       ? 'bg-purple-50 text-purple-700 ring-2 ring-purple-900/10 border-transparent'
-                      : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
+                      : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200',
+                    loading && 'opacity-50 cursor-not-allowed'
                   )}
                 />
               </div>

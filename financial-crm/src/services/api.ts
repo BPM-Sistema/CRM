@@ -522,6 +522,7 @@ export function mapEstadoPedido(estadoPedido: string | null): OrderStatus {
 export interface ComprobantesFilters {
   financieraId?: number | null;
   estado?: 'a_confirmar' | 'confirmado' | 'rechazado' | null;
+  fecha?: 'hoy' | string | null; // 'hoy' o 'YYYY-MM-DD'
 }
 
 // Obtener todos los comprobantes (con paginación y filtros server-side)
@@ -540,6 +541,9 @@ export async function fetchComprobantes(
   }
   if (filters?.estado) {
     params.append('estado', filters.estado);
+  }
+  if (filters?.fecha) {
+    params.append('fecha', filters.fecha);
   }
 
   const response = await authFetch(`${API_BASE_URL}/comprobantes?${params}`);
