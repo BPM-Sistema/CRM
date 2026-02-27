@@ -287,7 +287,12 @@ export function RealReceipts() {
   const handleFechaChange = (fecha: 'all' | 'hoy' | 'custom', customValue?: string) => {
     setFechaFilter(fecha);
     fechaFilterRef.current = fecha;
-    if (customValue !== undefined) {
+
+    // Si es 'all' o 'hoy', limpiar la fecha custom del calendario
+    if (fecha === 'all' || fecha === 'hoy') {
+      setCustomDate('');
+      customDateRef.current = '';
+    } else if (customValue !== undefined) {
       setCustomDate(customValue);
       customDateRef.current = customValue;
     }
