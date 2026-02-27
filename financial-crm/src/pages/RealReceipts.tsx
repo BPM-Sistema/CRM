@@ -4,8 +4,7 @@ import { RefreshCw, AlertCircle, Eye, Banknote, FileText, Download, Calendar, Ch
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
 import { fetchComprobantes, fetchFinancieras, ApiComprobanteList, PaginationInfo, Financiera, ComprobantesFilters } from '../services/api';
-import { formatDistanceToNow, format } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { format } from 'date-fns';
 import { clsx } from 'clsx';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
