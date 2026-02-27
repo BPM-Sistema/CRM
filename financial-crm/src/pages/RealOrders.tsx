@@ -457,7 +457,14 @@ export function RealOrders() {
               <input
                 type="date"
                 value={customDate}
-                onChange={(e) => handleFechaChange('custom', e.target.value)}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    handleFechaChange('custom', e.target.value);
+                  } else {
+                    // Limpiar fecha → volver a "Todos"
+                    handleFechaChange('all');
+                  }
+                }}
                 className={clsx(
                   'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150',
                   fechaFilter === 'custom'

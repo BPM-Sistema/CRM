@@ -497,6 +497,9 @@ export function RealReceipts() {
                   onChange={(e) => {
                     if (e.target.value) {
                       handleFechaChange('custom', e.target.value);
+                    } else {
+                      // Limpiar fecha → volver a "Todos"
+                      handleFechaChange('all');
                     }
                   }}
                   className={clsx(
