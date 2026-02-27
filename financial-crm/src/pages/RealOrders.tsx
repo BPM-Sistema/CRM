@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RefreshCw, AlertCircle, Eye, Receipt, RotateCcw, Printer, Calendar, Search, ChevronLeft, ChevronRight, CheckSquare, X } from 'lucide-react';
 import { Header } from '../components/layout';
@@ -46,7 +46,11 @@ export function RealOrders() {
   const [error, setError] = useState<string | null>(null);
   const [paymentFilter, setPaymentFilter] = useState<PaymentStatus | 'all'>('all');
   const [orderStatusFilter, setOrderStatusFilter] = useState<OrderStatus | 'all'>('all');
-  const [fechaFilter, setFechaFilter] = useState<'all' | 'hoy'>('all');
+  const [fechaFilter, setFechaFilter] = useState<'all' | 'hoy' | 'custom'>('all');
+  const [customDate, setCustomDate] = useState('');
+  // Refs para mantener estado durante polling
+  const fechaFilterRef = useRef<'all' | 'hoy' | 'custom'>('all');
+  const customDateRef = useRef<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -101,11 +105,21 @@ export function RealOrders() {
 
   const loadOrders = async (page?: number, filters?: OrderFilters, isFilterChange = false) => {
     const pageToLoad = page ?? currentPage;
+
+    // Calcular fecha usando refs para mantener consistencia durante polling
+    let fechaParam: string | null = null;
+    const currentFecha = filters?.fecha !== undefined ? filters.fecha : fechaFilterRef.current;
+    if (currentFecha === 'hoy') {
+      fechaParam = 'hoy';
+    } else if (currentFecha === 'custom' && customDateRef.current) {
+      fechaParam = customDateRef.current;
+    }
+
     const filtersToUse = filters ?? {
       estado_pago: paymentFilter,
       estado_pedido: orderStatusFilter,
       search: searchQuery,
-      fecha: fechaFilter,
+      fecha: fechaParam,
     };
     setLoading(true);
     if (isFilterChange) {
@@ -126,16 +140,42 @@ export function RealOrders() {
 
   const handleRefresh = () => loadOrders();
 
+  // Handler para cambios de fecha
+  const handleFechaChange = (fecha: 'all' | 'hoy' | 'custom', customValue?: string) => {
+    setFechaFilter(fecha);
+    fechaFilterRef.current = fecha;
+    if (customValue !== undefined) {
+      setCustomDate(customValue);
+      customDateRef.current = customValue;
+    }
+    setCurrentPage(1);
+
+    // Calcular el valor a enviar al backend
+    let fechaParam: string | null = null;
+    if (fecha === 'hoy') fechaParam = 'hoy';
+    if (fecha === 'custom' && (customValue || customDateRef.current)) {
+      fechaParam = customValue || customDateRef.current;
+    }
+
+    loadOrders(1, {
+      estado_pago: paymentFilter,
+      estado_pedido: orderStatusFilter,
+      search: searchQuery,
+      fecha: fechaParam,
+    }, true);
+  };
+
   const goToPage = (page: number) => {
     setCurrentPage(page);
     loadOrders(page, undefined, true); // true = mostrar spinner
   };
 
   // Recargar cuando cambian los filtros (resetear a página 1)
+  // Nota: fechaFilter se maneja en handleFechaChange para evitar doble fetch
   useEffect(() => {
     setCurrentPage(1);
     loadOrders(1, undefined, true); // true = es cambio de filtro
-  }, [paymentFilter, orderStatusFilter, fechaFilter]);
+  }, [paymentFilter, orderStatusFilter]);
 
   // Debounce para búsqueda
   useEffect(() => {
@@ -166,7 +206,7 @@ export function RealOrders() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(pollInterval);
     };
-  }, [paymentFilter, orderStatusFilter, searchQuery, fechaFilter]);
+  }, [paymentFilter, orderStatusFilter, searchQuery]); // fechaFilter usa refs para polling
 
   // Mapeo de estados a permisos
   const paymentStatusPermissions: Record<PaymentStatus, string> = {
@@ -396,7 +436,7 @@ export function RealOrders() {
             <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block">Fecha</span>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setFechaFilter('all')}
+                onClick={() => handleFechaChange('all')}
                 className={clsx(
                   'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
                   fechaFilter === 'all'
@@ -407,7 +447,7 @@ export function RealOrders() {
                 Todos
               </button>
               <button
-                onClick={() => setFechaFilter('hoy')}
+                onClick={() => handleFechaChange('hoy')}
                 className={clsx(
                   'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap flex items-center gap-1.5',
                   fechaFilter === 'hoy'
@@ -418,6 +458,17 @@ export function RealOrders() {
                 <Calendar size={14} />
                 Hoy
               </button>
+              <input
+                type="date"
+                value={customDate}
+                onChange={(e) => handleFechaChange('custom', e.target.value)}
+                className={clsx(
+                  'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150',
+                  fechaFilter === 'custom'
+                    ? 'bg-violet-50 text-violet-700 ring-2 ring-violet-900/10 border-transparent'
+                    : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
+                )}
+              />
             </div>
           </div>
 
