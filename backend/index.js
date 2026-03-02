@@ -4090,10 +4090,10 @@ app.get('/orders/:orderNumber/shipping-request', authenticate, async (req, res) 
     `, [orderNumber]);
 
     if (result.rows.length === 0) {
-      return res.json({ ok: true, data: null });
+      return res.json({ ok: true, shipping_request: null });
     }
 
-    res.json({ ok: true, data: result.rows[0] });
+    res.json({ ok: true, shipping_request: result.rows[0] });
   } catch (error) {
     console.error('❌ GET /orders/:orderNumber/shipping-request error:', error.message);
     res.status(500).json({ error: error.message });
