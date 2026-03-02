@@ -4151,12 +4151,11 @@ app.get('/orders/:orderNumber/shipping-label', authenticate, async (req, res) =>
 
     // Datos del remitente (fijos)
     const remitente = {
-      nombre: 'PET LOVE ARGENTINA',
-      direccion: 'Av. Jujuy 279',
-      localidad: 'CABA',
-      provincia: 'Buenos Aires',
-      cp: '1083',
-      telefono: '11-5486-5530'
+      nombre: 'Blanqueriaxmayor',
+      domicilio: 'Av Gaona 2376',
+      localidad: 'Flores',
+      cel: '1134918721',
+      dni: '41823314'
     };
 
     // Empresa de envío
@@ -4170,73 +4169,70 @@ app.get('/orders/:orderNumber/shipping-label', authenticate, async (req, res) =>
 
       const y = 50;
 
-      // === HEADER ===
-      doc.fontSize(24).font('Helvetica-Bold')
-        .text(`PEDIDO #${orderNumber}`, 40, y, { align: 'center' });
+      // Todo el PDF en Helvetica-Bold (similar a Arial Bold), tamaño 16
+      doc.font('Helvetica-Bold').fontSize(16);
 
-      doc.fontSize(14).font('Helvetica')
-        .text(`Bulto ${i + 1} de ${bultos}`, 40, y + 35, { align: 'center' });
+      // === HEADER ===
+      doc.text(`PEDIDO #${orderNumber}`, 40, y, { align: 'center' });
+      doc.text(`Bulto ${i + 1} de ${bultos}`, 40, y + 25, { align: 'center' });
 
       // Línea separadora
-      doc.moveTo(40, y + 60).lineTo(555, y + 60).stroke();
+      doc.moveTo(40, y + 55).lineTo(555, y + 55).stroke();
 
       // === EMPRESA DE ENVÍO ===
-      doc.fontSize(18).font('Helvetica-Bold')
-        .text(empresaEnvio.toUpperCase(), 40, y + 80, { align: 'center' });
-
-      doc.fontSize(12).font('Helvetica')
-        .text(`Tipo: ${shipping.destino_tipo === 'SUCURSAL' ? 'Retiro en Sucursal' : 'Envío a Domicilio'}`, 40, y + 105, { align: 'center' });
+      doc.text(empresaEnvio.toUpperCase(), 40, y + 75, { align: 'center' });
+      doc.text(`Tipo: ${shipping.destino_tipo === 'SUCURSAL' ? 'Retiro en Sucursal' : 'Envío a Domicilio'}`, 40, y + 100, { align: 'center' });
 
       // Línea separadora
       doc.moveTo(40, y + 130).lineTo(555, y + 130).stroke();
 
       // === DESTINATARIO ===
       let destY = y + 150;
-      doc.fontSize(14).font('Helvetica-Bold').text('DESTINATARIO', 40, destY);
-      destY += 25;
+      doc.text('DESTINATARIO', 40, destY);
+      destY += 28;
 
-      doc.fontSize(12).font('Helvetica-Bold').text(shipping.nombre_apellido.toUpperCase(), 40, destY);
-      destY += 18;
+      doc.text(`Nombre: ${shipping.nombre_apellido.toUpperCase()}`, 40, destY);
+      destY += 24;
 
-      doc.font('Helvetica').text(`DNI: ${shipping.dni}`, 40, destY);
-      destY += 18;
+      doc.text(`DNI: ${shipping.dni}`, 40, destY);
+      destY += 24;
 
-      doc.text(shipping.direccion_entrega, 40, destY);
-      destY += 18;
+      doc.text(`Domicilio: ${shipping.direccion_entrega}`, 40, destY);
+      destY += 24;
 
-      doc.text(`${shipping.localidad}, ${shipping.provincia}`, 40, destY);
-      destY += 18;
+      doc.text(`Localidad: ${shipping.localidad}, ${shipping.provincia}`, 40, destY);
+      destY += 24;
 
       doc.text(`CP: ${shipping.codigo_postal}`, 40, destY);
-      destY += 18;
+      destY += 24;
 
-      doc.font('Helvetica-Bold').text(`Tel: ${shipping.telefono}`, 40, destY);
-      destY += 18;
+      doc.text(`Tel: ${shipping.telefono}`, 40, destY);
+      destY += 24;
 
-      doc.font('Helvetica').text(`Email: ${shipping.email}`, 40, destY);
+      doc.text(`Email: ${shipping.email}`, 40, destY);
 
       // Línea separadora
-      destY += 30;
+      destY += 35;
       doc.moveTo(40, destY).lineTo(555, destY).stroke();
 
       // === REMITENTE ===
       destY += 20;
-      doc.fontSize(14).font('Helvetica-Bold').text('REMITENTE', 40, destY);
-      destY += 25;
+      doc.text('REMITENTE', 40, destY);
+      destY += 28;
 
-      doc.fontSize(12).font('Helvetica-Bold').text(remitente.nombre, 40, destY);
-      destY += 18;
+      doc.text(`Nombre: ${remitente.nombre}`, 40, destY);
+      destY += 24;
 
-      doc.font('Helvetica').text(remitente.direccion, 40, destY);
-      destY += 18;
+      doc.text(`Domicilio: ${remitente.domicilio}`, 40, destY);
+      destY += 24;
 
-      doc.text(`${remitente.localidad}, ${remitente.provincia}`, 40, destY);
-      destY += 18;
+      doc.text(`Localidad: ${remitente.localidad}`, 40, destY);
+      destY += 24;
 
-      doc.text(`CP: ${remitente.cp}`, 40, destY);
-      destY += 18;
+      doc.text(`Cel: ${remitente.cel}`, 40, destY);
+      destY += 24;
 
-      doc.font('Helvetica-Bold').text(`Tel: ${remitente.telefono}`, 40, destY);
+      doc.text(`DNI: ${remitente.dni}`, 40, destY);
 
       // === COMENTARIOS (si hay) ===
       if (shipping.comentarios) {
@@ -4244,18 +4240,17 @@ app.get('/orders/:orderNumber/shipping-label', authenticate, async (req, res) =>
         doc.moveTo(40, destY).lineTo(555, destY).stroke();
         destY += 20;
 
-        doc.fontSize(14).font('Helvetica-Bold').text('COMENTARIOS', 40, destY);
-        destY += 25;
+        doc.text('COMENTARIOS', 40, destY);
+        destY += 28;
 
-        doc.fontSize(11).font('Helvetica').text(shipping.comentarios, 40, destY, {
+        doc.text(shipping.comentarios, 40, destY, {
           width: 515,
           align: 'left'
         });
       }
 
       // === FOOTER ===
-      doc.fontSize(10).font('Helvetica')
-        .text('Pet Love Argentina - www.petlovearg.com', 40, 780, { align: 'center' });
+      doc.text('Pet Love Argentina - www.petlovearg.com', 40, 780, { align: 'center' });
     }
 
     doc.end();
