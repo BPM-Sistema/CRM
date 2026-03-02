@@ -172,11 +172,15 @@ export function ShippingForm() {
           <h2 className="text-2xl font-bold text-neutral-900 mb-2">
             ¡Listo!
           </h2>
-          <p className="text-neutral-600 mb-6">
-            Ya recibimos tus datos para el envío, estamos preparándolo para que se despache lo antes posible!
+          <p className="text-neutral-600 mb-4">
+            Ya recibimos tus datos para el envío, estamos preparándolo para que se despache lo antes posible!!
           </p>
-          <p className="text-neutral-500 text-sm">
+          <p className="text-neutral-600 mb-6">
             Cualquier consulta o duda que tengas no dudes en hablarnos al WhatsApp 🤗
+            <br />
+            <a href="https://wa.me/5491154865530" className="font-semibold text-emerald-600 hover:underline">
+              11-5486-5530
+            </a>
           </p>
           <p className="text-sm text-neutral-500">
             Pedido: <span className="font-semibold">#{formData.order_number}</span>
