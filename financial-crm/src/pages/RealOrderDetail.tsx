@@ -225,8 +225,8 @@ export function RealOrderDetail() {
   const orderStatus = mapEstadoPedido(order.estado_pedido);
   const totalPagos = comprobantes.length + pagos_efectivo.length;
 
-  // Lógica de permisos
-  const canRegisterPayment = saldoPendiente > 0 && paymentStatus !== 'rechazado';
+  // Lógica de permisos (RBAC + reglas de negocio)
+  const canRegisterPayment = hasPermission('orders.create_cash_payment') && saldoPendiente > 0 && paymentStatus !== 'rechazado';
   const canPrint = ['a_confirmar', 'parcial', 'total'].includes(paymentStatus);
   const canShip = paymentStatus === 'total';
 
