@@ -170,10 +170,13 @@ export function ShippingForm() {
             <Check size={32} className="text-emerald-600" />
           </div>
           <h2 className="text-2xl font-bold text-neutral-900 mb-2">
-            ¡Datos enviados!
+            ¡Listo!
           </h2>
           <p className="text-neutral-600 mb-6">
-            Recibimos tus datos de envío correctamente. Nos pondremos en contacto a la brevedad.
+            Ya recibimos tus datos para el envío, estamos preparándolo para que se despache lo antes posible!
+          </p>
+          <p className="text-neutral-500 text-sm">
+            Cualquier consulta o duda que tengas no dudes en hablarnos al WhatsApp 🤗
           </p>
           <p className="text-sm text-neutral-500">
             Pedido: <span className="font-semibold">#{formData.order_number}</span>
