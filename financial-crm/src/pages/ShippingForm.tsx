@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useRef, useEffect } from 'react';
 import { Check, AlertCircle, Loader2, Truck } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'https://api.petlovearg.com';
@@ -48,6 +48,15 @@ export function ShippingForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isOrderNotFound, setIsOrderNotFound] = useState(false);
+  const errorRef = useRef<HTMLDivElement>(null);
+
+  // Scroll al error cuando aparece
+  useEffect(() => {
+    if (submitError && errorRef.current) {
+      errorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [submitError]);
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
@@ -108,11 +117,17 @@ export function ShippingForm() {
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
+    // Limpiar error de pedido no encontrado
+    if (name === 'order_number' && isOrderNotFound) {
+      setIsOrderNotFound(false);
+      setSubmitError(null);
+    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
+    setIsOrderNotFound(false);
 
     if (!validateForm()) {
       return;
@@ -130,7 +145,12 @@ export function ShippingForm() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Error al enviar los datos');
+        // Detectar si es error de pedido no encontrado
+        const errorMsg = data.error || 'Error al enviar los datos';
+        if (errorMsg.toLowerCase().includes('no existe un pedido')) {
+          setIsOrderNotFound(true);
+        }
+        throw new Error(errorMsg);
       }
 
       setSubmitSuccess(true);
@@ -181,14 +201,6 @@ export function ShippingForm() {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-xl p-6 md:p-8 space-y-6">
-          {/* Error general */}
-          {submitError && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
-              <AlertCircle size={20} className="text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-700">{submitError}</p>
-            </div>
-          )}
-
           {/* Número de pedido */}
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-1.5">
@@ -200,9 +212,15 @@ export function ShippingForm() {
               value={formData.order_number}
               onChange={handleChange}
               placeholder="Ej: 12345"
-              className={`w-full rounded-lg border ${errors.order_number ? 'border-red-300' : 'border-neutral-200'} bg-white px-4 py-3 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent`}
+              className={`w-full rounded-lg border ${errors.order_number || isOrderNotFound ? 'border-red-300 ring-2 ring-red-100' : 'border-neutral-200'} bg-white px-4 py-3 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent transition-all`}
             />
             {errors.order_number && <p className="mt-1.5 text-sm text-red-600">{errors.order_number}</p>}
+            {isOrderNotFound && !errors.order_number && (
+              <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+                <AlertCircle size={14} />
+                Pedido no encontrado
+              </p>
+            )}
           </div>
 
           {/* Empresa de envío */}
@@ -437,6 +455,24 @@ export function ShippingForm() {
               'Enviar Datos de Envío'
             )}
           </button>
+
+          {/* Error debajo del botón */}
+          {submitError && (
+            <div
+              ref={errorRef}
+              className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3 animate-[fadeIn_0.3s_ease-out]"
+            >
+              <AlertCircle size={20} className="text-red-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-red-800">{submitError}</p>
+                {isOrderNotFound && (
+                  <p className="text-xs text-red-600 mt-1">
+                    Verificá que el número de pedido sea correcto y volvé a intentar.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
         </form>
 
         {/* Footer */}
