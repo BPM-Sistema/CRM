@@ -3963,6 +3963,99 @@ app.delete('/notifications/:id', authenticate, async (req, res) => {
 });
 
 /* =====================================================
+   SHIPPING DATA - Formulario público de datos de envío
+   Para clientes con método "Transporte a elección"
+===================================================== */
+
+app.post('/shipping-data', async (req, res) => {
+  try {
+    const {
+      order_number,
+      empresa_envio,
+      empresa_envio_otro,
+      destino_tipo,
+      direccion_entrega,
+      nombre_apellido,
+      dni,
+      email,
+      codigo_postal,
+      provincia,
+      localidad,
+      telefono,
+      comentarios
+    } = req.body;
+
+    // Validaciones
+    const errors = [];
+
+    if (!order_number?.trim()) errors.push('Número de pedido es obligatorio');
+    if (!empresa_envio || !['VIA_CARGO', 'OTRO'].includes(empresa_envio)) {
+      errors.push('Empresa de envío inválida');
+    }
+    if (empresa_envio === 'OTRO' && !empresa_envio_otro?.trim()) {
+      errors.push('Debe especificar el nombre de la empresa de envío');
+    }
+    if (!destino_tipo || !['SUCURSAL', 'DOMICILIO'].includes(destino_tipo)) {
+      errors.push('Tipo de destino inválido');
+    }
+    if (!direccion_entrega?.trim()) errors.push('Dirección de entrega es obligatoria');
+    if (!nombre_apellido?.trim()) errors.push('Nombre y apellido es obligatorio');
+    if (!dni?.trim()) errors.push('DNI es obligatorio');
+    if (!email?.trim()) errors.push('Email es obligatorio');
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.push('Email tiene formato inválido');
+    }
+    if (!codigo_postal?.trim()) errors.push('Código postal es obligatorio');
+    if (!provincia?.trim()) errors.push('Provincia es obligatoria');
+    if (!localidad?.trim()) errors.push('Localidad es obligatoria');
+    if (!telefono?.trim()) errors.push('Teléfono es obligatorio');
+
+    if (errors.length > 0) {
+      return res.status(400).json({ error: errors.join(', '), errors });
+    }
+
+    // Sanitizar datos
+    const sanitize = (str) => str?.trim() || null;
+
+    const result = await pool.query(`
+      INSERT INTO shipping_requests (
+        order_number, empresa_envio, empresa_envio_otro, destino_tipo,
+        direccion_entrega, nombre_apellido, dni, email,
+        codigo_postal, provincia, localidad, telefono, comentarios
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      RETURNING id, created_at
+    `, [
+      sanitize(order_number),
+      empresa_envio,
+      empresa_envio === 'OTRO' ? sanitize(empresa_envio_otro) : null,
+      destino_tipo,
+      sanitize(direccion_entrega),
+      sanitize(nombre_apellido),
+      sanitize(dni),
+      sanitize(email)?.toLowerCase(),
+      sanitize(codigo_postal),
+      sanitize(provincia),
+      sanitize(localidad),
+      sanitize(telefono),
+      sanitize(comentarios)
+    ]);
+
+    console.log(`📦 Datos de envío registrados para pedido ${order_number}`);
+
+    res.json({
+      ok: true,
+      id: result.rows[0].id,
+      created_at: result.rows[0].created_at,
+      message: 'Datos de envío registrados correctamente'
+    });
+
+  } catch (error) {
+    console.error('❌ POST /shipping-data error:', error.message);
+    res.status(500).json({ error: 'Error al guardar los datos de envío' });
+  }
+});
+
+/* =====================================================
    SENTRY ERROR HANDLING
 ===================================================== */
 

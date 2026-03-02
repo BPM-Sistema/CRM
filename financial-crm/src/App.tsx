@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/layout';
-import { Dashboard, RealOrders, RealOrderDetail, RealReceipts, RealReceiptDetail, AdminUsers, Financieras } from './pages';
+import { Dashboard, RealOrders, RealOrderDetail, RealReceipts, RealReceiptDetail, AdminUsers, Financieras, ShippingForm } from './pages';
 import ActivityLog from './pages/ActivityLog';
 import SyncQueue from './pages/SyncQueue';
 import BatchPrint from './pages/BatchPrint';
@@ -51,9 +51,17 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
+      <Routes>
+        {/* Rutas públicas - sin autenticación */}
+        <Route path="/envio" element={<ShippingForm />} />
+
+        {/* Resto de la app - con autenticación */}
+        <Route path="*" element={
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
+        } />
+      </Routes>
     </BrowserRouter>
   );
 }
