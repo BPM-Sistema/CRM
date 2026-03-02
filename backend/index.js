@@ -35,6 +35,7 @@ const { hashText } = require('./hash');
 const { authenticate, requirePermission } = require('./middleware/auth');
 const crypto = require('crypto');
 const sharp = require('sharp');
+const PDFDocument = require('pdfkit');
 const { runSyncJob } = require('./services/orderSync');
 const { getQueueStats, getSyncState } = require('./services/syncQueue');
 const { verificarConsistencia, getInconsistencias } = require('./utils/orderVerification');
@@ -4070,6 +4071,199 @@ app.post('/shipping-data', async (req, res) => {
   } catch (error) {
     console.error('❌ POST /shipping-data error:', error.message);
     res.status(500).json({ error: 'Error al guardar los datos de envío' });
+  }
+});
+
+/**
+ * GET /orders/:orderNumber/shipping-request
+ * Obtener datos de envío para un pedido (si existen)
+ */
+app.get('/orders/:orderNumber/shipping-request', authenticate, async (req, res) => {
+  try {
+    const { orderNumber } = req.params;
+
+    const result = await pool.query(`
+      SELECT * FROM shipping_requests
+      WHERE order_number = $1
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [orderNumber]);
+
+    if (result.rows.length === 0) {
+      return res.json({ ok: true, data: null });
+    }
+
+    res.json({ ok: true, data: result.rows[0] });
+  } catch (error) {
+    console.error('❌ GET /orders/:orderNumber/shipping-request error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /orders/:orderNumber/shipping-label
+ * Generar PDF de etiqueta para envío por expreso
+ * Query params: bultos (número de copias)
+ */
+app.get('/orders/:orderNumber/shipping-label', authenticate, async (req, res) => {
+  try {
+    const { orderNumber } = req.params;
+    const bultos = Math.min(Math.max(parseInt(req.query.bultos) || 1, 1), 10); // 1-10 bultos
+
+    // 1. Obtener datos del shipping_request
+    const shippingRes = await pool.query(`
+      SELECT * FROM shipping_requests
+      WHERE order_number = $1
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [orderNumber]);
+
+    if (shippingRes.rows.length === 0) {
+      return res.status(404).json({ error: 'No hay datos de envío para este pedido' });
+    }
+
+    const shipping = shippingRes.rows[0];
+
+    // 2. Obtener datos del pedido
+    const orderRes = await pool.query(`
+      SELECT order_number, customer_name, customer_phone, monto_tiendanube
+      FROM orders_validated
+      WHERE order_number = $1
+    `, [orderNumber]);
+
+    const order = orderRes.rows[0] || {};
+
+    // 3. Generar PDF
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 40,
+      info: {
+        Title: `Etiqueta Envío - Pedido #${orderNumber}`,
+        Author: 'Pet Love Argentina'
+      }
+    });
+
+    // Headers para descarga
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=etiqueta-${orderNumber}.pdf`);
+
+    doc.pipe(res);
+
+    // Datos del remitente (fijos)
+    const remitente = {
+      nombre: 'PET LOVE ARGENTINA',
+      direccion: 'Av. Jujuy 279',
+      localidad: 'CABA',
+      provincia: 'Buenos Aires',
+      cp: '1083',
+      telefono: '11-5486-5530'
+    };
+
+    // Empresa de envío
+    const empresaEnvio = shipping.empresa_envio === 'OTRO'
+      ? shipping.empresa_envio_otro
+      : 'VÍA CARGO';
+
+    // Generar N páginas (una por bulto)
+    for (let i = 0; i < bultos; i++) {
+      if (i > 0) doc.addPage();
+
+      const y = 50;
+
+      // === HEADER ===
+      doc.fontSize(24).font('Helvetica-Bold')
+        .text(`PEDIDO #${orderNumber}`, 40, y, { align: 'center' });
+
+      doc.fontSize(14).font('Helvetica')
+        .text(`Bulto ${i + 1} de ${bultos}`, 40, y + 35, { align: 'center' });
+
+      // Línea separadora
+      doc.moveTo(40, y + 60).lineTo(555, y + 60).stroke();
+
+      // === EMPRESA DE ENVÍO ===
+      doc.fontSize(18).font('Helvetica-Bold')
+        .text(empresaEnvio.toUpperCase(), 40, y + 80, { align: 'center' });
+
+      doc.fontSize(12).font('Helvetica')
+        .text(`Tipo: ${shipping.destino_tipo === 'SUCURSAL' ? 'Retiro en Sucursal' : 'Envío a Domicilio'}`, 40, y + 105, { align: 'center' });
+
+      // Línea separadora
+      doc.moveTo(40, y + 130).lineTo(555, y + 130).stroke();
+
+      // === DESTINATARIO ===
+      let destY = y + 150;
+      doc.fontSize(14).font('Helvetica-Bold').text('DESTINATARIO', 40, destY);
+      destY += 25;
+
+      doc.fontSize(12).font('Helvetica-Bold').text(shipping.nombre_apellido.toUpperCase(), 40, destY);
+      destY += 18;
+
+      doc.font('Helvetica').text(`DNI: ${shipping.dni}`, 40, destY);
+      destY += 18;
+
+      doc.text(shipping.direccion_entrega, 40, destY);
+      destY += 18;
+
+      doc.text(`${shipping.localidad}, ${shipping.provincia}`, 40, destY);
+      destY += 18;
+
+      doc.text(`CP: ${shipping.codigo_postal}`, 40, destY);
+      destY += 18;
+
+      doc.font('Helvetica-Bold').text(`Tel: ${shipping.telefono}`, 40, destY);
+      destY += 18;
+
+      doc.font('Helvetica').text(`Email: ${shipping.email}`, 40, destY);
+
+      // Línea separadora
+      destY += 30;
+      doc.moveTo(40, destY).lineTo(555, destY).stroke();
+
+      // === REMITENTE ===
+      destY += 20;
+      doc.fontSize(14).font('Helvetica-Bold').text('REMITENTE', 40, destY);
+      destY += 25;
+
+      doc.fontSize(12).font('Helvetica-Bold').text(remitente.nombre, 40, destY);
+      destY += 18;
+
+      doc.font('Helvetica').text(remitente.direccion, 40, destY);
+      destY += 18;
+
+      doc.text(`${remitente.localidad}, ${remitente.provincia}`, 40, destY);
+      destY += 18;
+
+      doc.text(`CP: ${remitente.cp}`, 40, destY);
+      destY += 18;
+
+      doc.font('Helvetica-Bold').text(`Tel: ${remitente.telefono}`, 40, destY);
+
+      // === COMENTARIOS (si hay) ===
+      if (shipping.comentarios) {
+        destY += 40;
+        doc.moveTo(40, destY).lineTo(555, destY).stroke();
+        destY += 20;
+
+        doc.fontSize(14).font('Helvetica-Bold').text('COMENTARIOS', 40, destY);
+        destY += 25;
+
+        doc.fontSize(11).font('Helvetica').text(shipping.comentarios, 40, destY, {
+          width: 515,
+          align: 'left'
+        });
+      }
+
+      // === FOOTER ===
+      doc.fontSize(10).font('Helvetica')
+        .text('Pet Love Argentina - www.petlovearg.com', 40, 780, { align: 'center' });
+    }
+
+    doc.end();
+    console.log(`🏷️ Etiqueta generada para pedido ${orderNumber} (${bultos} bultos)`);
+
+  } catch (error) {
+    console.error('❌ GET /orders/:orderNumber/shipping-label error:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 

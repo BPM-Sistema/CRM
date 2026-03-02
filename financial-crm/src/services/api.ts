@@ -1233,3 +1233,47 @@ export async function deleteAllNotifications(): Promise<{ deleted: number }> {
 
   return response.json();
 }
+
+// ============================================
+// SHIPPING REQUESTS - Datos de envío
+// ============================================
+
+export interface ShippingRequest {
+  id: string;
+  order_number: string;
+  empresa_envio: 'VIA_CARGO' | 'OTRO';
+  empresa_envio_otro: string | null;
+  destino_tipo: 'SUCURSAL' | 'DOMICILIO';
+  direccion_entrega: string;
+  nombre_apellido: string;
+  dni: string;
+  email: string;
+  codigo_postal: string;
+  provincia: string;
+  localidad: string;
+  telefono: string;
+  comentarios: string | null;
+  created_at: string;
+}
+
+// Obtener datos de envío de un pedido
+export async function fetchShippingRequest(orderNumber: string): Promise<ShippingRequest | null> {
+  const response = await authFetch(`${API_BASE_URL}/orders/${orderNumber}/shipping-request`);
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error('Error al obtener datos de envío');
+  }
+
+  const data = await response.json();
+  return data.shipping_request;
+}
+
+// Obtener URL del PDF de etiqueta de envío
+export function getShippingLabelUrl(orderNumber: string, bultos: number = 1): string {
+  const token = localStorage.getItem('auth_token');
+  return `${API_BASE_URL}/orders/${orderNumber}/shipping-label?bultos=${bultos}&token=${token}`;
+}

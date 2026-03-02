@@ -18,17 +18,25 @@ const JWT_SECRET = process.env.JWT_SECRET || 'finops-secret-key-change-in-produc
 
 /**
  * Middleware para verificar autenticación
- * Extrae el token JWT del header Authorization
+ * Extrae el token JWT del header Authorization o query param (para downloads)
  */
 async function authenticate(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
+    let token = null;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Token de autenticación requerido' });
+    // Primero intentar obtener token del header Authorization
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
+    }
+    // Fallback: token en query param (para descargas directas de PDFs)
+    else if (req.query.token) {
+      token = req.query.token;
     }
 
-    const token = authHeader.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ error: 'Token de autenticación requerido' });
+    }
     const decoded = jwt.verify(token, JWT_SECRET);
 
     // Cargar usuario con rol y permisos

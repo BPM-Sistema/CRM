@@ -16,6 +16,7 @@ import {
   UserCheck,
   Package,
   ShoppingBag,
+  Download,
 } from 'lucide-react';
 import { getEventConfig, formatEventLabel } from '../utils/eventConfig';
 import { Header } from '../components/layout';
@@ -27,8 +28,11 @@ import {
   registerCashPayment,
   updateOrderStatus,
   resyncOrder,
+  fetchShippingRequest,
+  getShippingLabelUrl,
   ApiOrderDetail,
   ApiOrderPrintData,
+  ShippingRequest,
   mapEstadoPago,
   mapEstadoPedido,
   OrderStatus,
@@ -66,14 +70,22 @@ export function RealOrderDetail() {
   // Estado para resync
   const [isResyncing, setIsResyncing] = useState(false);
 
+  // Estado para datos de envío (shipping label)
+  const [shippingRequest, setShippingRequest] = useState<ShippingRequest | null>(null);
+  const [bultos, setBultos] = useState(1);
+
   const loadOrder = async () => {
     if (!orderNumber) return;
 
     setLoading(true);
     setError(null);
     try {
-      const orderData = await fetchOrderDetail(orderNumber);
+      const [orderData, shippingData] = await Promise.all([
+        fetchOrderDetail(orderNumber),
+        fetchShippingRequest(orderNumber),
+      ]);
       setData(orderData);
+      setShippingRequest(shippingData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar pedido');
     } finally {
@@ -709,6 +721,78 @@ export function RealOrderDetail() {
                 )}
               </div>
             </Card>
+
+            {/* Etiqueta de Envío (solo si hay shipping_request) */}
+            {shippingRequest && (
+              <Card>
+                <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider mb-3">
+                  Etiqueta de Envío
+                </h3>
+                <div className="space-y-4">
+                  <div className="p-3 bg-neutral-50 rounded-lg text-sm">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-neutral-500">Empresa:</span>
+                      <span className="font-medium">
+                        {shippingRequest.empresa_envio === 'VIA_CARGO'
+                          ? 'Vía Cargo'
+                          : shippingRequest.empresa_envio_otro}
+                      </span>
+                    </div>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-neutral-500">Destino:</span>
+                      <span className="font-medium">
+                        {shippingRequest.destino_tipo === 'SUCURSAL' ? 'Sucursal' : 'Domicilio'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500">Destinatario:</span>
+                      <span className="font-medium">{shippingRequest.nombre_apellido}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-2">
+                      Cantidad de bultos
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setBultos(Math.max(1, bultos - 1))}
+                        className="w-10 h-10 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-lg font-medium transition-colors"
+                      >
+                        −
+                      </button>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={bultos}
+                        onChange={(e) => setBultos(Math.min(10, Math.max(1, parseInt(e.target.value) || 1)))}
+                        className="w-16 h-10 text-center border border-neutral-300 rounded-lg text-lg font-medium"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setBultos(Math.min(10, bultos + 1))}
+                        className="w-10 h-10 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-lg font-medium transition-colors"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <p className="text-xs text-neutral-500 mt-1">Máximo 10 bultos</p>
+                  </div>
+
+                  <a
+                    href={getShippingLabelUrl(order.order_number, bultos)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 w-full py-3 px-4 bg-violet-600 hover:bg-violet-700 text-white font-medium rounded-xl transition-colors"
+                  >
+                    <Download size={18} />
+                    Descargar Hoja para Expreso
+                  </a>
+                </div>
+              </Card>
+            )}
 
             {/* Info adicional */}
             <Card>
