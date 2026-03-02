@@ -3985,10 +3985,15 @@ app.post('/shipping-data', async (req, res) => {
       comentarios
     } = req.body;
 
+    // Sanitizar número de pedido: solo números
+    const sanitizedOrderNumber = (order_number || '').replace(/[^0-9]/g, '');
+
     // Validaciones
     const errors = [];
 
-    if (!order_number?.trim()) errors.push('Número de pedido es obligatorio');
+    if (!sanitizedOrderNumber) {
+      errors.push('Número de pedido es obligatorio');
+    }
     if (!empresa_envio || !['VIA_CARGO', 'OTRO'].includes(empresa_envio)) {
       errors.push('Empresa de envío inválida');
     }
@@ -4014,6 +4019,19 @@ app.post('/shipping-data', async (req, res) => {
       return res.status(400).json({ error: errors.join(', '), errors });
     }
 
+    // Validar que el pedido exista en la base de datos
+    const orderExists = await pool.query(
+      'SELECT 1 FROM orders_validated WHERE order_number = $1 LIMIT 1',
+      [sanitizedOrderNumber]
+    );
+
+    if (orderExists.rows.length === 0) {
+      return res.status(400).json({
+        error: 'No existe un pedido con ese número',
+        errors: ['No existe un pedido con ese número']
+      });
+    }
+
     // Sanitizar datos
     const sanitize = (str) => str?.trim() || null;
 
@@ -4025,7 +4043,7 @@ app.post('/shipping-data', async (req, res) => {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING id, created_at
     `, [
-      sanitize(order_number),
+      sanitizedOrderNumber,
       empresa_envio,
       empresa_envio === 'OTRO' ? sanitize(empresa_envio_otro) : null,
       destino_tipo,
@@ -4040,7 +4058,7 @@ app.post('/shipping-data', async (req, res) => {
       sanitize(comentarios)
     ]);
 
-    console.log(`📦 Datos de envío registrados para pedido ${order_number}`);
+    console.log(`📦 Datos de envío registrados para pedido ${sanitizedOrderNumber}`);
 
     res.json({
       ok: true,

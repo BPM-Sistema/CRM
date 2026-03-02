@@ -97,7 +97,13 @@ export function ShippingForm() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+
+    // Sanitizar número de pedido: solo números
+    const sanitizedValue = name === 'order_number'
+      ? value.replace(/[^0-9]/g, '')
+      : value;
+
+    setFormData(prev => ({ ...prev, [name]: sanitizedValue }));
     // Limpiar error del campo cuando el usuario escribe
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
