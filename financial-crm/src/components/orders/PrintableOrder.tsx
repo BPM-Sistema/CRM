@@ -16,7 +16,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
             @media print {
               @page {
                 size: A4;
-                margin: 25mm 10mm 20mm 10mm;
+                margin: 15mm 10mm 15mm 10mm;
               }
               body {
                 -webkit-print-color-adjust: exact;
@@ -24,81 +24,41 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
               }
               .print-container {
                 padding: 0 !important;
-                padding-bottom: 15mm !important;
                 max-width: 100% !important;
                 font-size: 11px !important;
               }
-              table { page-break-inside: auto; }
-              thead { display: table-header-group; }
-              tr { page-break-inside: avoid; }
-              .print-no-break { page-break-inside: avoid; }
 
-              /* Header fijo - aparece en CADA página */
-              .print-header-fixed {
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                height: 18mm;
-                display: flex !important;
-                justify-content: space-between;
-                align-items: flex-end;
-                padding: 0 2mm 2mm 2mm;
-                border-bottom: 2px solid #000;
-                background: white;
+              /* Tabla: permitir paginación, header se repite */
+              table {
+                page-break-inside: auto;
+                break-inside: auto;
               }
-              .print-header-fixed h1 {
-                font-size: 24px;
-                font-weight: bold;
-                font-family: monospace;
-                margin: 0;
-                line-height: 1;
+              thead {
+                display: table-header-group;
               }
-              .print-header-fixed .header-subtitle {
-                font-size: 9px;
-                color: #666;
-                text-transform: uppercase;
-                margin: 0;
+              tfoot {
+                display: table-footer-group;
               }
-              .print-header-fixed .header-date {
-                font-size: 9px;
-                color: #666;
-                margin: 0;
+              /* Filas NO se cortan entre páginas */
+              tr {
+                page-break-inside: avoid;
+                break-inside: avoid;
+              }
+              tbody tr {
+                page-break-inside: avoid;
+                break-inside: avoid;
               }
 
-              /* Spacer para el header fixed */
-              .print-header-spacer {
-                height: 20mm;
-                display: block !important;
+              /* Bloques que no deben cortarse */
+              .print-no-break {
+                page-break-inside: avoid;
+                break-inside: avoid;
               }
 
-              /* Footer fijo - aparece en CADA página */
-              .print-footer-fixed {
-                position: fixed;
-                bottom: 0;
-                left: 0;
-                right: 0;
-                height: 12mm;
-                display: flex !important;
-                justify-content: center;
-                align-items: center;
-                border-top: 1px solid #ccc;
-                background: white;
-                font-size: 9px;
-                color: #666;
+              /* Forzar salto de página antes de la tabla si es necesario */
+              .print-page-break-before {
+                page-break-before: auto;
               }
-
-              /* Ocultar header del flujo en impresión (usamos el fixed) */
-              .print-main-header {
-                display: none !important;
-              }
-            }
-
-            /* Ocultar elementos fixed en pantalla */
-            .print-header-fixed,
-            .print-footer-fixed,
-            .print-header-spacer {
-              display: none;
             }
 
             .print-container { font-size: 11px; padding: 12px; max-width: 800px; margin: 0 auto; }
@@ -110,27 +70,8 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
           `}
         </style>
 
-        {/* Header fijo - aparece en CADA página */}
-        <div className="print-header-fixed">
-          <div>
-            <h1>#{data.order_number}</h1>
-            <p className="header-subtitle">Hoja de Picking</p>
-          </div>
-          <p className="header-date">
-            {format(new Date(data.created_at), "dd/MM/yyyy HH:mm", { locale: es })}
-          </p>
-        </div>
-
-        {/* Footer fijo - aparece en CADA página */}
-        <div className="print-footer-fixed">
-          <span>Pedido #{data.order_number}</span>
-        </div>
-
-        {/* Spacer para compensar el header fixed */}
-        <div className="print-header-spacer"></div>
-
-        {/* Header principal del documento (visible solo en pantalla) */}
-        <div className="print-main-header print-no-break border-b border-black pb-2 mb-3 flex justify-between items-end">
+        {/* Header del documento */}
+        <div className="print-no-break border-b border-black pb-2 mb-3 flex justify-between items-end">
           <div>
             <h1 className="font-bold font-mono">#{data.order_number}</h1>
             <p className="text-[10px] text-gray-600 uppercase">Hoja de Picking</p>

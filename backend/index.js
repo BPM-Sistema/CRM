@@ -1285,9 +1285,16 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
       paramIndex++;
     }
 
-    if (fecha === 'hoy') {
-      // Usar fecha original de Tiendanube (tn_created_at), con fallback a created_at
-      conditions.push(`DATE(COALESCE(o.tn_created_at, o.created_at)) = CURRENT_DATE`);
+    if (fecha) {
+      if (fecha === 'hoy') {
+        // Usar fecha original de Tiendanube (tn_created_at), con fallback a created_at
+        // Convertir a timezone Argentina para comparar con fecha calendario local
+        conditions.push(`DATE(COALESCE(o.tn_created_at, o.created_at) AT TIME ZONE 'America/Argentina/Buenos_Aires') = (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date`);
+      } else {
+        // Fecha específica (formato YYYY-MM-DD)
+        conditions.push(`DATE(COALESCE(o.tn_created_at, o.created_at) AT TIME ZONE 'America/Argentina/Buenos_Aires') = $${paramIndex++}`);
+        params.push(fecha);
+      }
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -1356,6 +1363,7 @@ app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async
     // Filtros opcionales
     const financieraId = req.query.financiera_id ? parseInt(req.query.financiera_id) : null;
     const estado = req.query.estado || null; // 'a_confirmar', 'confirmado', 'rechazado'
+    const fecha = req.query.fecha || null; // 'hoy' o 'YYYY-MM-DD'
 
     // Construir WHERE dinámico
     const conditions = [];
@@ -1376,6 +1384,17 @@ app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async
       } else {
         conditions.push(`c.estado = $${paramIndex++}`);
         params.push(estado);
+      }
+    }
+
+    if (fecha) {
+      if (fecha === 'hoy') {
+        // Filtrar por fecha de hoy (timezone Argentina)
+        conditions.push(`DATE(c.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires') = (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date`);
+      } else {
+        // Filtrar por fecha específica (formato YYYY-MM-DD)
+        conditions.push(`DATE(c.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires') = $${paramIndex++}`);
+        params.push(fecha);
       }
     }
 
@@ -2523,18 +2542,26 @@ app.post('/webhook/tiendanube', async (req, res) => {
   // 2️⃣ Registro durable ANTES de responder 200
   // Si el procesamiento falla después, el polling lo recupera
   try {
-    await pool.query(`
+    const qResult = await pool.query(`
       INSERT INTO sync_queue (type, resource_id, order_number, payload, status, max_attempts)
       VALUES ($1, $2, NULL, $3, 'pending', 5)
-      ON CONFLICT (type, resource_id, status) DO UPDATE SET
-        payload = EXCLUDED.payload
+      ON CONFLICT (type, resource_id, status) DO NOTHING
+      RETURNING id
     `, [
       event.replace('/', '_'),
       String(orderId),
       JSON.stringify({ orderId, event, store_id, received_at: new Date().toISOString() })
     ]);
+    if (!qResult.rows[0]) {
+      console.log(`⏭️ Webhook ya encolado: ${event} - ${orderId}`);
+    }
   } catch (qErr) {
-    console.error('⚠️ Error encolando webhook:', qErr.message);
+    // 23505 = unique_violation - backup por race conditions extremas
+    if (qErr.code === '23505') {
+      console.log(`⏭️ Webhook ya encolado (catch): ${event} - ${orderId}`);
+    } else {
+      console.error('⚠️ Error encolando webhook:', qErr.message);
+    }
   }
 
   // 3️⃣ Respuesta inmediata
@@ -3657,39 +3684,88 @@ app.get('/sync/status', authenticate, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// SYNC LOCK: Estado en memoria para evitar ejecución paralela
+// SYNC LOCK: Distributed lock usando tabla (compatible con Supabase Pooler)
 // ═══════════════════════════════════════════════════════════════
-let syncRunning = false;
+const SYNC_LOCK_KEY = 'sync_job_lock';
+const SYNC_LOCK_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos máximo
+
+// Estado local (para monitoring, no para locking)
 let syncRunId = 0;
-let syncQueued = false;
-let syncQueuedSource = null;
 let lastStartAt = null;
 let lastEndAt = null;
 let lastSource = null;
 let lastError = null;
 let lastResult = null;
+let localSyncRunning = false;
+
+/**
+ * Intentar obtener lock distribuido usando tabla sync_state
+ * Retorna true si se obtuvo el lock, false si otra instancia lo tiene
+ */
+async function tryAcquireSyncLock(source) {
+  const now = new Date();
+  const lockExpiry = new Date(now.getTime() + SYNC_LOCK_TIMEOUT_MS);
+
+  try {
+    // Intentar obtener lock: INSERT si no existe, o UPDATE si expiró
+    const result = await pool.query(`
+      INSERT INTO sync_state (key, value, updated_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (key) DO UPDATE SET
+        value = $2,
+        updated_at = NOW()
+      WHERE sync_state.value->>'locked_until' IS NULL
+         OR (sync_state.value->>'locked_until')::timestamptz < NOW()
+      RETURNING key
+    `, [
+      SYNC_LOCK_KEY,
+      JSON.stringify({ locked_by: source, locked_until: lockExpiry.toISOString() })
+    ]);
+
+    return result.rowCount > 0;
+  } catch (err) {
+    console.error(`[SYNC] Error acquiring lock: ${err.message}`);
+    return false;
+  }
+}
+
+/**
+ * Liberar lock distribuido
+ */
+async function releaseSyncLock() {
+  try {
+    await pool.query(`
+      UPDATE sync_state SET value = $1, updated_at = NOW()
+      WHERE key = $2
+    `, [
+      JSON.stringify({ locked_by: null, locked_until: null }),
+      SYNC_LOCK_KEY
+    ]);
+  } catch (err) {
+    console.error(`[SYNC] Error releasing lock: ${err.message}`);
+  }
+}
 
 /**
  * Wrapper único para ejecutar sync desde cualquier punto de entrada
- * Garantiza máximo 1 sync corriendo a la vez
- * Si llega otro mientras corre, queda encolado (1 solo)
+ * Usa lock basado en tabla para garantizar máximo 1 sync
+ * corriendo a la vez ENTRE TODAS LAS INSTANCIAS de Cloud Run
  */
 async function triggerSync(source) {
   const timestamp = new Date().toISOString();
+  const currentRunId = ++syncRunId;
 
-  // Si ya está corriendo, encolar y salir
-  if (syncRunning) {
-    syncQueued = true;
-    syncQueuedSource = source;
-    console.log(`[SYNC] ${timestamp} | SKIP | source=${source} | reason=already_running | runId=${syncRunId} | queued=true`);
-    return { status: 'queued', runId: syncRunId, message: 'Sync already running, queued for next run' };
+  // Intentar obtener distributed lock
+  const lockAcquired = await tryAcquireSyncLock(source);
+
+  if (!lockAcquired) {
+    // Otra instancia tiene el lock - salir silenciosamente
+    console.log(`[SYNC] ${timestamp} | SKIP | source=${source} | reason=distributed_lock_held`);
+    return { status: 'skipped', message: 'Another instance is running sync' };
   }
 
-  // Ejecutar sync
-  syncRunning = true;
-  syncQueued = false;
-  syncQueuedSource = null;
-  const currentRunId = ++syncRunId;
+  // Lock adquirido - ejecutar sync
+  localSyncRunning = true;
   const startTime = Date.now();
   lastStartAt = timestamp;
   lastSource = source;
@@ -3711,24 +3787,12 @@ async function triggerSync(source) {
   } finally {
     const duration = Date.now() - startTime;
     lastEndAt = new Date().toISOString();
-    syncRunning = false;
+    localSyncRunning = false;
+
+    // Liberar distributed lock
+    await releaseSyncLock();
 
     console.log(`[SYNC] ${lastEndAt} | END | runId=${currentRunId} | source=${source} | duration=${duration}ms`);
-
-    // Si hay queued, ejecutar UNA vez más
-    if (syncQueued) {
-      const queuedSource = syncQueuedSource || 'queued';
-      syncQueued = false;
-      syncQueuedSource = null;
-      console.log(`[SYNC] ${new Date().toISOString()} | QUEUED_RERUN | originalSource=${queuedSource}`);
-
-      // Ejecutar de forma asíncrona para no bloquear el finally
-      setImmediate(() => {
-        triggerSync(`queued-from-${queuedSource}`).catch(err => {
-          console.error(`[SYNC] QUEUED_RERUN ERROR | error=${err.message}`);
-        });
-      });
-    }
   }
 }
 
@@ -3737,10 +3801,8 @@ async function triggerSync(source) {
  */
 function getSyncStatus() {
   return {
-    running: syncRunning,
+    running: localSyncRunning,
     runId: syncRunId,
-    queued: syncQueued,
-    queuedSource: syncQueuedSource,
     lastStartAt,
     lastEndAt,
     lastSource,
@@ -3758,13 +3820,12 @@ app.post('/sync/run', authenticate, requirePermission('users.view'), async (req,
   try {
     const result = await triggerSync(source);
 
-    if (result.status === 'queued') {
-      // Ya hay uno corriendo, este quedó encolado
+    if (result.status === 'skipped') {
+      // Otra instancia tiene el lock
       return res.status(202).json({
         ok: true,
-        status: 'queued',
-        message: 'Sync en curso, tu request quedó encolada',
-        currentRunId: result.runId
+        status: 'skipped',
+        message: 'Otra instancia está ejecutando sync'
       });
     }
 
