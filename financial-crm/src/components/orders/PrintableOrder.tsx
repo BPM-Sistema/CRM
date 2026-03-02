@@ -7,6 +7,19 @@ interface PrintableOrderProps {
   data: ApiOrderPrintData;
 }
 
+/**
+ * Valida si una nota es "real" y debe mostrarse
+ * Excluye: vacío, solo espacios, un solo carácter, solo puntos
+ */
+function isValidNote(note: string | null | undefined): boolean {
+  if (!note) return false;
+  const trimmed = note.trim();
+  if (trimmed.length <= 1) return false; // Un solo carácter o vacío
+  if (/^\.+$/.test(trimmed)) return false; // Solo puntos
+  if (/^\s*$/.test(trimmed)) return false; // Solo espacios
+  return true;
+}
+
 export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
   ({ data }, ref) => {
     return (
@@ -117,6 +130,17 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
           </h2>
           <table className="w-full border-collapse border border-gray-400">
             <thead>
+              {/* Nota del cliente - se repite en cada página si es válida */}
+              {isValidNote(data.note) && (
+                <tr>
+                  <th colSpan={4} className="p-0 border-0">
+                    <div className="mb-2 p-2 border border-gray-400 bg-yellow-50 text-[10px] text-left font-normal">
+                      <span className="font-bold">⚠️ Nota cliente: </span>
+                      <span>{data.note}</span>
+                    </div>
+                  </th>
+                </tr>
+              )}
               <tr className="bg-black text-white">
                 <th className="text-center border border-gray-400 w-8"></th>
                 <th className="text-center border border-gray-400 w-12">Cant.</th>
@@ -146,13 +170,6 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
           </table>
         </div>
 
-        {/* Notas del cliente (si existen) */}
-        {data.note && (
-          <div className="print-no-break mb-3 p-2 border border-gray-400 bg-yellow-50 text-[10px]">
-            <span className="font-bold">Nota cliente: </span>
-            <span>{data.note}</span>
-          </div>
-        )}
 
         {/* Firma compacta */}
         <div className="print-no-break mt-4 pt-2 border-t border-gray-400">
