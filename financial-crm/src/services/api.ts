@@ -78,6 +78,7 @@ export interface ApiOrder {
   packed_at: string | null;
   shipped_at: string | null;
   comprobantes_count: string;
+  shipping_type: string | null;
 }
 
 export interface ApiComprobante {

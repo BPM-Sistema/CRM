@@ -1838,7 +1838,8 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
         customer_phone,
         printed_at,
         packed_at,
-        shipped_at
+        shipped_at,
+        shipping_type
       FROM orders_validated
       WHERE order_number = $1
     `, [orderNumber]);

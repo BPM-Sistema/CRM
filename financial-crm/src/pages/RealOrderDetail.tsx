@@ -239,7 +239,14 @@ export function RealOrderDetail() {
 
   // Lógica de permisos (RBAC + reglas de negocio)
   const canRegisterPayment = hasPermission('orders.create_cash_payment') && saldoPendiente > 0 && paymentStatus !== 'rechazado';
-  const canPrint = ['a_confirmar', 'parcial', 'total'].includes(paymentStatus);
+
+  // Lógica de impresión:
+  // - Pedidos normales: solo necesitan comprobante válido
+  // - Pedidos con "Transporte a elección" (api_3988894): también necesitan datos de envío
+  const hasValidPayment = ['a_confirmar', 'parcial', 'total'].includes(paymentStatus);
+  const isTransporteEleccion = order.shipping_type === 'api_3988894';
+  const canPrint = hasValidPayment && (!isTransporteEleccion || shippingRequest !== null);
+
   const canShip = paymentStatus === 'total';
 
   return (
@@ -608,7 +615,9 @@ export function RealOrderDetail() {
                     ) : (
                       <div className="p-4 bg-amber-50 rounded-xl text-center">
                         <p className="text-sm text-amber-700">
-                          Esperando comprobante de pago para poder imprimir.
+                          {!hasValidPayment
+                            ? 'Esperando comprobante de pago para poder imprimir.'
+                            : 'Esperando datos de envío para poder imprimir (Transporte a elección).'}
                         </p>
                       </div>
                     )}
