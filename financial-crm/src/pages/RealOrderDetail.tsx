@@ -249,6 +249,16 @@ export function RealOrderDetail() {
   const isTransporteEleccion = shippingTypeLower.includes('expreso') && shippingTypeLower.includes('elec');
   const canPrint = hasValidPayment && (!isTransporteEleccion || shippingRequest !== null);
 
+  // DEBUG - remover después
+  console.log('🔍 DEBUG canPrint:', {
+    shipping_type: order.shipping_type,
+    shippingTypeLower,
+    isTransporteEleccion,
+    hasValidPayment,
+    shippingRequest,
+    canPrint
+  });
+
   const canShip = paymentStatus === 'total';
 
   return (
