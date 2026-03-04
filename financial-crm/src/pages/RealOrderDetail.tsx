@@ -249,16 +249,6 @@ export function RealOrderDetail() {
   const isTransporteEleccion = shippingTypeLower.includes('expreso') && shippingTypeLower.includes('elec');
   const canPrint = hasValidPayment && (!isTransporteEleccion || shippingRequest !== null);
 
-  // DEBUG - remover después
-  console.log('🔍 DEBUG canPrint:', {
-    shipping_type: order.shipping_type,
-    shippingTypeLower,
-    isTransporteEleccion,
-    hasValidPayment,
-    shippingRequest,
-    canPrint
-  });
-
   const canShip = paymentStatus === 'total';
 
   return (
@@ -638,16 +628,26 @@ export function RealOrderDetail() {
 
                 {/* A imprimir */}
                 {orderStatus === 'a_imprimir' && (
-                  <Button
-                    variant="primary"
-                    className="w-full"
-                    size="lg"
-                    leftIcon={isLoadingPrint ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
-                    onClick={handlePrintOrder}
-                    disabled={isLoadingPrint}
-                  >
-                    {order.printed_at ? 'Re-imprimir Hoja' : 'Imprimir Hoja'}
-                  </Button>
+                  <>
+                    {canPrint ? (
+                      <Button
+                        variant="primary"
+                        className="w-full"
+                        size="lg"
+                        leftIcon={isLoadingPrint ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
+                        onClick={handlePrintOrder}
+                        disabled={isLoadingPrint}
+                      >
+                        {order.printed_at ? 'Re-imprimir Hoja' : 'Imprimir Hoja'}
+                      </Button>
+                    ) : (
+                      <div className="p-4 bg-amber-50 rounded-xl text-center">
+                        <p className="text-sm text-amber-700">
+                          Esperando datos de envío para poder imprimir (Transporte a elección).
+                        </p>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {/* Etiqueta impresa */}
