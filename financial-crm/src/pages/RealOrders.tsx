@@ -352,6 +352,8 @@ export function RealOrders() {
         setPrintableOrders(orderNumbers);
         setExcludedModalOpen(true);
         setIsPrintModalOpen(false);
+        // Recargar notificaciones inmediatamente
+        window.dispatchEvent(new Event('refresh-notifications'));
         return;
       }
 

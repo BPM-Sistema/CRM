@@ -35,6 +35,13 @@ export function NotificationBell() {
     return () => clearInterval(interval);
   }, []);
 
+  // Escuchar evento para recargar notificaciones inmediatamente
+  useEffect(() => {
+    const handleRefresh = () => loadNotifications();
+    window.addEventListener('refresh-notifications', handleRefresh);
+    return () => window.removeEventListener('refresh-notifications', handleRefresh);
+  }, []);
+
   // Cerrar al hacer click fuera
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
