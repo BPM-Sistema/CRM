@@ -39,7 +39,7 @@ const PDFDocument = require('pdfkit');
 const { runSyncJob } = require('./services/orderSync');
 const { getQueueStats, getSyncState } = require('./services/syncQueue');
 const { verificarConsistencia, getInconsistencias } = require('./utils/orderVerification');
-const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas } = require('./utils/notifications');
+const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crearNotificacion } = require('./utils/notifications');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -1190,6 +1190,22 @@ app.post('/orders/to-print', authenticate, requirePermission('orders.print'), as
       } else {
         printable.push(row.order_number);
       }
+    }
+
+    // Crear notificación si hay pedidos excluidos
+    if (excluded.length > 0) {
+      const pedidosTexto = excluded.length <= 5
+        ? excluded.map(n => `#${n}`).join(', ')
+        : `${excluded.slice(0, 5).map(n => `#${n}`).join(', ')} y ${excluded.length - 5} más`;
+
+      await crearNotificacion({
+        userId: req.user.id,
+        tipo: 'impresion_excluida',
+        titulo: `${excluded.length} pedido(s) no impreso(s)`,
+        descripcion: `Pedidos con Transporte a elección sin datos de envío: ${pedidosTexto}`,
+        referenciaTipo: null,
+        referenciaId: null
+      });
     }
 
     res.json({

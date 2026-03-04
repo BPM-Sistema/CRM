@@ -83,6 +83,11 @@ export function RealOrders() {
   const [printCounts, setPrintCounts] = useState<Record<OrderStatus, number> | null>(null);
   const [loadingPrintCounts, setLoadingPrintCounts] = useState(false);
 
+  // Estado para modal de pedidos excluidos
+  const [excludedModalOpen, setExcludedModalOpen] = useState(false);
+  const [excludedOrders, setExcludedOrders] = useState<string[]>([]);
+  const [printableOrders, setPrintableOrders] = useState<string[]>([]);
+
   // Cargar conteos de impresión desde el backend (independiente de filtros)
   const loadPrintCounts = async () => {
     setLoadingPrintCounts(true);
@@ -324,7 +329,6 @@ export function RealOrders() {
 
   const handlePrintSelected = async () => {
     if (selectedPrintStatuses.size === 0) {
-      alert('Seleccioná al menos un estado para imprimir');
       return;
     }
 
@@ -335,40 +339,37 @@ export function RealOrders() {
       const { orderNumbers, count, excluded, excludedCount } = await fetchOrdersToPrint(statuses);
 
       if (count === 0 && excludedCount === 0) {
-        alert('No hay pedidos para imprimir con los estados seleccionados');
+        // No hay nada que imprimir - mostrar modal vacío
+        setExcludedOrders([]);
+        setPrintableOrders([]);
+        setExcludedModalOpen(true);
         return;
       }
 
-      if (count === 0 && excludedCount > 0) {
-        alert(`No se puede imprimir ningún pedido.\n\n${excludedCount} pedido(s) excluido(s) por falta de datos de envío (Transporte a elección):\n${excluded.slice(0, 10).map(n => `#${n}`).join(', ')}${excludedCount > 10 ? ` y ${excludedCount - 10} más...` : ''}`);
-        return;
-      }
-
-      // Mostrar aviso si hay pedidos excluidos
+      // Si hay excluidos, mostrar modal de confirmación
       if (excludedCount > 0) {
-        const continuar = window.confirm(
-          `Se van a imprimir ${count} pedido(s).\n\n` +
-          `${excludedCount} pedido(s) NO se imprimirán por falta de datos de envío (Transporte a elección):\n` +
-          `${excluded.slice(0, 10).map(n => `#${n}`).join(', ')}${excludedCount > 10 ? ` y ${excludedCount - 10} más...` : ''}\n\n` +
-          `¿Continuar con la impresión?`
-        );
-        if (!continuar) {
-          return;
-        }
+        setExcludedOrders(excluded);
+        setPrintableOrders(orderNumbers);
+        setExcludedModalOpen(true);
+        setIsPrintModalOpen(false);
+        return;
       }
 
-      // Navegar a la página de impresión con los order_numbers
-      const params = new URLSearchParams();
-      params.set('orders', orderNumbers.join(','));
-      navigate(`/orders/print?${params.toString()}`);
-
-      setIsPrintModalOpen(false);
+      // No hay excluidos, imprimir directamente
+      proceedToPrint(orderNumbers);
     } catch (err) {
       console.error('Error al obtener pedidos:', err);
-      alert(err instanceof Error ? err.message : 'Error al obtener pedidos para imprimir');
     } finally {
       setIsPrinting(false);
     }
+  };
+
+  const proceedToPrint = (orderNumbers: string[]) => {
+    const params = new URLSearchParams();
+    params.set('orders', orderNumbers.join(','));
+    navigate(`/orders/print?${params.toString()}`);
+    setIsPrintModalOpen(false);
+    setExcludedModalOpen(false);
   };
 
   return (
@@ -906,6 +907,82 @@ export function RealOrders() {
             >
               {isPrinting ? 'Cargando...' : `Imprimir (${selectedPrintCount})`}
             </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal de pedidos excluidos */}
+      <Modal
+        isOpen={excludedModalOpen}
+        onClose={() => setExcludedModalOpen(false)}
+        title="Pedidos excluidos de la impresión"
+        size="sm"
+      >
+        <div className="space-y-4">
+          {printableOrders.length === 0 && excludedOrders.length === 0 ? (
+            <div className="p-4 bg-neutral-50 rounded-xl text-center">
+              <p className="text-neutral-600">No hay pedidos para imprimir con los estados seleccionados.</p>
+            </div>
+          ) : printableOrders.length === 0 ? (
+            <>
+              <div className="p-4 bg-amber-50 rounded-xl">
+                <p className="text-sm text-amber-800 font-medium mb-2">
+                  No se puede imprimir ningún pedido
+                </p>
+                <p className="text-sm text-amber-700">
+                  {excludedOrders.length} pedido(s) requieren datos de envío (Transporte a elección):
+                </p>
+                <p className="text-sm text-amber-600 mt-2 font-mono">
+                  {excludedOrders.slice(0, 10).map(n => `#${n}`).join(', ')}
+                  {excludedOrders.length > 10 && ` y ${excludedOrders.length - 10} más...`}
+                </p>
+              </div>
+              <p className="text-xs text-neutral-500 text-center">
+                Esta información quedó registrada en tus notificaciones.
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="p-4 bg-emerald-50 rounded-xl">
+                <p className="text-sm text-emerald-800 font-medium">
+                  Se van a imprimir {printableOrders.length} pedido(s)
+                </p>
+              </div>
+              <div className="p-4 bg-amber-50 rounded-xl">
+                <p className="text-sm text-amber-800 font-medium mb-2">
+                  {excludedOrders.length} pedido(s) NO se imprimirán
+                </p>
+                <p className="text-sm text-amber-700">
+                  Requieren datos de envío (Transporte a elección):
+                </p>
+                <p className="text-sm text-amber-600 mt-2 font-mono">
+                  {excludedOrders.slice(0, 10).map(n => `#${n}`).join(', ')}
+                  {excludedOrders.length > 10 && ` y ${excludedOrders.length - 10} más...`}
+                </p>
+              </div>
+              <p className="text-xs text-neutral-500 text-center">
+                Esta información quedó registrada en tus notificaciones.
+              </p>
+            </>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => setExcludedModalOpen(false)}
+            >
+              Cerrar
+            </Button>
+            {printableOrders.length > 0 && (
+              <Button
+                className="flex-1"
+                onClick={() => proceedToPrint(printableOrders)}
+                leftIcon={<Printer size={16} />}
+              >
+                Continuar ({printableOrders.length})
+              </Button>
+            )}
           </div>
         </div>
       </Modal>
