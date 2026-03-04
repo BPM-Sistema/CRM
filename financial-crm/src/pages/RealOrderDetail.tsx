@@ -245,7 +245,10 @@ export function RealOrderDetail() {
   // - Pedidos con "Transporte a elección" o "Expreso a elección": también necesitan datos de envío
   const hasValidPayment = ['a_confirmar', 'parcial', 'total'].includes(paymentStatus);
   const shippingTypeLower = (order.shipping_type || '').toLowerCase();
-  const isTransporteEleccion = shippingTypeLower.includes('expreso') && shippingTypeLower.includes('elec');
+  // Detectar tanto por nombre ("expreso a eleccion") como por ID (api_3988894)
+  const isTransporteEleccion =
+    (shippingTypeLower.includes('expreso') && shippingTypeLower.includes('elec')) ||
+    order.shipping_type === 'api_3988894';
   const canPrint = hasValidPayment && (!isTransporteEleccion || shippingRequest !== null);
 
   const canShip = paymentStatus === 'total';
