@@ -1265,6 +1265,8 @@ export interface ShippingRequest {
   telefono: string;
   comentarios: string | null;
   created_at: string;
+  label_printed_at: string | null;
+  label_bultos: number;
 }
 
 // Obtener datos de envío de un pedido

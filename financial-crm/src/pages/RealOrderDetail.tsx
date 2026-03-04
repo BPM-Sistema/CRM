@@ -6,6 +6,7 @@ import {
   AlertCircle,
   Banknote,
   Check,
+  CheckCircle,
   Loader2,
   FileText,
   Phone,
@@ -802,14 +803,33 @@ export function RealOrderDetail() {
                     <p className="text-xs text-neutral-500 mt-1">Máximo 10 bultos</p>
                   </div>
 
+                  {/* Estado de impresión */}
+                  {shippingRequest.label_printed_at && (
+                    <div className="p-3 bg-emerald-50 rounded-lg text-sm border border-emerald-100">
+                      <div className="flex items-center gap-2 text-emerald-700">
+                        <CheckCircle size={16} />
+                        <span className="font-medium">
+                          Etiqueta impresa ({shippingRequest.label_bultos} {shippingRequest.label_bultos === 1 ? 'hoja' : 'hojas'})
+                        </span>
+                      </div>
+                      <p className="text-xs text-emerald-600 mt-1">
+                        Última impresión: {formatDistanceToNow(new Date(shippingRequest.label_printed_at), { addSuffix: true, locale: es })}
+                      </p>
+                    </div>
+                  )}
+
                   <a
                     href={getShippingLabelUrl(order.order_number, bultos)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center justify-center gap-2 w-full py-3 px-4 bg-violet-600 hover:bg-violet-700 text-white font-medium rounded-xl transition-colors"
+                    onClick={() => {
+                      // Recargar datos después de unos segundos para actualizar el estado de impresión
+                      setTimeout(loadOrder, 2000);
+                    }}
                   >
                     <Download size={18} />
-                    Descargar Hoja para Expreso
+                    {shippingRequest.label_printed_at ? 'Re-imprimir Hoja' : 'Descargar Hoja para Expreso'}
                   </a>
                 </div>
               </Card>

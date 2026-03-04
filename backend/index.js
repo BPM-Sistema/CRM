@@ -4290,6 +4290,24 @@ app.get('/orders/:orderNumber/shipping-label', authenticate, async (req, res) =>
     }
 
     doc.end();
+
+    // Registrar la impresión en shipping_requests
+    await pool.query(`
+      UPDATE shipping_requests
+      SET label_printed_at = NOW(),
+          label_bultos = COALESCE(label_bultos, 0) + $1
+      WHERE id = $2
+    `, [bultos, shipping.id]);
+
+    // Registrar en logs
+    await logEvento({
+      orderNumber,
+      accion: `etiqueta_impresa_${bultos}_bultos`,
+      origen: 'crm',
+      userId: req.user?.id,
+      username: req.user?.name
+    });
+
     console.log(`🏷️ Etiqueta generada para pedido ${orderNumber} (${bultos} bultos)`);
 
   } catch (error) {
