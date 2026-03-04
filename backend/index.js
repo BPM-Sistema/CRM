@@ -1807,12 +1807,21 @@ app.get('/orders/:orderNumber/print', authenticate, requirePermission('orders.pr
       // Dirección de envío (viene como JSONB)
       shipping_address: order.shipping_address || null,
 
-      // Envío
-      shipping: {
-        type: order.shipping_type || 'No especificado',
-        cost: Number(order.shipping_cost) || 0,
-        tracking_number: order.shipping_tracking || null,
-      },
+      // Envío - inferir si es retiro o envío
+      shipping: (() => {
+        const type = order.shipping_type || 'No especificado';
+        const typeLower = type.toLowerCase();
+        const isPickup = typeLower.includes('pickup') ||
+                         typeLower.includes('retiro') ||
+                         typeLower.includes('deposito') ||
+                         typeLower.includes('depósito');
+        return {
+          type,
+          pickup_type: isPickup ? 'pickup' : 'ship',
+          cost: Number(order.shipping_cost) || 0,
+          tracking_number: order.shipping_tracking || null,
+        };
+      })(),
 
       // Productos (ya ordenados alfabéticamente)
       products: productos,
@@ -2771,9 +2780,25 @@ app.post('/webhook/tiendanube', async (req, res) => {
     }
     console.log('📤 Enviando WhatsApp a:', telefono);
 
+    // Obtener datos de transferencia de la financiera default
+    let datosTransferencia = '';
+    try {
+      const finResult = await pool.query(`
+        SELECT datos_transferencia
+        FROM financieras
+        WHERE is_default = true
+        LIMIT 1
+      `);
+      if (finResult.rows.length > 0 && finResult.rows[0].datos_transferencia) {
+        datosTransferencia = finResult.rows[0].datos_transferencia;
+      }
+    } catch (err) {
+      console.error('⚠️ Error obteniendo datos de financiera default:', err.message);
+    }
+
     const contactIdClean = telefono.replace('+', '');
 
-    // 6️⃣ Botmaker (igual que antes)
+    // 6️⃣ Botmaker - plantilla pedido_creado
     await axios.post(
       'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
       {
@@ -2781,11 +2806,11 @@ app.post('/webhook/tiendanube', async (req, res) => {
           channelId: process.env.BOTMAKER_CHANNEL_ID,
           contactId: contactIdClean
         },
-        intentIdOrName: 'final_order_created',
+        intentIdOrName: 'pedido_creado',
         variables: {
           '1': pedido.customer?.name || 'Cliente',
           '2': String(pedido.number),
-          '3': `$${pedido.total}`
+          '3': datosTransferencia
         }
       },
       {

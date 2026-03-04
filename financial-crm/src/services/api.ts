@@ -244,6 +244,7 @@ export interface ApiOrderPrintData {
   } | null;
   shipping: {
     type: string;
+    pickup_type: 'pickup' | 'ship';
     cost: number;
     tracking_number: string | null;
   };

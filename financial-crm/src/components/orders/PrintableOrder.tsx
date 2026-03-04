@@ -119,8 +119,14 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
 
         {/* Método de envío */}
         <div className="mb-3 py-1 px-2 bg-gray-100 text-[10px]">
-          <span className="text-gray-500">Método: </span>
-          <span className="font-semibold">{data.shipping.type}</span>
+          {data.shipping.pickup_type === 'pickup' ? (
+            <span className="font-semibold">RETIRO: {data.shipping.type}</span>
+          ) : (
+            <>
+              <span className="font-semibold">ENVÍO: </span>
+              <span className="font-semibold">{data.shipping.type}</span>
+            </>
+          )}
         </div>
 
         {/* Tabla de productos */}
