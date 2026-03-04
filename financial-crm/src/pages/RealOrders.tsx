@@ -455,7 +455,7 @@ export function RealOrders() {
 
           {/* Filtro de fecha */}
           <div>
-            <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block whitespace-nowrap">Fecha</span>
+            <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block">Fecha</span>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => handleFechaChange('all')}
@@ -504,7 +504,7 @@ export function RealOrders() {
           {/* Solo mostrar filtro de pago si hay más de un botón (además de "Todos") */}
           {visiblePaymentButtons.length > 1 && (
             <div>
-              <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block whitespace-nowrap">Estado de Pago</span>
+              <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block">Estado de Pago</span>
               <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0">
                 {visiblePaymentButtons.map((btn) => (
                   <button
@@ -527,7 +527,7 @@ export function RealOrders() {
           {/* Solo mostrar filtro de estado si hay más de un botón (además de "Todos") */}
           {visibleOrderStatusButtons.length > 1 && (
             <div>
-              <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block whitespace-nowrap">Estado del Pedido</span>
+              <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block">Estado del Pedido</span>
               <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0">
                 {visibleOrderStatusButtons.map((btn) => (
                   <button
