@@ -360,7 +360,12 @@ export async function fetchPrintCounts(): Promise<Record<OrderStatus, number>> {
 }
 
 // Obtener pedidos para imprimir (por estados seleccionados)
-export async function fetchOrdersToPrint(statuses: OrderStatus[]): Promise<{ orderNumbers: string[]; count: number }> {
+export async function fetchOrdersToPrint(statuses: OrderStatus[]): Promise<{
+  orderNumbers: string[];
+  count: number;
+  excluded: string[];
+  excludedCount: number;
+}> {
   // Cache-buster para forzar datos frescos
   const timestamp = Date.now();
   const response = await authFetch(`${API_BASE_URL}/orders/to-print?_t=${timestamp}`, {
@@ -374,7 +379,12 @@ export async function fetchOrdersToPrint(statuses: OrderStatus[]): Promise<{ ord
   }
 
   const data = await response.json();
-  return { orderNumbers: data.orderNumbers, count: data.count };
+  return {
+    orderNumbers: data.orderNumbers,
+    count: data.count,
+    excluded: data.excluded || [],
+    excludedCount: data.excludedCount || 0
+  };
 }
 
 // Obtener detalle de un pedido

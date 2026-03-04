@@ -332,11 +332,29 @@ export function RealOrders() {
     try {
       // Obtener TODOS los pedidos a imprimir desde el backend
       const statuses = Array.from(selectedPrintStatuses);
-      const { orderNumbers, count } = await fetchOrdersToPrint(statuses);
+      const { orderNumbers, count, excluded, excludedCount } = await fetchOrdersToPrint(statuses);
 
-      if (count === 0) {
+      if (count === 0 && excludedCount === 0) {
         alert('No hay pedidos para imprimir con los estados seleccionados');
         return;
+      }
+
+      if (count === 0 && excludedCount > 0) {
+        alert(`No se puede imprimir ningún pedido.\n\n${excludedCount} pedido(s) excluido(s) por falta de datos de envío (Transporte a elección):\n${excluded.slice(0, 10).map(n => `#${n}`).join(', ')}${excludedCount > 10 ? ` y ${excludedCount - 10} más...` : ''}`);
+        return;
+      }
+
+      // Mostrar aviso si hay pedidos excluidos
+      if (excludedCount > 0) {
+        const continuar = window.confirm(
+          `Se van a imprimir ${count} pedido(s).\n\n` +
+          `${excludedCount} pedido(s) NO se imprimirán por falta de datos de envío (Transporte a elección):\n` +
+          `${excluded.slice(0, 10).map(n => `#${n}`).join(', ')}${excludedCount > 10 ? ` y ${excludedCount - 10} más...` : ''}\n\n` +
+          `¿Continuar con la impresión?`
+        );
+        if (!continuar) {
+          return;
+        }
       }
 
       // Navegar a la página de impresión con los order_numbers

@@ -1165,20 +1165,39 @@ app.post('/orders/to-print', authenticate, requirePermission('orders.print'), as
       return res.status(400).json({ error: `Estados inválidos: ${invalidStatuses.join(', ')}` });
     }
 
-    // Obtener TODOS los pedidos con los estados seleccionados
+    // Obtener pedidos con los estados seleccionados, incluyendo info de shipping
     const result = await pool.query(`
-      SELECT order_number
-      FROM orders_validated
-      WHERE estado_pedido = ANY($1)
-      ORDER BY created_at ASC
+      SELECT
+        o.order_number,
+        o.shipping_type,
+        CASE WHEN sr.id IS NOT NULL THEN true ELSE false END as has_shipping_request
+      FROM orders_validated o
+      LEFT JOIN shipping_requests sr ON o.order_number = sr.order_number
+      WHERE o.estado_pedido = ANY($1)
+      ORDER BY o.created_at ASC
     `, [statuses]);
 
-    const orderNumbers = result.rows.map(r => r.order_number);
+    // Separar pedidos que se pueden imprimir de los excluidos
+    const printable = [];
+    const excluded = [];
+
+    for (const row of result.rows) {
+      const shippingTypeLower = (row.shipping_type || '').toLowerCase();
+      const isTransporteEleccion = shippingTypeLower.includes('expreso') && shippingTypeLower.includes('elec');
+
+      if (isTransporteEleccion && !row.has_shipping_request) {
+        excluded.push(row.order_number);
+      } else {
+        printable.push(row.order_number);
+      }
+    }
 
     res.json({
       ok: true,
-      orderNumbers,
-      count: orderNumbers.length
+      orderNumbers: printable,
+      count: printable.length,
+      excluded: excluded,
+      excludedCount: excluded.length
     });
 
   } catch (error) {
