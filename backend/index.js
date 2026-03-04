@@ -402,7 +402,7 @@ async function guardarPedidoCompleto(pedido) {
     customerName,
     customerEmail,
     customerPhone,
-    pedido.shipping_option?.name || pedido.shipping || null,
+    (typeof pedido.shipping_option === 'string' ? pedido.shipping_option : pedido.shipping_option?.name) || pedido.shipping || null,
     pedido.shipping_tracking_number || null,
     shippingAddress ? JSON.stringify(shippingAddress) : null,
     pedido.note || null,

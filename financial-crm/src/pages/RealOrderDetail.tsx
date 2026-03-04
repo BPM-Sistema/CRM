@@ -242,9 +242,10 @@ export function RealOrderDetail() {
 
   // Lógica de impresión:
   // - Pedidos normales: solo necesitan comprobante válido
-  // - Pedidos con "Transporte a elección" (api_3988894): también necesitan datos de envío
+  // - Pedidos con "Transporte a elección" o "Expreso a elección": también necesitan datos de envío
   const hasValidPayment = ['a_confirmar', 'parcial', 'total'].includes(paymentStatus);
-  const isTransporteEleccion = order.shipping_type === 'api_3988894';
+  const shippingTypeLower = (order.shipping_type || '').toLowerCase();
+  const isTransporteEleccion = shippingTypeLower.includes('expreso') && shippingTypeLower.includes('elec');
   const canPrint = hasValidPayment && (!isTransporteEleccion || shippingRequest !== null);
 
   const canShip = paymentStatus === 'total';
