@@ -69,7 +69,7 @@ const navItems = [
     to: '/remitos',
     icon: <Truck size={20} />,
     label: 'Remitos',
-    permissions: ['orders.view']
+    permissions: ['remitos.view', 'remitos.upload', 'remitos.confirm', 'remitos.reject']
   },
 ];
 

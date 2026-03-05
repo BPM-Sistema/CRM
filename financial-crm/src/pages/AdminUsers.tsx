@@ -17,6 +17,7 @@ import {
   Trash2,
   Activity,
   Landmark,
+  Truck,
 } from 'lucide-react';
 import {
   fetchUsers,
@@ -69,6 +70,11 @@ const PERMISSION_LABELS: Record<string, string> = {
   'financieras.update': 'Editar financiera',
   'financieras.delete': 'Eliminar financiera',
   'financieras.set_default': 'Marcar predeterminada',
+  'remitos.view': 'Ver remitos',
+  'remitos.upload': 'Subir remitos',
+  'remitos.confirm': 'Confirmar remito',
+  'remitos.reject': 'Rechazar remito',
+  'remitos.reprocess': 'Reprocesar OCR',
 };
 
 const SECTIONS = [
@@ -100,6 +106,15 @@ const SECTIONS = [
     subsections: [
       { title: 'Acciones', permissions: ['receipts.view', 'receipts.download', 'receipts.upload_manual', 'receipts.confirm', 'receipts.reject'] },
       { title: 'Filtro por Estado', permissions: ['receipts.view_pendiente', 'receipts.view_a_confirmar', 'receipts.view_parcial', 'receipts.view_total', 'receipts.view_rechazado'] }
+    ]
+  },
+  {
+    id: 'remitos',
+    title: 'Remitos',
+    icon: Truck,
+    color: 'bg-orange-50 text-orange-600',
+    subsections: [
+      { title: 'Acciones', permissions: ['remitos.view', 'remitos.upload', 'remitos.confirm', 'remitos.reject', 'remitos.reprocess'] }
     ]
   },
   {

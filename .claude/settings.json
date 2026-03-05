@@ -41,7 +41,8 @@
       "Bash(gcloud logging read 'resource.type=\"\"cloud_run_revision\"\" AND resource.labels.service_name=\"\"petlove-backend\"\" AND textPayload=~\"\"TEST_RACE\"\"' --limit=20 --format='value\\(textPayload\\)' --freshness=3m)",
       "Bash(node -c index.js)",
       "Bash(curl -s \"https://api.petlovearg.com/orders/27724/shipping-request\" -H \"Authorization: Bearer test\")",
-      "Bash(pkill -f \"node scripts/fix-api-id.js\")"
+      "Bash(pkill -f \"node scripts/fix-api-id.js\")",
+      "Bash(npx vercel --prod)"
     ]
   }
 }

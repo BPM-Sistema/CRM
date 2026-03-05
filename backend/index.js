@@ -366,15 +366,16 @@ async function guardarPedidoCompleto(pedido) {
   // Upsert en orders_validated con todos los datos
   await pool.query(`
     INSERT INTO orders_validated (
-      order_number, tn_order_id, monto_tiendanube, subtotal, discount, shipping_cost,
+      order_number, tn_order_id, tn_order_token, monto_tiendanube, subtotal, discount, shipping_cost,
       currency, customer_name, customer_email, customer_phone,
       shipping_type, shipping_tracking, shipping_address,
       note, owner_note, tn_payment_status, tn_shipping_status,
       estado_pedido, tn_created_at, updated_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'pendiente_pago', $18, NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'pendiente_pago', $19, NOW())
     ON CONFLICT (order_number) DO UPDATE SET
       tn_order_id = COALESCE(EXCLUDED.tn_order_id, orders_validated.tn_order_id),
+      tn_order_token = COALESCE(EXCLUDED.tn_order_token, orders_validated.tn_order_token),
       monto_tiendanube = EXCLUDED.monto_tiendanube,
       subtotal = EXCLUDED.subtotal,
       discount = EXCLUDED.discount,
@@ -394,6 +395,7 @@ async function guardarPedidoCompleto(pedido) {
   `, [
     orderNumber,
     pedido.id,
+    pedido.token || null,  // Token para tracking de TiendaNube
     Math.round(Number(pedido.total)),
     Number(pedido.subtotal) || 0,
     Number(pedido.discount) || 0,
@@ -838,30 +840,31 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables }) {
     console.log('📵 WhatsApp ignorado (testing):', telefono);
     return { data: { skipped: true, reason: 'testing_filter' } };
   }
-  console.log('📤 Enviando WhatsApp a:', telefono, 'plantilla:', plantilla);
 
-  // Obtener financiera default para agregar datos de transferencia como variable '4'
-  let variablesFinales = { ...variables };
+  // Obtener financiera default para determinar sufijo de plantilla
+  let plantillaFinal = plantilla;
   try {
     const finResult = await pool.query(`
-      SELECT nombre, datos_transferencia
+      SELECT nombre
       FROM financieras
       WHERE is_default = true
       LIMIT 1
     `);
 
     if (finResult.rows.length > 0) {
-      const financiera = finResult.rows[0];
-      // Agregar datos_transferencia como variable '4' si existe y no fue definida
-      if (financiera.datos_transferencia && !variables['4']) {
-        variablesFinales['4'] = financiera.datos_transferencia;
+      const nombreFinanciera = finResult.rows[0].nombre.toLowerCase();
+      if (nombreFinanciera.includes('wanda')) {
+        plantillaFinal = `${plantilla}_wanda`;
+      } else if (nombreFinanciera.includes('kiesel')) {
+        plantillaFinal = `${plantilla}_kiesel`;
       }
-      console.log('🏦 Financiera default:', financiera.nombre);
+      console.log(`🏦 Financiera default: ${finResult.rows[0].nombre} → plantilla: ${plantillaFinal}`);
     }
   } catch (err) {
     console.error('⚠️ Error obteniendo financiera default:', err.message);
-    // Continuar sin financiera - no bloquear el envío
   }
+
+  console.log('📤 Enviando WhatsApp a:', telefono, 'plantilla:', plantillaFinal);
 
   const contactIdClean = telefono.replace('+', '');
 
@@ -872,8 +875,8 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables }) {
         channelId: process.env.BOTMAKER_CHANNEL_ID,
         contactId: contactIdClean
       },
-      intentIdOrName: plantilla,
-      variables: variablesFinales
+      intentIdOrName: plantillaFinal,
+      variables
     },
     {
       headers: {
@@ -885,59 +888,6 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables }) {
 }
 
 
-async function enviarComprobanteAFinanciera({
-  financiera,
-  fileUrl,
-  comprobanteId
-}) {
-  try {
-    // Validar que la financiera tenga celular configurado
-    if (!financiera.celular) {
-      console.log(`⚠️ Financiera "${financiera.nombre}" no tiene celular configurado, no se envía WhatsApp`);
-      return false;
-    }
-
-    const contactIdClean = financiera.celular.replace('+', '');
-
-    console.log('🏦 Enviando comprobante a financiera:', financiera.nombre);
-    console.log('📸 URL imagen:', fileUrl);
-    console.log('🆔 Comprobante ID:', comprobanteId);
-
-    // ✅ ÚNICO ENVÍO: plantilla aprobada (funciona +24hs)
-    await axios.post(
-      'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
-      {
-        chat: {
-          channelId: process.env.BOTMAKER_CHANNEL_ID,
-          contactId: contactIdClean
-        },
-        intentIdOrName: 'revision_financiera_v3',
-        variables: {
-          headerImageUrl: fileUrl,
-          '1': String(comprobanteId)
-        },
-        webhookPayload: 'envio_comprobante_financiera'
-      },
-      {
-        headers: {
-          'access-token': process.env.BOTMAKER_ACCESS_TOKEN,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    console.log('📨 Comprobante enviado a financiera (plantilla)');
-
-    return true;
-
-  } catch (err) {
-    console.error('❌ Error enviando comprobante a financiera:');
-    console.error('Mensaje:', err.message);
-    console.error('Response data:', JSON.stringify(err.response?.data, null, 2));
-    console.error('Status:', err.response?.status);
-    throw err;
-  }
-}
 
 
 
@@ -1634,6 +1584,33 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
       username: req.user?.name
     });
 
+    // 9️⃣ WhatsApp al cliente - comprobante_confirmado (sin sufijo de financiera)
+    const clienteRes = await pool.query(
+      `SELECT customer_name, customer_phone FROM orders_validated WHERE order_number = $1`,
+      [comprobante.order_number]
+    );
+    const cliente = clienteRes.rows[0];
+    if (cliente?.customer_phone) {
+      const TESTING_PHONE = '+5491123945965';
+      if (cliente.customer_phone === TESTING_PHONE) {
+        const contactIdClean = cliente.customer_phone.replace('+', '');
+        axios.post(
+          'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
+          {
+            chat: { channelId: process.env.BOTMAKER_CHANNEL_ID, contactId: contactIdClean },
+            intentIdOrName: 'comprobante_confirmado',
+            variables: {
+              '1': cliente.customer_name || 'Cliente',
+              '2': String(comprobante.monto),
+              '3': comprobante.order_number
+            }
+          },
+          { headers: { 'access-token': process.env.BOTMAKER_ACCESS_TOKEN, 'Content-Type': 'application/json' } }
+        ).then(() => console.log('📨 WhatsApp comprobante_confirmado enviado'))
+         .catch(err => console.error('⚠️ Error WhatsApp comprobante_confirmado:', err.message));
+      }
+    }
+
     console.log(`✅ [${requestId}] Comprobante ${id} confirmado exitosamente`);
     if (nuevoEstadoPedido !== estadoPedidoActual) {
       console.log(`📦 Estado pedido: ${estadoPedidoActual} → ${nuevoEstadoPedido}`);
@@ -1680,7 +1657,7 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
 
   try {
     const compRes = await pool.query(
-      `SELECT id, order_number, estado FROM comprobantes WHERE id = $1`,
+      `SELECT id, order_number, estado, monto FROM comprobantes WHERE id = $1`,
       [id]
     );
 
@@ -1708,6 +1685,33 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
       userId: req.user?.id,
       username: req.user?.name
     });
+
+    // WhatsApp al cliente - comprobante_rechazado
+    const clienteRes = await pool.query(
+      `SELECT customer_name, customer_phone FROM orders_validated WHERE order_number = $1`,
+      [comprobante.order_number]
+    );
+    const cliente = clienteRes.rows[0];
+    if (cliente?.customer_phone) {
+      const TESTING_PHONE = '+5491123945965';
+      if (cliente.customer_phone === TESTING_PHONE) {
+        const contactIdClean = cliente.customer_phone.replace('+', '');
+        axios.post(
+          'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
+          {
+            chat: { channelId: process.env.BOTMAKER_CHANNEL_ID, contactId: contactIdClean },
+            intentIdOrName: 'comprobante_rechazado',
+            variables: {
+              '1': cliente.customer_name || 'Cliente',
+              '2': String(comprobante.monto),
+              '3': comprobante.order_number
+            }
+          },
+          { headers: { 'access-token': process.env.BOTMAKER_ACCESS_TOKEN, 'Content-Type': 'application/json' } }
+        ).then(() => console.log('📨 WhatsApp comprobante_rechazado enviado'))
+         .catch(err => console.error('⚠️ Error WhatsApp comprobante_rechazado:', err.message));
+      }
+    }
 
     console.log(`❌ [${requestId}] Comprobante ${id} rechazado exitosamente`);
 
@@ -2470,7 +2474,9 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
 
     // Verificar que existe el pedido
     const orderRes = await pool.query(
-      `SELECT order_number, estado_pago, estado_pedido FROM orders_validated WHERE order_number = $1`,
+      `SELECT order_number, estado_pago, estado_pedido, tn_order_id, tn_order_token,
+              customer_name, customer_phone, shipping_type
+       FROM orders_validated WHERE order_number = $1`,
       [orderNumber]
     );
 
@@ -2530,6 +2536,37 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
     });
 
     console.log(`📦 Estado de pedido ${orderNumber} actualizado a: ${estado_pedido}`);
+
+    // WhatsApp automático cuando se marca como "enviado" con Envío Nube
+    if (estado_pedido === 'enviado') {
+      const shippingType = (pedido.shipping_type || '').toLowerCase();
+      const esEnvioNube = shippingType.includes('envío nube') || shippingType.includes('envio nube');
+
+      if (esEnvioNube && pedido.customer_phone && pedido.tn_order_id && pedido.tn_order_token) {
+        const TESTING_PHONE = '+5491123945965';
+        if (pedido.customer_phone === TESTING_PHONE) {
+          const trackingParam = `${pedido.tn_order_id}/${pedido.tn_order_token}`;
+          const contactIdClean = pedido.customer_phone.replace('+', '');
+
+          axios.post(
+            'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
+            {
+              chat: { channelId: process.env.BOTMAKER_CHANNEL_ID, contactId: contactIdClean },
+              intentIdOrName: 'enviado_env_nube',
+              variables: {
+                '1': pedido.customer_name || 'Cliente',
+                '2': orderNumber,
+                '3': trackingParam
+              }
+            },
+            { headers: { 'access-token': process.env.BOTMAKER_ACCESS_TOKEN, 'Content-Type': 'application/json' } }
+          ).then(() => console.log(`📨 WhatsApp enviado_env_nube enviado (Pedido #${orderNumber})`))
+           .catch(err => console.error('⚠️ Error WhatsApp enviado_env_nube:', err.message));
+        }
+      } else if (esEnvioNube) {
+        console.log(`⚠️ No se envió WhatsApp enviado_env_nube: faltan datos (phone: ${!!pedido.customer_phone}, order_id: ${!!pedido.tn_order_id}, token: ${!!pedido.tn_order_token})`);
+      }
+    }
 
     // Obtener pedido actualizado
     const updatedRes = await pool.query(
@@ -2780,25 +2817,31 @@ app.post('/webhook/tiendanube', async (req, res) => {
     }
     console.log('📤 Enviando WhatsApp a:', telefono);
 
-    // Obtener datos de transferencia de la financiera default
-    let datosTransferencia = '';
+    // Obtener financiera default para determinar qué plantilla usar
+    let plantilla = 'pedido_creado'; // fallback
     try {
       const finResult = await pool.query(`
-        SELECT datos_transferencia
+        SELECT nombre
         FROM financieras
         WHERE is_default = true
         LIMIT 1
       `);
-      if (finResult.rows.length > 0 && finResult.rows[0].datos_transferencia) {
-        datosTransferencia = finResult.rows[0].datos_transferencia;
+      if (finResult.rows.length > 0) {
+        const nombreFinanciera = finResult.rows[0].nombre.toLowerCase();
+        if (nombreFinanciera.includes('wanda')) {
+          plantilla = 'pedido_creado_wanda';
+        } else if (nombreFinanciera.includes('kiesel')) {
+          plantilla = 'pedido_creado_kiesel';
+        }
+        console.log(`🏦 Financiera default: ${finResult.rows[0].nombre} → plantilla: ${plantilla}`);
       }
     } catch (err) {
-      console.error('⚠️ Error obteniendo datos de financiera default:', err.message);
+      console.error('⚠️ Error obteniendo financiera default:', err.message);
     }
 
     const contactIdClean = telefono.replace('+', '');
 
-    // 6️⃣ Botmaker - plantilla pedido_creado
+    // 6️⃣ Botmaker - plantilla según financiera default
     await axios.post(
       'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
       {
@@ -2806,11 +2849,10 @@ app.post('/webhook/tiendanube', async (req, res) => {
           channelId: process.env.BOTMAKER_CHANNEL_ID,
           contactId: contactIdClean
         },
-        intentIdOrName: 'pedido_creado',
+        intentIdOrName: plantilla,
         variables: {
           '1': pedido.customer?.name || 'Cliente',
-          '2': String(pedido.number),
-          '3': datosTransferencia
+          '2': String(pedido.number)
         }
       },
       {
@@ -2822,6 +2864,42 @@ app.post('/webhook/tiendanube', async (req, res) => {
     );
 
     console.log(`✅ WhatsApp enviado (Pedido #${pedido.number})`);
+
+    // 7️⃣ Si es "Transporte a elección", enviar también datos_envio
+    const shippingOption = (typeof pedido.shipping_option === 'string'
+      ? pedido.shipping_option
+      : pedido.shipping_option?.name) || '';
+    const shippingLower = shippingOption.toLowerCase();
+
+    const esTransporteEleccion =
+      shippingLower.includes('transporte') ||
+      shippingLower.includes('expreso') && shippingLower.includes('elec') ||
+      shippingLower.includes('via cargo');
+
+    if (esTransporteEleccion) {
+      console.log(`🚚 Pedido con transporte a elección: ${shippingOption}`);
+      await axios.post(
+        'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
+        {
+          chat: {
+            channelId: process.env.BOTMAKER_CHANNEL_ID,
+            contactId: contactIdClean
+          },
+          intentIdOrName: 'datos_envio',
+          variables: {
+            '1': pedido.customer?.name || 'Cliente',
+            '2': String(pedido.number)
+          }
+        },
+        {
+          headers: {
+            'access-token': process.env.BOTMAKER_ACCESS_TOKEN,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      console.log(`✅ WhatsApp datos_envio enviado (Pedido #${pedido.number})`);
+    }
 
   } catch (err) {
     console.error('❌ Error webhook:', err.message);
@@ -3142,64 +3220,35 @@ app.post('/upload', (req, res, next) => {
     const cuentaActual = resultado.cuenta;
 
     /* ===============================
-       1️⃣1️⃣ WHATSAPP AL CLIENTE
+       1️⃣1️⃣ WHATSAPP AL CLIENTE (solo pago parcial)
     ================================ */
     console.log('CEL: ',telefono, 'ESTADO CUENTA:', estadoCuenta)
-    if (telefono) {
-      let plantilla = null;
-      let variables = null;
+    if (telefono && estadoCuenta === 'debe') {
+      // Solo enviar WhatsApp si hay saldo pendiente (partial_paid)
+      const plantilla = 'partial_paid';
+      const variables = {
+        '1': nombre,
+        '2': montoDetectado,
+        '3': cuentaActual
+      };
 
-      if (estadoCuenta === 'ok' || estadoCuenta === 'a_favor') {
-        plantilla = 'todo_pago';
-        variables = { '1': nombre, '2': montoDetectado };
-      } else if (estadoCuenta === 'debe') {
-        plantilla = 'partial_paid';
-        variables = {
-          '1': nombre,
-          '2': montoDetectado,
-          '3': cuentaActual
-        };
-      }
-      console.log('plantilla final: ',plantilla, 'variables:', variables)
-      if (plantilla) {
-        enviarWhatsAppPlantilla({
-          telefono,
-          plantilla,
-          variables
-        }).catch(err =>
-          console.error('⚠️ Error WhatsApp cliente:', err.message)
-        );
-        await logEvento({
-          comprobanteId,
-          accion: 'whatsapp_cliente_enviado',
-          origen: 'sistem'
-        })
-      }
+      console.log('plantilla final:', plantilla, 'variables:', variables);
+      enviarWhatsAppPlantilla({
+        telefono,
+        plantilla,
+        variables
+      }).catch(err =>
+        console.error('⚠️ Error WhatsApp cliente:', err.message)
+      );
+      await logEvento({
+        comprobanteId,
+        accion: 'whatsapp_cliente_enviado',
+        origen: 'sistem'
+      });
     }
 
     /* ===============================
-       1️⃣2️⃣ DETECTAR FINANCIERA + ENVÍO
-    ================================ */
-    if (telefono === '+5491123945965') {
-      const financiera = await detectarFinancieraDesdeOCR(textoOcr);
-
-      if (financiera) {
-        console.log('🏦 Financiera detectada:', financiera.nombre);
-
-        enviarComprobanteAFinanciera({
-          financiera,
-          fileUrl,
-          comprobanteId
-        }).catch(err =>
-          console.error('⚠️ Error enviando a financiera:', err.message)
-        );
-      } else {
-        console.log('ℹ️ No se detectó financiera');
-      }
-    }
-
-    /* ===============================
-       1️⃣3️⃣ UPDATE CUENTA
+       1️⃣2️⃣ UPDATE CUENTA
     ================================ */
     await pool.query(
       `update comprobantes set cuenta = $2 where id = $1`,
@@ -3717,11 +3766,13 @@ const authRoutes = require('./routes/auth');
 const usersRoutes = require('./routes/users');
 const rolesRoutes = require('./routes/roles');
 const financierasRoutes = require('./routes/financieras');
+const remitosRoutes = require('./routes/remitos');
 
 app.use('/auth', authRoutes);
 app.use('/users', usersRoutes);
 app.use('/roles', rolesRoutes);
 app.use('/financieras', financierasRoutes);
+app.use('/remitos', remitosRoutes);
 
 /* =====================================================
    SYNC QUEUE - Endpoints y Scheduler
