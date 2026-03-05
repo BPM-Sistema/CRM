@@ -1291,3 +1291,191 @@ export function getShippingLabelUrl(orderNumber: string, bultos: number = 1): st
   const token = localStorage.getItem('auth_token');
   return `${API_BASE_URL}/orders/${orderNumber}/shipping-label?bultos=${bultos}&token=${token}`;
 }
+
+// ============================================
+// REMITOS - Carga masiva de documentos de envío
+// ============================================
+
+export type RemitoStatus = 'pending' | 'processing' | 'ready' | 'confirmed' | 'rejected' | 'error';
+
+export interface Remito {
+  id: number;
+  file_url: string;
+  file_name: string | null;
+  file_type: string | null;
+  ocr_text: string | null;
+  ocr_processed_at: string | null;
+  detected_name: string | null;
+  detected_address: string | null;
+  detected_city: string | null;
+  suggested_order_number: string | null;
+  match_score: number | null;
+  match_details: { name?: number; address?: number; city?: number } | null;
+  confirmed_order_number: string | null;
+  confirmed_by: number | null;
+  confirmed_at: string | null;
+  status: RemitoStatus;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined from orders_validated
+  order_customer_name?: string | null;
+  order_address?: string | null;
+  order_status?: string | null;
+}
+
+export interface RemitosStats {
+  pending: number;
+  processing: number;
+  ready: number;
+  confirmed: number;
+  rejected: number;
+  error: number;
+  total: number;
+}
+
+export interface RemitosFilters {
+  status?: RemitoStatus | null;
+}
+
+// Subir remitos (múltiples archivos)
+export async function uploadRemitos(files: File[]): Promise<{
+  ok: boolean;
+  uploaded: number;
+  errors: number;
+  results: Array<{ id: number; fileName: string; status: string }>;
+  errorDetails: Array<{ fileName: string; error: string }>;
+}> {
+  const formData = new FormData();
+  files.forEach(file => formData.append('files', file));
+
+  const token = localStorage.getItem('auth_token');
+  const response = await fetch(`${API_BASE_URL}/remitos/upload`, {
+    method: 'POST',
+    headers: {
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+    body: formData,
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al subir remitos');
+  }
+
+  return data;
+}
+
+// Listar remitos con paginación y filtros
+export async function fetchRemitos(
+  page = 1,
+  limit = 50,
+  filters?: RemitosFilters
+): Promise<PaginatedResponse<Remito>> {
+  const params = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString()
+  });
+
+  if (filters?.status) {
+    params.append('status', filters.status);
+  }
+
+  const response = await authFetch(`${API_BASE_URL}/remitos?${params.toString()}`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al obtener remitos');
+  }
+
+  return {
+    data: data.remitos,
+    pagination: data.pagination
+  };
+}
+
+// Obtener estadísticas de remitos
+export async function fetchRemitosStats(): Promise<RemitosStats> {
+  const response = await authFetch(`${API_BASE_URL}/remitos/stats`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al obtener estadísticas');
+  }
+
+  return data.stats;
+}
+
+// Obtener detalle de un remito
+export async function fetchRemito(id: number): Promise<Remito> {
+  const response = await authFetch(`${API_BASE_URL}/remitos/${id}`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al obtener remito');
+  }
+
+  return data.remito;
+}
+
+// Confirmar match de remito
+export async function confirmRemito(id: number, orderNumber?: string): Promise<{
+  ok: boolean;
+  remito_id: number;
+  confirmed_order: string;
+}> {
+  const response = await authFetch(`${API_BASE_URL}/remitos/${id}/confirm`, {
+    method: 'POST',
+    body: JSON.stringify({ orderNumber }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al confirmar remito');
+  }
+
+  return data;
+}
+
+// Rechazar/marcar remito como no identificado
+export async function rejectRemito(id: number, reason?: string): Promise<{
+  ok: boolean;
+  remito_id: number;
+}> {
+  const response = await authFetch(`${API_BASE_URL}/remitos/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al rechazar remito');
+  }
+
+  return data;
+}
+
+// Re-procesar OCR de un remito
+export async function reprocessRemito(id: number): Promise<{
+  ok: boolean;
+  remito_id: number;
+  status: string;
+}> {
+  const response = await authFetch(`${API_BASE_URL}/remitos/${id}/reprocess`, {
+    method: 'POST',
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al reprocesar remito');
+  }
+
+  return data;
+}

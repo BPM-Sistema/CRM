@@ -12,6 +12,7 @@ import {
   Activity,
   Landmark,
   RefreshCw,
+  Truck,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -63,6 +64,12 @@ const navItems = [
     icon: <Receipt size={20} />,
     label: 'Comprobantes',
     permissions: ['receipts.view', 'receipts.confirm', 'receipts.reject', 'receipts.download', 'receipts.upload_manual']
+  },
+  {
+    to: '/remitos',
+    icon: <Truck size={20} />,
+    label: 'Remitos',
+    permissions: ['orders.view']
   },
 ];
 

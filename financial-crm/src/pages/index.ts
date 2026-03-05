@@ -6,3 +6,4 @@ export { RealReceiptDetail } from './RealReceiptDetail';
 export { AdminUsers } from './AdminUsers';
 export { Financieras } from './Financieras';
 export { ShippingForm } from './ShippingForm';
+export { ShippingDocuments } from './ShippingDocuments';
