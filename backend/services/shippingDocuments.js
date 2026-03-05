@@ -608,6 +608,8 @@ async function processDocument(documentId, ocrText) {
     } else {
       console.log(`   ⚠️ No se encontró coincidencia`);
 
+      // IMPORTANTE: Limpiar suggested_order_number y match_score
+      // para que no queden valores viejos del matching anterior
       await pool.query(`
         UPDATE shipping_documents
         SET
@@ -616,6 +618,8 @@ async function processDocument(documentId, ocrText) {
           detected_name = $2,
           detected_address = $3,
           detected_city = $4,
+          suggested_order_number = NULL,
+          match_score = NULL,
           match_details = $5,
           status = 'ready',
           updated_at = NOW()
