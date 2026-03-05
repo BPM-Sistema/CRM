@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { RefreshCw, Upload, FileText, Check, X, AlertCircle, Clock, Loader2, Eye, ChevronLeft, ChevronRight, Search, RotateCcw } from 'lucide-react';
+import { RefreshCw, Upload, FileText, Check, X, AlertCircle, Clock, Loader2, Eye, ChevronLeft, ChevronRight, Search, RotateCcw, Maximize2, ExternalLink } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
 import {
@@ -65,10 +65,11 @@ interface RemitoCardProps {
   onConfirm: (id: number, orderNumber?: string) => void;
   onReject: (id: number) => void;
   onReprocess: (id: number) => void;
+  onOpen: (remito: Remito) => void;
   isLoading: boolean;
 }
 
-function RemitoCard({ remito, onConfirm, onReject, onReprocess, isLoading }: RemitoCardProps) {
+function RemitoCard({ remito, onConfirm, onReject, onReprocess, onOpen, isLoading }: RemitoCardProps) {
   const [showOCR, setShowOCR] = useState(false);
   const [customOrder, setCustomOrder] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
@@ -83,8 +84,11 @@ function RemitoCard({ remito, onConfirm, onReject, onReprocess, isLoading }: Rem
 
   return (
     <Card className="p-0 overflow-hidden">
-      {/* Image preview */}
-      <div className="relative h-40 bg-gray-100">
+      {/* Image preview - clickable */}
+      <div
+        className="relative h-40 bg-gray-100 cursor-pointer group"
+        onClick={() => onOpen(remito)}
+      >
         {remito.file_url && (
           <img
             src={remito.file_url}
@@ -92,6 +96,9 @@ function RemitoCard({ remito, onConfirm, onReject, onReprocess, isLoading }: Rem
             className="w-full h-full object-cover"
           />
         )}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+          <Maximize2 size={24} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
         <div className="absolute top-2 right-2">
           <StatusBadge status={remito.status} />
         </div>
@@ -241,6 +248,193 @@ function RemitoCard({ remito, onConfirm, onReject, onReprocess, isLoading }: Rem
   );
 }
 
+// Modal para ver remito completo
+function RemitoModal({
+  remito,
+  onClose,
+  onConfirm,
+  onReject,
+  isLoading
+}: {
+  remito: Remito;
+  onClose: () => void;
+  onConfirm: (id: number, orderNumber?: string) => void;
+  onReject: (id: number) => void;
+  isLoading: boolean;
+}) {
+  const [customOrder, setCustomOrder] = useState('');
+  const [showCustomInput, setShowCustomInput] = useState(false);
+
+  const handleConfirm = () => {
+    if (showCustomInput && customOrder) {
+      onConfirm(remito.id, customOrder);
+    } else if (remito.suggested_order_number) {
+      onConfirm(remito.id);
+    }
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+      <div
+        className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b">
+          <div className="flex items-center gap-3">
+            <h2 className="font-semibold">{remito.file_name || 'Remito'}</h2>
+            <StatusBadge status={remito.status} />
+          </div>
+          <div className="flex items-center gap-2">
+            {remito.file_url && (
+              <a
+                href={remito.file_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 hover:bg-gray-100 rounded-lg"
+                title="Abrir en nueva pestaña"
+              >
+                <ExternalLink size={18} />
+              </a>
+            )}
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-auto p-4">
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* Image */}
+            <div className="bg-gray-100 rounded-lg overflow-hidden">
+              {remito.file_url && (
+                <img
+                  src={remito.file_url}
+                  alt={remito.file_name || 'Remito'}
+                  className="w-full h-auto max-h-[60vh] object-contain"
+                />
+              )}
+            </div>
+
+            {/* Details */}
+            <div className="space-y-4">
+              {/* Detected data */}
+              <div className="space-y-2">
+                <h3 className="font-medium text-gray-700">Datos detectados</h3>
+                {remito.detected_name ? (
+                  <p><span className="text-gray-500">Nombre:</span> {remito.detected_name}</p>
+                ) : (
+                  <p className="text-gray-400 text-sm">Sin nombre detectado</p>
+                )}
+                {remito.detected_address && (
+                  <p><span className="text-gray-500">Dirección:</span> {remito.detected_address}</p>
+                )}
+                {remito.detected_city && (
+                  <p><span className="text-gray-500">Ciudad:</span> {remito.detected_city}</p>
+                )}
+              </div>
+
+              {/* Suggested match */}
+              {remito.suggested_order_number && (
+                <div className="p-3 bg-emerald-50 rounded-lg">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-medium text-emerald-700">
+                      Pedido sugerido: #{remito.suggested_order_number}
+                    </span>
+                    <MatchScoreBadge score={remito.match_score} />
+                  </div>
+                  {remito.order_customer_name && (
+                    <p className="text-sm text-emerald-600">{remito.order_customer_name}</p>
+                  )}
+                </div>
+              )}
+
+              {/* No match */}
+              {remito.status === 'ready' && !remito.suggested_order_number && (
+                <div className="p-3 bg-yellow-50 rounded-lg">
+                  <p className="text-yellow-700">Sin coincidencia encontrada</p>
+                </div>
+              )}
+
+              {/* OCR text */}
+              {remito.ocr_text && (
+                <div>
+                  <h3 className="font-medium text-gray-700 mb-2">Texto OCR</h3>
+                  <pre className="text-xs bg-gray-50 p-3 rounded-lg max-h-40 overflow-auto whitespace-pre-wrap">
+                    {remito.ocr_text}
+                  </pre>
+                </div>
+              )}
+
+              {/* Custom order input */}
+              {remito.status === 'ready' && (
+                <div className="space-y-2">
+                  {showCustomInput ? (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={customOrder}
+                        onChange={(e) => setCustomOrder(e.target.value)}
+                        placeholder="Número de pedido"
+                        className="flex-1 px-3 py-2 border rounded-lg"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => setShowCustomInput(false)}
+                        className="px-3 py-2 text-gray-500 hover:bg-gray-100 rounded-lg"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowCustomInput(true)}
+                      className="text-sm text-blue-600 hover:underline"
+                    >
+                      Asignar a otro pedido
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Timestamp */}
+              <p className="text-sm text-gray-400">
+                Subido: {format(new Date(remito.created_at), "dd/MM/yyyy HH:mm", { locale: es })}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer with actions */}
+        {remito.status === 'ready' && (
+          <div className="flex justify-end gap-3 p-4 border-t bg-gray-50">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                onReject(remito.id);
+                onClose();
+              }}
+              disabled={isLoading}
+              className="text-red-600"
+            >
+              <X size={16} className="mr-1" />
+              Rechazar
+            </Button>
+            {(remito.suggested_order_number || (showCustomInput && customOrder)) && (
+              <Button onClick={handleConfirm} disabled={isLoading}>
+                <Check size={16} className="mr-1" />
+                Confirmar {showCustomInput ? `#${customOrder}` : `#${remito.suggested_order_number}`}
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ShippingDocuments() {
   const [remitos, setRemitos] = useState<Remito[]>([]);
   const [stats, setStats] = useState<RemitosStats | null>(null);
@@ -251,6 +445,7 @@ export function ShippingDocuments() {
   const [uploading, setUploading] = useState(false);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedRemito, setSelectedRemito] = useState<Remito | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = useCallback(async () => {
@@ -465,6 +660,7 @@ export function ShippingDocuments() {
                 onConfirm={handleConfirm}
                 onReject={handleReject}
                 onReprocess={handleReprocess}
+                onOpen={setSelectedRemito}
                 isLoading={actionLoading === remito.id}
               />
             ))}
@@ -496,6 +692,17 @@ export function ShippingDocuments() {
           </div>
         )}
       </main>
+
+      {/* Modal */}
+      {selectedRemito && (
+        <RemitoModal
+          remito={selectedRemito}
+          onClose={() => setSelectedRemito(null)}
+          onConfirm={handleConfirm}
+          onReject={handleReject}
+          isLoading={actionLoading === selectedRemito.id}
+        />
+      )}
     </div>
   );
 }
