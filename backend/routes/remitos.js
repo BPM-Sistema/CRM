@@ -420,6 +420,66 @@ router.get('/:id',
 );
 
 /**
+ * POST /remitos/reprocess-all
+ * Reprocesar matching de todos los remitos con OCR (sin re-hacer OCR)
+ */
+router.post('/reprocess-all',
+  authenticate,
+  requirePermission('remitos.reprocess'),
+  async (req, res) => {
+    try {
+      const { status } = req.body; // Opcional: filtrar por status
+
+      // Obtener remitos que tienen OCR text
+      let query = `
+        SELECT id, ocr_text, file_name
+        FROM shipping_documents
+        WHERE ocr_text IS NOT NULL AND ocr_text != ''
+      `;
+      const params = [];
+
+      if (status) {
+        query += ` AND status = $1`;
+        params.push(status);
+      }
+
+      const remitosRes = await pool.query(query, params);
+      const remitos = remitosRes.rows;
+
+      console.log(`🔄 Reprocesando matching para ${remitos.length} remitos...`);
+
+      // Procesar cada uno (solo matching, no OCR)
+      let processed = 0;
+      let errors = 0;
+
+      for (const remito of remitos) {
+        try {
+          // Solo re-ejecutar el matching con el OCR existente
+          await processDocument(remito.id, remito.ocr_text);
+          processed++;
+        } catch (err) {
+          console.error(`❌ Error reprocesando remito ${remito.id}:`, err.message);
+          errors++;
+        }
+      }
+
+      console.log(`✅ Reprocesamiento completado: ${processed} exitosos, ${errors} errores`);
+
+      res.json({
+        ok: true,
+        total: remitos.length,
+        processed,
+        errors
+      });
+
+    } catch (error) {
+      console.error('❌ POST /remitos/reprocess-all error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+/**
  * POST /remitos/:id/reprocess
  * Reprocesar OCR de un remito
  */
