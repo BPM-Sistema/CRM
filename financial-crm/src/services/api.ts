@@ -1479,3 +1479,24 @@ export async function reprocessRemito(id: number): Promise<{
 
   return data;
 }
+
+// Re-procesar matching de TODOS los remitos (sin re-hacer OCR)
+export async function reprocessAllRemitos(status?: RemitoStatus): Promise<{
+  ok: boolean;
+  total: number;
+  processed: number;
+  errors: number;
+}> {
+  const response = await authFetch(`${API_BASE_URL}/remitos/reprocess-all`, {
+    method: 'POST',
+    body: JSON.stringify({ status }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al reprocesar remitos');
+  }
+
+  return data;
+}

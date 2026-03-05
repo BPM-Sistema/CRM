@@ -9,6 +9,7 @@ import {
   confirmRemito,
   rejectRemito,
   reprocessRemito,
+  reprocessAllRemitos,
   Remito,
   RemitosStats,
   RemitoStatus,
@@ -446,6 +447,7 @@ export function ShippingDocuments() {
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedRemito, setSelectedRemito] = useState<Remito | null>(null);
+  const [reprocessingAll, setReprocessingAll] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = useCallback(async () => {
@@ -542,6 +544,23 @@ export function ShippingDocuments() {
     }
   };
 
+  const handleReprocessAll = async () => {
+    if (!confirm('¿Reprocesar matching de todos los remitos con OCR? Esto puede tomar unos minutos.')) {
+      return;
+    }
+    try {
+      setReprocessingAll(true);
+      setError(null);
+      const result = await reprocessAllRemitos();
+      alert(`Reprocesamiento completado:\n${result.processed} exitosos\n${result.errors} errores`);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al reprocesar');
+    } finally {
+      setReprocessingAll(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-neutral-50">
       <Header title="Remitos" />
@@ -594,6 +613,21 @@ export function ShippingDocuments() {
           </div>
 
           <div className="flex-1" />
+
+          {/* Reprocess all button */}
+          <Button
+            variant="secondary"
+            onClick={handleReprocessAll}
+            disabled={reprocessingAll}
+            title="Reprocesar matching de todos los remitos"
+          >
+            {reprocessingAll ? (
+              <Loader2 size={16} className="mr-2 animate-spin" />
+            ) : (
+              <RotateCcw size={16} className="mr-2" />
+            )}
+            Re-sincronizar
+          </Button>
 
           {/* Upload button */}
           <input
