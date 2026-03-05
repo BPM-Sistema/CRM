@@ -1500,3 +1500,21 @@ export async function reprocessAllRemitos(status?: RemitoStatus): Promise<{
 
   return data;
 }
+
+// Borrar TODOS los remitos
+export async function clearAllRemitos(): Promise<{
+  ok: boolean;
+  deleted: number;
+}> {
+  const response = await authFetch(`${API_BASE_URL}/remitos/clear-all`, {
+    method: 'DELETE',
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al borrar remitos');
+  }
+
+  return data;
+}

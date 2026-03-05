@@ -42,7 +42,8 @@
       "Bash(node -c index.js)",
       "Bash(curl -s \"https://api.petlovearg.com/orders/27724/shipping-request\" -H \"Authorization: Bearer test\")",
       "Bash(pkill -f \"node scripts/fix-api-id.js\")",
-      "Bash(npx vercel --prod)"
+      "Bash(npx vercel --prod)",
+      "Bash(curl -s \"https://petlove-backend-343336533491.us-central1.run.app/debug/shipping-requests-count\" -H \"Content-Type: application/json\")"
     ]
   }
 }

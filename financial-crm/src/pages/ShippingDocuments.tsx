@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { RefreshCw, Upload, FileText, Check, X, AlertCircle, Clock, Loader2, Eye, ChevronLeft, ChevronRight, Search, RotateCcw, Maximize2, ExternalLink } from 'lucide-react';
+import { RefreshCw, Upload, FileText, Check, X, AlertCircle, Clock, Loader2, Eye, ChevronLeft, ChevronRight, Search, RotateCcw, Maximize2, ExternalLink, Trash2 } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
 import {
@@ -10,6 +10,7 @@ import {
   rejectRemito,
   reprocessRemito,
   reprocessAllRemitos,
+  clearAllRemitos,
   Remito,
   RemitosStats,
   RemitoStatus,
@@ -448,6 +449,7 @@ export function ShippingDocuments() {
   const [error, setError] = useState<string | null>(null);
   const [selectedRemito, setSelectedRemito] = useState<Remito | null>(null);
   const [reprocessingAll, setReprocessingAll] = useState(false);
+  const [clearingAll, setClearingAll] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = useCallback(async () => {
@@ -561,6 +563,26 @@ export function ShippingDocuments() {
     }
   };
 
+  const handleClearAll = async () => {
+    if (!confirm('⚠️ ¿BORRAR TODOS los remitos? Esta acción no se puede deshacer.')) {
+      return;
+    }
+    if (!confirm('¿Estás seguro? Se eliminarán TODOS los remitos del sistema.')) {
+      return;
+    }
+    try {
+      setClearingAll(true);
+      setError(null);
+      const result = await clearAllRemitos();
+      alert(`Se eliminaron ${result.deleted} remitos.`);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al borrar remitos');
+    } finally {
+      setClearingAll(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-neutral-50">
       <Header title="Remitos" />
@@ -627,6 +649,22 @@ export function ShippingDocuments() {
               <RotateCcw size={16} className="mr-2" />
             )}
             Re-sincronizar
+          </Button>
+
+          {/* Clear all button */}
+          <Button
+            variant="secondary"
+            onClick={handleClearAll}
+            disabled={clearingAll}
+            title="Borrar todos los remitos"
+            className="text-red-600 hover:bg-red-50"
+          >
+            {clearingAll ? (
+              <Loader2 size={16} className="mr-2 animate-spin" />
+            ) : (
+              <Trash2 size={16} className="mr-2" />
+            )}
+            Borrar todos
           </Button>
 
           {/* Upload button */}

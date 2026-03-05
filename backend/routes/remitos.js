@@ -420,6 +420,25 @@ router.get('/:id',
 );
 
 /**
+ * DELETE /remitos/clear-all
+ * Borrar TODOS los remitos (para reset completo)
+ */
+router.delete('/clear-all',
+  authenticate,
+  requirePermission('remitos.reprocess'), // Solo admin
+  async (req, res) => {
+    try {
+      const result = await pool.query('DELETE FROM shipping_documents RETURNING id');
+      console.log(`🗑️ Borrados ${result.rowCount} remitos`);
+      res.json({ ok: true, deleted: result.rowCount });
+    } catch (error) {
+      console.error('❌ DELETE /remitos/clear-all error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+/**
  * POST /remitos/reprocess-all
  * Reprocesar matching de todos los remitos con OCR (sin re-hacer OCR)
  */
