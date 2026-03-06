@@ -1314,7 +1314,7 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
       LEFT JOIN comprobantes c ON o.order_number = c.order_number
       ${whereClause}
       GROUP BY o.order_number, o.monto_tiendanube, o.total_pagado, o.saldo, o.estado_pago, o.estado_pedido, o.currency, o.tn_created_at, o.created_at, o.customer_name, o.customer_email, o.customer_phone, o.printed_at, o.packed_at, o.shipped_at
-      ORDER BY CAST(NULLIF(REGEXP_REPLACE(o.order_number, '[^0-9]', '', 'g'), '') AS INTEGER) DESC NULLS LAST
+      ORDER BY CAST(NULLIF(REGEXP_REPLACE(o.order_number, '[^0-9]', '', 'g'), '') AS BIGINT) DESC NULLS LAST
       LIMIT $${paramIndex++} OFFSET $${paramIndex}
     `, [...params, limit, offset]);
 
@@ -4183,6 +4183,102 @@ app.post('/shipping-data', async (req, res) => {
   } catch (error) {
     console.error('❌ POST /shipping-data error:', error.message);
     res.status(500).json({ error: 'Error al guardar los datos de envío' });
+  }
+});
+
+/**
+ * POST /shipping-data/bulk
+ * Endpoint para testing - cargar múltiples shipping requests via Postman
+ * Body: { requests: [...], skip_order_validation: true }
+ */
+app.post('/shipping-data/bulk', authenticate, async (req, res) => {
+  try {
+    const { requests, skip_order_validation = false } = req.body;
+
+    if (!Array.isArray(requests) || requests.length === 0) {
+      return res.status(400).json({ error: 'requests debe ser un array con al menos un elemento' });
+    }
+
+    const results = [];
+    const errors = [];
+
+    for (let i = 0; i < requests.length; i++) {
+      const r = requests[i];
+      const idx = i + 1;
+
+      try {
+        const sanitizedOrderNumber = (r.order_number || '').toString().replace(/[^0-9]/g, '');
+
+        if (!sanitizedOrderNumber) {
+          errors.push({ index: idx, error: 'order_number es obligatorio' });
+          continue;
+        }
+
+        // Validar que el pedido exista (a menos que se omita para testing)
+        if (!skip_order_validation) {
+          const orderExists = await pool.query(
+            'SELECT 1 FROM orders_validated WHERE order_number = $1 LIMIT 1',
+            [sanitizedOrderNumber]
+          );
+          if (orderExists.rows.length === 0) {
+            errors.push({ index: idx, order_number: sanitizedOrderNumber, error: 'Pedido no existe' });
+            continue;
+          }
+        }
+
+        const sanitize = (str) => str?.trim() || null;
+
+        // Borrar registro anterior si existe (para permitir re-testing)
+        await pool.query('DELETE FROM shipping_requests WHERE order_number = $1', [sanitizedOrderNumber]);
+
+        const result = await pool.query(`
+          INSERT INTO shipping_requests (
+            order_number, empresa_envio, empresa_envio_otro, destino_tipo,
+            direccion_entrega, nombre_apellido, dni, email,
+            codigo_postal, provincia, localidad, telefono, comentarios
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          RETURNING id, created_at
+        `, [
+          sanitizedOrderNumber,
+          r.empresa_envio || 'VIA_CARGO',
+          r.empresa_envio === 'OTRO' ? sanitize(r.empresa_envio_otro) : null,
+          r.destino_tipo || 'DOMICILIO',
+          sanitize(r.direccion_entrega),
+          sanitize(r.nombre_apellido),
+          sanitize(r.dni) || '00000000',
+          sanitize(r.email)?.toLowerCase() || 'test@test.com',
+          sanitize(r.codigo_postal) || '0000',
+          sanitize(r.provincia),
+          sanitize(r.localidad),
+          sanitize(r.telefono) || '0000000000',
+          sanitize(r.comentarios)
+        ]);
+
+        results.push({
+          index: idx,
+          order_number: sanitizedOrderNumber,
+          id: result.rows[0].id,
+          created_at: result.rows[0].created_at
+        });
+
+      } catch (err) {
+        errors.push({ index: idx, order_number: r.order_number, error: err.message });
+      }
+    }
+
+    console.log(`📦 Bulk shipping-data: ${results.length} insertados, ${errors.length} errores`);
+
+    res.json({
+      ok: true,
+      inserted: results.length,
+      failed: errors.length,
+      results,
+      errors
+    });
+
+  } catch (error) {
+    console.error('❌ POST /shipping-data/bulk error:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 

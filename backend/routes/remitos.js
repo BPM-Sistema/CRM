@@ -354,34 +354,31 @@ router.post('/:id/confirm',
 );
 
 /**
- * POST /remitos/:id/reject
- * Marcar remito como no identificado/rechazado
+ * DELETE /remitos/:id
+ * Eliminar un remito
  */
-router.post('/:id/reject',
+router.delete('/:id',
   authenticate,
-  requirePermission('remitos.reject'),
+  requirePermission('remitos.confirm'), // Mismo permiso que confirmar
   async (req, res) => {
     try {
       const { id } = req.params;
-      const { reason } = req.body;
 
-      await pool.query(`
-        UPDATE shipping_documents
-        SET
-          status = 'rejected',
-          error_message = $1,
-          confirmed_by = $2,
-          confirmed_at = NOW(),
-          updated_at = NOW()
-        WHERE id = $3
-      `, [reason || 'Marcado como no identificado', req.user?.id, id]);
+      const result = await pool.query(
+        'DELETE FROM shipping_documents WHERE id = $1 RETURNING id',
+        [id]
+      );
 
-      console.log(`❌ Remito ${id} rechazado`);
+      if (result.rowCount === 0) {
+        return res.status(404).json({ error: 'Remito no encontrado' });
+      }
+
+      console.log(`🗑️ Remito ${id} eliminado`);
 
       res.json({ ok: true, remito_id: id });
 
     } catch (error) {
-      console.error('❌ POST /remitos/:id/reject error:', error.message);
+      console.error('❌ DELETE /remitos/:id error:', error.message);
       res.status(500).json({ error: error.message });
     }
   }
@@ -426,133 +423,5 @@ router.get('/:id',
   }
 );
 
-/**
- * DELETE /remitos/clear-all
- * Borrar TODOS los remitos (para reset completo)
- */
-router.delete('/clear-all',
-  authenticate,
-  requirePermission('remitos.reprocess'), // Solo admin
-  async (req, res) => {
-    try {
-      const result = await pool.query('DELETE FROM shipping_documents RETURNING id');
-      console.log(`🗑️ Borrados ${result.rowCount} remitos`);
-      res.json({ ok: true, deleted: result.rowCount });
-    } catch (error) {
-      console.error('❌ DELETE /remitos/clear-all error:', error.message);
-      res.status(500).json({ error: error.message });
-    }
-  }
-);
-
-/**
- * POST /remitos/reprocess-all
- * Reprocesar matching de todos los remitos con OCR (sin re-hacer OCR)
- */
-router.post('/reprocess-all',
-  authenticate,
-  requirePermission('remitos.reprocess'),
-  async (req, res) => {
-    try {
-      const { status } = req.body; // Opcional: filtrar por status
-
-      // Obtener remitos que tienen OCR text
-      let query = `
-        SELECT id, ocr_text, file_name
-        FROM shipping_documents
-        WHERE ocr_text IS NOT NULL AND ocr_text != ''
-      `;
-      const params = [];
-
-      if (status) {
-        query += ` AND status = $1`;
-        params.push(status);
-      }
-
-      const remitosRes = await pool.query(query, params);
-      const remitos = remitosRes.rows;
-
-      console.log(`🔄 Reprocesando matching para ${remitos.length} remitos...`);
-
-      // Procesar cada uno (solo matching, no OCR)
-      let processed = 0;
-      let errors = 0;
-
-      for (const remito of remitos) {
-        try {
-          // Solo re-ejecutar el matching con el OCR existente
-          await processDocument(remito.id, remito.ocr_text);
-          processed++;
-        } catch (err) {
-          console.error(`❌ Error reprocesando remito ${remito.id}:`, err.message);
-          errors++;
-        }
-      }
-
-      console.log(`✅ Reprocesamiento completado: ${processed} exitosos, ${errors} errores`);
-
-      res.json({
-        ok: true,
-        total: remitos.length,
-        processed,
-        errors
-      });
-
-    } catch (error) {
-      console.error('❌ POST /remitos/reprocess-all error:', error.message);
-      res.status(500).json({ error: error.message });
-    }
-  }
-);
-
-/**
- * POST /remitos/:id/reprocess
- * Reprocesar OCR de un remito
- */
-router.post('/:id/reprocess',
-  authenticate,
-  requirePermission('remitos.reprocess'),
-  async (req, res) => {
-    try {
-      const { id } = req.params;
-
-      // Obtener remito
-      const remitoRes = await pool.query(
-        'SELECT file_url, file_type FROM shipping_documents WHERE id = $1',
-        [id]
-      );
-
-      if (remitoRes.rowCount === 0) {
-        return res.status(404).json({ error: 'Remito no encontrado' });
-      }
-
-      // Marcar como procesando
-      await pool.query(`
-        UPDATE shipping_documents
-        SET status = 'processing', updated_at = NOW()
-        WHERE id = $1
-      `, [id]);
-
-      // Descargar archivo y reprocesar
-      const remito = remitoRes.rows[0];
-      const axios = require('axios');
-      const response = await axios.get(remito.file_url, { responseType: 'arraybuffer' });
-      const fileBuffer = Buffer.from(response.data);
-
-      // Procesar en background
-      processOCRAsync(id, fileBuffer, remito.file_type);
-
-      res.json({
-        ok: true,
-        remito_id: id,
-        status: 'processing'
-      });
-
-    } catch (error) {
-      console.error('❌ POST /remitos/:id/reprocess error:', error.message);
-      res.status(500).json({ error: error.message });
-    }
-  }
-);
 
 module.exports = router;

@@ -1442,78 +1442,19 @@ export async function confirmRemito(id: number, orderNumber?: string): Promise<{
   return data;
 }
 
-// Rechazar/marcar remito como no identificado
-export async function rejectRemito(id: number, reason?: string): Promise<{
+// Eliminar un remito
+export async function deleteRemito(id: number): Promise<{
   ok: boolean;
   remito_id: number;
 }> {
-  const response = await authFetch(`${API_BASE_URL}/remitos/${id}/reject`, {
-    method: 'POST',
-    body: JSON.stringify({ reason }),
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || 'Error al rechazar remito');
-  }
-
-  return data;
-}
-
-// Re-procesar OCR de un remito
-export async function reprocessRemito(id: number): Promise<{
-  ok: boolean;
-  remito_id: number;
-  status: string;
-}> {
-  const response = await authFetch(`${API_BASE_URL}/remitos/${id}/reprocess`, {
-    method: 'POST',
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || 'Error al reprocesar remito');
-  }
-
-  return data;
-}
-
-// Re-procesar matching de TODOS los remitos (sin re-hacer OCR)
-export async function reprocessAllRemitos(status?: RemitoStatus): Promise<{
-  ok: boolean;
-  total: number;
-  processed: number;
-  errors: number;
-}> {
-  const response = await authFetch(`${API_BASE_URL}/remitos/reprocess-all`, {
-    method: 'POST',
-    body: JSON.stringify({ status }),
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || 'Error al reprocesar remitos');
-  }
-
-  return data;
-}
-
-// Borrar TODOS los remitos
-export async function clearAllRemitos(): Promise<{
-  ok: boolean;
-  deleted: number;
-}> {
-  const response = await authFetch(`${API_BASE_URL}/remitos/clear-all`, {
+  const response = await authFetch(`${API_BASE_URL}/remitos/${id}`, {
     method: 'DELETE',
   });
 
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.error || 'Error al borrar remitos');
+    throw new Error(data.error || 'Error al eliminar remito');
   }
 
   return data;

@@ -3,9 +3,16 @@
  * OCR + Fuzzy Matching + Sugerencia automática de pedido
  *
  * ESTRATEGIA DE EXTRACCIÓN:
- * Para Via Cargo (layout de 2 columnas), usamos bounding boxes del OCR
- * para separar físicamente REMITENTE (izquierda) de DESTINATARIO (derecha).
- * Esto elimina la contaminación de datos del remitente.
+ *
+ * CASO 1 - VIA CARGO:
+ * Si el OCR contiene "VIA CARGO", usamos bounding boxes para separar
+ * físicamente REMITENTE (izquierda) de DESTINATARIO (derecha).
+ * Extraemos nombre, dirección y ciudad del bloque DESTINATARIO.
+ *
+ * CASO 2 - OTROS TRANSPORTES:
+ * Si el OCR NO contiene "VIA CARGO", NO parseamos el layout.
+ * Solo buscamos coincidencia del nombre del cliente en todo el texto OCR.
+ * Esto permite matchear aunque el formato del remito sea diferente.
  */
 
 const pool = require('../db');
@@ -248,6 +255,117 @@ function normalizeText(text) {
     .replace(/[^a-z0-9\s]/g, ' ')    // Solo alfanuméricos
     .replace(/\s+/g, ' ')            // Espacios múltiples → uno
     .trim();
+}
+
+// ============================================
+// DETECCIÓN DE TIPO DE REMITO
+// ============================================
+
+/**
+ * Detecta si el remito es de Via Cargo basándose en el texto OCR
+ */
+function isViaCargo(ocrText) {
+  if (!ocrText) return false;
+  const normalized = ocrText.toLowerCase();
+  return normalized.includes('via cargo') || normalized.includes('viacargo');
+}
+
+// ============================================
+// MATCHING POR NOMBRE EN TEXTO COMPLETO
+// (Para remitos que NO son Via Cargo)
+// ============================================
+
+/**
+ * Busca coincidencia de nombre del cliente en todo el texto OCR.
+ * Usado para remitos que NO son Via Cargo.
+ *
+ * Estrategia:
+ * - Divide el nombre del cliente en tokens
+ * - Verifica que todos los tokens aparezcan en el OCR
+ * - Permite coincidencias aunque el orden esté invertido
+ *
+ * @param {string} ocrText - Texto completo del OCR
+ * @returns {Object|null} Match encontrado o null
+ */
+async function findMatchByNameInFullText(ocrText) {
+  const normalizedOcr = normalizeText(ocrText);
+
+  // Obtener shipping_requests activos
+  const shippingRes = await pool.query(`
+    SELECT
+      sr.order_number,
+      sr.nombre_apellido,
+      sr.localidad,
+      sr.provincia,
+      sr.empresa_envio,
+      sr.destino_tipo,
+      ov.estado_pedido
+    FROM shipping_requests sr
+    INNER JOIN orders_validated ov ON sr.order_number = ov.order_number
+    WHERE sr.created_at > NOW() - INTERVAL '60 days'
+      AND ov.estado_pedido NOT IN ('cancelado', 'enviado', 'retirado')
+    ORDER BY sr.created_at DESC
+    LIMIT 500
+  `);
+
+  const shippingData = shippingRes.rows;
+  console.log(`   📋 Buscando match por nombre en ${shippingData.length} registros`);
+
+  if (shippingData.length === 0) {
+    return null;
+  }
+
+  let bestMatch = null;
+  let bestScore = 0;
+
+  for (const shipping of shippingData) {
+    if (!shipping.nombre_apellido) continue;
+
+    const nameTokens = normalizeText(shipping.nombre_apellido)
+      .split(' ')
+      .filter(t => t.length >= 2); // Ignorar tokens muy cortos
+
+    if (nameTokens.length === 0) continue;
+
+    // Contar cuántos tokens del nombre aparecen en el OCR
+    let matchedTokens = 0;
+    for (const token of nameTokens) {
+      if (normalizedOcr.includes(token)) {
+        matchedTokens++;
+      }
+    }
+
+    // Score = porcentaje de tokens encontrados
+    const score = matchedTokens / nameTokens.length;
+
+    // Requerir al menos 70% de tokens encontrados (o todos si son 2 o menos)
+    const minRequired = nameTokens.length <= 2 ? 1.0 : 0.7;
+
+    if (score >= minRequired && score > bestScore) {
+      bestScore = score;
+      bestMatch = {
+        orderNumber: shipping.order_number,
+        score: score,
+        details: {
+          matchType: 'name_in_fulltext',
+          nameTokens: nameTokens,
+          matchedTokens: matchedTokens,
+          totalTokens: nameTokens.length,
+          source: 'shipping_requests',
+          empresa_envio: shipping.empresa_envio,
+          destino_tipo: shipping.destino_tipo
+        }
+      };
+    }
+  }
+
+  if (bestMatch) {
+    console.log(`   🎯 Match por nombre: #${bestMatch.orderNumber} (${bestMatch.details.matchedTokens}/${bestMatch.details.totalTokens} tokens)`);
+  } else {
+    console.log(`   ❌ Sin match por nombre en texto completo`);
+  }
+
+  return bestMatch;
 }
 
 /**
@@ -1086,6 +1204,11 @@ async function findBestMatch(detectedName, detectedAddress, detectedCity) {
 /**
  * Procesa un documento con OCR y busca coincidencias
  *
+ * FLUJO:
+ * 1. Detectar si es Via Cargo (buscar "VIA CARGO" en OCR)
+ * 2. Si es Via Cargo → extracción por layout + matching normal
+ * 3. Si NO es Via Cargo → matching por nombre en texto completo
+ *
  * @param {number} documentId - ID del documento
  * @param {string} ocrText - Texto completo del OCR
  * @param {Array} textAnnotations - (Opcional) textAnnotations de Google Vision con bounding boxes
@@ -1094,56 +1217,85 @@ async function processDocument(documentId, ocrText, textAnnotations = null) {
   console.log(`🔍 Procesando documento ${documentId}...`);
 
   try {
-    let extraction;
-
-    // Si tenemos textAnnotations con bounding boxes, usar extracción por layout
-    // Esto es más preciso para remitos Via Cargo (2 columnas)
-    if (textAnnotations && textAnnotations.length > 1) {
-      console.log(`   📐 Usando extracción por LAYOUT (${textAnnotations.length} anotaciones)`);
-      extraction = extractDestinatarioWithLayout(textAnnotations, ocrText);
-    } else {
-      // Fallback: usar extracción tradicional por heurísticas
-      console.log(`   📝 Usando extracción tradicional (sin bounding boxes)`);
-      extraction = extractDestinatarioFromOcr(ocrText);
-    }
-
-    console.log(`   📝 Extracción con confianza: ${(extraction.confidence * 100).toFixed(0)}%`);
-    console.log(`   👤 Nombre detectado: ${extraction.name || '(ninguno)'}`);
-    console.log(`   📍 Dirección detectada: ${extraction.address || '(ninguna)'}`);
-    console.log(`   🏙️ Ciudad detectada: ${extraction.city || '(ninguna)'}`);
-
-    // Log detallado de extracción (útil para debugging)
-    if (process.env.NODE_ENV === 'development' || process.env.DEBUG_OCR) {
-      console.log('   --- Log de extracción ---');
-      extraction.log.forEach(l => console.log(`   ${l}`));
-      console.log('   --- Fin log ---');
-    }
+    // Detectar tipo de remito
+    const esViaCargo = isViaCargo(ocrText);
+    console.log(`   📦 Tipo de remito: ${esViaCargo ? 'VIA CARGO' : 'OTRO TRANSPORTE'}`);
 
     let match = null;
+    let extraction = null;
+    let matchDetails = {};
 
-    // Solo buscar match si la confianza de extracción es suficiente
-    if (extraction.confidence >= 0.2 && (extraction.name || extraction.address)) {
-      match = await findBestMatch(extraction.name, extraction.address, extraction.city);
+    if (esViaCargo) {
+      // ========== CASO 1: VIA CARGO ==========
+      // Usar extracción por layout (2 columnas) + matching normal
+
+      if (textAnnotations && textAnnotations.length > 1) {
+        console.log(`   📐 Usando extracción por LAYOUT (${textAnnotations.length} anotaciones)`);
+        extraction = extractDestinatarioWithLayout(textAnnotations, ocrText);
+      } else {
+        console.log(`   📝 Usando extracción tradicional (sin bounding boxes)`);
+        extraction = extractDestinatarioFromOcr(ocrText);
+      }
+
+      console.log(`   📝 Extracción con confianza: ${(extraction.confidence * 100).toFixed(0)}%`);
+      console.log(`   👤 Nombre detectado: ${extraction.name || '(ninguno)'}`);
+      console.log(`   📍 Dirección detectada: ${extraction.address || '(ninguna)'}`);
+      console.log(`   🏙️ Ciudad detectada: ${extraction.city || '(ninguna)'}`);
+
+      // Log detallado de extracción
+      if (process.env.NODE_ENV === 'development' || process.env.DEBUG_OCR) {
+        console.log('   --- Log de extracción ---');
+        extraction.log.forEach(l => console.log(`   ${l}`));
+        console.log('   --- Fin log ---');
+      }
+
+      // Buscar match si la confianza es suficiente
+      if (extraction.confidence >= 0.2 && (extraction.name || extraction.address)) {
+        match = await findBestMatch(extraction.name, extraction.address, extraction.city);
+      } else {
+        console.log(`   ⚠️ Confianza muy baja (${(extraction.confidence * 100).toFixed(0)}%), no se busca match`);
+      }
+
+      matchDetails = match ? {
+        ...match.details,
+        remito_type: 'via_cargo',
+        extractionConfidence: extraction.confidence,
+        extractionLog: extraction.log,
+        matchSource: 'shipping_requests'
+      } : {
+        remito_type: 'via_cargo',
+        extractionConfidence: extraction.confidence,
+        extractionLog: extraction.log,
+        noMatchReason: extraction.confidence < 0.2
+          ? 'extraction_confidence_too_low'
+          : 'no_shipping_request_match'
+      };
+
     } else {
-      console.log(`   ⚠️ Confianza muy baja (${(extraction.confidence * 100).toFixed(0)}%), no se busca match`);
-    }
+      // ========== CASO 2: OTROS TRANSPORTES ==========
+      // NO parsear layout, solo buscar nombre en texto completo
 
-    // Construir detalles del match
-    // NOTA: El matching usa SOLO datos de shipping_requests (formulario /envio)
-    // Si no hay registro en shipping_requests, no se sugiere pedido
-    const matchDetails = match ? {
-      ...match.details,
-      extractionConfidence: extraction.confidence,
-      extractionLog: extraction.log,
-      matchSource: 'shipping_requests' // Indicar que vino del formulario /envio
-    } : {
-      extractionConfidence: extraction.confidence,
-      extractionLog: extraction.log,
-      noMatchReason: extraction.confidence < 0.2
-        ? 'extraction_confidence_too_low'
-        : 'no_shipping_request_match', // No hay match en shipping_requests
-      note: 'El matching usa exclusivamente datos del formulario /envio (shipping_requests)'
-    };
+      console.log(`   🔎 Buscando coincidencia de nombre en texto OCR completo...`);
+      match = await findMatchByNameInFullText(ocrText);
+
+      // No extraemos datos estructurados para otros transportes
+      extraction = {
+        name: match ? match.details.nameTokens.join(' ') : null,
+        address: null,
+        city: null,
+        confidence: match ? match.score : 0,
+        log: ['Matching por nombre en texto completo (no Via Cargo)']
+      };
+
+      matchDetails = match ? {
+        ...match.details,
+        remito_type: 'otro_transporte'
+      } : {
+        remito_type: 'otro_transporte',
+        noMatchReason: 'no_name_match_in_fulltext',
+        note: 'No se encontró coincidencia de nombre en el texto OCR'
+      };
+    }
 
     if (match) {
       console.log(`   ✅ Match encontrado: #${match.orderNumber} (score: ${(match.score * 100).toFixed(1)}%)`);

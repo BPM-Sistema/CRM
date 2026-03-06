@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { RefreshCw, Upload, FileText, Check, X, AlertCircle, Clock, Loader2, Eye, ChevronLeft, ChevronRight, Search, RotateCcw, Maximize2, ExternalLink, Trash2 } from 'lucide-react';
+import { RefreshCw, Upload, FileText, Check, X, AlertCircle, Loader2, Eye, ChevronLeft, ChevronRight, Search, Maximize2, ExternalLink, Trash2 } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
 import {
@@ -7,10 +7,7 @@ import {
   fetchRemitosStats,
   uploadRemitos,
   confirmRemito,
-  rejectRemito,
-  reprocessRemito,
-  reprocessAllRemitos,
-  clearAllRemitos,
+  deleteRemito,
   Remito,
   RemitosStats,
   RemitoStatus,
@@ -20,9 +17,9 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { clsx } from 'clsx';
 
-// Status configuration
+// Status configuration (solo estados relevantes para UI)
 const statusConfig: Record<RemitoStatus, { label: string; color: string; icon: React.ReactNode }> = {
-  pending: { label: 'Pendiente', color: 'bg-gray-100 text-gray-700', icon: <Clock size={14} /> },
+  pending: { label: 'Pendiente', color: 'bg-gray-100 text-gray-700', icon: <Loader2 size={14} className="animate-spin" /> },
   processing: { label: 'Procesando', color: 'bg-blue-100 text-blue-700', icon: <Loader2 size={14} className="animate-spin" /> },
   ready: { label: 'Listo', color: 'bg-yellow-100 text-yellow-700', icon: <Eye size={14} /> },
   confirmed: { label: 'Confirmado', color: 'bg-emerald-100 text-emerald-700', icon: <Check size={14} /> },
@@ -30,12 +27,11 @@ const statusConfig: Record<RemitoStatus, { label: string; color: string; icon: R
   error: { label: 'Error', color: 'bg-red-100 text-red-700', icon: <AlertCircle size={14} /> },
 };
 
+// Solo filtros relevantes para el usuario
 const statusFilters: { value: RemitoStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'Todos' },
   { value: 'ready', label: 'Listos para revisar' },
-  { value: 'processing', label: 'Procesando' },
   { value: 'confirmed', label: 'Confirmados' },
-  { value: 'rejected', label: 'Rechazados' },
   { value: 'error', label: 'Con error' },
 ];
 
@@ -65,13 +61,12 @@ function MatchScoreBadge({ score }: { score: number | null }) {
 interface RemitoCardProps {
   remito: Remito;
   onConfirm: (id: number, orderNumber?: string) => void;
-  onReject: (id: number) => void;
-  onReprocess: (id: number) => void;
+  onDelete: (id: number) => void;
   onOpen: (remito: Remito) => void;
   isLoading: boolean;
 }
 
-function RemitoCard({ remito, onConfirm, onReject, onReprocess, onOpen, isLoading }: RemitoCardProps) {
+function RemitoCard({ remito, onConfirm, onDelete, onOpen, isLoading }: RemitoCardProps) {
   const [showOCR, setShowOCR] = useState(false);
   const [customOrder, setCustomOrder] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
@@ -219,11 +214,12 @@ function RemitoCard({ remito, onConfirm, onReject, onReprocess, onOpen, isLoadin
             <Button
               size="sm"
               variant="secondary"
-              onClick={() => onReject(remito.id)}
+              onClick={() => onDelete(remito.id)}
               disabled={isLoading}
               className="text-red-600 hover:bg-red-50"
+              title="Eliminar remito"
             >
-              <X size={14} />
+              <Trash2 size={14} />
             </Button>
           </div>
         )}
@@ -232,12 +228,12 @@ function RemitoCard({ remito, onConfirm, onReject, onReprocess, onOpen, isLoadin
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => onReprocess(remito.id)}
+            onClick={() => onDelete(remito.id)}
             disabled={isLoading}
-            className="w-full"
+            className="w-full text-red-600 hover:bg-red-50"
           >
-            <RotateCcw size={14} className="mr-1" />
-            Reprocesar
+            <Trash2 size={14} className="mr-1" />
+            Eliminar
           </Button>
         )}
 
@@ -255,13 +251,13 @@ function RemitoModal({
   remito,
   onClose,
   onConfirm,
-  onReject,
+  onDelete,
   isLoading
 }: {
   remito: Remito;
   onClose: () => void;
   onConfirm: (id: number, orderNumber?: string) => void;
-  onReject: (id: number) => void;
+  onDelete: (id: number) => void;
   isLoading: boolean;
 }) {
   const [customOrder, setCustomOrder] = useState('');
@@ -415,14 +411,14 @@ function RemitoModal({
             <Button
               variant="secondary"
               onClick={() => {
-                onReject(remito.id);
+                onDelete(remito.id);
                 onClose();
               }}
               disabled={isLoading}
               className="text-red-600"
             >
-              <X size={16} className="mr-1" />
-              Rechazar
+              <Trash2 size={16} className="mr-1" />
+              Eliminar
             </Button>
             {(remito.suggested_order_number || (showCustomInput && customOrder)) && (
               <Button onClick={handleConfirm} disabled={isLoading}>
@@ -448,8 +444,6 @@ export function ShippingDocuments() {
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedRemito, setSelectedRemito] = useState<Remito | null>(null);
-  const [reprocessingAll, setReprocessingAll] = useState(false);
-  const [clearingAll, setClearingAll] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = useCallback(async () => {
@@ -522,64 +516,18 @@ export function ShippingDocuments() {
     }
   };
 
-  const handleReject = async (id: number) => {
+  const handleDelete = async (id: number) => {
+    if (!confirm('¿Eliminar este remito?')) {
+      return;
+    }
     try {
       setActionLoading(id);
-      await rejectRemito(id);
+      await deleteRemito(id);
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al rechazar');
+      setError(err instanceof Error ? err.message : 'Error al eliminar');
     } finally {
       setActionLoading(null);
-    }
-  };
-
-  const handleReprocess = async (id: number) => {
-    try {
-      setActionLoading(id);
-      await reprocessRemito(id);
-      await loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al reprocesar');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleReprocessAll = async () => {
-    if (!confirm('¿Reprocesar matching de todos los remitos con OCR? Esto puede tomar unos minutos.')) {
-      return;
-    }
-    try {
-      setReprocessingAll(true);
-      setError(null);
-      const result = await reprocessAllRemitos();
-      alert(`Reprocesamiento completado:\n${result.processed} exitosos\n${result.errors} errores`);
-      await loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al reprocesar');
-    } finally {
-      setReprocessingAll(false);
-    }
-  };
-
-  const handleClearAll = async () => {
-    if (!confirm('⚠️ ¿BORRAR TODOS los remitos? Esta acción no se puede deshacer.')) {
-      return;
-    }
-    if (!confirm('¿Estás seguro? Se eliminarán TODOS los remitos del sistema.')) {
-      return;
-    }
-    try {
-      setClearingAll(true);
-      setError(null);
-      const result = await clearAllRemitos();
-      alert(`Se eliminaron ${result.deleted} remitos.`);
-      await loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al borrar remitos');
-    } finally {
-      setClearingAll(false);
     }
   };
 
@@ -588,29 +536,6 @@ export function ShippingDocuments() {
       <Header title="Remitos" />
 
       <main className="p-4 md:p-6 max-w-7xl mx-auto">
-        {/* Stats */}
-        {stats && (
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mb-4">
-            {Object.entries(statusConfig).map(([key, config]) => (
-              <button
-                key={key}
-                onClick={() => {
-                  setStatusFilter(key as RemitoStatus);
-                  setPage(1);
-                }}
-                className={clsx(
-                  'p-3 rounded-xl text-center transition-all',
-                  statusFilter === key ? 'ring-2 ring-neutral-900' : 'hover:bg-white',
-                  config.color.replace('text-', 'bg-').replace('-700', '-50')
-                )}
-              >
-                <p className="text-2xl font-bold">{stats[key as keyof RemitosStats]}</p>
-                <p className="text-xs text-gray-600">{config.label}</p>
-              </button>
-            ))}
-          </div>
-        )}
-
         {/* Actions bar */}
         <div className="flex flex-wrap items-center gap-3 mb-4">
           {/* Status filter */}
@@ -630,42 +555,16 @@ export function ShippingDocuments() {
                 )}
               >
                 {filter.label}
+                {stats && filter.value !== 'all' && (
+                  <span className="ml-1.5 text-xs opacity-70">
+                    ({stats[filter.value as keyof RemitosStats] || 0})
+                  </span>
+                )}
               </button>
             ))}
           </div>
 
           <div className="flex-1" />
-
-          {/* Reprocess all button */}
-          <Button
-            variant="secondary"
-            onClick={handleReprocessAll}
-            disabled={reprocessingAll}
-            title="Reprocesar matching de todos los remitos"
-          >
-            {reprocessingAll ? (
-              <Loader2 size={16} className="mr-2 animate-spin" />
-            ) : (
-              <RotateCcw size={16} className="mr-2" />
-            )}
-            Re-sincronizar
-          </Button>
-
-          {/* Clear all button */}
-          <Button
-            variant="secondary"
-            onClick={handleClearAll}
-            disabled={clearingAll}
-            title="Borrar todos los remitos"
-            className="text-red-600 hover:bg-red-50"
-          >
-            {clearingAll ? (
-              <Loader2 size={16} className="mr-2 animate-spin" />
-            ) : (
-              <Trash2 size={16} className="mr-2" />
-            )}
-            Borrar todos
-          </Button>
 
           {/* Upload button */}
           <input
@@ -730,8 +629,7 @@ export function ShippingDocuments() {
                 key={remito.id}
                 remito={remito}
                 onConfirm={handleConfirm}
-                onReject={handleReject}
-                onReprocess={handleReprocess}
+                onDelete={handleDelete}
                 onOpen={setSelectedRemito}
                 isLoading={actionLoading === remito.id}
               />
@@ -771,7 +669,7 @@ export function ShippingDocuments() {
           remito={selectedRemito}
           onClose={() => setSelectedRemito(null)}
           onConfirm={handleConfirm}
-          onReject={handleReject}
+          onDelete={handleDelete}
           isLoading={actionLoading === selectedRemito.id}
         />
       )}
