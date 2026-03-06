@@ -59,6 +59,46 @@ function MatchScoreBadge({ score }: { score: number | null }) {
   );
 }
 
+// Skeleton loader for remito cards
+function RemitoCardSkeleton() {
+  return (
+    <Card className="p-0 overflow-hidden flex flex-col animate-pulse">
+      {/* Image placeholder */}
+      <div className="h-72 md:h-80 bg-gray-200" />
+
+      {/* Content placeholder */}
+      <div className="p-4 space-y-3 flex-1 flex flex-col">
+        {/* Name placeholder */}
+        <div className="h-5 bg-gray-200 rounded w-3/4" />
+
+        {/* Address placeholder */}
+        <div className="h-4 bg-gray-100 rounded w-full" />
+
+        {/* Match result placeholder */}
+        <div className="p-3 bg-gray-100 rounded-lg space-y-2">
+          <div className="h-5 bg-gray-200 rounded w-1/2" />
+          <div className="h-4 bg-gray-200 rounded w-2/3" />
+        </div>
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Action buttons placeholder */}
+        <div className="flex gap-2 pt-2">
+          <div className="flex-1 h-10 bg-gray-200 rounded-lg" />
+          <div className="w-12 h-10 bg-gray-100 rounded-lg" />
+        </div>
+
+        {/* Footer placeholder */}
+        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+          <div className="h-3 bg-gray-100 rounded w-16" />
+          <div className="h-3 bg-gray-100 rounded w-12" />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 interface RemitoCardProps {
   remito: Remito;
   onConfirm: (id: number, orderNumber?: string) => void;
@@ -719,9 +759,11 @@ export function ShippingDocuments() {
         )}
 
         {/* Grid */}
-        {loading && remitos.length === 0 ? (
-          <div className="flex items-center justify-center h-64">
-            <Loader2 size={32} className="animate-spin text-neutral-400" />
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 transition-opacity duration-300">
+            {[...Array(4)].map((_, i) => (
+              <RemitoCardSkeleton key={i} />
+            ))}
           </div>
         ) : remitos.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-neutral-500">
@@ -737,7 +779,7 @@ export function ShippingDocuments() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 animate-fadeIn">
             {remitos.map((remito) => (
               <RemitoCard
                 key={remito.id}
