@@ -72,88 +72,120 @@ function RemitoCard({ remito, onConfirm, onDelete, onOpen, isLoading }: RemitoCa
   const [customOrder, setCustomOrder] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
 
+  // Check if there are multiple candidates
+  const hasMultipleCandidates = remito.match_details?.candidates && remito.match_details.candidates.length > 1;
+
   const handleConfirm = () => {
-    if (showCustomInput && customOrder) {
+    if (customOrder) {
       onConfirm(remito.id, customOrder);
     } else if (remito.suggested_order_number) {
       onConfirm(remito.id);
     }
   };
 
+  // Determine the order number to confirm
+  const orderToConfirm = customOrder || remito.suggested_order_number;
+
   return (
-    <Card className="p-0 overflow-hidden">
-      {/* Image preview - clickable */}
+    <Card className="p-0 overflow-hidden flex flex-col">
+      {/* Image preview - large and prominent */}
       <div
-        className="relative h-40 bg-gray-100 cursor-pointer group"
+        className="relative h-72 md:h-80 bg-gray-100 cursor-pointer group"
         onClick={() => onOpen(remito)}
       >
         {remito.file_url && (
           <img
             src={remito.file_url}
             alt={remito.file_name || 'Remito'}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-contain bg-gray-50"
           />
         )}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-          <Maximize2 size={24} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+          <Maximize2 size={28} className="text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
         </div>
-        <div className="absolute top-2 right-2">
+        <div className="absolute top-3 right-3">
           <StatusBadge status={remito.status} />
         </div>
       </div>
 
-      {/* Content */}
-      <div className="p-3 space-y-2">
-        {/* File name */}
-        <p className="text-xs text-gray-500 truncate" title={remito.file_name || undefined}>
-          {remito.file_name || 'Sin nombre'}
-        </p>
-
-        {/* Detected data */}
+      {/* Content - organized by priority */}
+      <div className="p-4 space-y-3 flex-1 flex flex-col">
+        {/* 1. Detected name - most important */}
         {remito.detected_name && (
-          <div className="text-sm">
-            <span className="text-gray-500">Nombre:</span>{' '}
-            <span className="font-medium">{remito.detected_name}</span>
-          </div>
-        )}
-        {remito.detected_address && (
-          <div className="text-sm">
-            <span className="text-gray-500">Dir:</span>{' '}
-            <span className="font-medium truncate">{remito.detected_address}</span>
+          <div className="text-base">
+            <span className="font-semibold text-gray-900">{remito.detected_name}</span>
           </div>
         )}
 
-        {/* Confirmed order (for confirmed remitos) */}
+        {/* Address if present */}
+        {remito.detected_address && (
+          <div className="text-sm text-gray-600">
+            {remito.detected_address}
+          </div>
+        )}
+
+        {/* 2. Match result - confirmed order */}
         {remito.status === 'confirmed' && remito.confirmed_order_number && (
-          <div className="p-2 bg-emerald-100 rounded-lg border border-emerald-200">
-            <span className="text-sm font-semibold text-emerald-800">
-              #{remito.confirmed_order_number}
+          <div className="p-3 bg-emerald-100 rounded-lg border border-emerald-200">
+            <span className="text-base font-bold text-emerald-800">
+              Pedido #{remito.confirmed_order_number}
             </span>
             {remito.order_customer_name && (
-              <p className="text-xs text-emerald-700 mt-1">{remito.order_customer_name}</p>
+              <p className="text-sm text-emerald-700 mt-1">{remito.order_customer_name}</p>
             )}
           </div>
         )}
 
-        {/* Suggested match (for non-confirmed remitos) */}
-        {remito.status !== 'confirmed' && remito.suggested_order_number && (
-          <div className="p-2 bg-emerald-50 rounded-lg">
+        {/* 2. Match result - multiple candidates */}
+        {remito.status === 'ready' && remito.match_details?.candidates && remito.match_details.candidates.length > 1 && (
+          <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 space-y-2">
+            <p className="text-sm font-medium text-amber-800">
+              {remito.match_details.candidates.length} pedidos encontrados
+            </p>
+            <div className="space-y-1.5 max-h-36 overflow-y-auto">
+              {remito.match_details.candidates.map((candidate) => (
+                <button
+                  key={candidate.orderNumber}
+                  onClick={() => setCustomOrder(candidate.orderNumber)}
+                  className={clsx(
+                    'w-full p-2 rounded text-left transition-colors border text-sm',
+                    customOrder === candidate.orderNumber
+                      ? 'bg-emerald-100 border-emerald-400'
+                      : 'bg-white border-gray-200 hover:bg-gray-50'
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">#{candidate.orderNumber}</span>
+                    <span className="text-xs text-gray-500">
+                      {format(new Date(candidate.createdAt), "dd/MM", { locale: es })}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 truncate">{candidate.customerName}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 2. Match result - single suggested match */}
+        {remito.status !== 'confirmed' && remito.suggested_order_number && (!remito.match_details?.candidates || remito.match_details.candidates.length <= 1) && (
+          <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-emerald-700">
+              <span className="text-base font-bold text-emerald-700">
                 #{remito.suggested_order_number}
               </span>
               <MatchScoreBadge score={remito.match_score} />
             </div>
             {remito.order_customer_name && (
-              <p className="text-xs text-emerald-600 mt-1">{remito.order_customer_name}</p>
+              <p className="text-sm text-emerald-600 mt-1">{remito.order_customer_name}</p>
             )}
           </div>
         )}
 
         {/* No match found - con botón de asignación manual */}
         {remito.status === 'ready' && !remito.suggested_order_number && (
-          <div className="p-2 bg-yellow-50 rounded-lg space-y-2">
-            <p className="text-sm text-yellow-700">Sin coincidencia encontrada</p>
+          <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200 space-y-2">
+            <p className="text-sm font-medium text-yellow-700">Sin coincidencia encontrada</p>
             {!showCustomInput && (
               <Button
                 size="sm"
@@ -162,8 +194,8 @@ function RemitoCard({ remito, onConfirm, onDelete, onOpen, isLoading }: RemitoCa
                 disabled={isLoading}
                 className="w-full"
               >
-                <Search size={14} className="mr-1" />
-                Asignar pedido
+                <Search size={16} className="mr-2" />
+                Asignar pedido manualmente
               </Button>
             )}
           </div>
@@ -171,24 +203,9 @@ function RemitoCard({ remito, onConfirm, onDelete, onOpen, isLoading }: RemitoCa
 
         {/* Error message */}
         {remito.status === 'error' && remito.error_message && (
-          <div className="p-2 bg-red-50 rounded-lg">
-            <p className="text-xs text-red-600">{remito.error_message}</p>
+          <div className="p-3 bg-red-50 rounded-lg border border-red-200">
+            <p className="text-sm text-red-600">{remito.error_message}</p>
           </div>
-        )}
-
-        {/* OCR text toggle */}
-        {remito.ocr_text && (
-          <button
-            onClick={() => setShowOCR(!showOCR)}
-            className="text-xs text-blue-600 hover:underline"
-          >
-            {showOCR ? 'Ocultar OCR' : 'Ver texto OCR'}
-          </button>
-        )}
-        {showOCR && remito.ocr_text && (
-          <pre className="text-xs bg-gray-50 p-2 rounded max-h-32 overflow-auto whitespace-pre-wrap">
-            {remito.ocr_text}
-          </pre>
         )}
 
         {/* Custom order input */}
@@ -198,63 +215,81 @@ function RemitoCard({ remito, onConfirm, onDelete, onOpen, isLoading }: RemitoCa
               type="text"
               value={customOrder}
               onChange={(e) => setCustomOrder(e.target.value)}
-              placeholder="# Pedido"
-              className="flex-1 px-2 py-1 text-sm border rounded"
+              placeholder="Número de pedido"
+              className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              autoFocus
             />
             <button
               onClick={() => setShowCustomInput(false)}
-              className="text-gray-500 hover:text-gray-700"
+              className="px-2 text-gray-500 hover:text-gray-700"
             >
-              <X size={16} />
+              <X size={18} />
             </button>
           </div>
         )}
 
-        {/* Actions */}
+        {/* Spacer to push actions to bottom */}
+        <div className="flex-1" />
+
+        {/* 3. Actions - prominent confirm button */}
         {remito.status === 'ready' && (
           <div className="flex gap-2 pt-2">
-            {(remito.suggested_order_number || (showCustomInput && customOrder)) && (
+            {(orderToConfirm || hasMultipleCandidates) && (
               <Button
-                size="sm"
                 onClick={handleConfirm}
-                disabled={isLoading}
-                className="flex-1"
+                disabled={isLoading || (hasMultipleCandidates && !customOrder)}
+                className="flex-1 py-2.5"
               >
-                <Check size={14} className="mr-1" />
-                Confirmar
+                <Check size={18} className="mr-2" />
+                {hasMultipleCandidates && !customOrder
+                  ? 'Seleccionar pedido'
+                  : `Confirmar #${orderToConfirm}`}
               </Button>
             )}
 
             <Button
-              size="sm"
               variant="secondary"
               onClick={() => onDelete(remito.id)}
               disabled={isLoading}
-              className="text-red-600 hover:bg-red-50"
+              className="text-red-600 hover:bg-red-50 px-3"
               title="Eliminar remito"
             >
-              <Trash2 size={14} />
+              <Trash2 size={18} />
             </Button>
           </div>
         )}
 
         {remito.status === 'error' && (
           <Button
-            size="sm"
             variant="secondary"
             onClick={() => onDelete(remito.id)}
             disabled={isLoading}
-            className="w-full text-red-600 hover:bg-red-50"
+            className="w-full text-red-600 hover:bg-red-50 py-2.5"
           >
-            <Trash2 size={14} className="mr-1" />
+            <Trash2 size={18} className="mr-2" />
             Eliminar
           </Button>
         )}
 
-        {/* Timestamp */}
-        <p className="text-xs text-gray-400 pt-1">
-          {format(new Date(remito.created_at), "dd/MM HH:mm", { locale: es })}
-        </p>
+        {/* OCR text toggle - less prominent, at the bottom */}
+        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+          <p className="text-xs text-gray-400">
+            {format(new Date(remito.created_at), "dd/MM HH:mm", { locale: es })}
+          </p>
+          {remito.ocr_text && (
+            <button
+              onClick={() => setShowOCR(!showOCR)}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              {showOCR ? 'Ocultar OCR' : 'Ver OCR'}
+            </button>
+          )}
+        </div>
+        {showOCR && remito.ocr_text && (
+          <pre className="text-xs bg-gray-50 p-2 rounded max-h-32 overflow-auto whitespace-pre-wrap border">
+            {remito.ocr_text}
+          </pre>
+        )}
       </div>
     </Card>
   );
@@ -388,7 +423,7 @@ function RemitoModal({
                   </p>
                   <p className="text-xs text-amber-600">Selecciona el pedido correcto (más recientes primero):</p>
                   <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {remito.match_details.candidates.map((candidate, idx) => (
+                    {remito.match_details.candidates.map((candidate) => (
                       <button
                         key={candidate.orderNumber}
                         onClick={() => setCustomOrder(candidate.orderNumber)}
@@ -702,7 +737,7 @@ export function ShippingDocuments() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {remitos.map((remito) => (
               <RemitoCard
                 key={remito.id}
