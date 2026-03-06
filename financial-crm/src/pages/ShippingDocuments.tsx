@@ -137,10 +137,22 @@ function RemitoCard({ remito, onConfirm, onDelete, onOpen, isLoading }: RemitoCa
           </div>
         )}
 
-        {/* No match found */}
+        {/* No match found - con botón de asignación manual */}
         {remito.status === 'ready' && !remito.suggested_order_number && (
-          <div className="p-2 bg-yellow-50 rounded-lg">
+          <div className="p-2 bg-yellow-50 rounded-lg space-y-2">
             <p className="text-sm text-yellow-700">Sin coincidencia encontrada</p>
+            {!showCustomInput && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setShowCustomInput(true)}
+                disabled={isLoading}
+                className="w-full"
+              >
+                <Search size={14} className="mr-1" />
+                Asignar pedido
+              </Button>
+            )}
           </div>
         )}
 
@@ -188,7 +200,7 @@ function RemitoCard({ remito, onConfirm, onDelete, onOpen, isLoading }: RemitoCa
         {/* Actions */}
         {remito.status === 'ready' && (
           <div className="flex gap-2 pt-2">
-            {remito.suggested_order_number || (showCustomInput && customOrder) ? (
+            {(remito.suggested_order_number || (showCustomInput && customOrder)) && (
               <Button
                 size="sm"
                 onClick={handleConfirm}
@@ -197,17 +209,6 @@ function RemitoCard({ remito, onConfirm, onDelete, onOpen, isLoading }: RemitoCa
               >
                 <Check size={14} className="mr-1" />
                 Confirmar
-              </Button>
-            ) : null}
-
-            {!showCustomInput && (
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setShowCustomInput(true)}
-                disabled={isLoading}
-              >
-                <Search size={14} />
               </Button>
             )}
 
@@ -349,10 +350,37 @@ function RemitoModal({
                 </div>
               )}
 
-              {/* No match */}
+              {/* No match - con input de asignación manual */}
               {remito.status === 'ready' && !remito.suggested_order_number && (
-                <div className="p-3 bg-yellow-50 rounded-lg">
+                <div className="p-3 bg-yellow-50 rounded-lg space-y-3">
                   <p className="text-yellow-700">Sin coincidencia encontrada</p>
+                  {showCustomInput ? (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={customOrder}
+                        onChange={(e) => setCustomOrder(e.target.value)}
+                        placeholder="Número de pedido"
+                        className="flex-1 px-3 py-2 border rounded-lg bg-white"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => setShowCustomInput(false)}
+                        className="px-3 py-2 text-gray-500 hover:bg-yellow-100 rounded-lg"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      onClick={() => setShowCustomInput(true)}
+                      className="w-full"
+                    >
+                      <Search size={16} className="mr-2" />
+                      Asignar pedido
+                    </Button>
+                  )}
                 </div>
               )}
 
@@ -363,37 +391,6 @@ function RemitoModal({
                   <pre className="text-xs bg-gray-50 p-3 rounded-lg max-h-40 overflow-auto whitespace-pre-wrap">
                     {remito.ocr_text}
                   </pre>
-                </div>
-              )}
-
-              {/* Custom order input */}
-              {remito.status === 'ready' && (
-                <div className="space-y-2">
-                  {showCustomInput ? (
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={customOrder}
-                        onChange={(e) => setCustomOrder(e.target.value)}
-                        placeholder="Número de pedido"
-                        className="flex-1 px-3 py-2 border rounded-lg"
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => setShowCustomInput(false)}
-                        className="px-3 py-2 text-gray-500 hover:bg-gray-100 rounded-lg"
-                      >
-                        Cancelar
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setShowCustomInput(true)}
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      Asignar a otro pedido
-                    </button>
-                  )}
                 </div>
               )}
 
