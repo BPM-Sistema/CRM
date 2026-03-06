@@ -283,14 +283,15 @@ function isViaCargo(ocrText) {
  * - Divide el nombre del cliente en tokens
  * - Verifica que todos los tokens aparezcan en el OCR
  * - Permite coincidencias aunque el orden esté invertido
+ * - Devuelve TODOS los candidatos (para casos de múltiples pedidos del mismo cliente)
  *
  * @param {string} ocrText - Texto completo del OCR
- * @returns {Object|null} Match encontrado o null
+ * @returns {Object} { bestMatch, candidates } - Mejor match y array de todos los candidatos
  */
 async function findMatchByNameInFullText(ocrText) {
   const normalizedOcr = normalizeText(ocrText);
 
-  // Obtener shipping_requests activos
+  // Obtener shipping_requests activos con customer_name
   const shippingRes = await pool.query(`
     SELECT
       sr.order_number,
@@ -299,7 +300,9 @@ async function findMatchByNameInFullText(ocrText) {
       sr.provincia,
       sr.empresa_envio,
       sr.destino_tipo,
-      ov.estado_pedido
+      sr.created_at as shipping_created_at,
+      ov.estado_pedido,
+      ov.customer_name
     FROM shipping_requests sr
     INNER JOIN orders_validated ov ON sr.order_number = ov.order_number
     WHERE sr.created_at > NOW() - INTERVAL '60 days'
@@ -312,11 +315,10 @@ async function findMatchByNameInFullText(ocrText) {
   console.log(`   📋 Buscando match por nombre en ${shippingData.length} registros`);
 
   if (shippingData.length === 0) {
-    return null;
+    return { bestMatch: null, candidates: [] };
   }
 
-  let bestMatch = null;
-  let bestScore = 0;
+  const allMatches = [];
 
   for (const shipping of shippingData) {
     if (!shipping.nombre_apellido) continue;
@@ -341,11 +343,12 @@ async function findMatchByNameInFullText(ocrText) {
     // Requerir al menos 70% de tokens encontrados (o todos si son 2 o menos)
     const minRequired = nameTokens.length <= 2 ? 1.0 : 0.7;
 
-    if (score >= minRequired && score > bestScore) {
-      bestScore = score;
-      bestMatch = {
+    if (score >= minRequired) {
+      allMatches.push({
         orderNumber: shipping.order_number,
         score: score,
+        customerName: shipping.customer_name || shipping.nombre_apellido,
+        createdAt: shipping.shipping_created_at,
         details: {
           matchType: 'name_in_fulltext',
           nameTokens: nameTokens,
@@ -355,17 +358,23 @@ async function findMatchByNameInFullText(ocrText) {
           empresa_envio: shipping.empresa_envio,
           destino_tipo: shipping.destino_tipo
         }
-      };
+      });
     }
   }
 
+  // Ya vienen ordenados por created_at DESC de la query
+  const bestMatch = allMatches.length > 0 ? allMatches[0] : null;
+
   if (bestMatch) {
     console.log(`   🎯 Match por nombre: #${bestMatch.orderNumber} (${bestMatch.details.matchedTokens}/${bestMatch.details.totalTokens} tokens)`);
+    if (allMatches.length > 1) {
+      console.log(`   ⚠️ Hay ${allMatches.length} candidatos posibles (mismo cliente con múltiples pedidos)`);
+    }
   } else {
     console.log(`   ❌ Sin match por nombre en texto completo`);
   }
 
-  return bestMatch;
+  return { bestMatch, candidates: allMatches };
 }
 
 /**
@@ -1276,7 +1285,8 @@ async function processDocument(documentId, ocrText, textAnnotations = null) {
       // NO parsear layout, solo buscar nombre en texto completo
 
       console.log(`   🔎 Buscando coincidencia de nombre en texto OCR completo...`);
-      match = await findMatchByNameInFullText(ocrText);
+      const { bestMatch, candidates } = await findMatchByNameInFullText(ocrText);
+      match = bestMatch;
 
       // No extraemos datos estructurados para otros transportes
       extraction = {
@@ -1287,13 +1297,21 @@ async function processDocument(documentId, ocrText, textAnnotations = null) {
         log: ['Matching por nombre en texto completo (no Via Cargo)']
       };
 
+      // Incluir candidatos en match_details para que el frontend pueda mostrarlos
       matchDetails = match ? {
         ...match.details,
-        remito_type: 'otro_transporte'
+        remito_type: 'otro_transporte',
+        candidates: candidates.map(c => ({
+          orderNumber: c.orderNumber,
+          customerName: c.customerName,
+          score: c.score,
+          createdAt: c.createdAt
+        }))
       } : {
         remito_type: 'otro_transporte',
         noMatchReason: 'no_name_match_in_fulltext',
-        note: 'No se encontró coincidencia de nombre en el texto OCR'
+        note: 'No se encontró coincidencia de nombre en el texto OCR',
+        candidates: []
       };
     }
 

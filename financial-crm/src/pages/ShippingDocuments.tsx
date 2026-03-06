@@ -279,14 +279,21 @@ function RemitoModal({
   const [customOrder, setCustomOrder] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
 
+  // Determinar si hay múltiples candidatos
+  const hasMultipleCandidates = remito.match_details?.candidates && remito.match_details.candidates.length > 1;
+
   const handleConfirm = () => {
-    if (showCustomInput && customOrder) {
+    // Si hay múltiples candidatos o input manual, usar customOrder
+    if (customOrder) {
       onConfirm(remito.id, customOrder);
     } else if (remito.suggested_order_number) {
       onConfirm(remito.id);
     }
     onClose();
   };
+
+  // Determinar qué número de pedido se va a confirmar
+  const orderToConfirm = customOrder || remito.suggested_order_number;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
@@ -373,8 +380,40 @@ function RemitoModal({
                 )}
               </div>
 
-              {/* Suggested match */}
-              {remito.suggested_order_number && (
+              {/* Suggested match - multiple candidates */}
+              {remito.status === 'ready' && remito.match_details?.candidates && remito.match_details.candidates.length > 1 && (
+                <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 space-y-2">
+                  <p className="font-medium text-amber-800">
+                    {remito.match_details.candidates.length} pedidos encontrados para este cliente
+                  </p>
+                  <p className="text-xs text-amber-600">Selecciona el pedido correcto (más recientes primero):</p>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {remito.match_details.candidates.map((candidate, idx) => (
+                      <button
+                        key={candidate.orderNumber}
+                        onClick={() => setCustomOrder(candidate.orderNumber)}
+                        className={clsx(
+                          'w-full p-2 rounded-lg text-left transition-colors border',
+                          customOrder === candidate.orderNumber
+                            ? 'bg-emerald-100 border-emerald-400'
+                            : 'bg-white border-gray-200 hover:bg-gray-50'
+                        )}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-gray-900">#{candidate.orderNumber}</span>
+                          <span className="text-xs text-gray-500">
+                            {format(new Date(candidate.createdAt), "dd/MM", { locale: es })}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600">{candidate.customerName}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Suggested match - single candidate */}
+              {remito.status === 'ready' && remito.suggested_order_number && (!remito.match_details?.candidates || remito.match_details.candidates.length <= 1) && (
                 <div className="p-3 bg-emerald-50 rounded-lg">
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-medium text-emerald-700">
@@ -455,10 +494,10 @@ function RemitoModal({
               <Trash2 size={16} className="mr-1" />
               Eliminar
             </Button>
-            {(remito.suggested_order_number || (showCustomInput && customOrder)) && (
-              <Button onClick={handleConfirm} disabled={isLoading}>
+            {orderToConfirm && (
+              <Button onClick={handleConfirm} disabled={isLoading || (hasMultipleCandidates && !customOrder)}>
                 <Check size={16} className="mr-1" />
-                Confirmar {showCustomInput ? `#${customOrder}` : `#${remito.suggested_order_number}`}
+                Confirmar #{orderToConfirm}
               </Button>
             )}
           </div>

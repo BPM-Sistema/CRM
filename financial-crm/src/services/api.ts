@@ -1310,7 +1310,17 @@ export interface Remito {
   detected_city: string | null;
   suggested_order_number: string | null;
   match_score: number | null;
-  match_details: { name?: number; address?: number; city?: number } | null;
+  match_details: {
+    name?: number;
+    address?: number;
+    city?: number;
+    candidates?: Array<{
+      orderNumber: string;
+      customerName: string;
+      score: number;
+      createdAt: string;
+    }>;
+  } | null;
   confirmed_order_number: string | null;
   confirmed_by: number | null;
   confirmed_at: string | null;
