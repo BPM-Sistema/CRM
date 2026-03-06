@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { RefreshCw, Upload, FileText, Check, X, AlertCircle, Loader2, Eye, ChevronLeft, ChevronRight, Search, Maximize2, ExternalLink, Trash2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { RefreshCw, Upload, FileText, Check, X, AlertCircle, Loader2, Eye, ChevronLeft, ChevronRight, Search, Maximize2, ExternalLink, Trash2, Package } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
 import {
@@ -265,12 +266,14 @@ function RemitoModal({
   onClose,
   onConfirm,
   onDelete,
+  onNavigateToOrder,
   isLoading
 }: {
   remito: Remito;
   onClose: () => void;
   onConfirm: (id: number, orderNumber?: string) => void;
   onDelete: (id: number) => void;
+  onNavigateToOrder: (orderNumber: string) => void;
   isLoading: boolean;
 }) {
   const [customOrder, setCustomOrder] = useState('');
@@ -334,12 +337,23 @@ function RemitoModal({
               {/* Confirmed order info */}
               {remito.status === 'confirmed' && remito.confirmed_order_number && (
                 <div className="p-3 bg-emerald-100 rounded-lg border border-emerald-200">
-                  <span className="font-semibold text-emerald-800">
-                    Pedido asignado: #{remito.confirmed_order_number}
-                  </span>
-                  {remito.order_customer_name && (
-                    <span className="text-emerald-700"> — {remito.order_customer_name}</span>
-                  )}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold text-emerald-800">
+                        Pedido asignado: #{remito.confirmed_order_number}
+                      </span>
+                      {remito.order_customer_name && (
+                        <span className="text-emerald-700"> — {remito.order_customer_name}</span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => onNavigateToOrder(remito.confirmed_order_number!)}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors"
+                    >
+                      <Package size={14} />
+                      Ver pedido
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -455,6 +469,7 @@ function RemitoModal({
 }
 
 export function ShippingDocuments() {
+  const navigate = useNavigate();
   const [remitos, setRemitos] = useState<Remito[]>([]);
   const [stats, setStats] = useState<RemitosStats | null>(null);
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
@@ -466,6 +481,10 @@ export function ShippingDocuments() {
   const [error, setError] = useState<string | null>(null);
   const [selectedRemito, setSelectedRemito] = useState<Remito | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleNavigateToOrder = (orderNumber: string) => {
+    navigate(`/orders/${orderNumber}`);
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -691,6 +710,7 @@ export function ShippingDocuments() {
           onClose={() => setSelectedRemito(null)}
           onConfirm={handleConfirm}
           onDelete={handleDelete}
+          onNavigateToOrder={handleNavigateToOrder}
           isLoading={actionLoading === selectedRemito.id}
         />
       )}

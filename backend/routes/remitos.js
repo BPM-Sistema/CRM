@@ -385,6 +385,47 @@ router.delete('/:id',
 );
 
 /**
+ * GET /remitos/by-order/:orderNumber
+ * Obtener remito confirmado por número de pedido
+ */
+router.get('/by-order/:orderNumber',
+  authenticate,
+  requirePermission('remitos.view'),
+  async (req, res) => {
+    try {
+      const { orderNumber } = req.params;
+
+      const remitoRes = await pool.query(`
+        SELECT
+          sd.*,
+          ov.customer_name as order_customer_name,
+          ov.shipping_address as order_shipping_address,
+          ov.estado_pedido as order_status,
+          ov.monto_tiendanube as order_total
+        FROM shipping_documents sd
+        LEFT JOIN orders_validated ov ON sd.confirmed_order_number = ov.order_number
+        WHERE sd.confirmed_order_number = $1 AND sd.status = 'confirmed'
+        ORDER BY sd.confirmed_at DESC
+        LIMIT 1
+      `, [orderNumber]);
+
+      if (remitoRes.rowCount === 0) {
+        return res.json({ ok: true, remito: null });
+      }
+
+      res.json({
+        ok: true,
+        remito: remitoRes.rows[0]
+      });
+
+    } catch (error) {
+      console.error('❌ GET /remitos/by-order/:orderNumber error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+/**
  * GET /remitos/:id
  * Obtener detalle de un remito
  */

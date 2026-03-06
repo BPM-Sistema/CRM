@@ -18,6 +18,7 @@ import {
   Package,
   ShoppingBag,
   Download,
+  Image,
 } from 'lucide-react';
 import { getEventConfig, formatEventLabel } from '../utils/eventConfig';
 import { Header } from '../components/layout';
@@ -30,10 +31,12 @@ import {
   updateOrderStatus,
   resyncOrder,
   fetchShippingRequest,
+  fetchRemitoByOrder,
   getShippingLabelUrl,
   ApiOrderDetail,
   ApiOrderPrintData,
   ShippingRequest,
+  Remito,
   mapEstadoPago,
   mapEstadoPedido,
   OrderStatus,
@@ -75,18 +78,24 @@ export function RealOrderDetail() {
   const [shippingRequest, setShippingRequest] = useState<ShippingRequest | null>(null);
   const [bultos, setBultos] = useState(1);
 
+  // Estado para remito asociado
+  const [remito, setRemito] = useState<Remito | null>(null);
+  const [showRemitoModal, setShowRemitoModal] = useState(false);
+
   const loadOrder = async () => {
     if (!orderNumber) return;
 
     setLoading(true);
     setError(null);
     try {
-      const [orderData, shippingData] = await Promise.all([
+      const [orderData, shippingData, remitoData] = await Promise.all([
         fetchOrderDetail(orderNumber),
         fetchShippingRequest(orderNumber),
+        fetchRemitoByOrder(orderNumber),
       ]);
       setData(orderData);
       setShippingRequest(shippingData);
+      setRemito(remitoData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar pedido');
     } finally {
@@ -835,6 +844,41 @@ export function RealOrderDetail() {
               </Card>
             )}
 
+            {/* Remito asociado */}
+            {remito && (
+              <Card>
+                <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider mb-3">
+                  Remito de Envío
+                </h3>
+                <div className="space-y-3">
+                  <div className="p-3 bg-emerald-50 rounded-lg text-sm border border-emerald-100">
+                    <div className="flex items-center gap-2 text-emerald-700 mb-1">
+                      <CheckCircle size={16} />
+                      <span className="font-medium">Remito confirmado</span>
+                    </div>
+                    {remito.detected_name && (
+                      <p className="text-xs text-emerald-600">
+                        Nombre detectado: {remito.detected_name}
+                      </p>
+                    )}
+                    {remito.confirmed_at && (
+                      <p className="text-xs text-emerald-600 mt-1">
+                        Confirmado: {formatDistanceToNow(new Date(remito.confirmed_at), { addSuffix: true, locale: es })}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    variant="secondary"
+                    className="w-full"
+                    onClick={() => setShowRemitoModal(true)}
+                  >
+                    <Image size={16} className="mr-2" />
+                    Ver remito
+                  </Button>
+                </div>
+              </Card>
+            )}
+
             {/* Info adicional */}
             <Card>
               <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider mb-3">
@@ -1009,6 +1053,54 @@ export function RealOrderDetail() {
             {/* Contenido imprimible */}
             <div className="p-4">
               <PrintableOrder ref={printRef} data={printData} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Remito */}
+      {showRemitoModal && remito && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowRemitoModal(false)}>
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-4 border-b border-neutral-200 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Remito de Envío</h2>
+              <button
+                onClick={() => setShowRemitoModal(false)}
+                className="p-2 hover:bg-neutral-100 rounded-lg"
+              >
+                <ArrowLeft size={20} />
+              </button>
+            </div>
+            {/* Content */}
+            <div className="flex-1 overflow-auto p-4">
+              {remito.file_url && (
+                <img
+                  src={remito.file_url}
+                  alt="Remito"
+                  className="w-full h-auto max-h-[70vh] object-contain rounded-lg"
+                />
+              )}
+              <div className="mt-4 space-y-2 text-sm">
+                {remito.detected_name && (
+                  <p><span className="text-neutral-500">Nombre detectado:</span> {remito.detected_name}</p>
+                )}
+                {remito.detected_address && (
+                  <p><span className="text-neutral-500">Dirección:</span> {remito.detected_address}</p>
+                )}
+                {remito.detected_city && (
+                  <p><span className="text-neutral-500">Ciudad:</span> {remito.detected_city}</p>
+                )}
+              </div>
+            </div>
+            {/* Footer */}
+            <div className="p-4 border-t border-neutral-200 flex justify-end">
+              <Button variant="secondary" onClick={() => setShowRemitoModal(false)}>
+                Cerrar
+              </Button>
             </div>
           </div>
         </div>

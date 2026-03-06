@@ -1422,6 +1422,19 @@ export async function fetchRemito(id: number): Promise<Remito> {
   return data.remito;
 }
 
+// Obtener remito confirmado por número de pedido
+export async function fetchRemitoByOrder(orderNumber: string): Promise<Remito | null> {
+  const response = await authFetch(`${API_BASE_URL}/remitos/by-order/${orderNumber}`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al obtener remito');
+  }
+
+  return data.remito;
+}
+
 // Confirmar match de remito
 export async function confirmRemito(id: number, orderNumber?: string): Promise<{
   ok: boolean;
