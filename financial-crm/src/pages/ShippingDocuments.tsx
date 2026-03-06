@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RefreshCw, Upload, FileText, Check, X, AlertCircle, Loader2, Eye, ChevronLeft, ChevronRight, Search, Maximize2, ExternalLink, Trash2, Package } from 'lucide-react';
+import { RefreshCw, Upload, FileText, Check, X, AlertCircle, Loader2, Eye, ChevronLeft, ChevronRight, Search, Maximize2, ExternalLink, Trash2, Package, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
 import {
@@ -17,6 +17,144 @@ import {
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { clsx } from 'clsx';
+
+// Fullscreen image lightbox with zoom
+function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+  const [scale, setScale] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const minScale = 0.5;
+  const maxScale = 5;
+
+  // Handle keyboard events
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === '+' || e.key === '=') setScale(s => Math.min(maxScale, s + 0.25));
+      if (e.key === '-') setScale(s => Math.max(minScale, s - 0.25));
+      if (e.key === '0') { setScale(1); setPosition({ x: 0, y: 0 }); }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  // Handle wheel zoom
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.15 : 0.15;
+    setScale(s => Math.min(maxScale, Math.max(minScale, s + delta)));
+  }, []);
+
+  // Handle double click to zoom
+  const handleDoubleClick = () => {
+    if (scale > 1) {
+      setScale(1);
+      setPosition({ x: 0, y: 0 });
+    } else {
+      setScale(2.5);
+    }
+  };
+
+  // Handle drag start
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (scale > 1) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
+    }
+  };
+
+  // Handle drag move
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging && scale > 1) {
+      setPosition({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      });
+    }
+  };
+
+  // Handle drag end
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const zoomIn = () => setScale(s => Math.min(maxScale, s + 0.5));
+  const zoomOut = () => setScale(s => Math.max(minScale, s - 0.5));
+  const resetZoom = () => { setScale(1); setPosition({ x: 0, y: 0 }); };
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center"
+      onClick={onClose}
+    >
+      {/* Controls */}
+      <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+        <span className="text-white/70 text-sm mr-2">{Math.round(scale * 100)}%</span>
+        <button
+          onClick={(e) => { e.stopPropagation(); zoomOut(); }}
+          className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors"
+          title="Zoom out (-)"
+        >
+          <ZoomOut size={20} />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); zoomIn(); }}
+          className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors"
+          title="Zoom in (+)"
+        >
+          <ZoomIn size={20} />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); resetZoom(); }}
+          className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors"
+          title="Reset (0)"
+        >
+          <RotateCcw size={20} />
+        </button>
+        <button
+          onClick={onClose}
+          className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors ml-2"
+          title="Cerrar (ESC)"
+        >
+          <X size={20} />
+        </button>
+      </div>
+
+      {/* Hint */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/50 text-sm">
+        Doble click para zoom • Scroll para zoom • Arrastrar para mover
+      </div>
+
+      {/* Image container */}
+      <div
+        ref={containerRef}
+        className="w-full h-full flex items-center justify-center overflow-hidden"
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={handleDoubleClick}
+        style={{ cursor: scale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'zoom-in' }}
+      >
+        <img
+          src={src}
+          alt={alt}
+          className="max-w-[95vw] max-h-[90vh] object-contain select-none"
+          style={{
+            transform: `scale(${scale}) translate(${position.x / scale}px, ${position.y / scale}px)`,
+            transition: isDragging ? 'none' : 'transform 0.15s ease-out'
+          }}
+          draggable={false}
+        />
+      </div>
+    </div>
+  );
+}
 
 // Status configuration (solo estados relevantes para UI)
 const statusConfig: Record<RemitoStatus, { label: string; color: string; icon: React.ReactNode }> = {
@@ -353,6 +491,7 @@ function RemitoModal({
 }) {
   const [customOrder, setCustomOrder] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
+  const [showLightbox, setShowLightbox] = useState(false);
 
   // Determinar si hay múltiples candidatos
   const hasMultipleCandidates = remito.match_details?.candidates && remito.match_details.candidates.length > 1;
@@ -403,14 +542,25 @@ function RemitoModal({
         {/* Content */}
         <div className="flex-1 overflow-auto p-4">
           <div className="grid md:grid-cols-2 gap-4">
-            {/* Image */}
-            <div className="bg-gray-100 rounded-lg overflow-hidden">
+            {/* Image - clickable to open lightbox */}
+            <div
+              className="bg-gray-100 rounded-lg overflow-hidden cursor-pointer group relative"
+              onClick={() => setShowLightbox(true)}
+            >
               {remito.file_url && (
-                <img
-                  src={remito.file_url}
-                  alt={remito.file_name || 'Remito'}
-                  className="w-full h-auto max-h-[60vh] object-contain"
-                />
+                <>
+                  <img
+                    src={remito.file_url}
+                    alt={remito.file_name || 'Remito'}
+                    className="w-full h-auto max-h-[60vh] object-contain"
+                  />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                    <div className="bg-black/50 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <ZoomIn size={16} />
+                      <span className="text-sm">Ver en grande</span>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
 
@@ -578,6 +728,15 @@ function RemitoModal({
           </div>
         )}
       </div>
+
+      {/* Fullscreen image lightbox */}
+      {showLightbox && remito.file_url && (
+        <ImageLightbox
+          src={remito.file_url}
+          alt={remito.file_name || 'Remito'}
+          onClose={() => setShowLightbox(false)}
+        />
+      )}
     </div>
   );
 }
