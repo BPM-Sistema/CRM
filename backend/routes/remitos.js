@@ -134,6 +134,7 @@ async function processOCRAsync(documentId, fileBuffer, mimeType) {
     console.log(`🔄 Iniciando OCR para documento ${documentId}...`);
 
     let ocrText = '';
+    let textAnnotations = null;
 
     if (mimeType === 'application/pdf') {
       // Para PDFs, usar detectDocumentText con inputConfig
@@ -141,12 +142,18 @@ async function processOCRAsync(documentId, fileBuffer, mimeType) {
         image: { content: fileBuffer.toString('base64') }
       });
       ocrText = result.fullTextAnnotation?.text || '';
+      // PDFs no tienen bounding boxes útiles para separación de columnas
     } else {
-      // Para imágenes
+      // Para imágenes - capturar textAnnotations con bounding boxes
       const [result] = await visionClient.textDetection({
         image: { content: fileBuffer.toString('base64') }
       });
       ocrText = result.fullTextAnnotation?.text || '';
+      textAnnotations = result.textAnnotations || null;
+
+      if (textAnnotations) {
+        console.log(`📐 OCR devolvió ${textAnnotations.length} anotaciones con bounding boxes`);
+      }
     }
 
     if (!ocrText) {
@@ -161,8 +168,8 @@ async function processOCRAsync(documentId, fileBuffer, mimeType) {
 
     console.log(`📝 OCR completado para documento ${documentId} (${ocrText.length} caracteres)`);
 
-    // Procesar y buscar coincidencias
-    await processDocument(documentId, ocrText);
+    // Procesar y buscar coincidencias (pasar textAnnotations para separación por layout)
+    await processDocument(documentId, ocrText, textAnnotations);
 
   } catch (error) {
     console.error(`❌ Error OCR documento ${documentId}:`, error.message);

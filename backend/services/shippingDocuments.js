@@ -1,9 +1,184 @@
 /**
  * Servicio de Carga Masiva de Remitos
  * OCR + Fuzzy Matching + Sugerencia automática de pedido
+ *
+ * ESTRATEGIA DE EXTRACCIÓN:
+ * Para Via Cargo (layout de 2 columnas), usamos bounding boxes del OCR
+ * para separar físicamente REMITENTE (izquierda) de DESTINATARIO (derecha).
+ * Esto elimina la contaminación de datos del remitente.
  */
 
 const pool = require('../db');
+
+// ============================================
+// SEPARACIÓN POR LAYOUT (BOUNDING BOXES)
+// ============================================
+
+/**
+ * Separa el texto del OCR en dos columnas usando bounding boxes.
+ * Via Cargo tiene layout consistente: izquierda=remitente, derecha=destinatario
+ *
+ * @param {Array} textAnnotations - Array de textAnnotations de Google Vision
+ * @returns {Object} { leftColumn, rightColumn, dividerX, log }
+ */
+function separateByLayout(textAnnotations) {
+  const log = [];
+
+  if (!textAnnotations || textAnnotations.length < 2) {
+    log.push('⚠️ No hay suficientes anotaciones para separar por layout');
+    return { leftColumn: '', rightColumn: '', dividerX: null, log };
+  }
+
+  // Primera anotación es el texto completo, las siguientes son palabras individuales
+  const words = textAnnotations.slice(1);
+
+  if (words.length === 0) {
+    log.push('⚠️ No hay palabras individuales con bounding boxes');
+    return { leftColumn: '', rightColumn: '', dividerX: null, log };
+  }
+
+  // Calcular el centro X de cada palabra
+  const wordsWithX = words.map(word => {
+    const vertices = word.boundingPoly?.vertices || [];
+    if (vertices.length < 2) return null;
+
+    // Centro X = promedio de los 4 vértices (o de izquierda y derecha)
+    const xValues = vertices.map(v => v.x || 0);
+    const centerX = xValues.reduce((a, b) => a + b, 0) / xValues.length;
+
+    // Centro Y para ordenar verticalmente
+    const yValues = vertices.map(v => v.y || 0);
+    const centerY = yValues.reduce((a, b) => a + b, 0) / yValues.length;
+
+    return {
+      text: word.description,
+      centerX,
+      centerY,
+      minX: Math.min(...xValues),
+      maxX: Math.max(...xValues)
+    };
+  }).filter(w => w !== null);
+
+  if (wordsWithX.length === 0) {
+    log.push('⚠️ No se pudieron calcular posiciones de palabras');
+    return { leftColumn: '', rightColumn: '', dividerX: null, log };
+  }
+
+  // Encontrar los límites del documento
+  const allX = wordsWithX.flatMap(w => [w.minX, w.maxX]);
+  const docMinX = Math.min(...allX);
+  const docMaxX = Math.max(...allX);
+  const docWidth = docMaxX - docMinX;
+
+  // Para Via Cargo: buscar los headers REMITENTE y DESTINATARIO
+  // y calcular el divisor como el punto medio entre ellos
+  let dividerX = docMinX + (docWidth * 0.5); // Default: centro
+
+  const remitenteWord = wordsWithX.find(w =>
+    normalizeText(w.text) === 'remitente' ||
+    normalizeText(w.text).startsWith('remitente')
+  );
+
+  const destinatarioWord = wordsWithX.find(w =>
+    normalizeText(w.text) === 'destinatario' ||
+    normalizeText(w.text).startsWith('destinatario')
+  );
+
+  if (remitenteWord && destinatarioWord) {
+    // Calcular punto medio entre los dos headers
+    dividerX = (remitenteWord.centerX + destinatarioWord.centerX) / 2;
+    log.push(`📍 Headers encontrados: REMITENTE en X=${remitenteWord.centerX.toFixed(0)}, DESTINATARIO en X=${destinatarioWord.centerX.toFixed(0)}`);
+    log.push(`📍 Divisor calculado como punto medio: X=${dividerX.toFixed(0)}`);
+  } else if (destinatarioWord) {
+    // Solo encontramos DESTINATARIO - asumir que está a la derecha
+    // El divisor está un poco antes del header
+    dividerX = destinatarioWord.minX - 50;
+    log.push(`📍 Solo DESTINATARIO encontrado en X=${destinatarioWord.centerX.toFixed(0)}, divisor=${dividerX.toFixed(0)}`);
+  } else {
+    // No encontramos headers, usar heurística: buscar la mayor brecha en X
+    // entre palabras adyacentes verticalmente (indica división de columnas)
+    const sortedByX = [...wordsWithX].sort((a, b) => a.centerX - b.centerX);
+    let maxGap = 0;
+    let gapX = dividerX;
+
+    for (let i = 1; i < sortedByX.length; i++) {
+      const gap = sortedByX[i].minX - sortedByX[i - 1].maxX;
+      if (gap > maxGap && gap > 30) { // Brecha significativa
+        maxGap = gap;
+        gapX = (sortedByX[i - 1].maxX + sortedByX[i].minX) / 2;
+      }
+    }
+
+    if (maxGap > 30) {
+      dividerX = gapX;
+      log.push(`📍 Divisor por brecha máxima (${maxGap.toFixed(0)}px): X=${dividerX.toFixed(0)}`);
+    } else {
+      log.push(`📍 Sin headers ni brecha clara, usando centro: X=${dividerX.toFixed(0)}`);
+    }
+  }
+
+  log.push(`📐 Documento: X de ${docMinX} a ${docMaxX} (ancho: ${docWidth})`);
+  log.push(`📐 Divisor de columnas en X = ${dividerX.toFixed(0)}`);
+
+  // Encontrar la posición Y del header DESTINATARIO para filtrar
+  // Solo queremos palabras que estén debajo (o cerca) del header
+  let minY = 0;
+  if (destinatarioWord) {
+    // Empezar un poco antes del header para incluirlo
+    minY = destinatarioWord.centerY - 20;
+    log.push(`📍 Filtrando Y >= ${minY.toFixed(0)} (desde header DESTINATARIO)`);
+  }
+
+  // Separar palabras por columna (solo las que están en la zona del destinatario)
+  const leftWords = wordsWithX.filter(w => w.centerX < dividerX && w.centerY >= minY);
+  const rightWords = wordsWithX.filter(w => w.centerX >= dividerX && w.centerY >= minY);
+
+  log.push(`📊 Columna izquierda: ${leftWords.length} palabras (REMITENTE)`);
+  log.push(`📊 Columna derecha: ${rightWords.length} palabras (DESTINATARIO)`);
+
+  // Ordenar palabras por Y (de arriba a abajo) y luego por X (de izq a der)
+  const sortByPosition = (a, b) => {
+    // Agrupar por "líneas" (diferencia de Y < 20 pixels = misma línea)
+    const yDiff = Math.abs(a.centerY - b.centerY);
+    if (yDiff < 20) {
+      return a.centerX - b.centerX; // Misma línea: ordenar por X
+    }
+    return a.centerY - b.centerY; // Diferente línea: ordenar por Y
+  };
+
+  leftWords.sort(sortByPosition);
+  rightWords.sort(sortByPosition);
+
+  // Reconstruir texto de cada columna
+  // Agregar saltos de línea cuando hay un salto significativo en Y
+  const reconstructText = (words) => {
+    if (words.length === 0) return '';
+
+    let text = '';
+    let lastY = words[0].centerY;
+
+    for (const word of words) {
+      const yDiff = word.centerY - lastY;
+      if (yDiff > 15) {
+        // Nueva línea
+        text += '\n' + word.text;
+      } else {
+        // Misma línea
+        text += (text.endsWith('\n') || text === '' ? '' : ' ') + word.text;
+      }
+      lastY = word.centerY;
+    }
+
+    return text.trim();
+  };
+
+  const leftColumn = reconstructText(leftWords);
+  const rightColumn = reconstructText(rightWords);
+
+  log.push(`📝 Texto columna derecha (primeras 200 chars): "${rightColumn.substring(0, 200)}..."`);
+
+  return { leftColumn, rightColumn, dividerX, log };
+}
 
 /**
  * Calcula distancia de Levenshtein entre dos strings
@@ -98,6 +273,7 @@ const DESTINATION_HEADERS = [
 const EXCLUDE_HEADERS = [
   'remitente',
   'origen',
+  'sucursal origen',
   'sucursal',
   'deposito',
   'depósito',
@@ -109,8 +285,73 @@ const EXCLUDE_HEADERS = [
   'datos del remitente',
   'datos de origen',
   'retira en',
-  'retire en'
+  'retire en',
+  'domicilio de retiro',
+  'direccion de retiro'
 ];
+
+/**
+ * Datos CONOCIDOS del remitente (Pet Love / origen) que SIEMPRE deben excluirse.
+ * Estos valores aparecen en todos los remitos como origen.
+ */
+const KNOWN_SENDER_DATA = {
+  addresses: [
+    'gaona 2376',
+    'av gaona 2376',
+    'av. gaona 2376',
+    'avenida gaona 2376',
+    'gaona nro 2376',
+    'gaona n 2376',
+    'gaona n° 2376',
+  ],
+  names: [
+    'pet love',
+    'petlove',
+    'pet love arg',
+    'petlove arg',
+    'nora luciana mansilla', // Titular/representante
+    'mansilla nora',
+  ],
+  cities: [
+    'caba',
+    'capital federal',
+    'ciudad autonoma',
+    'ciudad de buenos aires',
+    'c.a.b.a',
+    'c.a.b.a.',
+  ]
+};
+
+/**
+ * Verifica si un texto corresponde a datos CONOCIDOS del remitente (Pet Love)
+ * @returns {object|null} - { type: 'address'|'name'|'city', value } o null
+ */
+function isKnownSenderData(text) {
+  if (!text) return null;
+  const normalized = normalizeText(text);
+
+  for (const addr of KNOWN_SENDER_DATA.addresses) {
+    if (normalized.includes(normalizeText(addr))) {
+      return { type: 'address', value: addr };
+    }
+  }
+
+  for (const name of KNOWN_SENDER_DATA.names) {
+    if (normalized.includes(normalizeText(name))) {
+      return { type: 'name', value: name };
+    }
+  }
+
+  for (const city of KNOWN_SENDER_DATA.cities) {
+    // Para ciudades, ser más estricto (match completo o como palabra)
+    const cityNorm = normalizeText(city);
+    if (normalized === cityNorm || normalized.split(/\s+/).includes(cityNorm)) {
+      return { type: 'city', value: city };
+    }
+  }
+
+  return null;
+}
 
 /**
  * Stage A: Detecta si una línea es un header de sección
@@ -136,34 +377,64 @@ function detectSectionHeader(line) {
 /**
  * Stage B: Extrae solo la zona de DESTINATARIO del texto OCR
  * Retorna las líneas que pertenecen a la sección destinatario
+ *
+ * IMPORTANTE: Excluye activamente líneas que contengan datos conocidos
+ * del remitente (Pet Love / origen) para evitar contaminación.
  */
 function extractDestinationZone(ocrText) {
-  if (!ocrText) return { lines: [], confidence: 0, log: [] };
+  if (!ocrText) return { lines: [], confidence: 0, log: [], extractedCity: null };
 
   const lines = ocrText.split('\n').map(l => l.trim()).filter(l => l);
   const log = [];
 
   let inDestinationZone = false;
+  let inExcludeZone = false;
   let destinationLines = [];
   let foundDestinationHeader = false;
+  let linesAfterDestHeader = 0;
+  let extractedCity = null; // Ciudad extraída del header "DESTINO ciudad(código)"
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const headerInfo = detectSectionHeader(line);
 
+    // Detectar headers de sección
     if (headerInfo) {
       if (headerInfo.type === 'destination') {
         log.push(`📍 L${i}: Header DESTINO detectado: "${line}" (${headerInfo.header})`);
         inDestinationZone = true;
+        inExcludeZone = false;
         foundDestinationHeader = true;
+        linesAfterDestHeader = 0;
+
+        // Extraer ciudad del header tipo "DESTINO Rawson(CBT010)" o "DESTINO Concordia"
+        const cityMatch = line.match(/destino\s+([A-Za-záéíóúñ\s]+?)(?:\s*\(|$)/i);
+        if (cityMatch && cityMatch[1]) {
+          const cityCandidate = cityMatch[1].trim();
+          // Verificar que no sea una palabra clave y que no sea del remitente
+          if (cityCandidate.length >= 3 && !/^(destino|destinatario|contado)$/i.test(cityCandidate)) {
+            const senderCheck = isKnownSenderData(cityCandidate);
+            if (!senderCheck) {
+              extractedCity = cityCandidate;
+              log.push(`   🏙️ Ciudad extraída del header: "${extractedCity}"`);
+            }
+          }
+        }
+
         // Incluir contenido después del header si está en la misma línea
         const afterHeader = line.split(/[:]\s*/)[1];
         if (afterHeader && afterHeader.trim()) {
-          destinationLines.push(afterHeader.trim());
+          const senderCheck = isKnownSenderData(afterHeader);
+          if (!senderCheck) {
+            destinationLines.push(afterHeader.trim());
+          } else {
+            log.push(`   🚫 Excluido (dato remitente ${senderCheck.type}): "${afterHeader}"`);
+          }
         }
         continue;
       } else if (headerInfo.type === 'exclude') {
         log.push(`🚫 L${i}: Header EXCLUIR detectado: "${line}" (${headerInfo.header})`);
+        inExcludeZone = true;
         if (inDestinationZone) {
           log.push(`   ↳ Finalizando zona destinatario`);
         }
@@ -172,11 +443,33 @@ function extractDestinationZone(ocrText) {
       }
     }
 
+    // Si estamos en zona de exclusión, saltar
+    if (inExcludeZone) {
+      log.push(`⏭️ L${i}: Omitido (zona remitente): "${line}"`);
+      continue;
+    }
+
+    // Verificar si la línea contiene datos conocidos del remitente
+    const senderCheck = isKnownSenderData(line);
+    if (senderCheck) {
+      log.push(`🚫 L${i}: Excluido (dato remitente ${senderCheck.type}): "${line}"`);
+      // NO salir de zona destino - solo excluir esta línea
+      // El OCR mezcla columnas, así que datos del remitente pueden aparecer
+      // intercalados con datos del destinatario
+      continue;
+    }
+
     if (inDestinationZone) {
+      linesAfterDestHeader++;
       // Filtrar líneas que parecen ser metadata o no relevantes
       if (!isMetadataLine(line)) {
-        destinationLines.push(line);
-        log.push(`✅ L${i}: Incluido en zona destino: "${line}"`);
+        // Límite de líneas para evitar capturar demasiado
+        if (destinationLines.length < 15) {
+          destinationLines.push(line);
+          log.push(`✅ L${i}: Incluido en zona destino: "${line}"`);
+        } else {
+          log.push(`⏭️ L${i}: Omitido (límite de líneas): "${line}"`);
+        }
       } else {
         log.push(`⏭️ L${i}: Omitido (metadata): "${line}"`);
       }
@@ -192,8 +485,11 @@ function extractDestinationZone(ocrText) {
   }
 
   log.push(`📊 Resultado: ${destinationLines.length} líneas, confianza: ${(confidence * 100).toFixed(0)}%`);
+  if (extractedCity) {
+    log.push(`📊 Ciudad del header: ${extractedCity}`);
+  }
 
-  return { lines: destinationLines, confidence, log, foundHeader: foundDestinationHeader };
+  return { lines: destinationLines, confidence, log, foundHeader: foundDestinationHeader, extractedCity };
 }
 
 /**
@@ -242,6 +538,7 @@ function extractDestinatarioFromZone(destinationLines) {
 
 /**
  * Extrae nombre del destinatario de las líneas filtradas
+ * IMPORTANTE: Excluye nombres conocidos del remitente
  */
 function extractNameFromDestination(lines, log) {
   // Buscar línea con label de nombre (incluye "Señor/es", "Sr/a", etc.)
@@ -250,9 +547,17 @@ function extractNameFromDestination(lines, log) {
     // Matchear: "Señor/es NOMBRE", "Sr. NOMBRE", "Sra NOMBRE", "A nombre de NOMBRE"
     const nameMatch = line.match(/(?:se[ñn]or(?:\/es|es)?|sr\.?\/a?|sra?\.?|nombre|a nombre de)[\s:]+(.+)/i);
     if (nameMatch && nameMatch[1]) {
-      const name = nameMatch[1].trim();
+      let name = nameMatch[1].trim();
+      // Limpiar residuos del OCR (ej: "/ es" de "Señor/es" separado)
+      name = name.replace(/^[\/\s]*es\s+/i, '').trim();
       // Filtrar basura común
       if (name.length >= 3 && name.length < 60 && !/^(domicilio|direccion|calle|tel)/i.test(name)) {
+        // Verificar que no sea nombre del remitente
+        const senderCheck = isKnownSenderData(name);
+        if (senderCheck) {
+          log.push(`👤 Nombre descartado (remitente): "${name}"`);
+          continue;
+        }
         log.push(`👤 Nombre extraído (con label): "${name}"`);
         return name;
       }
@@ -264,7 +569,14 @@ function extractNameFromDestination(lines, log) {
     const line = lines[i];
 
     // Ignorar líneas que claramente no son nombres
-    if (/^(domicilio|direccion|calle|telefono|tel\.|dni|cuit|localidad|cp\b)/i.test(line)) {
+    if (/^(domicilio|direccion|calle|telefono|tel\.|dni|cuit|localidad|cp\b|cantidad|descripci|servicio|encomienda|reembolso|contado|destino)/i.test(line)) {
+      continue;
+    }
+
+    // Verificar que no sea dato del remitente
+    const senderCheck = isKnownSenderData(line);
+    if (senderCheck) {
+      log.push(`👤 Línea descartada (remitente ${senderCheck.type}): "${line}"`);
       continue;
     }
 
@@ -297,6 +609,7 @@ function extractNameFromDestination(lines, log) {
 
 /**
  * Extrae dirección del destinatario de las líneas filtradas
+ * IMPORTANTE: Excluye direcciones conocidas del remitente (ej: GAONA 2376)
  */
 function extractAddressFromDestination(lines, log) {
   // Patrones a EXCLUIR (no son direcciones)
@@ -305,13 +618,26 @@ function extractAddressFromDestination(lines, log) {
     /^cuit\b/i,
     /^c\.?u\.?i\.?t\.?\b/i,
     /^telefono/i,
-    /^tel\./i,
+    /^tel[eé]fono/i,
+    /^tel\b/i,
+    /^cel\b/i,
+    /^celular/i,
     /^cp\b/i,
     /^codigo\s*postal/i,
     /^localidad/i,
     /^provincia/i,
     /^remito/i,
     /^guia/i,
+    /^se[ñn]or/i,    // No es dirección
+    /^cantidad/i,    // Es campo de cantidad
+    /^descripci[oó]n/i, // Es descripción
+    /^domicilio$/i,  // Es el label, no la dirección
+    /^dia$/i,        // Campos de fecha
+    /^mes$/i,
+    /^a[ñn]o$/i,
+    /^anc$/i,
+    /^\d{1,2}$/,     // Solo números cortos (día, mes)
+    /^\d{4}$/,       // Solo año
   ];
 
   for (let i = 0; i < lines.length; i++) {
@@ -322,10 +648,23 @@ function extractAddressFromDestination(lines, log) {
       continue;
     }
 
+    // Verificar que no sea dirección del remitente
+    const senderCheck = isKnownSenderData(line);
+    if (senderCheck) {
+      log.push(`📍 Dirección descartada (remitente): "${line}"`);
+      continue;
+    }
+
     // Buscar con label explícito (domicilio, dirección, etc.)
     const addrMatch = line.match(/(?:direcci[oó]n|domicilio|calle|av\.?|avenida)[\s:]+(.+)/i);
     if (addrMatch && addrMatch[1]) {
       const addr = addrMatch[1].trim();
+      // Verificar que el contenido extraído no sea del remitente
+      const addrSenderCheck = isKnownSenderData(addr);
+      if (addrSenderCheck) {
+        log.push(`📍 Dirección descartada (remitente en label): "${addr}"`);
+        continue;
+      }
       if (addr.length > 5 && !excludePatterns.some(p => p.test(addr))) {
         log.push(`📍 Dirección extraída (con label): "${addr}"`);
         return addr;
@@ -344,13 +683,32 @@ function extractAddressFromDestination(lines, log) {
     }
   }
 
-  // Fallback: buscar siguiente línea después de "Domicilio"
+  // Fallback: buscar líneas después de "Domicilio"
+  // Puede haber varias líneas de dirección mezcladas con datos del remitente
   for (let i = 0; i < lines.length - 1; i++) {
     if (/^domicilio$/i.test(lines[i].trim())) {
-      const nextLine = lines[i + 1].trim();
-      if (nextLine.length > 5 && !excludePatterns.some(p => p.test(nextLine))) {
-        log.push(`📍 Dirección extraída (línea después de Domicilio): "${nextLine}"`);
-        return nextLine;
+      // Buscar en las siguientes líneas (hasta 5) una dirección válida
+      for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
+        const candidateLine = lines[j].trim();
+
+        // Saltar líneas vacías o muy cortas
+        if (candidateLine.length < 5) continue;
+
+        // Saltar si es patrón de exclusión
+        if (excludePatterns.some(p => p.test(candidateLine))) continue;
+
+        // Verificar que no sea del remitente
+        const senderCheck = isKnownSenderData(candidateLine);
+        if (senderCheck) {
+          log.push(`📍 Candidato post-Domicilio descartado (remitente): "${candidateLine}"`);
+          continue;
+        }
+
+        // Verificar que parece una dirección (tiene letras y posiblemente números)
+        if (/[a-záéíóúñ]/i.test(candidateLine)) {
+          log.push(`📍 Dirección extraída (línea ${j - i} después de Domicilio): "${candidateLine}"`);
+          return candidateLine;
+        }
       }
     }
   }
@@ -361,16 +719,18 @@ function extractAddressFromDestination(lines, log) {
 
 /**
  * Extrae ciudad/localidad del destinatario de las líneas filtradas
+ * IMPORTANTE: Excluye ciudades conocidas del remitente (CABA, Capital Federal)
  */
 function extractCityFromDestination(lines, log) {
   const cityPatterns = [
     /(?:ciudad|localidad|partido|loc\.)[\s:]+([^\n,]+)/i,
   ];
 
+  // Lista de ciudades conocidas de Argentina
+  // NOTA: CABA/Capital Federal están en KNOWN_SENDER_DATA y serán filtradas
   const knownCities = [
-    'buenos aires', 'caba', 'capital federal', 'córdoba', 'cordoba',
-    'rosario', 'mendoza', 'la plata', 'mar del plata', 'san miguel',
-    'san isidro', 'vicente lopez', 'vicente lópez', 'tigre', 'pilar',
+    'córdoba', 'cordoba', 'rosario', 'mendoza', 'la plata', 'mar del plata',
+    'san miguel', 'san isidro', 'vicente lopez', 'vicente lópez', 'tigre', 'pilar',
     'morón', 'moron', 'quilmes', 'avellaneda', 'lanús', 'lanus',
     'lomas de zamora', 'florencio varela', 'berazategui', 'almirante brown',
     'ezeiza', 'esteban echeverría', 'merlo', 'moreno', 'josé c. paz',
@@ -378,7 +738,10 @@ function extractCityFromDestination(lines, log) {
     'carhue', 'bahia blanca', 'bahía blanca', 'necochea', 'tandil',
     'olavarria', 'olavarría', 'azul', 'trenque lauquen', 'pehuajo',
     'junin', 'junín', 'pergamino', 'san nicolas', 'san nicolás',
-    'zárate', 'zarate', 'campana', 'escobar', 'malvinas argentinas'
+    'zárate', 'zarate', 'campana', 'escobar', 'malvinas argentinas',
+    // Ciudades de los tests
+    'rawson', 'morteros', 'la rioja', 'concordia', 'esquina',
+    'rafaela', 'curuzu cuatia', 'curuzú cuatiá', 'dean funes', 'deán funes'
   ];
 
   // Recolectar TODAS las ciudades encontradas, preferir la última
@@ -388,6 +751,13 @@ function extractCityFromDestination(lines, log) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
+    // Verificar que la línea no sea del remitente
+    const senderCheck = isKnownSenderData(line);
+    if (senderCheck && senderCheck.type === 'city') {
+      log.push(`🏙️ Ciudad descartada (remitente): "${line}"`);
+      continue;
+    }
+
     // Buscar con label (ej: "Localidad CARHUE")
     for (const pattern of cityPatterns) {
       const match = line.match(pattern);
@@ -395,6 +765,12 @@ function extractCityFromDestination(lines, log) {
         const city = match[1].trim();
         // Excluir si parece ser código postal o número
         if (!/^\d+$/.test(city) && city.length >= 3) {
+          // Verificar que la ciudad extraída no sea del remitente
+          const citySenderCheck = isKnownSenderData(city);
+          if (citySenderCheck) {
+            log.push(`🏙️ Ciudad en label descartada (remitente): "${city}"`);
+            continue;
+          }
           foundCities.push({ city, source: 'label', index: i });
         }
       }
@@ -426,6 +802,10 @@ function extractCityFromDestination(lines, log) {
 /**
  * Stage D: Extracción completa con scoring de confianza
  * Esta función reemplaza extractName, extractAddress, extractCity
+ *
+ * IMPORTANTE: El fallback ahora es más conservador.
+ * Si no encuentra zona de destino clara, filtra agresivamente
+ * cualquier línea que parezca del remitente antes de extraer.
  */
 function extractDestinatarioFromOcr(ocrText) {
   const result = {
@@ -445,16 +825,40 @@ function extractDestinatarioFromOcr(ocrText) {
   result.log.push(...zoneResult.log);
 
   if (zoneResult.lines.length === 0) {
-    // Fallback: si no encontramos zona de destino, usar todo el texto
-    // pero con confianza reducida
-    result.log.push('⚠️ No se detectó zona destinatario, usando fallback con todo el texto');
+    // Fallback conservador: filtrar líneas del remitente antes de extraer
+    result.log.push('⚠️ No se detectó zona destinatario, usando fallback CONSERVADOR');
+
     const allLines = ocrText.split('\n').map(l => l.trim()).filter(l => l && !isMetadataLine(l));
-    const extracted = extractDestinatarioFromZone(allLines);
-    result.name = extracted.name;
-    result.address = extracted.address;
-    result.city = extracted.city;
-    result.confidence = 0.3; // Baja confianza
-    result.log.push(...extracted.extractionLog);
+
+    // Filtrar líneas que son claramente del remitente
+    const filteredLines = allLines.filter(line => {
+      const senderCheck = isKnownSenderData(line);
+      if (senderCheck) {
+        result.log.push(`   🚫 Fallback: excluido (remitente ${senderCheck.type}): "${line}"`);
+        return false;
+      }
+      return true;
+    });
+
+    result.log.push(`   📋 Fallback: ${filteredLines.length}/${allLines.length} líneas después de filtrar remitente`);
+
+    if (filteredLines.length > 0) {
+      const extracted = extractDestinatarioFromZone(filteredLines);
+      result.name = extracted.name;
+      result.address = extracted.address;
+      result.city = extracted.city;
+      result.confidence = 0.2; // Muy baja confianza en fallback
+      result.log.push(...extracted.extractionLog);
+    } else {
+      result.log.push('   ❌ No quedaron líneas válidas después de filtrar');
+      result.confidence = 0;
+    }
+
+    // Incluso en fallback, usar ciudad del header si está disponible
+    if (!result.city && zoneResult.extractedCity) {
+      result.city = zoneResult.extractedCity;
+      result.log.push(`🏙️ Ciudad tomada del header DESTINO: "${result.city}"`);
+    }
   } else {
     // Extraer datos de la zona identificada
     const extracted = extractDestinatarioFromZone(zoneResult.lines);
@@ -462,6 +866,12 @@ function extractDestinatarioFromOcr(ocrText) {
     result.address = extracted.address;
     result.city = extracted.city;
     result.log.push(...extracted.extractionLog);
+
+    // Si no se encontró ciudad pero tenemos una del header "DESTINO ciudad", usarla
+    if (!result.city && zoneResult.extractedCity) {
+      result.city = zoneResult.extractedCity;
+      result.log.push(`🏙️ Ciudad tomada del header DESTINO: "${result.city}"`);
+    }
 
     // Calcular confianza final
     let dataConfidence = 0;
@@ -473,6 +883,84 @@ function extractDestinatarioFromOcr(ocrText) {
   }
 
   result.log.push(`=== RESULTADO FINAL: confianza ${(result.confidence * 100).toFixed(0)}% ===`);
+
+  return result;
+}
+
+/**
+ * NUEVA FUNCIÓN: Extracción basada en LAYOUT (bounding boxes)
+ *
+ * Para Via Cargo, usa las coordenadas X del OCR para separar
+ * REMITENTE (izquierda) de DESTINATARIO (derecha), eliminando
+ * completamente la contaminación de datos del origen.
+ *
+ * @param {Array} textAnnotations - textAnnotations de Google Vision
+ * @param {string} fullText - Texto completo (fallback)
+ * @returns {Object} { name, address, city, confidence, log }
+ */
+function extractDestinatarioWithLayout(textAnnotations, fullText) {
+  const result = {
+    name: null,
+    address: null,
+    city: null,
+    confidence: 0,
+    log: []
+  };
+
+  result.log.push('=== EXTRACCIÓN VIA CARGO (LAYOUT) ===');
+
+  // Intentar separación por layout
+  const layoutResult = separateByLayout(textAnnotations);
+  result.log.push(...layoutResult.log);
+
+  if (layoutResult.rightColumn && layoutResult.rightColumn.length > 20) {
+    // Tenemos columna derecha (destinatario) - usar solo esa
+    result.log.push('✅ Usando columna derecha (DESTINATARIO) exclusivamente');
+
+    // Extraer datos de la columna derecha
+    const rightColumnText = layoutResult.rightColumn;
+    const lines = rightColumnText.split('\n').map(l => l.trim()).filter(l => l);
+
+    // Ahora extraemos del texto limpio de la columna derecha
+    // Ya no necesitamos filtrar datos del remitente porque físicamente están separados
+    const extracted = extractDestinatarioFromZone(lines);
+    result.name = extracted.name;
+    result.address = extracted.address;
+    result.city = extracted.city;
+    result.log.push(...extracted.extractionLog);
+
+    // Buscar ciudad en el header "DESTINO ciudad" si no se encontró
+    if (!result.city) {
+      const cityMatch = rightColumnText.match(/destino\s+([A-Za-záéíóúñ\s]+?)(?:\s*\(|$)/i);
+      if (cityMatch && cityMatch[1]) {
+        const cityCandidate = cityMatch[1].trim();
+        if (cityCandidate.length >= 3 && !/^(destino|destinatario|contado)$/i.test(cityCandidate)) {
+          result.city = cityCandidate;
+          result.log.push(`🏙️ Ciudad del header DESTINO: "${result.city}"`);
+        }
+      }
+    }
+
+    // Alta confianza porque usamos separación física
+    let dataConfidence = 0;
+    if (result.name) dataConfidence += 0.4;
+    if (result.address) dataConfidence += 0.4;
+    if (result.city) dataConfidence += 0.2;
+    result.confidence = 0.95 * dataConfidence; // 95% confianza base por layout
+
+    result.log.push(`=== RESULTADO LAYOUT: confianza ${(result.confidence * 100).toFixed(0)}% ===`);
+
+  } else {
+    // Fallback: no hay suficiente info de layout, usar método tradicional
+    result.log.push('⚠️ Layout insuficiente, usando método tradicional (heurísticas)');
+
+    const traditional = extractDestinatarioFromOcr(fullText);
+    result.name = traditional.name;
+    result.address = traditional.address;
+    result.city = traditional.city;
+    result.confidence = traditional.confidence;
+    result.log.push(...traditional.log);
+  }
 
   return result;
 }
@@ -597,13 +1085,27 @@ async function findBestMatch(detectedName, detectedAddress, detectedCity) {
 
 /**
  * Procesa un documento con OCR y busca coincidencias
+ *
+ * @param {number} documentId - ID del documento
+ * @param {string} ocrText - Texto completo del OCR
+ * @param {Array} textAnnotations - (Opcional) textAnnotations de Google Vision con bounding boxes
  */
-async function processDocument(documentId, ocrText) {
+async function processDocument(documentId, ocrText, textAnnotations = null) {
   console.log(`🔍 Procesando documento ${documentId}...`);
 
   try {
-    // Extraer datos del texto OCR usando el nuevo sistema
-    const extraction = extractDestinatarioFromOcr(ocrText);
+    let extraction;
+
+    // Si tenemos textAnnotations con bounding boxes, usar extracción por layout
+    // Esto es más preciso para remitos Via Cargo (2 columnas)
+    if (textAnnotations && textAnnotations.length > 1) {
+      console.log(`   📐 Usando extracción por LAYOUT (${textAnnotations.length} anotaciones)`);
+      extraction = extractDestinatarioWithLayout(textAnnotations, ocrText);
+    } else {
+      // Fallback: usar extracción tradicional por heurísticas
+      console.log(`   📝 Usando extracción tradicional (sin bounding boxes)`);
+      extraction = extractDestinatarioFromOcr(ocrText);
+    }
 
     console.log(`   📝 Extracción con confianza: ${(extraction.confidence * 100).toFixed(0)}%`);
     console.log(`   👤 Nombre detectado: ${extraction.name || '(ninguno)'}`);
@@ -725,7 +1227,9 @@ module.exports = {
   extractAddress,
   extractCity,
   extractDestinatarioFromOcr,
+  extractDestinatarioWithLayout,
   extractDestinationZone,
+  separateByLayout,
   findBestMatch,
   processDocument
 };

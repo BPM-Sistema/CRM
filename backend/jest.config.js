@@ -13,8 +13,8 @@ module.exports = {
   // Ignorar node_modules
   testPathIgnorePatterns: ['/node_modules/'],
 
-  // Timeout por test (30 segundos)
-  testTimeout: 30000,
+  // Timeout por test (120 segundos para OCR real)
+  testTimeout: 120000,
 
   // Verbose output
   verbose: true,

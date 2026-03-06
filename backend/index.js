@@ -4426,12 +4426,18 @@ process.on('uncaughtException', (error) => {
 /* =====================================================
    SERVER
 ===================================================== */
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  if (process.env.SENTRY_DSN) {
-    console.log('✅ Sentry error monitoring enabled');
-  }
+// Solo iniciar servidor si no estamos en modo test
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    if (process.env.SENTRY_DSN) {
+      console.log('✅ Sentry error monitoring enabled');
+    }
 
-  // Iniciar scheduler de sincronización
-  startSyncScheduler();
-});
+    // Iniciar scheduler de sincronización
+    startSyncScheduler();
+  });
+}
+
+// Exportar app para tests
+module.exports = { app };
