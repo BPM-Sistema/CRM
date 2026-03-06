@@ -244,13 +244,15 @@ function extractDestinatarioFromZone(destinationLines) {
  * Extrae nombre del destinatario de las líneas filtradas
  */
 function extractNameFromDestination(lines, log) {
-  // Buscar línea con label de nombre
+  // Buscar línea con label de nombre (incluye "Señor/es", "Sr/a", etc.)
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const nameMatch = line.match(/(?:nombre|sr\.?|sra\.?|a nombre de)[\s:]+(.+)/i);
+    // Matchear: "Señor/es NOMBRE", "Sr. NOMBRE", "Sra NOMBRE", "A nombre de NOMBRE"
+    const nameMatch = line.match(/(?:se[ñn]or(?:\/es|es)?|sr\.?\/a?|sra?\.?|nombre|a nombre de)[\s:]+(.+)/i);
     if (nameMatch && nameMatch[1]) {
       const name = nameMatch[1].trim();
-      if (name.length >= 3 && name.length < 60) {
+      // Filtrar basura común
+      if (name.length >= 3 && name.length < 60 && !/^(domicilio|direccion|calle|tel)/i.test(name)) {
         log.push(`👤 Nombre extraído (con label): "${name}"`);
         return name;
       }
@@ -260,12 +262,21 @@ function extractNameFromDestination(lines, log) {
   // Buscar primera línea que parezca nombre propio
   for (let i = 0; i < Math.min(lines.length, 5); i++) {
     const line = lines[i];
+
+    // Ignorar líneas que claramente no son nombres
+    if (/^(domicilio|direccion|calle|telefono|tel\.|dni|cuit|localidad|cp\b)/i.test(line)) {
+      continue;
+    }
+
     const words = line.split(/\s+/);
 
-    // Parece nombre: 2-5 palabras, cada una empieza con mayúscula
+    // Parece nombre: 2-5 palabras alfabéticas (permite TODO MAYÚSCULAS o Capitalizado)
     if (words.length >= 2 && words.length <= 5) {
       const looksLikeName = words.every(w =>
-        /^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]*\.?$/.test(w) && w.length >= 2
+        // Permite: "EUGENIA", "Eugenia", "María", "DE", "DEL", "LA"
+        /^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ]*\.?$/i.test(w) &&
+        w.length >= 2 &&
+        !/^\d+$/.test(w) // No números
       );
       if (looksLikeName) {
         log.push(`👤 Nombre extraído (heurística): "${line}"`);
@@ -273,9 +284,9 @@ function extractNameFromDestination(lines, log) {
       }
     }
 
-    // Alternativa: "APELLIDO, Nombre"
-    if (/^[A-ZÁÉÍÓÚÑ]+[,\s]+[A-Z][a-záéíóúñ]+/.test(line)) {
-      log.push(`👤 Nombre extraído (formato APELLIDO, Nombre): "${line}"`);
+    // Alternativa: "APELLIDO, Nombre" o "APELLIDO APELLIDO"
+    if (/^[A-ZÁÉÍÓÚÑ]{2,}[,\s]+[A-ZÁÉÍÓÚÑ][A-Za-záéíóúñ]+/.test(line)) {
+      log.push(`👤 Nombre extraído (formato APELLIDO): "${line}"`);
       return line;
     }
   }
@@ -288,26 +299,58 @@ function extractNameFromDestination(lines, log) {
  * Extrae dirección del destinatario de las líneas filtradas
  */
 function extractAddressFromDestination(lines, log) {
+  // Patrones a EXCLUIR (no son direcciones)
+  const excludePatterns = [
+    /^dni\b/i,
+    /^cuit\b/i,
+    /^c\.?u\.?i\.?t\.?\b/i,
+    /^telefono/i,
+    /^tel\./i,
+    /^cp\b/i,
+    /^codigo\s*postal/i,
+    /^localidad/i,
+    /^provincia/i,
+    /^remito/i,
+    /^guia/i,
+  ];
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // Buscar con label
+    // Saltar líneas que no son direcciones
+    if (excludePatterns.some(p => p.test(line.trim()))) {
+      continue;
+    }
+
+    // Buscar con label explícito (domicilio, dirección, etc.)
     const addrMatch = line.match(/(?:direcci[oó]n|domicilio|calle|av\.?|avenida)[\s:]+(.+)/i);
     if (addrMatch && addrMatch[1]) {
       const addr = addrMatch[1].trim();
-      if (addr.length > 5) {
+      if (addr.length > 5 && !excludePatterns.some(p => p.test(addr))) {
         log.push(`📍 Dirección extraída (con label): "${addr}"`);
         return addr;
       }
     }
 
-    // Buscar patrón calle + número
-    const streetMatch = line.match(/^([A-Za-záéíóúñ\s\.]+)\s+(\d{1,5})\s*(.*)$/);
+    // Buscar patrón calle + número (incluye "N°", "Nro", etc.)
+    // Ejemplo: "RAZQUIN N°600", "AV GAONA 2376", "PASO 422"
+    const streetMatch = line.match(/^([A-Za-záéíóúñ\s\.]+)\s+(?:n[°ºo]?\.?\s*)?(\d{1,5})\s*(.*)$/i);
     if (streetMatch) {
       const fullAddr = line.trim();
       if (fullAddr.length > 5 && fullAddr.length < 100) {
         log.push(`📍 Dirección extraída (calle + nro): "${fullAddr}"`);
         return fullAddr;
+      }
+    }
+  }
+
+  // Fallback: buscar siguiente línea después de "Domicilio"
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (/^domicilio$/i.test(lines[i].trim())) {
+      const nextLine = lines[i + 1].trim();
+      if (nextLine.length > 5 && !excludePatterns.some(p => p.test(nextLine))) {
+        log.push(`📍 Dirección extraída (línea después de Domicilio): "${nextLine}"`);
+        return nextLine;
       }
     }
   }
@@ -321,7 +364,7 @@ function extractAddressFromDestination(lines, log) {
  */
 function extractCityFromDestination(lines, log) {
   const cityPatterns = [
-    /(?:ciudad|localidad|partido|provincia|cp|c\.p\.|loc\.)[\s:]+([^\n,]+)/i,
+    /(?:ciudad|localidad|partido|loc\.)[\s:]+([^\n,]+)/i,
   ];
 
   const knownCities = [
@@ -331,27 +374,49 @@ function extractCityFromDestination(lines, log) {
     'morón', 'moron', 'quilmes', 'avellaneda', 'lanús', 'lanus',
     'lomas de zamora', 'florencio varela', 'berazategui', 'almirante brown',
     'ezeiza', 'esteban echeverría', 'merlo', 'moreno', 'josé c. paz',
-    'san martín', 'san martin', 'tres de febrero', 'hurlingham', 'ituzaingó'
+    'san martín', 'san martin', 'tres de febrero', 'hurlingham', 'ituzaingó',
+    'carhue', 'bahia blanca', 'bahía blanca', 'necochea', 'tandil',
+    'olavarria', 'olavarría', 'azul', 'trenque lauquen', 'pehuajo',
+    'junin', 'junín', 'pergamino', 'san nicolas', 'san nicolás',
+    'zárate', 'zarate', 'campana', 'escobar', 'malvinas argentinas'
   ];
 
-  for (const line of lines) {
-    // Buscar con label
+  // Recolectar TODAS las ciudades encontradas, preferir la última
+  // (en remitos de 2 columnas, destinatario suele estar a la derecha/abajo)
+  const foundCities = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Buscar con label (ej: "Localidad CARHUE")
     for (const pattern of cityPatterns) {
       const match = line.match(pattern);
       if (match && match[1]) {
-        log.push(`🏙️ Ciudad extraída (con label): "${match[1].trim()}"`);
-        return match[1].trim();
+        const city = match[1].trim();
+        // Excluir si parece ser código postal o número
+        if (!/^\d+$/.test(city) && city.length >= 3) {
+          foundCities.push({ city, source: 'label', index: i });
+        }
       }
     }
 
-    // Buscar ciudades conocidas
+    // Buscar ciudades conocidas en el texto
     const normalizedLine = normalizeText(line);
     for (const city of knownCities) {
       if (normalizedLine.includes(normalizeText(city))) {
-        log.push(`🏙️ Ciudad extraída (conocida): "${city}"`);
-        return city;
+        foundCities.push({ city, source: 'known', index: i });
       }
     }
+  }
+
+  if (foundCities.length > 0) {
+    // Preferir la ÚLTIMA ciudad encontrada (más probable que sea destino)
+    const best = foundCities[foundCities.length - 1];
+    log.push(`🏙️ Ciudad extraída (${best.source}, línea ${best.index}): "${best.city}"`);
+    if (foundCities.length > 1) {
+      log.push(`   ℹ️ También encontradas: ${foundCities.slice(0, -1).map(c => c.city).join(', ')}`);
+    }
+    return best.city;
   }
 
   log.push(`🏙️ Ciudad: no encontrada`);
