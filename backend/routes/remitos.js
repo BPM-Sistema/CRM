@@ -203,7 +203,7 @@ router.get('/',
         paramIndex++;
       }
 
-      // Obtener remitos
+      // Obtener remitos - usar confirmed_order_number si existe, sino suggested
       const remitosRes = await pool.query(`
         SELECT
           sd.*,
@@ -211,7 +211,7 @@ router.get('/',
           ov.shipping_address->>'address' as order_address,
           ov.estado_pedido as order_status
         FROM shipping_documents sd
-        LEFT JOIN orders_validated ov ON sd.suggested_order_number = ov.order_number
+        LEFT JOIN orders_validated ov ON COALESCE(sd.confirmed_order_number, sd.suggested_order_number) = ov.order_number
         ${whereClause}
         ORDER BY sd.created_at DESC
         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
@@ -403,7 +403,7 @@ router.get('/:id',
           ov.estado_pedido as order_status,
           ov.monto_tiendanube as order_total
         FROM shipping_documents sd
-        LEFT JOIN orders_validated ov ON sd.suggested_order_number = ov.order_number
+        LEFT JOIN orders_validated ov ON COALESCE(sd.confirmed_order_number, sd.suggested_order_number) = ov.order_number
         WHERE sd.id = $1
       `, [id]);
 

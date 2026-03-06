@@ -122,8 +122,20 @@ function RemitoCard({ remito, onConfirm, onDelete, onOpen, isLoading }: RemitoCa
           </div>
         )}
 
-        {/* Suggested match */}
-        {remito.suggested_order_number && (
+        {/* Confirmed order (for confirmed remitos) */}
+        {remito.status === 'confirmed' && remito.confirmed_order_number && (
+          <div className="p-2 bg-emerald-100 rounded-lg border border-emerald-200">
+            <span className="text-sm font-semibold text-emerald-800">
+              #{remito.confirmed_order_number}
+            </span>
+            {remito.order_customer_name && (
+              <p className="text-xs text-emerald-700 mt-1">{remito.order_customer_name}</p>
+            )}
+          </div>
+        )}
+
+        {/* Suggested match (for non-confirmed remitos) */}
+        {remito.status !== 'confirmed' && remito.suggested_order_number && (
           <div className="p-2 bg-emerald-50 rounded-lg">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-emerald-700">
@@ -319,6 +331,18 @@ function RemitoModal({
 
             {/* Details */}
             <div className="space-y-4">
+              {/* Confirmed order info */}
+              {remito.status === 'confirmed' && remito.confirmed_order_number && (
+                <div className="p-3 bg-emerald-100 rounded-lg border border-emerald-200">
+                  <span className="font-semibold text-emerald-800">
+                    Pedido asignado: #{remito.confirmed_order_number}
+                  </span>
+                  {remito.order_customer_name && (
+                    <span className="text-emerald-700"> — {remito.order_customer_name}</span>
+                  )}
+                </div>
+              )}
+
               {/* Detected data */}
               <div className="space-y-2">
                 <h3 className="font-medium text-gray-700">Datos detectados</h3>
