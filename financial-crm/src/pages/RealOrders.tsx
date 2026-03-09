@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RefreshCw, AlertCircle, Eye, Receipt, RotateCcw, Printer, Calendar, Search, ChevronLeft, ChevronRight, CheckSquare, X } from 'lucide-react';
+import { RefreshCw, AlertCircle, Eye, Receipt, RotateCcw, Printer, Calendar, Search, ChevronLeft, ChevronRight, CheckSquare, X, Truck } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card, PaymentStatusBadge, OrderStatusBadge, Modal } from '../components/ui';
 import {
@@ -52,6 +52,7 @@ export function RealOrders() {
   const fechaFilterRef = useRef<'all' | 'hoy' | 'custom'>('all');
   const customDateRef = useRef<string>('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [shippingDataFilter, setShippingDataFilter] = useState<'all' | 'pending' | 'complete'>('all');
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   // Estado explícito para mostrar spinner cuando se cambian filtros
@@ -125,6 +126,7 @@ export function RealOrders() {
       estado_pedido: orderStatusFilter,
       search: searchQuery,
       fecha: fechaParam,
+      shipping_data: shippingDataFilter === 'all' ? undefined : shippingDataFilter,
     };
     setLoading(true);
     if (isFilterChange) {
@@ -185,7 +187,7 @@ export function RealOrders() {
   useEffect(() => {
     setCurrentPage(1);
     loadOrders(1, undefined, true); // true = es cambio de filtro
-  }, [paymentFilter, orderStatusFilter]);
+  }, [paymentFilter, orderStatusFilter, shippingDataFilter]);
 
   // Debounce para búsqueda
   useEffect(() => {
@@ -546,6 +548,49 @@ export function RealOrders() {
               </div>
             </div>
           )}
+
+          {/* Filtro de datos de envío (solo para Transporte a elección / Via Cargo) */}
+          <div>
+            <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block flex items-center gap-1.5">
+              <Truck size={12} />
+              Datos de Envío
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShippingDataFilter('all')}
+                className={clsx(
+                  'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
+                  shippingDataFilter === 'all'
+                    ? 'bg-neutral-100 text-neutral-700 ring-2 ring-neutral-900/10'
+                    : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
+                )}
+              >
+                Todos
+              </button>
+              <button
+                onClick={() => setShippingDataFilter('pending')}
+                className={clsx(
+                  'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
+                  shippingDataFilter === 'pending'
+                    ? 'bg-amber-50 text-amber-700 ring-2 ring-amber-900/10'
+                    : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
+                )}
+              >
+                Pendiente
+              </button>
+              <button
+                onClick={() => setShippingDataFilter('complete')}
+                className={clsx(
+                  'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
+                  shippingDataFilter === 'complete'
+                    ? 'bg-emerald-50 text-emerald-700 ring-2 ring-emerald-900/10'
+                    : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
+                )}
+              >
+                Completo
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Tabla */}
@@ -629,9 +674,22 @@ export function RealOrders() {
                       </TableCell>
                     )}
                     <TableCell>
-                      <span className="font-mono text-xs font-medium text-neutral-900">
-                        #{order.order_number}
-                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-mono text-xs font-medium text-neutral-900">
+                          #{order.order_number}
+                        </span>
+                        {order.requires_shipping_form && (
+                          <span className={clsx(
+                            'inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full w-fit',
+                            order.has_shipping_data
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : 'bg-amber-50 text-amber-700'
+                          )}>
+                            <Truck size={10} />
+                            {order.has_shipping_data ? 'Datos OK' : 'Sin datos'}
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col">

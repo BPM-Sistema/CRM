@@ -79,6 +79,8 @@ export interface ApiOrder {
   shipped_at: string | null;
   comprobantes_count: string;
   shipping_type: string | null;
+  requires_shipping_form: boolean;
+  has_shipping_data: boolean;
 }
 
 export interface ApiComprobante {
@@ -305,6 +307,7 @@ export interface OrderFilters {
   estado_pedido?: string;
   search?: string;
   fecha?: string;
+  shipping_data?: 'pending' | 'complete';
 }
 
 // Mapeo inverso: de UI a DB
@@ -331,6 +334,9 @@ export async function fetchOrders(page = 1, limit = 50, filters?: OrderFilters):
   }
   if (filters?.fecha && filters.fecha !== 'all') {
     params.append('fecha', filters.fecha);
+  }
+  if (filters?.shipping_data) {
+    params.append('shipping_data', filters.shipping_data);
   }
 
   const response = await authFetch(`${API_BASE_URL}/orders?${params.toString()}`);

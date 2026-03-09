@@ -1206,7 +1206,7 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
     const offset = (page - 1) * limit;
 
     // Filtros
-    const { estado_pago, estado_pedido, search, fecha } = req.query;
+    const { estado_pago, estado_pedido, search, fecha, shipping_data } = req.query;
 
     // Mapeo de permisos granulares a estados
     const estadoPagoPermisos = {
@@ -1297,6 +1297,26 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
       }
     }
 
+    // Filtro por estado de datos de envío (para pedidos que requieren formulario)
+    // shipping_data: 'pending' = requiere form pero no tiene datos, 'complete' = tiene datos
+    if (shipping_data === 'pending') {
+      // Solo pedidos que requieren form Y no tienen datos cargados
+      conditions.push(`(
+        (LOWER(COALESCE(o.shipping_type, '')) LIKE '%expreso%' AND LOWER(COALESCE(o.shipping_type, '')) LIKE '%elec%')
+        OR LOWER(COALESCE(o.shipping_type, '')) LIKE '%via cargo%'
+        OR LOWER(COALESCE(o.shipping_type, '')) LIKE '%viacargo%'
+      )`);
+      conditions.push(`NOT EXISTS (SELECT 1 FROM shipping_requests sr2 WHERE sr2.order_number = o.order_number)`);
+    } else if (shipping_data === 'complete') {
+      // Solo pedidos que requieren form Y ya tienen datos cargados
+      conditions.push(`(
+        (LOWER(COALESCE(o.shipping_type, '')) LIKE '%expreso%' AND LOWER(COALESCE(o.shipping_type, '')) LIKE '%elec%')
+        OR LOWER(COALESCE(o.shipping_type, '')) LIKE '%via cargo%'
+        OR LOWER(COALESCE(o.shipping_type, '')) LIKE '%viacargo%'
+      )`);
+      conditions.push(`EXISTS (SELECT 1 FROM shipping_requests sr2 WHERE sr2.order_number = o.order_number)`);
+    }
+
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     // Contar total con filtros
@@ -1323,11 +1343,20 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
         o.printed_at,
         o.packed_at,
         o.shipped_at,
-        COUNT(c.id) as comprobantes_count
+        o.shipping_type,
+        COUNT(c.id) as comprobantes_count,
+        CASE
+          WHEN LOWER(COALESCE(o.shipping_type, '')) LIKE '%expreso%' AND LOWER(COALESCE(o.shipping_type, '')) LIKE '%elec%' THEN true
+          WHEN LOWER(COALESCE(o.shipping_type, '')) LIKE '%via cargo%' THEN true
+          WHEN LOWER(COALESCE(o.shipping_type, '')) LIKE '%viacargo%' THEN true
+          ELSE false
+        END as requires_shipping_form,
+        CASE WHEN sr.order_number IS NOT NULL THEN true ELSE false END as has_shipping_data
       FROM orders_validated o
       LEFT JOIN comprobantes c ON o.order_number = c.order_number
+      LEFT JOIN shipping_requests sr ON o.order_number = sr.order_number
       ${whereClause}
-      GROUP BY o.order_number, o.monto_tiendanube, o.total_pagado, o.saldo, o.estado_pago, o.estado_pedido, o.currency, o.tn_created_at, o.created_at, o.customer_name, o.customer_email, o.customer_phone, o.printed_at, o.packed_at, o.shipped_at
+      GROUP BY o.order_number, o.monto_tiendanube, o.total_pagado, o.saldo, o.estado_pago, o.estado_pedido, o.currency, o.tn_created_at, o.created_at, o.customer_name, o.customer_email, o.customer_phone, o.printed_at, o.packed_at, o.shipped_at, o.shipping_type, sr.order_number
       ORDER BY CAST(NULLIF(REGEXP_REPLACE(o.order_number, '[^0-9]', '', 'g'), '') AS BIGINT) DESC NULLS LAST
       LIMIT $${paramIndex++} OFFSET $${paramIndex}
     `, [...params, limit, offset]);
