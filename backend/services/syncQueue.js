@@ -36,11 +36,32 @@ async function addToQueue({ type, resourceId, orderNumber, payload, maxAttempts 
 }
 
 /**
+ * Verificar si hay items pendientes en la cola (sin bloquear)
+ */
+async function hasPendingItems() {
+  const result = await pool.query(`
+    SELECT EXISTS(
+      SELECT 1 FROM sync_queue
+      WHERE status = 'pending' AND next_retry_at <= NOW()
+    ) as has_pending
+  `);
+  return result.rows[0]?.has_pending || false;
+}
+
+/**
  * Obtener próximo item pendiente de la cola
  * Maneja conflictos cuando múltiples instancias procesan la misma cola
  */
 async function getNextPending(retryCount = 0) {
-  const MAX_RETRIES = 5;
+  const MAX_RETRIES = 3; // Reducido de 5 a 3
+
+  // Verificación rápida antes de intentar actualizar
+  if (retryCount === 0) {
+    const hasPending = await hasPendingItems();
+    if (!hasPending) {
+      return null; // No hay items pendientes, salir silenciosamente
+    }
+  }
 
   try {
     const result = await pool.query(`
@@ -62,10 +83,13 @@ async function getNextPending(retryCount = 0) {
     // 23505 = duplicate key - otro worker ya procesando un item con mismo (type, resource_id)
     if (error.code === '23505') {
       if (retryCount < MAX_RETRIES) {
-        console.log(`⏭️ Conflicto en cola (intento ${retryCount + 1}/${MAX_RETRIES}), reintentando...`);
+        // Solo loguear en el último intento para reducir ruido
+        if (retryCount === MAX_RETRIES - 1) {
+          console.log(`⏭️ Conflicto en cola, otro worker procesando...`);
+        }
         return getNextPending(retryCount + 1);
       }
-      console.log(`⚠️ Máximo de reintentos alcanzado en getNextPending`);
+      // No loguear warning si simplemente no hay más items disponibles
       return null;
     }
     throw error;
