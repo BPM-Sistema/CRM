@@ -674,22 +674,9 @@ export function RealOrders() {
                       </TableCell>
                     )}
                     <TableCell>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-mono text-xs font-medium text-neutral-900">
-                          #{order.order_number}
-                        </span>
-                        {order.requires_shipping_form && (
-                          <span className={clsx(
-                            'inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full w-fit',
-                            order.has_shipping_data
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : 'bg-amber-50 text-amber-700'
-                          )}>
-                            <Truck size={10} />
-                            {order.has_shipping_data ? 'Datos OK' : 'Sin datos'}
-                          </span>
-                        )}
-                      </div>
+                      <span className="font-mono text-xs font-medium text-neutral-900">
+                        #{order.order_number}
+                      </span>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col">
