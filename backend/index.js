@@ -46,7 +46,7 @@ const PORT = process.env.PORT || 3000;
 // Desactivar ETag globalmente para evitar respuestas 304
 app.set('etag', false);
 
-// Configurar Google Cloud Vision credentials para producción (Railway)
+// Configurar Google Cloud Vision credentials para producción (Cloud Run)
 if (process.env.GOOGLE_CREDENTIALS_JSON) {
   const credentialsPath = '/tmp/google-credentials.json';
   fs.writeFileSync(credentialsPath, process.env.GOOGLE_CREDENTIALS_JSON);
@@ -546,6 +546,21 @@ function normalizeText(str) {
     .replace(/[\u0300-\u036f]/g, '') // quitar tildes
     .replace(/\s+/g, ' ')            // colapsar espacios
     .trim();
+}
+
+/* =====================================================
+   UTIL — REQUIERE FORMULARIO DE ENVÍO
+   Detecta si un pedido requiere completar el formulario /envio
+   Casos: "Expreso a elección" o "Via Cargo"
+===================================================== */
+function requiresShippingForm(shippingType) {
+  if (!shippingType) return false;
+  const lower = shippingType.toLowerCase();
+  return (
+    (lower.includes('expreso') && lower.includes('elec')) ||
+    lower.includes('via cargo') ||
+    lower.includes('viacargo')
+  );
 }
 
 /* =====================================================
@@ -1132,10 +1147,9 @@ app.post('/orders/to-print', authenticate, requirePermission('orders.print'), as
     const excluded = [];
 
     for (const row of result.rows) {
-      const shippingTypeLower = (row.shipping_type || '').toLowerCase();
-      const isTransporteEleccion = shippingTypeLower.includes('expreso') && shippingTypeLower.includes('elec');
+      const needsShippingForm = requiresShippingForm(row.shipping_type);
 
-      if (isTransporteEleccion && !row.has_shipping_request) {
+      if (needsShippingForm && !row.has_shipping_request) {
         excluded.push(row.order_number);
       } else {
         printable.push(row.order_number);
@@ -2282,7 +2296,7 @@ app.post('/admin/resync-all-orders', authenticate, requirePermission('users.view
     // Responder inmediatamente para evitar timeout
     res.json({
       ok: true,
-      message: `Resync iniciado para ${orders.length} pedidos. Revisá los logs de Railway para ver el progreso.`,
+      message: `Resync iniciado para ${orders.length} pedidos. Revisá los logs de Cloud Run para ver el progreso.`,
       total_pedidos: orders.length
     });
 
@@ -2361,7 +2375,7 @@ app.post('/admin/sync-cancelled', authenticate, requirePermission('users.view'),
   // Responder inmediatamente
   res.json({
     ok: true,
-    message: 'Sync de cancelados iniciado. Revisá los logs de Railway para ver el progreso.'
+    message: 'Sync de cancelados iniciado. Revisá los logs de Cloud Run para ver el progreso.'
   });
 
   // Procesar en background
@@ -2865,19 +2879,13 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
     console.log(`✅ WhatsApp enviado (Pedido #${pedido.number})`);
 
-    // 7️⃣ Si es "Transporte a elección", enviar también datos_envio
+    // 7️⃣ Si requiere formulario de envío (Expreso a elección o Via Cargo)
     const shippingOption = (typeof pedido.shipping_option === 'string'
       ? pedido.shipping_option
       : pedido.shipping_option?.name) || '';
-    const shippingLower = shippingOption.toLowerCase();
 
-    const esTransporteEleccion =
-      shippingLower.includes('transporte') ||
-      shippingLower.includes('expreso') && shippingLower.includes('elec') ||
-      shippingLower.includes('via cargo');
-
-    if (esTransporteEleccion) {
-      console.log(`🚚 Pedido con transporte a elección: ${shippingOption}`);
+    if (requiresShippingForm(shippingOption)) {
+      console.log(`🚚 Pedido requiere formulario de envío: ${shippingOption}`);
       await axios.post(
         'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
         {
@@ -4132,16 +4140,24 @@ app.post('/shipping-data', async (req, res) => {
       return res.status(400).json({ error: errors.join(', '), errors });
     }
 
-    // Validar que el pedido exista en la base de datos
-    const orderExists = await pool.query(
-      'SELECT 1 FROM orders_validated WHERE order_number = $1 LIMIT 1',
+    // Validar que el pedido exista y tenga "Transporte a elección"
+    const orderRes = await pool.query(
+      'SELECT order_number, shipping_type FROM orders_validated WHERE order_number = $1 LIMIT 1',
       [sanitizedOrderNumber]
     );
 
-    if (orderExists.rows.length === 0) {
+    if (orderRes.rows.length === 0) {
       return res.status(400).json({
         error: 'No existe un pedido con ese número',
         errors: ['No existe un pedido con ese número']
+      });
+    }
+
+    // Validar que el pedido requiera formulario de envío (Expreso a elección o Via Cargo)
+    if (!requiresShippingForm(orderRes.rows[0].shipping_type)) {
+      return res.status(400).json({
+        error: 'Este formulario es solo para pedidos con envío por Expreso a elección o Via Cargo',
+        errors: ['Este formulario es solo para pedidos con envío por Expreso a elección o Via Cargo']
       });
     }
 

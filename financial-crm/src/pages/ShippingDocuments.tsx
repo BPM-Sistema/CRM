@@ -1053,7 +1053,7 @@ export function ShippingDocuments() {
   const [remitos, setRemitos] = useState<Remito[]>([]);
   const [stats, setStats] = useState<RemitosStats | null>(null);
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
-  const [statusFilter, setStatusFilter] = useState<RemitoStatus | 'all'>('ready');
+  const [statusFilter, setStatusFilter] = useState<RemitoStatus | 'all'>('all');
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
