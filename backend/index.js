@@ -1627,33 +1627,6 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
       username: req.user?.name
     });
 
-    // 9️⃣ WhatsApp al cliente - comprobante_confirmado (sin sufijo de financiera)
-    const clienteRes = await pool.query(
-      `SELECT customer_name, customer_phone FROM orders_validated WHERE order_number = $1`,
-      [comprobante.order_number]
-    );
-    const cliente = clienteRes.rows[0];
-    if (cliente?.customer_phone) {
-      const TESTING_PHONE = '+5491123945965';
-      if (cliente.customer_phone === TESTING_PHONE) {
-        const contactIdClean = cliente.customer_phone.replace('+', '');
-        axios.post(
-          'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
-          {
-            chat: { channelId: process.env.BOTMAKER_CHANNEL_ID, contactId: contactIdClean },
-            intentIdOrName: 'comprobante_confirmado',
-            variables: {
-              '1': cliente.customer_name || 'Cliente',
-              '2': String(comprobante.monto),
-              '3': comprobante.order_number
-            }
-          },
-          { headers: { 'access-token': process.env.BOTMAKER_ACCESS_TOKEN, 'Content-Type': 'application/json' } }
-        ).then(() => console.log('📨 WhatsApp comprobante_confirmado enviado'))
-         .catch(err => console.error('⚠️ Error WhatsApp comprobante_confirmado:', err.message));
-      }
-    }
-
     console.log(`✅ [${requestId}] Comprobante ${id} confirmado exitosamente`);
     if (nuevoEstadoPedido !== estadoPedidoActual) {
       console.log(`📦 Estado pedido: ${estadoPedidoActual} → ${nuevoEstadoPedido}`);
