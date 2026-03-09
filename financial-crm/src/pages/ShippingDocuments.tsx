@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { RefreshCw, Upload, FileText, Check, X, AlertCircle, Loader2, Eye, ChevronLeft, ChevronRight, Search, Maximize2, ExternalLink, Trash2, Package, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { RefreshCw, Upload, FileText, Check, X, AlertCircle, Loader2, Eye, ChevronLeft, ChevronRight, Search, Maximize2, ExternalLink, Trash2, Package, ZoomIn, ZoomOut, RotateCcw, MapPin, User, Phone, Mail, ShoppingBag, DollarSign, Truck } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
 import {
@@ -9,10 +8,12 @@ import {
   uploadRemitos,
   confirmRemito,
   deleteRemito,
+  fetchOrderPrintData,
   Remito,
   RemitosStats,
   RemitoStatus,
-  PaginationInfo
+  PaginationInfo,
+  ApiOrderPrintData
 } from '../services/api';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -156,6 +157,263 @@ function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClos
   );
 }
 
+// Order preview drawer (side panel)
+function OrderDrawer({ orderNumber, onClose }: { orderNumber: string; onClose: () => void }) {
+  const [orderData, setOrderData] = useState<ApiOrderPrintData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch order data
+  useEffect(() => {
+    async function loadOrder() {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await fetchOrderPrintData(orderNumber);
+        setOrderData(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Error al cargar pedido');
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadOrder();
+  }, [orderNumber]);
+
+  // Handle ESC key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  // Format address from JSONB
+  const formatAddress = (addr: Record<string, string> | null) => {
+    if (!addr) return null;
+    const parts = [
+      addr.address,
+      addr.locality,
+      addr.city,
+      addr.province,
+      addr.zipcode
+    ].filter(Boolean);
+    return parts.join(', ');
+  };
+
+  // Format currency
+  const formatMoney = (amount: number) => {
+    return new Intl.NumberFormat('es-AR', {
+      style: 'currency',
+      currency: 'ARS',
+      minimumFractionDigits: 0
+    }).format(amount);
+  };
+
+  return (
+    <>
+      {/* Overlay */}
+      <div
+        className="fixed inset-0 bg-black/40 z-50 transition-opacity"
+        onClick={onClose}
+      />
+
+      {/* Drawer */}
+      <div className="fixed right-0 top-0 h-full w-full sm:w-[420px] md:w-[480px] lg:w-[520px] bg-white shadow-2xl z-50 flex flex-col animate-slideIn">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b bg-gray-50">
+          <div className="flex items-center gap-2">
+            <Package size={20} className="text-gray-600" />
+            <h2 className="text-lg font-semibold">Pedido #{orderNumber}</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-auto p-4">
+          {loading ? (
+            <div className="flex items-center justify-center h-48">
+              <Loader2 size={32} className="animate-spin text-gray-400" />
+            </div>
+          ) : error ? (
+            <div className="p-4 bg-red-50 text-red-700 rounded-lg">
+              <AlertCircle size={20} className="inline mr-2" />
+              {error}
+            </div>
+          ) : orderData ? (
+            <div className="space-y-5">
+              {/* Customer info */}
+              <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                <h3 className="font-medium text-gray-700 flex items-center gap-2">
+                  <User size={16} />
+                  Cliente
+                </h3>
+                <p className="font-semibold text-lg">{orderData.customer.name}</p>
+                {orderData.customer.phone && (
+                  <p className="text-sm text-gray-600 flex items-center gap-2">
+                    <Phone size={14} />
+                    {orderData.customer.phone}
+                  </p>
+                )}
+                {orderData.customer.email && (
+                  <p className="text-sm text-gray-600 flex items-center gap-2">
+                    <Mail size={14} />
+                    {orderData.customer.email}
+                  </p>
+                )}
+              </div>
+
+              {/* Shipping address */}
+              {orderData.shipping_address && (
+                <div className="bg-blue-50 rounded-lg p-4 space-y-2">
+                  <h3 className="font-medium text-blue-700 flex items-center gap-2">
+                    <MapPin size={16} />
+                    Dirección de envío
+                  </h3>
+                  <p className="text-blue-900">
+                    {formatAddress(orderData.shipping_address as Record<string, string>)}
+                  </p>
+                </div>
+              )}
+
+              {/* Shipping type */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="font-medium text-gray-700 flex items-center gap-2">
+                  <Truck size={16} />
+                  Envío
+                </h3>
+                <p className="mt-1">{orderData.shipping.type}</p>
+                {orderData.shipping.tracking_number && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    Tracking: {orderData.shipping.tracking_number}
+                  </p>
+                )}
+              </div>
+
+              {/* Order status */}
+              <div className="flex gap-3">
+                <div className="flex-1 bg-amber-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-amber-600 mb-1">Estado Pago</p>
+                  <p className="font-medium text-amber-800">
+                    {orderData.internal?.estado_pago || orderData.payment_status || '-'}
+                  </p>
+                </div>
+                <div className="flex-1 bg-purple-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-purple-600 mb-1">Estado Pedido</p>
+                  <p className="font-medium text-purple-800">
+                    {orderData.internal?.estado_pedido || orderData.shipping_status || '-'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Totals */}
+              <div className="bg-emerald-50 rounded-lg p-4">
+                <h3 className="font-medium text-emerald-700 flex items-center gap-2 mb-3">
+                  <DollarSign size={16} />
+                  Total
+                </h3>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Subtotal</span>
+                    <span>{formatMoney(orderData.totals.subtotal)}</span>
+                  </div>
+                  {orderData.totals.discount > 0 && (
+                    <div className="flex justify-between text-red-600">
+                      <span>Descuento</span>
+                      <span>-{formatMoney(orderData.totals.discount)}</span>
+                    </div>
+                  )}
+                  {orderData.totals.shipping > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Envío</span>
+                      <span>{formatMoney(orderData.totals.shipping)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-lg pt-2 border-t border-emerald-200">
+                    <span>Total</span>
+                    <span className="text-emerald-700">{formatMoney(orderData.totals.total)}</span>
+                  </div>
+                  {orderData.internal?.total_pagado !== null && orderData.internal?.total_pagado !== undefined && (
+                    <div className="flex justify-between text-sm pt-1">
+                      <span className="text-gray-600">Pagado</span>
+                      <span className="text-emerald-600">{formatMoney(orderData.internal.total_pagado)}</span>
+                    </div>
+                  )}
+                  {orderData.internal?.saldo !== null && orderData.internal?.saldo !== undefined && orderData.internal.saldo > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Saldo</span>
+                      <span className="text-amber-600">{formatMoney(orderData.internal.saldo)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Products */}
+              {orderData.products.length > 0 && (
+                <div>
+                  <h3 className="font-medium text-gray-700 flex items-center gap-2 mb-3">
+                    <ShoppingBag size={16} />
+                    Productos ({orderData.products.length})
+                  </h3>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {orderData.products.map((product, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-start justify-between p-3 bg-gray-50 rounded-lg text-sm"
+                      >
+                        <div className="flex-1">
+                          <p className="font-medium">{product.name}</p>
+                          {product.variant && (
+                            <p className="text-gray-500 text-xs">{product.variant}</p>
+                          )}
+                          <p className="text-gray-500 text-xs">
+                            {product.quantity} x {formatMoney(product.price)}
+                          </p>
+                        </div>
+                        <p className="font-medium">{formatMoney(product.total)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Notes */}
+              {(orderData.note || orderData.owner_note) && (
+                <div className="bg-yellow-50 rounded-lg p-4 space-y-2">
+                  <h3 className="font-medium text-yellow-700">Notas</h3>
+                  {orderData.note && (
+                    <p className="text-sm text-yellow-800">
+                      <strong>Cliente:</strong> {orderData.note}
+                    </p>
+                  )}
+                  {orderData.owner_note && (
+                    <p className="text-sm text-yellow-800">
+                      <strong>Interna:</strong> {orderData.owner_note}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t bg-gray-50">
+          <Button variant="secondary" onClick={onClose} className="w-full">
+            Cerrar
+          </Button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // Status configuration (solo estados relevantes para UI)
 const statusConfig: Record<RemitoStatus, { label: string; color: string; icon: React.ReactNode }> = {
   pending: { label: 'Pendiente', color: 'bg-gray-100 text-gray-700', icon: <Loader2 size={14} className="animate-spin" /> },
@@ -242,10 +500,11 @@ interface RemitoCardProps {
   onConfirm: (id: number, orderNumber?: string) => void;
   onDelete: (id: number) => void;
   onOpen: (remito: Remito) => void;
+  onPreviewOrder: (orderNumber: string) => void;
   isLoading: boolean;
 }
 
-function RemitoCard({ remito, onConfirm, onDelete, onOpen, isLoading }: RemitoCardProps) {
+function RemitoCard({ remito, onConfirm, onDelete, onOpen, onPreviewOrder, isLoading }: RemitoCardProps) {
   const [showOCR, setShowOCR] = useState(false);
   const [customOrder, setCustomOrder] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
@@ -305,9 +564,12 @@ function RemitoCard({ remito, onConfirm, onDelete, onOpen, isLoading }: RemitoCa
         {/* 2. Match result - confirmed order */}
         {remito.status === 'confirmed' && remito.confirmed_order_number && (
           <div className="p-3 bg-emerald-100 rounded-lg border border-emerald-200">
-            <span className="text-base font-bold text-emerald-800">
+            <button
+              onClick={() => onPreviewOrder(remito.confirmed_order_number!)}
+              className="text-base font-bold text-emerald-800 hover:text-emerald-900 hover:underline"
+            >
               Pedido #{remito.confirmed_order_number}
-            </span>
+            </button>
             {remito.order_customer_name && (
               <p className="text-sm text-emerald-700 mt-1">{remito.order_customer_name}</p>
             )}
@@ -322,24 +584,41 @@ function RemitoCard({ remito, onConfirm, onDelete, onOpen, isLoading }: RemitoCa
             </p>
             <div className="space-y-1.5 max-h-36 overflow-y-auto">
               {remito.match_details.candidates.map((candidate) => (
-                <button
+                <div
                   key={candidate.orderNumber}
-                  onClick={() => setCustomOrder(candidate.orderNumber)}
                   className={clsx(
                     'w-full p-2 rounded text-left transition-colors border text-sm',
                     customOrder === candidate.orderNumber
                       ? 'bg-emerald-100 border-emerald-400'
-                      : 'bg-white border-gray-200 hover:bg-gray-50'
+                      : 'bg-white border-gray-200'
                   )}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-medium">#{candidate.orderNumber}</span>
-                    <span className="text-xs text-gray-500">
-                      {format(new Date(candidate.createdAt), "dd/MM", { locale: es })}
-                    </span>
+                    <button
+                      onClick={() => onPreviewOrder(candidate.orderNumber)}
+                      className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      #{candidate.orderNumber}
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">
+                        {format(new Date(candidate.createdAt), "dd/MM", { locale: es })}
+                      </span>
+                      <button
+                        onClick={() => setCustomOrder(candidate.orderNumber)}
+                        className={clsx(
+                          'text-xs px-2 py-0.5 rounded',
+                          customOrder === candidate.orderNumber
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                        )}
+                      >
+                        {customOrder === candidate.orderNumber ? 'Seleccionado' : 'Seleccionar'}
+                      </button>
+                    </div>
                   </div>
                   <p className="text-xs text-gray-600 truncate">{candidate.customerName}</p>
-                </button>
+                </div>
               ))}
             </div>
           </div>
@@ -349,9 +628,12 @@ function RemitoCard({ remito, onConfirm, onDelete, onOpen, isLoading }: RemitoCa
         {remito.status !== 'confirmed' && remito.suggested_order_number && (!remito.match_details?.candidates || remito.match_details.candidates.length <= 1) && (
           <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
             <div className="flex items-center justify-between">
-              <span className="text-base font-bold text-emerald-700">
+              <button
+                onClick={() => onPreviewOrder(remito.suggested_order_number!)}
+                className="text-base font-bold text-emerald-700 hover:text-emerald-900 hover:underline"
+              >
                 #{remito.suggested_order_number}
-              </span>
+              </button>
               <MatchScoreBadge score={remito.match_score} />
             </div>
             {remito.order_customer_name && (
@@ -479,14 +761,14 @@ function RemitoModal({
   onClose,
   onConfirm,
   onDelete,
-  onNavigateToOrder,
+  onPreviewOrder,
   isLoading
 }: {
   remito: Remito;
   onClose: () => void;
   onConfirm: (id: number, orderNumber?: string) => void;
   onDelete: (id: number) => void;
-  onNavigateToOrder: (orderNumber: string) => void;
+  onPreviewOrder: (orderNumber: string) => void;
   isLoading: boolean;
 }) {
   const [customOrder, setCustomOrder] = useState('');
@@ -571,19 +853,22 @@ function RemitoModal({
                 <div className="p-3 bg-emerald-100 rounded-lg border border-emerald-200">
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="font-semibold text-emerald-800">
-                        Pedido asignado: #{remito.confirmed_order_number}
-                      </span>
+                      <button
+                        onClick={() => onPreviewOrder(remito.confirmed_order_number!)}
+                        className="font-semibold text-emerald-800 hover:text-emerald-900 hover:underline"
+                      >
+                        Pedido #{remito.confirmed_order_number}
+                      </button>
                       {remito.order_customer_name && (
                         <span className="text-emerald-700"> — {remito.order_customer_name}</span>
                       )}
                     </div>
                     <button
-                      onClick={() => onNavigateToOrder(remito.confirmed_order_number!)}
+                      onClick={() => onPreviewOrder(remito.confirmed_order_number!)}
                       className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors"
                     >
-                      <Package size={14} />
-                      Ver pedido
+                      <Eye size={14} />
+                      Ver detalle
                     </button>
                   </div>
                 </div>
@@ -611,27 +896,44 @@ function RemitoModal({
                   <p className="font-medium text-amber-800">
                     {remito.match_details.candidates.length} pedidos encontrados para este cliente
                   </p>
-                  <p className="text-xs text-amber-600">Selecciona el pedido correcto (más recientes primero):</p>
+                  <p className="text-xs text-amber-600">Click en # para ver detalle, o selecciona el correcto:</p>
                   <div className="space-y-2 max-h-48 overflow-y-auto">
                     {remito.match_details.candidates.map((candidate) => (
-                      <button
+                      <div
                         key={candidate.orderNumber}
-                        onClick={() => setCustomOrder(candidate.orderNumber)}
                         className={clsx(
                           'w-full p-2 rounded-lg text-left transition-colors border',
                           customOrder === candidate.orderNumber
                             ? 'bg-emerald-100 border-emerald-400'
-                            : 'bg-white border-gray-200 hover:bg-gray-50'
+                            : 'bg-white border-gray-200'
                         )}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="font-medium text-gray-900">#{candidate.orderNumber}</span>
-                          <span className="text-xs text-gray-500">
-                            {format(new Date(candidate.createdAt), "dd/MM", { locale: es })}
-                          </span>
+                          <button
+                            onClick={() => onPreviewOrder(candidate.orderNumber)}
+                            className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                          >
+                            #{candidate.orderNumber}
+                          </button>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500">
+                              {format(new Date(candidate.createdAt), "dd/MM", { locale: es })}
+                            </span>
+                            <button
+                              onClick={() => setCustomOrder(candidate.orderNumber)}
+                              className={clsx(
+                                'text-xs px-2 py-0.5 rounded',
+                                customOrder === candidate.orderNumber
+                                  ? 'bg-emerald-600 text-white'
+                                  : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                              )}
+                            >
+                              {customOrder === candidate.orderNumber ? 'Seleccionado' : 'Seleccionar'}
+                            </button>
+                          </div>
                         </div>
                         <p className="text-sm text-gray-600">{candidate.customerName}</p>
-                      </button>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -641,9 +943,15 @@ function RemitoModal({
               {remito.status === 'ready' && remito.suggested_order_number && (!remito.match_details?.candidates || remito.match_details.candidates.length <= 1) && (
                 <div className="p-3 bg-emerald-50 rounded-lg">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="font-medium text-emerald-700">
-                      Pedido sugerido: #{remito.suggested_order_number}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-emerald-700">Pedido sugerido:</span>
+                      <button
+                        onClick={() => onPreviewOrder(remito.suggested_order_number!)}
+                        className="font-medium text-emerald-700 hover:text-emerald-900 hover:underline"
+                      >
+                        #{remito.suggested_order_number}
+                      </button>
+                    </div>
                     <MatchScoreBadge score={remito.match_score} />
                   </div>
                   {remito.order_customer_name && (
@@ -742,7 +1050,6 @@ function RemitoModal({
 }
 
 export function ShippingDocuments() {
-  const navigate = useNavigate();
   const [remitos, setRemitos] = useState<Remito[]>([]);
   const [stats, setStats] = useState<RemitosStats | null>(null);
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
@@ -753,10 +1060,11 @@ export function ShippingDocuments() {
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedRemito, setSelectedRemito] = useState<Remito | null>(null);
+  const [previewOrderNumber, setPreviewOrderNumber] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleNavigateToOrder = (orderNumber: string) => {
-    navigate(`/orders/${orderNumber}`);
+  const handlePreviewOrder = (orderNumber: string) => {
+    setPreviewOrderNumber(orderNumber);
   };
 
   const loadData = useCallback(async () => {
@@ -946,6 +1254,7 @@ export function ShippingDocuments() {
                 onConfirm={handleConfirm}
                 onDelete={handleDelete}
                 onOpen={setSelectedRemito}
+                onPreviewOrder={handlePreviewOrder}
                 isLoading={actionLoading === remito.id}
               />
             ))}
@@ -985,8 +1294,16 @@ export function ShippingDocuments() {
           onClose={() => setSelectedRemito(null)}
           onConfirm={handleConfirm}
           onDelete={handleDelete}
-          onNavigateToOrder={handleNavigateToOrder}
+          onPreviewOrder={handlePreviewOrder}
           isLoading={actionLoading === selectedRemito.id}
+        />
+      )}
+
+      {/* Order preview drawer */}
+      {previewOrderNumber && (
+        <OrderDrawer
+          orderNumber={previewOrderNumber}
+          onClose={() => setPreviewOrderNumber(null)}
         />
       )}
     </div>
