@@ -1127,7 +1127,9 @@ async function findBestMatch(detectedName, detectedAddress, detectedCity) {
       sr.codigo_postal,
       sr.empresa_envio,
       sr.destino_tipo,
-      ov.estado_pedido
+      sr.created_at as shipping_created_at,
+      ov.estado_pedido,
+      ov.customer_name
     FROM shipping_requests sr
     INNER JOIN orders_validated ov ON sr.order_number = ov.order_number
     WHERE sr.created_at > NOW() - INTERVAL '60 days'
@@ -1142,11 +1144,11 @@ async function findBestMatch(detectedName, detectedAddress, detectedCity) {
 
   if (shippingData.length === 0) {
     console.log(`   ⚠️ No hay registros en shipping_requests para comparar`);
-    return null;
+    return { bestMatch: null, candidates: [] };
   }
 
-  let bestMatch = null;
-  let bestScore = 0;
+  // Acumular TODOS los candidatos que superen el umbral
+  const allCandidates = [];
 
   for (const shipping of shippingData) {
     const scores = {};
@@ -1186,28 +1188,41 @@ async function findBestMatch(detectedName, detectedAddress, detectedCity) {
     // Calcular score final
     const finalScore = totalWeight > 0 ? weightedScore / totalWeight : 0;
 
-    if (finalScore > bestScore && finalScore >= 0.5) { // Umbral mínimo 50%
-      bestScore = finalScore;
-      bestMatch = {
+    // Agregar a candidatos si supera umbral mínimo 50%
+    if (finalScore >= 0.5) {
+      allCandidates.push({
         orderNumber: shipping.order_number,
         score: finalScore,
+        customerName: shipping.customer_name || shipping.nombre_apellido,
+        createdAt: shipping.shipping_created_at,
         details: {
           ...scores,
-          source: 'shipping_requests', // Indicar fuente de datos
+          source: 'shipping_requests',
           empresa_envio: shipping.empresa_envio,
           destino_tipo: shipping.destino_tipo
         }
-      };
+      });
     }
   }
 
+  // Ordenar por score descendente, luego por fecha más reciente
+  allCandidates.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
+
+  const bestMatch = allCandidates.length > 0 ? allCandidates[0] : null;
+
   if (bestMatch) {
-    console.log(`   🎯 Match encontrado via shipping_requests: #${bestMatch.orderNumber}`);
+    console.log(`   🎯 Match encontrado via shipping_requests: #${bestMatch.orderNumber} (score: ${(bestMatch.score * 100).toFixed(1)}%)`);
+    if (allCandidates.length > 1) {
+      console.log(`   ⚠️ Hay ${allCandidates.length} candidatos posibles (mismo cliente con múltiples pedidos)`);
+    }
   } else {
     console.log(`   ❌ Sin match en shipping_requests (score < 50%)`);
   }
 
-  return bestMatch;
+  return { bestMatch, candidates: allCandidates };
 }
 
 /**
@@ -1259,8 +1274,11 @@ async function processDocument(documentId, ocrText, textAnnotations = null) {
       }
 
       // Buscar match si la confianza es suficiente
+      let candidates = [];
       if (extraction.confidence >= 0.2 && (extraction.name || extraction.address)) {
-        match = await findBestMatch(extraction.name, extraction.address, extraction.city);
+        const matchResult = await findBestMatch(extraction.name, extraction.address, extraction.city);
+        match = matchResult.bestMatch;
+        candidates = matchResult.candidates;
       } else {
         console.log(`   ⚠️ Confianza muy baja (${(extraction.confidence * 100).toFixed(0)}%), no se busca match`);
       }
@@ -1270,14 +1288,22 @@ async function processDocument(documentId, ocrText, textAnnotations = null) {
         remito_type: 'via_cargo',
         extractionConfidence: extraction.confidence,
         extractionLog: extraction.log,
-        matchSource: 'shipping_requests'
+        matchSource: 'shipping_requests',
+        // Incluir TODOS los candidatos para que el frontend pueda mostrarlos
+        candidates: candidates.map(c => ({
+          orderNumber: c.orderNumber,
+          customerName: c.customerName,
+          score: c.score,
+          createdAt: c.createdAt
+        }))
       } : {
         remito_type: 'via_cargo',
         extractionConfidence: extraction.confidence,
         extractionLog: extraction.log,
         noMatchReason: extraction.confidence < 0.2
           ? 'extraction_confidence_too_low'
-          : 'no_shipping_request_match'
+          : 'no_shipping_request_match',
+        candidates: []
       };
 
     } else {
