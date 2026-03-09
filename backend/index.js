@@ -1806,6 +1806,43 @@ app.get('/orders/:orderNumber/print', authenticate, requirePermission('orders.pr
       total: Number(p.total)
     }));
 
+    // 2.5️⃣ Buscar datos de envío del formulario /envio (shipping_requests)
+    // Tiene prioridad sobre orders_validated.shipping_address
+    const shippingReqRes = await pool.query(`
+      SELECT * FROM shipping_requests
+      WHERE order_number = $1
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [orderNumber]);
+
+    const shippingRequest = shippingReqRes.rows[0] || null;
+
+    // Determinar shipping_address: prioridad a shipping_requests, fallback a orders_validated
+    let shippingAddress = null;
+    if (shippingRequest) {
+      // Mapear campos de shipping_requests a la estructura esperada
+      const empresaEnvio = shippingRequest.empresa_envio === 'OTRO'
+        ? shippingRequest.empresa_envio_otro
+        : 'Via Cargo';
+      shippingAddress = {
+        name: shippingRequest.nombre_apellido,
+        address: shippingRequest.direccion_entrega,
+        number: '',  // No tenemos este campo separado en shipping_requests
+        floor: shippingRequest.destino_tipo === 'SUCURSAL' ? `Sucursal ${empresaEnvio}` : null,
+        locality: shippingRequest.localidad,
+        city: shippingRequest.localidad,  // Usamos localidad como city
+        province: shippingRequest.provincia,
+        zipcode: shippingRequest.codigo_postal,
+        phone: shippingRequest.telefono,
+        between_streets: null,
+        reference: shippingRequest.comentarios || `Envío: ${empresaEnvio}`,
+      };
+      console.log(`   📦 Usando datos de /envio para pedido #${orderNumber}`);
+    } else if (order.shipping_address) {
+      // Fallback: usar datos de Tiendanube
+      shippingAddress = order.shipping_address;
+    }
+
     // 3️⃣ Estructurar respuesta
     const printData = {
       // Info del pedido
@@ -1822,8 +1859,8 @@ app.get('/orders/:orderNumber/print', authenticate, requirePermission('orders.pr
         identification: null,
       },
 
-      // Dirección de envío (viene como JSONB)
-      shipping_address: order.shipping_address || null,
+      // Dirección de envío (prioridad: shipping_requests > orders_validated)
+      shipping_address: shippingAddress,
 
       // Envío - inferir si es retiro o envío
       shipping: (() => {
