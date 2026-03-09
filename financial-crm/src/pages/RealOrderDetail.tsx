@@ -252,12 +252,15 @@ export function RealOrderDetail() {
 
   // Lógica de impresión:
   // - Pedidos normales: solo necesitan comprobante válido
-  // - Pedidos con "Transporte a elección" o "Expreso a elección": también necesitan datos de envío
+  // - Pedidos con "Expreso a elección" o "Via Cargo": también necesitan datos de envío
   const hasValidPayment = ['a_confirmar', 'parcial', 'total'].includes(paymentStatus);
   const shippingTypeLower = (order.shipping_type || '').toLowerCase();
-  // Detectar por texto "expreso" + "elec" (ej: "Expreso a eleccion...")
-  const isTransporteEleccion = shippingTypeLower.includes('expreso') && shippingTypeLower.includes('elec');
-  const canPrint = hasValidPayment && (!isTransporteEleccion || shippingRequest !== null);
+  // Detectar tipos de envío que requieren formulario /envio (igual que backend)
+  const requiresShippingData =
+    (shippingTypeLower.includes('expreso') && shippingTypeLower.includes('elec')) ||
+    shippingTypeLower.includes('via cargo') ||
+    shippingTypeLower.includes('viacargo');
+  const canPrint = hasValidPayment && (!requiresShippingData || shippingRequest !== null);
 
   const canShip = paymentStatus === 'total';
 
@@ -629,7 +632,7 @@ export function RealOrderDetail() {
                         <p className="text-sm text-amber-700">
                           {!hasValidPayment
                             ? 'Esperando comprobante de pago para poder imprimir.'
-                            : 'Esperando datos de envío para poder imprimir (Transporte a elección).'}
+                            : 'Esperando datos de envío para poder imprimir (Expreso a elección / Via Cargo).'}
                         </p>
                       </div>
                     )}
@@ -653,7 +656,7 @@ export function RealOrderDetail() {
                     ) : (
                       <div className="p-4 bg-amber-50 rounded-xl text-center">
                         <p className="text-sm text-amber-700">
-                          Esperando datos de envío para poder imprimir (Transporte a elección).
+                          Esperando datos de envío para poder imprimir (Expreso a elección / Via Cargo).
                         </p>
                       </div>
                     )}
