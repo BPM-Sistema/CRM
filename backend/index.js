@@ -2621,6 +2621,27 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
       }
     }
 
+    // WhatsApp automático cuando se marca como "cancelado"
+    if (estado_pedido === 'cancelado' && pedido.customer_phone) {
+      const TESTING_PHONE = '+5491123945965';
+      if (pedido.customer_phone === TESTING_PHONE) {
+        const contactIdClean = pedido.customer_phone.replace('+', '');
+        axios.post(
+          'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
+          {
+            chat: { channelId: process.env.BOTMAKER_CHANNEL_ID, contactId: contactIdClean },
+            intentIdOrName: 'pedido_cancelado',
+            variables: {
+              '1': pedido.customer_name || 'Cliente',
+              '2': orderNumber
+            }
+          },
+          { headers: { 'access-token': process.env.BOTMAKER_ACCESS_TOKEN, 'Content-Type': 'application/json' } }
+        ).then(() => console.log(`📨 WhatsApp pedido_cancelado enviado (Pedido #${orderNumber})`))
+         .catch(err => console.error('⚠️ Error WhatsApp pedido_cancelado:', err.message));
+      }
+    }
+
     // Obtener pedido actualizado
     const updatedRes = await pool.query(
       `SELECT order_number, estado_pedido, estado_pago, printed_at, packed_at, shipped_at
@@ -2734,6 +2755,32 @@ app.post('/webhook/tiendanube', async (req, res) => {
           accion: 'pedido_cancelado',
           origen: 'webhook_tiendanube'
         });
+
+        // WhatsApp al cliente - pedido_cancelado
+        const clienteCancelRes = await pool.query(
+          `SELECT customer_name, customer_phone FROM orders_validated WHERE order_number = $1`,
+          [orderNumber]
+        );
+        const clienteCancel = clienteCancelRes.rows[0];
+        if (clienteCancel?.customer_phone) {
+          const TESTING_PHONE = '+5491123945965';
+          if (clienteCancel.customer_phone === TESTING_PHONE) {
+            const contactIdClean = clienteCancel.customer_phone.replace('+', '');
+            axios.post(
+              'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
+              {
+                chat: { channelId: process.env.BOTMAKER_CHANNEL_ID, contactId: contactIdClean },
+                intentIdOrName: 'pedido_cancelado',
+                variables: {
+                  '1': clienteCancel.customer_name || 'Cliente',
+                  '2': orderNumber
+                }
+              },
+              { headers: { 'access-token': process.env.BOTMAKER_ACCESS_TOKEN, 'Content-Type': 'application/json' } }
+            ).then(() => console.log(`📨 WhatsApp pedido_cancelado enviado (Pedido #${orderNumber})`))
+             .catch(err => console.error('⚠️ Error WhatsApp pedido_cancelado:', err.message));
+          }
+        }
 
         console.log(`✅ Pedido #${orderNumber} marcado como cancelado en DB`);
       }
