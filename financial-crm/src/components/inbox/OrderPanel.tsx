@@ -6,7 +6,6 @@ import {
   fetchLinkedOrders,
   linkOrderToConversation,
   unlinkOrderFromConversation,
-  WaspyConversation,
   LinkedOrder,
 } from '../../services/waspy';
 import { mapEstadoPago, mapEstadoPedido } from '../../services/api';
@@ -15,8 +14,14 @@ import { Input } from '../ui/Input';
 import { Modal } from '../ui/Modal';
 import { PaymentStatusBadge, OrderStatusBadge } from '../ui/Badge';
 
+interface OrderPanelConversation {
+  id: string;
+  contactPhone: string;
+  contactName?: string;
+}
+
 interface OrderPanelProps {
-  conversation: WaspyConversation;
+  conversation: OrderPanelConversation;
   canAssign: boolean;
 }
 

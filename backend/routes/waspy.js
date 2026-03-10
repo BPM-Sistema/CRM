@@ -1,12 +1,18 @@
 /**
- * Rutas proxy para Waspy (WhatsApp integration)
- * Proxies CRM frontend requests to Waspy via waspyClient service
+ * Rutas Waspy — CRM backend
+ *
+ * Con el inbox embebido de Waspy, el CRM ya no proxea endpoints de chat
+ * (conversaciones, mensajes, templates). Solo conserva:
+ *   - Embed token (pedido a Waspy via API key)
+ *   - Config management (guardar/verificar API key)
+ *   - Channel status / connect (para WhatsAppSettings)
+ *   - Order management (búsqueda por teléfono, vinculación conversación↔pedido)
  */
 
 const express = require('express');
 const pool = require('../db');
 const { authenticate, requirePermission, requireAnyPermission } = require('../middleware/auth');
-const { generateWaspyToken, waspyFetch } = require('../services/waspyClient');
+const { getWaspyConfig, waspyFetch, getEmbedToken, verifyConnection, mapRole } = require('../services/waspyClient');
 const { normalizePhone } = require('../utils/phoneNormalize');
 
 const router = express.Router();
@@ -15,37 +21,89 @@ const router = express.Router();
 router.use(authenticate);
 
 // ---------------------------------------------------------------------------
-// 1. GET /waspy/token - Generate Waspy JWT for current user
+// 1. GET /waspy/token - Get embed token from Waspy
 // ---------------------------------------------------------------------------
 router.get('/token', requireAnyPermission(['inbox.view', 'inbox.send']), async (req, res) => {
   try {
-    const token = generateWaspyToken(req.user);
+    const waspyRole = mapRole(req.user.role_name);
+    const { token } = await getEmbedToken(waspyRole);
     res.json({ ok: true, token });
   } catch (error) {
-    console.error('Waspy token error:', error.message);
-    res.status(500).json({ error: 'Error al generar token de Waspy' });
+    console.error('Waspy embed token error:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
 // ---------------------------------------------------------------------------
-// 2. GET /waspy/me - Get Waspy user profile
+// 2. GET /waspy/config - Get current Waspy config (without full API key)
 // ---------------------------------------------------------------------------
-router.get('/me', requirePermission('inbox.view'), async (req, res) => {
+router.get('/config', requireAnyPermission(['whatsapp.connect', 'inbox.view']), async (req, res) => {
   try {
-    const result = await waspyFetch(req.user, 'GET', '/api/v1/integration/me');
-    res.status(result.status).json(result.data);
-  } catch (error) {
-    console.error('Waspy proxy error:', error.message);
-    res.status(502).json({ error: 'Error al comunicarse con Waspy' });
+    const config = await getWaspyConfig();
+    res.json({
+      ok: true,
+      config: {
+        tenantId: config.tenant_id,
+        tenantName: config.tenant_name,
+        waspyUrl: config.waspy_url,
+        embedUrl: config.embed_url,
+        apiKeyPrefix: config.api_key.substring(0, 12) + '...',
+        verifiedAt: config.verified_at,
+      },
+    });
+  } catch {
+    // Not configured yet — that's fine
+    res.json({ ok: true, config: null });
   }
 });
 
 // ---------------------------------------------------------------------------
-// 3. GET /waspy/channel/status - Get WhatsApp channel status
+// 3. POST /waspy/config - Save and verify API key
+// ---------------------------------------------------------------------------
+router.post('/config', requirePermission('whatsapp.connect'), async (req, res) => {
+  const { apiKey, waspyUrl = 'http://localhost:8080', embedUrl = 'http://localhost:3000/embed/inbox' } = req.body;
+
+  if (!apiKey || !apiKey.startsWith('wspy_')) {
+    return res.status(400).json({ ok: false, error: 'API Key inválido. Debe empezar con wspy_' });
+  }
+
+  try {
+    const info = await verifyConnection(apiKey, waspyUrl);
+
+    await pool.query(
+      `INSERT INTO waspy_config (api_key, tenant_id, tenant_name, waspy_url, embed_url, verified_at)
+       VALUES ($1, $2, $3, $4, $5, now())
+       ON CONFLICT ((true)) DO UPDATE SET
+         api_key = $1, tenant_id = $2, tenant_name = $3,
+         waspy_url = $4, embed_url = $5,
+         verified_at = now(), updated_at = now()`,
+      [apiKey, info.tenant.id, info.tenant.name, waspyUrl, embedUrl]
+    );
+
+    res.json({
+      ok: true,
+      tenant: info.tenant,
+      phoneNumbers: info.phoneNumbers,
+    });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: `No se pudo verificar: ${err.message}` });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 4. DELETE /waspy/config - Disconnect Waspy
+// ---------------------------------------------------------------------------
+router.delete('/config', requirePermission('whatsapp.connect'), async (req, res) => {
+  await pool.query('DELETE FROM waspy_config');
+  res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// 5. GET /waspy/channel/status - Get WhatsApp channel status
 // ---------------------------------------------------------------------------
 router.get('/channel/status', requirePermission('inbox.view'), async (req, res) => {
   try {
-    const result = await waspyFetch(req.user, 'GET', '/api/v1/integration/channel/status');
+    const result = await waspyFetch('GET', '/api/v1/integration/channel/status');
     res.status(result.status).json(result.data);
   } catch (error) {
     console.error('Waspy proxy error:', error.message);
@@ -54,93 +112,11 @@ router.get('/channel/status', requirePermission('inbox.view'), async (req, res) 
 });
 
 // ---------------------------------------------------------------------------
-// 4. GET /waspy/conversations - List conversations
-// ---------------------------------------------------------------------------
-router.get('/conversations', requirePermission('inbox.view'), async (req, res) => {
-  try {
-    const query = new URLSearchParams(req.query).toString();
-    const path = '/api/v1/integration/inbox/conversations' + (query ? `?${query}` : '');
-    const result = await waspyFetch(req.user, 'GET', path);
-    res.status(result.status).json(result.data);
-  } catch (error) {
-    console.error('Waspy proxy error:', error.message);
-    res.status(502).json({ error: 'Error al comunicarse con Waspy' });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// 5. GET /waspy/conversations/:id/messages - Get messages for a conversation
-// ---------------------------------------------------------------------------
-router.get('/conversations/:id/messages', requirePermission('inbox.view'), async (req, res) => {
-  try {
-    const query = new URLSearchParams(req.query).toString();
-    const path = `/api/v1/integration/inbox/conversations/${req.params.id}/messages` + (query ? `?${query}` : '');
-    const result = await waspyFetch(req.user, 'GET', path);
-    res.status(result.status).json(result.data);
-  } catch (error) {
-    console.error('Waspy proxy error:', error.message);
-    res.status(502).json({ error: 'Error al comunicarse con Waspy' });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// 6. POST /waspy/messages - Send a message
-// ---------------------------------------------------------------------------
-router.post('/messages', requirePermission('inbox.send'), async (req, res) => {
-  try {
-    const result = await waspyFetch(req.user, 'POST', '/api/v1/integration/inbox/messages', req.body);
-    res.status(result.status).json(result.data);
-  } catch (error) {
-    console.error('Waspy proxy error:', error.message);
-    res.status(502).json({ error: 'Error al comunicarse con Waspy' });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// 7. GET /waspy/templates - List templates
-// ---------------------------------------------------------------------------
-router.get('/templates', requireAnyPermission(['templates.view', 'templates.send']), async (req, res) => {
-  try {
-    const result = await waspyFetch(req.user, 'GET', '/api/v1/integration/inbox/templates');
-    res.status(result.status).json(result.data);
-  } catch (error) {
-    console.error('Waspy proxy error:', error.message);
-    res.status(502).json({ error: 'Error al comunicarse con Waspy' });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// 8. POST /waspy/templates/send - Send a template
-// ---------------------------------------------------------------------------
-router.post('/templates/send', requirePermission('templates.send'), async (req, res) => {
-  try {
-    const result = await waspyFetch(req.user, 'POST', '/api/v1/integration/inbox/templates/send', req.body);
-    res.status(result.status).json(result.data);
-  } catch (error) {
-    console.error('Waspy proxy error:', error.message);
-    res.status(502).json({ error: 'Error al comunicarse con Waspy' });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// 9. GET /waspy/conversations/:id/context - Get conversation context
-// ---------------------------------------------------------------------------
-router.get('/conversations/:id/context', requirePermission('inbox.view'), async (req, res) => {
-  try {
-    const result = await waspyFetch(req.user, 'GET', `/api/v1/integration/inbox/conversations/${req.params.id}/context`);
-    res.status(result.status).json(result.data);
-  } catch (error) {
-    console.error('Waspy proxy error:', error.message);
-    res.status(502).json({ error: 'Error al comunicarse con Waspy' });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// 10. POST /waspy/channel/connect/start - Start WhatsApp connection
+// 6. POST /waspy/channel/connect/start - Start WhatsApp connection
 // ---------------------------------------------------------------------------
 router.post('/channel/connect/start', requirePermission('whatsapp.connect'), async (req, res) => {
   try {
-    const result = await waspyFetch(req.user, 'POST', '/api/v1/integration/channel/meta/connect/start', req.body);
+    const result = await waspyFetch('POST', '/api/v1/integration/channel/meta/connect/start', req.body);
     res.status(result.status).json(result.data);
   } catch (error) {
     console.error('Waspy proxy error:', error.message);
@@ -149,11 +125,11 @@ router.post('/channel/connect/start', requirePermission('whatsapp.connect'), asy
 });
 
 // ---------------------------------------------------------------------------
-// 11. GET /waspy/channel/connect/status - Check connection status
+// 7. GET /waspy/channel/connect/status - Check connection status
 // ---------------------------------------------------------------------------
 router.get('/channel/connect/status', requirePermission('whatsapp.connect'), async (req, res) => {
   try {
-    const result = await waspyFetch(req.user, 'GET', '/api/v1/integration/channel/meta/connect/status');
+    const result = await waspyFetch('GET', '/api/v1/integration/channel/meta/connect/status');
     res.status(result.status).json(result.data);
   } catch (error) {
     console.error('Waspy proxy error:', error.message);
@@ -162,7 +138,7 @@ router.get('/channel/connect/status', requirePermission('whatsapp.connect'), asy
 });
 
 // ---------------------------------------------------------------------------
-// 12. GET /waspy/orders/by-phone - Search orders by phone number
+// 8. GET /waspy/orders/by-phone - Search orders by phone number
 // ---------------------------------------------------------------------------
 router.get('/orders/by-phone', requirePermission('inbox.view'), async (req, res) => {
   try {
@@ -175,7 +151,6 @@ router.get('/orders/by-phone', requirePermission('inbox.view'), async (req, res)
     if (!normalized) {
       return res.status(400).json({ error: 'Teléfono inválido' });
     }
-    // Use last 8 digits for flexible matching on customer_phone
     const last8 = normalized.slice(-8);
 
     const { rows } = await pool.query(
@@ -196,7 +171,7 @@ router.get('/orders/by-phone', requirePermission('inbox.view'), async (req, res)
 });
 
 // ---------------------------------------------------------------------------
-// 13. GET /waspy/conversations/:id/orders - Get orders linked to a conversation
+// 9. GET /waspy/conversations/:id/orders - Get orders linked to a conversation
 // ---------------------------------------------------------------------------
 router.get('/conversations/:id/orders', requirePermission('inbox.view'), async (req, res) => {
   try {
@@ -219,7 +194,7 @@ router.get('/conversations/:id/orders', requirePermission('inbox.view'), async (
 });
 
 // ---------------------------------------------------------------------------
-// 14. POST /waspy/conversations/:id/orders - Link an order to a conversation
+// 10. POST /waspy/conversations/:id/orders - Link an order to a conversation
 // ---------------------------------------------------------------------------
 router.post('/conversations/:id/orders', requirePermission('inbox.assign'), async (req, res) => {
   try {
@@ -243,7 +218,7 @@ router.post('/conversations/:id/orders', requirePermission('inbox.assign'), asyn
 });
 
 // ---------------------------------------------------------------------------
-// 15. DELETE /waspy/conversations/:id/orders/:orderNumber - Unlink an order
+// 11. DELETE /waspy/conversations/:id/orders/:orderNumber - Unlink an order
 // ---------------------------------------------------------------------------
 router.delete('/conversations/:id/orders/:orderNumber', requirePermission('inbox.assign'), async (req, res) => {
   try {
