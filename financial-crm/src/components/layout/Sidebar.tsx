@@ -13,6 +13,8 @@ import {
   Landmark,
   RefreshCw,
   Truck,
+  MessageCircle,
+  Smartphone,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -71,6 +73,12 @@ const navItems = [
     label: 'Remitos',
     permissions: ['remitos.view', 'remitos.upload', 'remitos.confirm', 'remitos.reject']
   },
+  {
+    to: '/inbox',
+    icon: <MessageCircle size={20} />,
+    label: 'Inbox',
+    permissions: ['inbox.view', 'inbox.send']
+  },
 ];
 
 const adminItems = [
@@ -78,6 +86,7 @@ const adminItems = [
   { to: '/admin/financieras', icon: <Landmark size={20} />, label: 'Financieras', permissions: ['financieras.view'] },
   { to: '/admin/activity', icon: <Activity size={20} />, label: 'Actividad', permissions: ['activity.view'] },
   { to: '/admin/sync-queue', icon: <RefreshCw size={20} />, label: 'Sincronización', permissions: ['activity.view'] },
+  { to: '/admin/whatsapp', icon: <Smartphone size={20} />, label: 'WhatsApp', permissions: ['whatsapp.connect'] },
 ];
 
 export function Sidebar() {
