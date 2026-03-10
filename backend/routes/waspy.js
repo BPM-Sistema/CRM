@@ -61,7 +61,11 @@ router.get('/config', requireAnyPermission(['whatsapp.connect', 'inbox.view']), 
 // 3. POST /waspy/config - Save and verify API key
 // ---------------------------------------------------------------------------
 router.post('/config', requirePermission('whatsapp.connect'), async (req, res) => {
-  const { apiKey, waspyUrl = 'http://localhost:8080', embedUrl = 'http://localhost:3000/embed/inbox' } = req.body;
+  const {
+    apiKey,
+    waspyUrl = process.env.WASPY_DEFAULT_URL || 'https://waspy-api-261840423811.us-central1.run.app',
+    embedUrl = process.env.WASPY_DEFAULT_EMBED_URL || 'https://waspytech.com/embed/inbox',
+  } = req.body;
 
   if (!apiKey || !apiKey.startsWith('wspy_')) {
     return res.status(400).json({ ok: false, error: 'API Key inválido. Debe empezar con wspy_' });
