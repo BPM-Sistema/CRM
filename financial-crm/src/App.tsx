@@ -4,6 +4,8 @@ import { Dashboard, RealOrders, RealOrderDetail, RealReceipts, RealReceiptDetail
 import ActivityLog from './pages/ActivityLog';
 import SyncQueue from './pages/SyncQueue';
 import BatchPrint from './pages/BatchPrint';
+import { InboxPage } from './pages/InboxPage';
+import WhatsAppSettings from './pages/WhatsAppSettings';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginPage } from './pages/LoginPage';
 import { getDefaultRoute } from './utils/navigation';
@@ -40,6 +42,8 @@ function AppRoutes() {
             <Route path="/admin/activity" element={<ActivityLog />} />
             <Route path="/admin/sync-queue" element={<SyncQueue />} />
             <Route path="/admin/financieras" element={<Financieras />} />
+            <Route path="/inbox" element={<InboxPage />} />
+            <Route path="/admin/whatsapp" element={<WhatsAppSettings />} />
             {/* Ruta catch-all: redirige a la primera sección permitida */}
             <Route path="*" element={<DefaultRedirect />} />
           </Routes>

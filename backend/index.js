@@ -3861,12 +3861,14 @@ const usersRoutes = require('./routes/users');
 const rolesRoutes = require('./routes/roles');
 const financierasRoutes = require('./routes/financieras');
 const remitosRoutes = require('./routes/remitos');
+const waspyRoutes = require('./routes/waspy');
 
 app.use('/auth', authRoutes);
 app.use('/users', usersRoutes);
 app.use('/roles', rolesRoutes);
 app.use('/financieras', financierasRoutes);
 app.use('/remitos', remitosRoutes);
+app.use('/waspy', waspyRoutes);
 
 /* =====================================================
    SYNC QUEUE - Endpoints y Scheduler
