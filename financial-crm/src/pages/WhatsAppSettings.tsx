@@ -86,6 +86,7 @@ function WaspyConnectionCard({
   const [apiKey, setApiKey] = useState('');
   const [waspyUrl, setWaspyUrl] = useState('http://localhost:8080');
   const [embedUrl, setEmbedUrl] = useState('http://localhost:3000/embed/inbox');
+  const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -237,35 +238,39 @@ function WaspyConnectionCard({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className="text-xs text-neutral-400 hover:text-neutral-600"
-          >
-            {showAdvanced ? 'Ocultar opciones avanzadas' : 'Opciones avanzadas'}
-          </button>
+          {isDev && (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="text-xs text-neutral-400 hover:text-neutral-600"
+              >
+                {showAdvanced ? 'Ocultar opciones avanzadas' : 'Opciones avanzadas'}
+              </button>
 
-          {showAdvanced && (
-            <div className="space-y-3 pl-3 border-l-2 border-neutral-100">
-              <div>
-                <label className="block text-xs font-medium text-neutral-600 mb-1">URL API de Waspy</label>
-                <input
-                  type="text"
-                  value={waspyUrl}
-                  onChange={(e) => setWaspyUrl(e.target.value)}
-                  className="w-full px-3 py-1.5 border border-neutral-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-neutral-600 mb-1">URL Embed (iframe)</label>
-                <input
-                  type="text"
-                  value={embedUrl}
-                  onChange={(e) => setEmbedUrl(e.target.value)}
-                  className="w-full px-3 py-1.5 border border-neutral-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-            </div>
+              {showAdvanced && (
+                <div className="space-y-3 pl-3 border-l-2 border-neutral-100">
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-600 mb-1">URL API de Waspy</label>
+                    <input
+                      type="text"
+                      value={waspyUrl}
+                      onChange={(e) => setWaspyUrl(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-neutral-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-600 mb-1">URL Embed (iframe)</label>
+                    <input
+                      type="text"
+                      value={embedUrl}
+                      onChange={(e) => setEmbedUrl(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-neutral-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {error && (
