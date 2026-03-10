@@ -1,7 +1,7 @@
 import { useState, FormEvent, useRef, useEffect } from 'react';
 import { Check, AlertCircle, Loader2, Truck } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'https://api.petlovearg.com';
+const API_BASE = import.meta.env.VITE_API_URL || 'https://api.bpmadministrador.com';
 
 type EmpresaEnvio = 'VIA_CARGO' | 'OTRO' | '';
 type DestinoTipo = 'SUCURSAL' | 'DOMICILIO' | '';

@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/layout';
-import { Dashboard, RealOrders, RealOrderDetail, RealReceipts, RealReceiptDetail, AdminUsers, Financieras, ShippingForm, ShippingDocuments } from './pages';
+import { Dashboard, RealOrders, RealOrderDetail, RealReceipts, RealReceiptDetail, AdminUsers, Financieras, ShippingForm, ShippingDocuments, ComprobantesForm } from './pages';
 import ActivityLog from './pages/ActivityLog';
 import SyncQueue from './pages/SyncQueue';
 import BatchPrint from './pages/BatchPrint';
@@ -59,6 +59,7 @@ export default function App() {
       <Routes>
         {/* Rutas públicas - sin autenticación */}
         <Route path="/envio" element={<ShippingForm />} />
+        <Route path="/comprobantes" element={<ComprobantesForm />} />
 
         {/* Resto de la app - con autenticación */}
         <Route path="*" element={

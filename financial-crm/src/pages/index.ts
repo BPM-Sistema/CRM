@@ -7,4 +7,5 @@ export { AdminUsers } from './AdminUsers';
 export { Financieras } from './Financieras';
 export { ShippingForm } from './ShippingForm';
 export { ShippingDocuments } from './ShippingDocuments';
+export { ComprobantesForm } from './ComprobantesForm';
 export { InboxPage } from './InboxPage';
