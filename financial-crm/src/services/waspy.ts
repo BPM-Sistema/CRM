@@ -87,7 +87,17 @@ export async function fetchChannelStatus(): Promise<WaspyChannelStatus> {
   const response = await authFetch(`${API_BASE_URL}/waspy/channel/status`);
   if (!response.ok) throw new Error('Error al obtener estado del canal');
   const data = await response.json();
-  return data.data || data;
+  const raw = data.data || data;
+
+  // Map Waspy response { connected, phoneNumbers[] } to our interface
+  const firstPhone = raw.phoneNumbers?.[0] || null;
+  return {
+    status: raw.connected ? 'connected' : 'disconnected',
+    phoneNumber: firstPhone?.phoneNumber || null,
+    wabaId: firstPhone?.wabaId || null,
+    qualityRating: firstPhone?.qualityRating || null,
+    lastSync: firstPhone?.tokenExpiresAt || null,
+  };
 }
 
 export async function fetchConversations(params?: {
