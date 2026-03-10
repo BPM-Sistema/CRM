@@ -138,10 +138,9 @@ export function InboxPage() {
 
   // ── Bridge: escuchar mensajes del iframe ────────────────────────────
   useEffect(() => {
-    const expectedOrigin = embedOriginRef.current;
-
     function handleMessage(event: MessageEvent) {
-      // Validar origin estrictamente
+      // Validar origin estrictamente (read ref at message time, not at mount time)
+      const expectedOrigin = embedOriginRef.current;
       if (!expectedOrigin || event.origin !== expectedOrigin) return;
 
       const data = event.data as WaspyInboundEvent;
