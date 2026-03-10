@@ -10,7 +10,7 @@ const https = require('https');
 require('dotenv').config();
 
 const SECRET = process.env.TIENDANUBE_CLIENT_SECRET;
-const API_URL = 'https://api.petlovearg.com/webhook/tiendanube';
+const API_URL = 'https://api.bpmadministrador.com/webhook/tiendanube';
 
 if (!SECRET) {
   console.error('Error: TIENDANUBE_CLIENT_SECRET no está configurado');
