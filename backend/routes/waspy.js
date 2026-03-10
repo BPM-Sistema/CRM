@@ -64,7 +64,7 @@ router.post('/config', requirePermission('whatsapp.connect'), async (req, res) =
   const {
     apiKey,
     waspyUrl = process.env.WASPY_DEFAULT_URL || 'https://waspy-api-261840423811.us-central1.run.app',
-    embedUrl = process.env.WASPY_DEFAULT_EMBED_URL || 'https://waspy-web-261840423811.us-central1.run.app/embed/inbox',
+    embedUrl = process.env.WASPY_DEFAULT_EMBED_URL || 'https://waspy-web-m2q3m7ufqa-uc.a.run.app/embed/inbox',
   } = req.body;
 
   if (!apiKey || !apiKey.startsWith('wspy_')) {
