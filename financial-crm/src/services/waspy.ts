@@ -2,51 +2,7 @@ import { authFetch } from './api';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-// Types
-export interface WaspyConversation {
-  id: string;
-  contactName: string;
-  contactPhone: string;
-  phoneNumberId: string;
-  lastMessage: string | null;
-  lastMessageAt: string | null;
-  unreadCount: number;
-  status: 'open' | 'closed' | 'pending';
-  assignedTo: string | null;
-  metadata?: Record<string, unknown>;
-}
-
-export interface WaspyMessage {
-  id: string;
-  conversationId: string;
-  direction: 'inbound' | 'outbound';
-  type: 'text' | 'image' | 'document' | 'audio' | 'video' | 'template' | 'interactive';
-  content: {
-    text?: string;
-    caption?: string;
-    url?: string;
-    filename?: string;
-    templateName?: string;
-    templateParams?: string[];
-  };
-  status: 'sent' | 'delivered' | 'read' | 'failed' | 'pending';
-  timestamp: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface WaspyTemplate {
-  id: string;
-  name: string;
-  language: string;
-  category: string;
-  status: string;
-  components: Array<{
-    type: string;
-    text?: string;
-    format?: string;
-    parameters?: Array<{ type: string; text?: string }>;
-  }>;
-}
+// ── Types ─────────────────────────────────────────────────────────────
 
 export interface WaspyChannelStatus {
   status: 'connected' | 'disconnected' | 'degraded';
@@ -56,10 +12,10 @@ export interface WaspyChannelStatus {
   lastSync: string | null;
 }
 
-export interface WaspyConversationContext {
-  contactName: string;
-  contactPhone: string;
-  metadata?: Record<string, unknown>;
+export interface ConnectStartResponse {
+  redirectUrl?: string;
+  code?: string;
+  status: string;
 }
 
 export interface LinkedOrder {
@@ -75,13 +31,51 @@ export interface LinkedOrder {
   source?: 'phone' | 'manual';
 }
 
-export interface ConnectStartResponse {
-  redirectUrl?: string;
-  code?: string;
-  status: string;
+export interface WaspyConfig {
+  tenantId: string;
+  tenantName: string;
+  waspyUrl: string;
+  embedUrl: string;
+  apiKeyPrefix: string;
+  verifiedAt: string | null;
 }
 
-// API Functions
+// ── Config ────────────────────────────────────────────────────────────
+
+export async function fetchWaspyConfig(): Promise<WaspyConfig | null> {
+  const res = await authFetch(`${API_BASE_URL}/waspy/config`);
+  const data = await res.json();
+  return data.config;
+}
+
+export async function saveWaspyConfig(
+  apiKey: string,
+  waspyUrl?: string,
+  embedUrl?: string
+): Promise<{ ok: boolean; tenant: { id: string; name: string; slug: string; plan: string }; phoneNumbers: { number: string; status: string }[] }> {
+  const res = await authFetch(`${API_BASE_URL}/waspy/config`, {
+    method: 'POST',
+    body: JSON.stringify({ apiKey, waspyUrl, embedUrl }),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error);
+  return data;
+}
+
+export async function deleteWaspyConfig(): Promise<void> {
+  await authFetch(`${API_BASE_URL}/waspy/config`, { method: 'DELETE' });
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────
+
+export async function fetchWaspyToken(): Promise<string> {
+  const response = await authFetch(`${API_BASE_URL}/waspy/token`);
+  if (!response.ok) throw new Error('Error al obtener token de Waspy');
+  const data = await response.json();
+  return data.token;
+}
+
+// ── Channel status (used by WhatsAppSettings + InboxPage banner) ─────
 
 export async function fetchChannelStatus(): Promise<WaspyChannelStatus> {
   const response = await authFetch(`${API_BASE_URL}/waspy/channel/status`);
@@ -90,125 +84,7 @@ export async function fetchChannelStatus(): Promise<WaspyChannelStatus> {
   return data.data || data;
 }
 
-export async function fetchConversations(params?: {
-  limit?: number;
-  offset?: number;
-  status?: string;
-}): Promise<{ conversations: WaspyConversation[]; total: number }> {
-  const searchParams = new URLSearchParams();
-  if (params?.limit) searchParams.set('limit', String(params.limit));
-  if (params?.offset) searchParams.set('offset', String(params.offset));
-  if (params?.status) searchParams.set('status', params.status);
-
-  const url = `${API_BASE_URL}/waspy/conversations${searchParams.toString() ? '?' + searchParams : ''}`;
-  const response = await authFetch(url);
-  if (!response.ok) throw new Error('Error al obtener conversaciones');
-  const data = await response.json();
-  const raw = data.data || data;
-  // Map Waspy response to our interface
-  const conversations: WaspyConversation[] = (raw.conversations || []).map((c: Record<string, unknown>) => ({
-    id: c.id,
-    contactName: (c.contact as Record<string, unknown>)?.name || c.contactName || 'Sin nombre',
-    contactPhone: (c.contact as Record<string, unknown>)?.phoneNumber || c.contactPhone || '',
-    phoneNumberId: c.phoneNumberId || '',
-    lastMessage: c.lastMessagePreview || c.lastMessage || null,
-    lastMessageAt: c.lastMessageAt || null,
-    unreadCount: c.unreadCount || 0,
-    status: c.status || 'open',
-    assignedTo: c.assignedTo || null,
-    metadata: c.metadata || {},
-  }));
-  return { conversations, total: raw.total || conversations.length };
-}
-
-export async function fetchMessages(
-  conversationId: string,
-  params?: { limit?: number; before?: string }
-): Promise<{ messages: WaspyMessage[] }> {
-  const searchParams = new URLSearchParams();
-  if (params?.limit) searchParams.set('limit', String(params.limit));
-  if (params?.before) searchParams.set('before', params.before);
-
-  const url = `${API_BASE_URL}/waspy/conversations/${conversationId}/messages${searchParams.toString() ? '?' + searchParams : ''}`;
-  const response = await authFetch(url);
-  if (!response.ok) throw new Error('Error al obtener mensajes');
-  const data = await response.json();
-  const raw = data.data || data;
-  // Map Waspy messages to our interface
-  const messages: WaspyMessage[] = (raw.messages || []).map((m: Record<string, unknown>) => {
-    const content = m.content as Record<string, unknown> || {};
-    return {
-      id: m.id,
-      conversationId: m.conversationId,
-      direction: m.direction,
-      type: m.type || 'text',
-      content: {
-        text: content.body || content.text || content.caption || '',
-        caption: content.caption as string || undefined,
-        url: content.url as string || (content.link as Record<string, unknown>)?.url as string || undefined,
-        filename: content.filename as string || undefined,
-        templateName: (m.templateNameSnapshot as string) || undefined,
-      },
-      status: m.status || 'sent',
-      timestamp: (m.createdAt as string) || (m.timestamp as string) || '',
-      metadata: m.metadata || {},
-    };
-  });
-  return { messages };
-}
-
-export async function sendMessage(payload: {
-  conversationId: string;
-  phoneNumberId: string;
-  to: string;
-  type: 'text';
-  content: { body: string };
-}): Promise<WaspyMessage> {
-  const response = await authFetch(`${API_BASE_URL}/waspy/messages`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || 'Error al enviar mensaje');
-  }
-  const data = await response.json();
-  return data.data || data;
-}
-
-export async function fetchTemplates(): Promise<WaspyTemplate[]> {
-  const response = await authFetch(`${API_BASE_URL}/waspy/templates`);
-  if (!response.ok) throw new Error('Error al obtener templates');
-  const data = await response.json();
-  return data.data || data.templates || data;
-}
-
-export async function sendTemplate(payload: {
-  conversationId?: string;
-  phone?: string;
-  templateName: string;
-  language: string;
-  parameters?: Record<string, string[]>;
-}): Promise<unknown> {
-  const response = await authFetch(`${API_BASE_URL}/waspy/templates/send`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || 'Error al enviar template');
-  }
-  return response.json();
-}
-
-export async function fetchConversationContext(
-  conversationId: string
-): Promise<WaspyConversationContext> {
-  const response = await authFetch(`${API_BASE_URL}/waspy/conversations/${conversationId}/context`);
-  if (!response.ok) throw new Error('Error al obtener contexto');
-  const data = await response.json();
-  return data.data || data;
-}
+// ── WhatsApp connection flow (used by WhatsAppSettings) ──────────────
 
 export async function startWhatsAppConnect(): Promise<ConnectStartResponse> {
   const response = await authFetch(`${API_BASE_URL}/waspy/channel/connect/start`, {
@@ -226,7 +102,7 @@ export async function fetchConnectStatus(): Promise<{ status: string; message?: 
   return data.data || data;
 }
 
-// CRM-side order lookups (these hit the CRM backend, not Waspy)
+// ── CRM order lookups (used by OrderPanel) ───────────────────────────
 
 export async function fetchOrdersByPhone(phone: string): Promise<LinkedOrder[]> {
   const response = await authFetch(

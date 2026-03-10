@@ -1,147 +1,237 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { RefreshCw, AlertCircle, MessageSquare } from 'lucide-react';
+import { AlertCircle, Loader2, RefreshCw } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Card } from '../components/ui';
-import { ConversationList } from '../components/inbox/ConversationList';
-import { ChatWindow } from '../components/inbox/ChatWindow';
 import { OrderPanel } from '../components/inbox/OrderPanel';
 import {
+  fetchWaspyToken,
+  fetchWaspyConfig,
   fetchChannelStatus,
-  fetchConversations,
-  WaspyConversation,
   WaspyChannelStatus,
 } from '../services/waspy';
 import { useAuth } from '../contexts/AuthContext';
+
+// ── Protocolo postMessage Waspy Embed ──────────────────────────────────
+//
+// CRM → Waspy:
+//   { type: 'auth', token }
+//   { type: 'navigate', conversationId }
+//   { type: 'navigate', phone }
+//   { type: 'context', orderId, customerName, phone }
+//
+// Waspy → CRM:
+//   { type: 'ready', source: 'waspy-embed' }
+//   { type: 'conversation:selected', conversationId, phone? }
+//   { type: 'auth:error', message }
+//   { type: 'token:expired' }
+//   { type: 'navigate:result', success, conversationId?, message? }
+
+/** Tipado de los mensajes postMessage que llegan del embed de Waspy */
+interface WaspyInboundEvent {
+  type: string;
+  source?: string;
+  conversationId?: string;
+  phone?: string;
+  message?: string;
+  success?: boolean;
+}
+
+/** Datos mínimos de conversación para el OrderPanel */
+interface EmbedConversation {
+  id: string;
+  contactPhone: string;
+  contactName: string;
+}
 
 export function InboxPage() {
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  const [channelStatus, setChannelStatus] = useState<WaspyChannelStatus | null>(null);
-  const [conversations, setConversations] = useState<WaspyConversation[]>([]);
-  const [selectedConversation, setSelectedConversation] = useState<WaspyConversation | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const tokenRef = useRef<string | null>(null);
+  const pendingNavigateRef = useRef<string | null>(null);
+  const embedOriginRef = useRef<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [iframeReady, setIframeReady] = useState(false);
+  const [channelStatus, setChannelStatus] = useState<WaspyChannelStatus | null>(null);
+  const [activeConversation, setActiveConversation] = useState<EmbedConversation | null>(null);
+  const [embedUrl, setEmbedUrl] = useState<string | null>(null);
+  const [notConfigured, setNotConfigured] = useState(false);
 
-  // Pre-fill search from URL query param
   const phoneParam = searchParams.get('phone');
-  const phoneParamApplied = useRef(false);
+  const orderParam = searchParams.get('order');
 
-  const loadChannelStatus = useCallback(async () => {
+  // ── Obtener config + JWT ────────────────────────────────────────────
+  const init = useCallback(async () => {
     try {
-      const status = await fetchChannelStatus();
-      setChannelStatus(status);
-    } catch (err) {
-      console.error('Error al cargar estado del canal:', err);
-    }
-  }, []);
-
-  const selectedConversationRef = useRef(selectedConversation);
-  selectedConversationRef.current = selectedConversation;
-
-  const loadConversations = useCallback(async (showLoading = false) => {
-    if (showLoading) {
+      setError(null);
       setLoading(true);
-    }
-    setError(null);
-    try {
-      const data = await fetchConversations();
-      const list = data.conversations || [];
-      setConversations(list);
+      setNotConfigured(false);
 
-      // Update selected conversation if it still exists (refresh data)
-      const currentSelected = selectedConversationRef.current;
-      if (currentSelected) {
-        const updated = list.find((c: WaspyConversation) => c.id === currentSelected.id);
-        if (updated) {
-          setSelectedConversation(updated);
-        }
+      // 1. Get Waspy config (embedUrl, etc.)
+      const config = await fetchWaspyConfig();
+      if (!config) {
+        setNotConfigured(true);
+        return;
       }
+      setEmbedUrl(config.embedUrl);
+      embedOriginRef.current = new URL(config.embedUrl).origin;
+
+      // 2. Get embed token
+      const token = await fetchWaspyToken();
+      tokenRef.current = token;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al cargar conversaciones');
+      setError(err instanceof Error ? err.message : 'Error al inicializar inbox');
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Initial load
-  useEffect(() => {
-    loadChannelStatus();
-    loadConversations(true);
+  // ── Cargar estado del canal (para banner) ───────────────────────────
+  const loadChannelStatus = useCallback(async () => {
+    try {
+      const status = await fetchChannelStatus();
+      setChannelStatus(status);
+    } catch {
+      // No bloquear la UI si falla el status
+    }
   }, []);
 
-  // Handle phone query param - pre-select or search
   useEffect(() => {
-    if (phoneParam && !phoneParamApplied.current && conversations.length > 0) {
-      phoneParamApplied.current = true;
+    init();
+    loadChannelStatus();
+  }, [init, loadChannelStatus]);
 
-      // Try to find a matching conversation
-      const match = conversations.find(
-        (c) => c.contactPhone === phoneParam || c.contactPhone.endsWith(phoneParam)
-      );
+  // ── Bridge: enviar mensaje al iframe ────────────────────────────────
+  const postToEmbed = useCallback((message: Record<string, unknown>) => {
+    if (iframeRef.current?.contentWindow && embedOriginRef.current) {
+      iframeRef.current.contentWindow.postMessage(message, embedOriginRef.current);
+    }
+  }, []);
 
-      if (match) {
-        setSelectedConversation(match);
-      } else {
-        // Set as search query so user can see filtered results
-        setSearchQuery(phoneParam);
+  // ── Cuando el iframe está listo, enviar auth + navigate ─────────────
+  useEffect(() => {
+    if (!iframeReady || !tokenRef.current) return;
+
+    // 1. Autenticar
+    postToEmbed({ type: 'auth', token: tokenRef.current });
+
+    // 2. Navegar si hay phone param (desde "Abrir Inbox" en pedido)
+    if (phoneParam) {
+      pendingNavigateRef.current = phoneParam;
+      postToEmbed({ type: 'navigate', phone: phoneParam });
+    }
+
+    // 3. Enviar contexto de pedido si viene desde detalle de pedido
+    if (orderParam) {
+      postToEmbed({
+        type: 'context',
+        orderId: orderParam,
+        phone: phoneParam || undefined,
+      });
+    }
+  }, [iframeReady, postToEmbed, phoneParam, orderParam]);
+
+  // ── Bridge: escuchar mensajes del iframe ────────────────────────────
+  useEffect(() => {
+    const expectedOrigin = embedOriginRef.current;
+
+    function handleMessage(event: MessageEvent) {
+      // Validar origin estrictamente
+      if (!expectedOrigin || event.origin !== expectedOrigin) return;
+
+      const data = event.data as WaspyInboundEvent;
+      if (!data || typeof data.type !== 'string') return;
+
+      switch (data.type) {
+        case 'ready':
+          setIframeReady(true);
+          break;
+
+        case 'conversation:selected':
+          setActiveConversation(
+            data.conversationId
+              ? {
+                  id: data.conversationId,
+                  contactPhone: data.phone || '',
+                  contactName: '',
+                }
+              : null
+          );
+          break;
+
+        case 'navigate:result':
+          if (!data.success && pendingNavigateRef.current) {
+            console.warn('[CRM] Waspy navigate failed:', data.message);
+          }
+          pendingNavigateRef.current = null;
+          break;
+
+        case 'auth:error':
+          console.error('[CRM] Waspy auth error:', data.message);
+          init().then(() => {
+            if (tokenRef.current) {
+              postToEmbed({ type: 'auth', token: tokenRef.current });
+            }
+          });
+          break;
+
+        case 'token:expired':
+          // Re-obtener token y reenviar
+          fetchWaspyToken().then((token) => {
+            tokenRef.current = token;
+            postToEmbed({ type: 'auth', token });
+          }).catch(() => {
+            // If re-auth fails, full re-init
+            init();
+          });
+          break;
       }
     }
-  }, [phoneParam, conversations]);
 
-  // Polling every 15 seconds (only when tab is visible)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        loadConversations();
-        loadChannelStatus();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [init, postToEmbed]);
 
-    const pollInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        loadConversations();
-      }
-    }, 15000);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      clearInterval(pollInterval);
-    };
-  }, [loadConversations]);
-
-  // Filter conversations by search query
-  const filteredConversations = useMemo(() => {
-    if (!searchQuery.trim()) return conversations;
-
-    const query = searchQuery.toLowerCase().trim();
-    return conversations.filter((c) => {
-      const name = (c.contactName || '').toLowerCase();
-      const phone = (c.contactPhone || '').toLowerCase();
-      return name.includes(query) || phone.includes(query);
-    });
-  }, [conversations, searchQuery]);
-
-  const handleRefresh = () => {
-    loadConversations(true);
-    loadChannelStatus();
-  };
-
-  // Permission check
+  // ── Permisos ────────────────────────────────────────────────────────
   if (!hasPermission('inbox.view')) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Card className="text-center py-8 px-12">
           <AlertCircle size={48} className="mx-auto text-red-400 mb-4" />
-          <h3 className="text-lg font-semibold text-neutral-900 mb-2">
-            Sin permisos
-          </h3>
+          <h3 className="text-lg font-semibold text-neutral-900 mb-2">Sin permisos</h3>
           <p className="text-neutral-500">No tienes permiso para ver el inbox.</p>
         </Card>
+      </div>
+    );
+  }
+
+  // ── Not configured ──────────────────────────────────────────────────
+  if (notConfigured) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header title="Inbox WhatsApp" subtitle="Conversaciones" />
+        <div className="flex-1 flex items-center justify-center">
+          <Card className="text-center py-8 px-12 max-w-md">
+            <AlertCircle size={48} className="mx-auto text-amber-400 mb-4" />
+            <h3 className="text-lg font-semibold text-neutral-900 mb-2">Waspy no configurado</h3>
+            <p className="text-neutral-500 text-sm mb-4">
+              Configurá la conexión con Waspy en Configuración &gt; WhatsApp para habilitar el inbox.
+            </p>
+            {hasPermission('whatsapp.connect') && (
+              <button
+                onClick={() => navigate('/admin/whatsapp')}
+                className="text-sm text-blue-600 hover:underline"
+              >
+                Ir a Configuración
+              </button>
+            )}
+          </Card>
+        </div>
       </div>
     );
   }
@@ -150,15 +240,14 @@ export function InboxPage() {
     <div className="min-h-screen flex flex-col">
       <Header
         title="Inbox WhatsApp"
-        subtitle={`${conversations.length} conversaciones`}
+        subtitle="Conversaciones"
         actions={
           <div className="flex items-center gap-2">
             <button
-              onClick={handleRefresh}
-              disabled={loading}
-              className="p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 rounded-lg transition-colors disabled:opacity-50"
+              onClick={loadChannelStatus}
+              className="p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 rounded-lg transition-colors"
             >
-              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+              <RefreshCw size={16} />
             </button>
           </div>
         }
@@ -190,7 +279,7 @@ export function InboxPage() {
           <AlertCircle size={16} className="text-red-600 flex-shrink-0" />
           <span className="text-sm text-red-700">{error}</span>
           <button
-            onClick={handleRefresh}
+            onClick={init}
             className="ml-auto text-sm text-red-700 underline whitespace-nowrap"
           >
             Reintentar
@@ -198,48 +287,55 @@ export function InboxPage() {
         </div>
       )}
 
-      {/* Main 3-column layout */}
+      {/* Main layout: embed + order panel */}
       <div className="flex flex-1 h-[calc(100vh-8rem)] overflow-hidden">
-        {/* Conversation List */}
-        <div className="w-80 border-r border-neutral-200 flex flex-col bg-white">
-          <ConversationList
-            conversations={filteredConversations}
-            selectedId={selectedConversation?.id}
-            onSelect={setSelectedConversation}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            loading={loading}
-          />
-        </div>
-
-        {/* Chat Window */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {loading && conversations.length === 0 ? (
+        {/* Waspy Embed */}
+        <div className="flex-1 flex flex-col min-w-0 bg-white">
+          {loading ? (
             <div className="flex-1 flex items-center justify-center">
-              <RefreshCw size={32} className="animate-spin text-neutral-400" />
+              <Loader2 size={32} className="animate-spin text-neutral-400" />
             </div>
-          ) : selectedConversation ? (
-            <ChatWindow
-              conversation={selectedConversation}
-              canSend={hasPermission('inbox.send')}
-            />
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-neutral-400">
-              <div className="text-center">
-                <MessageSquare size={48} className="mx-auto mb-3 opacity-50" />
-                <p className="text-sm">Selecciona una conversacion</p>
+          ) : error ? (
+            <div className="flex-1 flex items-center justify-center text-neutral-500">
+              <div className="text-center space-y-3">
+                <AlertCircle size={48} className="mx-auto text-red-300" />
+                <p className="text-sm">No se pudo conectar con Waspy</p>
+                <button
+                  onClick={init}
+                  className="text-sm text-blue-600 hover:underline"
+                >
+                  Reintentar
+                </button>
               </div>
             </div>
-          )}
+          ) : embedUrl ? (
+            <iframe
+              ref={iframeRef}
+              src={embedUrl}
+              className="w-full h-full border-0"
+              allow="clipboard-write"
+              title="Waspy Inbox"
+            />
+          ) : null}
         </div>
 
-        {/* Order Panel */}
-        {selectedConversation && (
-          <div className="w-80 border-l border-neutral-200 bg-white overflow-y-auto">
+        {/* Order Panel (CRM context) */}
+        {activeConversation && (
+          <div className="w-80 border-l border-neutral-200 bg-white overflow-y-auto p-4">
             <OrderPanel
-              conversation={selectedConversation}
+              conversation={activeConversation}
               canAssign={hasPermission('inbox.assign')}
             />
+          </div>
+        )}
+
+        {/* Order context when navigating from an order but no conversation selected yet */}
+        {!activeConversation && orderParam && (
+          <div className="w-80 border-l border-neutral-200 bg-white overflow-y-auto p-4">
+            <div className="text-center py-6 text-sm text-neutral-400">
+              <p>Pedido #{orderParam}</p>
+              <p className="mt-1">Selecciona una conversacion en el inbox para ver los pedidos vinculados.</p>
+            </div>
           </div>
         )}
       </div>
