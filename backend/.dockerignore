@@ -30,11 +30,6 @@ logs/
 .vscode/
 .idea/
 
-# Railway (no necesario en Cloud Run)
-railway.json
-railway.toml
-nixpacks.toml
-
 # OS
 .DS_Store
 Thumbs.db

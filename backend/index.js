@@ -848,58 +848,98 @@ async function detectarFinancieraDesdeOCR(textoOcr) {
   return null;
 }
 
-async function enviarWhatsAppPlantilla({ telefono, plantilla, variables }) {
+async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNumber }) {
   // 🔒 Filtro de testing - solo enviar a número de prueba
-  const TESTING_PHONE = '+5491123945965';
-  if (telefono !== TESTING_PHONE) {
-    console.log('📵 WhatsApp ignorado (testing):', telefono);
+  // Normalizar: extraer últimos 10 dígitos para comparar
+  const telefonoDigits = telefono.replace(/\D/g, '').slice(-10);
+  const TESTING_DIGITS = '1123945965';
+  if (telefonoDigits !== TESTING_DIGITS) {
+    console.log('📵 WhatsApp ignorado (testing):', telefono, `(digits: ${telefonoDigits})`);
     return { data: { skipped: true, reason: 'testing_filter' } };
   }
 
+  // Plantillas que NO llevan sufijo de financiera
+  const plantillasSinSufijo = ['datos_envio', 'comprobante_rechazado'];
+
   // Obtener financiera default para determinar sufijo de plantilla
   let plantillaFinal = plantilla;
-  try {
-    const finResult = await pool.query(`
-      SELECT nombre
-      FROM financieras
-      WHERE is_default = true
-      LIMIT 1
-    `);
+  if (!plantillasSinSufijo.includes(plantilla)) {
+    try {
+      const finResult = await pool.query(`
+        SELECT nombre
+        FROM financieras
+        WHERE is_default = true
+        LIMIT 1
+      `);
 
-    if (finResult.rows.length > 0) {
-      const nombreFinanciera = finResult.rows[0].nombre.toLowerCase();
-      if (nombreFinanciera.includes('wanda')) {
-        plantillaFinal = `${plantilla}_wanda`;
-      } else if (nombreFinanciera.includes('kiesel')) {
-        plantillaFinal = `${plantilla}_kiesel`;
+      if (finResult.rows.length > 0) {
+        const nombreFinanciera = finResult.rows[0].nombre.toLowerCase();
+        if (nombreFinanciera.includes('wanda')) {
+          plantillaFinal = `${plantilla}_wanda`;
+        } else if (nombreFinanciera.includes('kiesel')) {
+          plantillaFinal = `${plantilla}_kiesel`;
+        }
+        console.log(`🏦 Financiera default: ${finResult.rows[0].nombre} → plantilla: ${plantillaFinal}`);
       }
-      console.log(`🏦 Financiera default: ${finResult.rows[0].nombre} → plantilla: ${plantillaFinal}`);
+    } catch (err) {
+      console.error('⚠️ Error obteniendo financiera default:', err.message);
     }
-  } catch (err) {
-    console.error('⚠️ Error obteniendo financiera default:', err.message);
   }
 
   console.log('📤 Enviando WhatsApp a:', telefono, 'plantilla:', plantillaFinal);
 
   const contactIdClean = telefono.replace('+', '');
 
-  return axios.post(
-    'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
-    {
-      chat: {
-        channelId: process.env.BOTMAKER_CHANNEL_ID,
-        contactId: contactIdClean
+  try {
+    const response = await axios.post(
+      'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
+      {
+        chat: {
+          channelId: process.env.BOTMAKER_CHANNEL_ID,
+          contactId: contactIdClean
+        },
+        intentIdOrName: plantillaFinal,
+        variables
       },
-      intentIdOrName: plantillaFinal,
-      variables
-    },
-    {
-      headers: {
-        'access-token': process.env.BOTMAKER_ACCESS_TOKEN,
-        'Content-Type': 'application/json'
+      {
+        headers: {
+          'access-token': process.env.BOTMAKER_ACCESS_TOKEN,
+          'Content-Type': 'application/json'
+        }
       }
+    );
+
+    // Log exitoso con requestId para tracking
+    const requestId = response.data?.requestId || 'N/A';
+    console.log(`✅ WhatsApp enviado: ${plantillaFinal} | requestId: ${requestId} | order: ${orderNumber || 'N/A'}`);
+
+    // Guardar en logs si tenemos orderNumber
+    if (orderNumber) {
+      await logEvento({
+        orderNumber,
+        accion: `whatsapp_enviado:${plantillaFinal}`,
+        origen: 'sistema'
+      });
     }
-  );
+
+    return response;
+  } catch (err) {
+    // Log de error con detalles
+    const errorMsg = err.response?.data?.message || err.response?.data || err.message;
+    const status = err.response?.status || 'N/A';
+    console.error(`❌ WhatsApp FALLÓ: ${plantillaFinal} | status: ${status} | error: ${JSON.stringify(errorMsg)} | order: ${orderNumber || 'N/A'}`);
+
+    // Guardar error en logs si tenemos orderNumber
+    if (orderNumber) {
+      await logEvento({
+        orderNumber,
+        accion: `whatsapp_error:${plantillaFinal}:${status}`,
+        origen: 'sistema'
+      });
+    }
+
+    throw err; // Re-throw para que el caller pueda manejarlo
+  }
 }
 
 
@@ -1455,10 +1495,14 @@ app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async
         c.financiera_id,
         f.nombre as financiera_nombre,
         o.customer_name,
-        o.estado_pago as orden_estado_pago
+        o.estado_pago as orden_estado_pago,
+        c.confirmed_by,
+        c.confirmed_at,
+        u.name as confirmed_by_name
       FROM comprobantes c
       LEFT JOIN orders_validated o ON c.order_number = o.order_number
       LEFT JOIN financieras f ON c.financiera_id = f.id
+      LEFT JOIN users u ON c.confirmed_by = u.id
       ${whereClause}
       ORDER BY c.created_at DESC
       LIMIT $${limitParam} OFFSET $${offsetParam}
@@ -1509,10 +1553,14 @@ app.get('/comprobantes/:id', authenticate, requirePermission('receipts.view'), a
         o.monto_tiendanube as orden_total,
         o.total_pagado as orden_pagado,
         o.saldo as orden_saldo,
-        o.estado_pago as orden_estado_pago
+        o.estado_pago as orden_estado_pago,
+        c.confirmed_by,
+        c.confirmed_at,
+        u.name as confirmed_by_name
       FROM comprobantes c
       LEFT JOIN orders_validated o ON c.order_number = o.order_number
       LEFT JOIN financieras f ON c.financiera_id = f.id
+      LEFT JOIN users u ON c.confirmed_by = u.id
       WHERE c.id = $1
     `, [id]);
 
@@ -1582,7 +1630,10 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
     }
 
     // 2️⃣ Confirmar comprobante
-    await pool.query(`UPDATE comprobantes SET estado = 'confirmado' WHERE id = $1`, [id]);
+    await pool.query(
+      `UPDATE comprobantes SET estado = 'confirmado', confirmed_by = $2, confirmed_at = NOW() WHERE id = $1`,
+      [id, req.user?.id]
+    );
 
     // 3️⃣ Recalcular total pagado (comprobantes + efectivo)
     const totalPagado = await calcularTotalPagado(comprobante.order_number);
@@ -1626,6 +1677,56 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
       userId: req.user?.id,
       username: req.user?.name
     });
+
+    // 9️⃣ WhatsApp al cliente
+    const clienteRes = await pool.query(
+      `SELECT customer_name, customer_phone, shipping_type FROM orders_validated WHERE order_number = $1`,
+      [comprobante.order_number]
+    );
+    const cliente = clienteRes.rows[0];
+
+    if (cliente?.customer_phone) {
+      // 9a. partial_paid - solo si hay saldo pendiente
+      if (estadoPago === 'confirmado_parcial' && saldo > 0) {
+        enviarWhatsAppPlantilla({
+          telefono: cliente.customer_phone,
+          plantilla: 'partial_paid',
+          variables: {
+            '1': cliente.customer_name || 'Cliente',
+            '2': String(comprobante.monto),
+            '3': String(saldo)
+          }
+        }).then(() => {
+          console.log(`📨 WhatsApp partial_paid enviado (Pedido #${comprobante.order_number})`);
+        }).catch(err => {
+          console.error('⚠️ Error WhatsApp partial_paid:', err.message);
+        });
+      }
+
+      // 9b. datos_envio - si requiere formulario y es el primer pago confirmado
+      if (requiresShippingForm(cliente.shipping_type || '')) {
+        // Verificar si ya se envió el formulario (si ya hay datos en shipping_requests)
+        const shippingCheck = await pool.query(
+          `SELECT id FROM shipping_requests WHERE order_number = $1 LIMIT 1`,
+          [comprobante.order_number]
+        );
+
+        if (shippingCheck.rowCount === 0) {
+          enviarWhatsAppPlantilla({
+            telefono: cliente.customer_phone,
+            plantilla: 'datos_envio',
+            variables: {
+              '1': cliente.customer_name || 'Cliente',
+              '2': comprobante.order_number
+            }
+          }).then(() => {
+            console.log(`📨 WhatsApp datos_envio enviado (Pedido #${comprobante.order_number})`);
+          }).catch(err => {
+            console.error('⚠️ Error WhatsApp datos_envio:', err.message);
+          });
+        }
+      }
+    }
 
     console.log(`✅ [${requestId}] Comprobante ${id} confirmado exitosamente`);
     if (nuevoEstadoPedido !== estadoPedidoActual) {
@@ -1709,8 +1810,9 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
     );
     const cliente = clienteRes.rows[0];
     if (cliente?.customer_phone) {
-      const TESTING_PHONE = '+5491123945965';
-      if (cliente.customer_phone === TESTING_PHONE) {
+      const phoneDigits = cliente.customer_phone.replace(/\D/g, '').slice(-10);
+      const TESTING_DIGITS = '1123945965';
+      if (phoneDigits === TESTING_DIGITS) {
         const contactIdClean = cliente.customer_phone.replace('+', '');
         axios.post(
           'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
@@ -2596,8 +2698,9 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
       const esEnvioNube = shippingType.includes('envío nube') || shippingType.includes('envio nube');
 
       if (esEnvioNube && pedido.customer_phone && pedido.tn_order_id && pedido.tn_order_token) {
-        const TESTING_PHONE = '+5491123945965';
-        if (pedido.customer_phone === TESTING_PHONE) {
+        const phoneDigits = pedido.customer_phone.replace(/\D/g, '').slice(-10);
+        const TESTING_DIGITS = '1123945965';
+        if (phoneDigits === TESTING_DIGITS) {
           const trackingParam = `${pedido.tn_order_id}/${pedido.tn_order_token}`;
           const contactIdClean = pedido.customer_phone.replace('+', '');
 
@@ -2619,13 +2722,15 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
       } else if (esEnvioNube) {
         console.log(`⚠️ No se envió WhatsApp enviado_env_nube: faltan datos (phone: ${!!pedido.customer_phone}, order_id: ${!!pedido.tn_order_id}, token: ${!!pedido.tn_order_token})`);
       }
+      // Nota: enviado_transporte se envía al confirmar el remito en /remitos/:id/confirm, no al marcar como enviado
     }
 
-    // WhatsApp automático cuando se marca como "cancelado"
-    if (estado_pedido === 'cancelado' && pedido.customer_phone) {
-      const TESTING_PHONE = '+5491123945965';
-      if (pedido.customer_phone === TESTING_PHONE) {
-        const contactIdClean = pedido.customer_phone.replace('+', '');
+    // WhatsApp automático cuando se marca como "cancelado" (solo si tiene token para el link)
+    if (estado_pedido === 'cancelado' && pedido.customer_phone && pedido.tn_order_id && pedido.tn_order_token) {
+      const phoneDigits = pedido.customer_phone.replace(/\D/g, '').slice(-10);
+      const TESTING_DIGITS = '1123945965';
+      if (phoneDigits === TESTING_DIGITS) {
+        const contactIdClean = '549' + phoneDigits;
         axios.post(
           'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
           {
@@ -2633,13 +2738,16 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
             intentIdOrName: 'pedido_cancelado',
             variables: {
               '1': pedido.customer_name || 'Cliente',
-              '2': orderNumber
+              '2': orderNumber,
+              '3': `${pedido.tn_order_id}/${pedido.tn_order_token}`
             }
           },
           { headers: { 'access-token': process.env.BOTMAKER_ACCESS_TOKEN, 'Content-Type': 'application/json' } }
         ).then(() => console.log(`📨 WhatsApp pedido_cancelado enviado (Pedido #${orderNumber})`))
          .catch(err => console.error('⚠️ Error WhatsApp pedido_cancelado:', err.message));
       }
+    } else if (estado_pedido === 'cancelado' && pedido.customer_phone && (!pedido.tn_order_id || !pedido.tn_order_token)) {
+      console.log(`⚠️ No se envió WhatsApp pedido_cancelado: pedido #${orderNumber} sin token para link`);
     }
 
     // Obtener pedido actualizado
@@ -2756,16 +2864,18 @@ app.post('/webhook/tiendanube', async (req, res) => {
           origen: 'webhook_tiendanube'
         });
 
-        // WhatsApp al cliente - pedido_cancelado
+        // WhatsApp al cliente - pedido_cancelado (solo si tiene token para el link)
         const clienteCancelRes = await pool.query(
-          `SELECT customer_name, customer_phone FROM orders_validated WHERE order_number = $1`,
+          `SELECT customer_name, customer_phone, tn_order_id, tn_order_token FROM orders_validated WHERE order_number = $1`,
           [orderNumber]
         );
         const clienteCancel = clienteCancelRes.rows[0];
-        if (clienteCancel?.customer_phone) {
-          const TESTING_PHONE = '+5491123945965';
-          if (clienteCancel.customer_phone === TESTING_PHONE) {
-            const contactIdClean = clienteCancel.customer_phone.replace('+', '');
+        if (clienteCancel?.customer_phone && clienteCancel.tn_order_id && clienteCancel.tn_order_token) {
+          const phoneDigits = clienteCancel.customer_phone.replace(/\D/g, '').slice(-10);
+          const TESTING_DIGITS = '1123945965';
+          if (phoneDigits === TESTING_DIGITS) {
+            // Normalizar contactId: siempre 549 + últimos 10 dígitos
+            const contactIdClean = '549' + phoneDigits;
             axios.post(
               'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
               {
@@ -2773,13 +2883,16 @@ app.post('/webhook/tiendanube', async (req, res) => {
                 intentIdOrName: 'pedido_cancelado',
                 variables: {
                   '1': clienteCancel.customer_name || 'Cliente',
-                  '2': orderNumber
+                  '2': orderNumber,
+                  '3': `${clienteCancel.tn_order_id}/${clienteCancel.tn_order_token}`
                 }
               },
               { headers: { 'access-token': process.env.BOTMAKER_ACCESS_TOKEN, 'Content-Type': 'application/json' } }
             ).then(() => console.log(`📨 WhatsApp pedido_cancelado enviado (Pedido #${orderNumber})`))
              .catch(err => console.error('⚠️ Error WhatsApp pedido_cancelado:', err.message));
           }
+        } else if (clienteCancel?.customer_phone && (!clienteCancel.tn_order_id || !clienteCancel.tn_order_token)) {
+          console.log(`⚠️ No se envió WhatsApp pedido_cancelado: pedido #${orderNumber} sin token para link`);
         }
 
         console.log(`✅ Pedido #${orderNumber} marcado como cancelado en DB`);
@@ -2910,9 +3023,12 @@ app.post('/webhook/tiendanube', async (req, res) => {
     }
 
     // 🔒 filtro de testing (opcional)
+    // Normalizar teléfono: extraer últimos 10 dígitos para comparar
+    const telefonoDigits = telefono.replace(/\D/g, '').slice(-10);
+    const TESTING_DIGITS = '1123945965'; // últimos 10 dígitos de +5491123945965
 
-    if (telefono !== '+5491123945965') {
-      console.log('📵 Teléfono ignorado:', telefono);
+    if (telefonoDigits !== TESTING_DIGITS) {
+      console.log('📵 Teléfono ignorado:', telefono, `(digits: ${telefonoDigits})`);
       return;
     }
     console.log('📤 Enviando WhatsApp a:', telefono);
@@ -2965,35 +3081,8 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
     console.log(`✅ WhatsApp enviado (Pedido #${pedido.number})`);
 
-    // 7️⃣ Si requiere formulario de envío (Expreso a elección o Via Cargo)
-    const shippingOption = (typeof pedido.shipping_option === 'string'
-      ? pedido.shipping_option
-      : pedido.shipping_option?.name) || '';
-
-    if (requiresShippingForm(shippingOption)) {
-      console.log(`🚚 Pedido requiere formulario de envío: ${shippingOption}`);
-      await axios.post(
-        'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
-        {
-          chat: {
-            channelId: process.env.BOTMAKER_CHANNEL_ID,
-            contactId: contactIdClean
-          },
-          intentIdOrName: 'datos_envio',
-          variables: {
-            '1': pedido.customer?.name || 'Cliente',
-            '2': String(pedido.number)
-          }
-        },
-        {
-          headers: {
-            'access-token': process.env.BOTMAKER_ACCESS_TOKEN,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      console.log(`✅ WhatsApp datos_envio enviado (Pedido #${pedido.number})`);
-    }
+    // 7️⃣ datos_envio - MOVIDO A CONFIRMACIÓN DE COMPROBANTE
+    // Se envía cuando el pago es confirmado, no al crear el pedido
 
   } catch (err) {
     console.error('❌ Error webhook:', err.message);
@@ -3314,32 +3403,9 @@ app.post('/upload', (req, res, next) => {
     const cuentaActual = resultado.cuenta;
 
     /* ===============================
-       1️⃣1️⃣ WHATSAPP AL CLIENTE (solo pago parcial)
+       1️⃣1️⃣ WHATSAPP AL CLIENTE - MOVIDO A CONFIRMACIÓN
+       (El WhatsApp se envía cuando el operador confirma el comprobante)
     ================================ */
-    console.log('CEL: ',telefono, 'ESTADO CUENTA:', estadoCuenta)
-    if (telefono && estadoCuenta === 'debe') {
-      // Solo enviar WhatsApp si hay saldo pendiente (partial_paid)
-      const plantilla = 'partial_paid';
-      const variables = {
-        '1': nombre,
-        '2': montoDetectado,
-        '3': cuentaActual
-      };
-
-      console.log('plantilla final:', plantilla, 'variables:', variables);
-      enviarWhatsAppPlantilla({
-        telefono,
-        plantilla,
-        variables
-      }).catch(err =>
-        console.error('⚠️ Error WhatsApp cliente:', err.message)
-      );
-      await logEvento({
-        comprobanteId,
-        accion: 'whatsapp_cliente_enviado',
-        origen: 'sistem'
-      });
-    }
 
     /* ===============================
        1️⃣2️⃣ UPDATE CUENTA
@@ -3521,10 +3587,10 @@ app.get('/confirmar/:id', async (req, res) => {
       return res.send('Este comprobante ya fue procesado.');
     }
 
-    // 2️⃣ Confirmar comprobante
+    // 2️⃣ Confirmar comprobante (HTML - sin auth, confirmed_by queda NULL)
     await pool.query(
       `UPDATE comprobantes
-       SET estado = 'confirmado'
+       SET estado = 'confirmado', confirmed_at = NOW()
        WHERE id = $1`,
       [id]
     );

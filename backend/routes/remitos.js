@@ -12,6 +12,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const axios = require('axios');
 const { createClient } = require('@supabase/supabase-js');
 const vision = require('@google-cloud/vision');
 const pool = require('../db');
@@ -339,6 +340,70 @@ router.post('/:id/confirm',
       `, [confirmedOrder, req.user?.id, id]);
 
       console.log(`✅ Remito ${id} confirmado para pedido #${confirmedOrder}`);
+
+      // Enviar WhatsApp enviado_transporte con imagen del remito
+      const pedidoRes = await pool.query(
+        `SELECT customer_name, customer_phone, shipping_type FROM orders_validated WHERE order_number = $1`,
+        [confirmedOrder]
+      );
+      const pedido = pedidoRes.rows[0];
+
+      if (pedido?.customer_phone) {
+        const shippingType = (pedido.shipping_type || '').toLowerCase();
+        const esTransporte = shippingType.includes('expreso') ||
+                            shippingType.includes('via cargo') ||
+                            shippingType.includes('viacargo') ||
+                            shippingType.includes('elec');
+
+        if (esTransporte) {
+          const phoneDigits = pedido.customer_phone.replace(/\D/g, '').slice(-10);
+          const TESTING_DIGITS = '1123945965';
+
+          if (phoneDigits === TESTING_DIGITS) {
+            const contactIdClean = '549' + phoneDigits;
+            const headers = { 'access-token': process.env.BOTMAKER_ACCESS_TOKEN, 'Content-Type': 'application/json' };
+
+            // 1. Enviar imagen del remito
+            axios.post(
+              'https://api.botmaker.com/v2.0/chats-actions/send-messages',
+              {
+                chat: { channelId: process.env.BOTMAKER_CHANNEL_ID, contactId: contactIdClean },
+                messages: [{
+                  media: {
+                    mimeType: 'image/jpeg',
+                    url: remito.file_url,
+                    filename: `remito-${confirmedOrder}.jpg`
+                  }
+                }]
+              },
+              { headers }
+            ).then(imgRes => {
+              console.log(`📷 Imagen remito enviada (Pedido #${confirmedOrder}) | requestId: ${imgRes.data?.requestId || 'N/A'}`);
+              // Delay para asegurar orden correcto
+              return new Promise(resolve => setTimeout(resolve, 1500));
+            }).then(() => {
+              // 2. Enviar template
+              return axios.post(
+                'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
+                {
+                  chat: { channelId: process.env.BOTMAKER_CHANNEL_ID, contactId: contactIdClean },
+                  intentIdOrName: 'enviado_transporte',
+                  variables: {
+                    '1': pedido.customer_name || 'Cliente',
+                    '2': confirmedOrder
+                  }
+                },
+                { headers }
+              );
+            }).then(tplRes => {
+              console.log(`📨 WhatsApp enviado_transporte enviado (Pedido #${confirmedOrder}) | requestId: ${tplRes.data?.requestId || 'N/A'}`);
+            }).catch(err => {
+              const errorData = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+              console.error(`❌ Error WhatsApp enviado_transporte (Pedido #${confirmedOrder}): ${errorData}`);
+            });
+          }
+        }
+      }
 
       res.json({
         ok: true,

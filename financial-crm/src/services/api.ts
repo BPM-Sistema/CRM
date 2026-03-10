@@ -108,6 +108,9 @@ export interface ApiComprobanteList {
   orden_estado_pago: string | null;
   financiera_id: number | null;
   financiera_nombre: string | null;
+  confirmed_by: string | null;
+  confirmed_at: string | null;
+  confirmed_by_name: string | null;
 }
 
 export interface ApiComprobanteDetail {
@@ -130,6 +133,9 @@ export interface ApiComprobanteDetail {
   orden_estado_pago: string | null;
   financiera_id: number | null;
   financiera_nombre: string | null;
+  confirmed_by: string | null;
+  confirmed_at: string | null;
+  confirmed_by_name: string | null;
 }
 
 export interface ApiLog {

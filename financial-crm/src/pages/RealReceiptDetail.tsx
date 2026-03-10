@@ -355,8 +355,15 @@ export function RealReceiptDetail() {
                   <Check size={48} className="mx-auto text-emerald-600 mb-2" />
                   <h3 className="text-lg font-semibold text-emerald-800">Confirmado</h3>
                   <p className="text-sm text-emerald-700 mt-1">
-                    Este comprobante fue aprobado
+                    {comprobante.confirmed_by_name
+                      ? `Aprobado por ${comprobante.confirmed_by_name}`
+                      : 'Este comprobante fue aprobado'}
                   </p>
+                  {comprobante.confirmed_at && (
+                    <p className="text-xs text-emerald-600 mt-1">
+                      {format(new Date(comprobante.confirmed_at), 'dd/MM/yyyy HH:mm', { locale: es })}
+                    </p>
+                  )}
                 </div>
               </Card>
             )}
