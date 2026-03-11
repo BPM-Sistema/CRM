@@ -854,35 +854,52 @@ async function detectarFinancieraDesdeOCR(textoOcr) {
   return null;
 }
 
+// Helper: normaliza teléfono a últimos 10 dígitos para comparación
+function normalizePhoneForComparison(phone) {
+  if (!phone) return '';
+  return phone.replace(/\D/g, '').slice(-10);
+}
+
+// Teléfono de testing (últimos 10 dígitos)
+const TESTING_PHONE_NORMALIZED = '1123945965';
+
+// Plantillas que NO llevan sufijo de financiera
+const PLANTILLAS_SIN_SUFIJO = ['datos_envio', 'comprobante_rechazado'];
+
 async function enviarWhatsAppPlantilla({ telefono, plantilla, variables }) {
-  // 🔒 Filtro de testing - solo enviar a número de prueba
-  const TESTING_PHONE = '+5491123945965';
-  if (telefono !== TESTING_PHONE) {
+  // 🔒 Filtro de testing - solo enviar a número de prueba (compara últimos 10 dígitos)
+  if (normalizePhoneForComparison(telefono) !== TESTING_PHONE_NORMALIZED) {
     console.log('📵 WhatsApp ignorado (testing):', telefono);
     return { data: { skipped: true, reason: 'testing_filter' } };
   }
 
-  // Obtener financiera default para determinar sufijo de plantilla
+  // Determinar nombre final de plantilla
   let plantillaFinal = plantilla;
-  try {
-    const finResult = await pool.query(`
-      SELECT nombre
-      FROM financieras
-      WHERE is_default = true
-      LIMIT 1
-    `);
 
-    if (finResult.rows.length > 0) {
-      const nombreFinanciera = finResult.rows[0].nombre.toLowerCase();
-      if (nombreFinanciera.includes('wanda')) {
-        plantillaFinal = `${plantilla}_wanda`;
-      } else if (nombreFinanciera.includes('kiesel')) {
-        plantillaFinal = `${plantilla}_kiesel`;
+  // Solo agregar sufijo de financiera si la plantilla lo requiere
+  if (!PLANTILLAS_SIN_SUFIJO.includes(plantilla)) {
+    try {
+      const finResult = await pool.query(`
+        SELECT nombre
+        FROM financieras
+        WHERE is_default = true
+        LIMIT 1
+      `);
+
+      if (finResult.rows.length > 0) {
+        const nombreFinanciera = finResult.rows[0].nombre.toLowerCase();
+        if (nombreFinanciera.includes('wanda')) {
+          plantillaFinal = `${plantilla}_wanda`;
+        } else if (nombreFinanciera.includes('kiesel')) {
+          plantillaFinal = `${plantilla}_kiesel`;
+        }
+        console.log(`🏦 Financiera default: ${finResult.rows[0].nombre} → plantilla: ${plantillaFinal}`);
       }
-      console.log(`🏦 Financiera default: ${finResult.rows[0].nombre} → plantilla: ${plantillaFinal}`);
+    } catch (err) {
+      console.error('⚠️ Error obteniendo financiera default:', err.message);
     }
-  } catch (err) {
-    console.error('⚠️ Error obteniendo financiera default:', err.message);
+  } else {
+    console.log(`📋 Plantilla sin sufijo: ${plantilla}`);
   }
 
   console.log('📤 Enviando WhatsApp a:', telefono, 'plantilla:', plantillaFinal);
@@ -1593,14 +1610,15 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
     // 3️⃣ Recalcular total pagado (comprobantes + efectivo)
     const totalPagado = await calcularTotalPagado(comprobante.order_number);
 
-    // 4️⃣ Obtener monto y estado actual del pedido
+    // 4️⃣ Obtener monto, estado actual y datos de cliente del pedido
     const orderRes = await pool.query(
-      `SELECT monto_tiendanube, estado_pedido FROM orders_validated WHERE order_number = $1`,
+      `SELECT monto_tiendanube, estado_pedido, customer_name, customer_phone, shipping_type FROM orders_validated WHERE order_number = $1`,
       [comprobante.order_number]
     );
 
-    const montoPedido = Number(orderRes.rows[0].monto_tiendanube);
-    const estadoPedidoActual = orderRes.rows[0].estado_pedido;
+    const orderData = orderRes.rows[0];
+    const montoPedido = Number(orderData.monto_tiendanube);
+    const estadoPedidoActual = orderData.estado_pedido;
     const saldo = montoPedido - totalPagado;
 
     // 5️⃣ Definir estado_pago
@@ -1636,6 +1654,44 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
     console.log(`✅ [${requestId}] Comprobante ${id} confirmado exitosamente`);
     if (nuevoEstadoPedido !== estadoPedidoActual) {
       console.log(`📦 Estado pedido: ${estadoPedidoActual} → ${nuevoEstadoPedido}`);
+    }
+
+    // 9️⃣ Enviar WhatsApp si hay teléfono
+    const customerPhone = orderData.customer_phone;
+    if (customerPhone && normalizePhoneForComparison(customerPhone) === TESTING_PHONE_NORMALIZED) {
+      const customerName = orderData.customer_name || 'Cliente';
+      const shippingType = orderData.shipping_type || '';
+
+      // Enviar partial_paid si hay saldo pendiente
+      if (saldo > 0) {
+        const montoFormateado = comprobante.monto.toLocaleString('es-AR');
+        const saldoFormateado = saldo.toLocaleString('es-AR');
+
+        console.log(`📱 [${requestId}] Enviando WhatsApp partial_paid a ${customerPhone}`);
+        enviarWhatsAppPlantilla({
+          telefono: customerPhone,
+          plantilla: 'partial_paid',  // La función agrega el sufijo automáticamente
+          variables: { '1': customerName, '2': montoFormateado, '3': saldoFormateado }
+        }).catch(err => console.error(`❌ Error WhatsApp partial_paid:`, err.message));
+      }
+
+      // Enviar datos_envio si es el primer comprobante confirmado y requiere formulario
+      if (requiresShippingForm(shippingType)) {
+        // Verificar si es el primer comprobante confirmado
+        const countRes = await pool.query(
+          `SELECT COUNT(*) as count FROM comprobantes WHERE order_number = $1 AND estado = 'confirmado'`,
+          [comprobante.order_number]
+        );
+
+        if (parseInt(countRes.rows[0].count) === 1) {
+          console.log(`📱 [${requestId}] Enviando WhatsApp datos_envio a ${customerPhone}`);
+          enviarWhatsAppPlantilla({
+            telefono: customerPhone,
+            plantilla: 'datos_envio',
+            variables: { '1': customerName, '2': comprobante.order_number }
+          }).catch(err => console.error(`❌ Error WhatsApp datos_envio:`, err.message));
+        }
+      }
     }
 
     res.json({
@@ -1678,8 +1734,13 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
   rejectRequestCache.set(id, requestTime);
 
   try {
+    // Query optimizada: trae comprobante + datos del cliente en una sola consulta
     const compRes = await pool.query(
-      `SELECT id, order_number, estado, monto FROM comprobantes WHERE id = $1`,
+      `SELECT c.id, c.order_number, c.estado, c.monto,
+              ov.customer_name, ov.customer_phone
+       FROM comprobantes c
+       LEFT JOIN orders_validated ov ON c.order_number = ov.order_number
+       WHERE c.id = $1`,
       [id]
     );
 
@@ -1708,23 +1769,17 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
       username: req.user?.name
     });
 
-    // WhatsApp al cliente - comprobante_rechazado
-    const clienteRes = await pool.query(
-      `SELECT customer_name, customer_phone FROM orders_validated WHERE order_number = $1`,
-      [comprobante.order_number]
-    );
-    const cliente = clienteRes.rows[0];
-    if (cliente?.customer_phone) {
-      const TESTING_PHONE = '+5491123945965';
-      if (cliente.customer_phone === TESTING_PHONE) {
-        const contactIdClean = cliente.customer_phone.replace('+', '');
+    // WhatsApp al cliente - comprobante_rechazado (datos ya están en comprobante)
+    if (comprobante.customer_phone) {
+      if (normalizePhoneForComparison(comprobante.customer_phone) === TESTING_PHONE_NORMALIZED) {
+        const contactIdClean = comprobante.customer_phone.replace('+', '');
         axios.post(
           'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
           {
             chat: { channelId: process.env.BOTMAKER_CHANNEL_ID, contactId: contactIdClean },
             intentIdOrName: 'comprobante_rechazado',
             variables: {
-              '1': cliente.customer_name || 'Cliente',
+              '1': comprobante.customer_name || 'Cliente',
               '2': String(comprobante.monto),
               '3': comprobante.order_number
             }
@@ -2604,8 +2659,7 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
       const esEnvioNube = shippingType.includes('envío nube') || shippingType.includes('envio nube');
 
       if (esEnvioNube && pedido.customer_phone && pedido.tn_order_id && pedido.tn_order_token) {
-        const TESTING_PHONE = '+5491123945965';
-        if (pedido.customer_phone === TESTING_PHONE) {
+        if (normalizePhoneForComparison(pedido.customer_phone) === TESTING_PHONE_NORMALIZED) {
           const trackingParam = `${pedido.tn_order_id}/${pedido.tn_order_token}`;
           const contactIdClean = pedido.customer_phone.replace('+', '');
 
@@ -2631,8 +2685,7 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
 
     // WhatsApp automático cuando se marca como "cancelado"
     if (estado_pedido === 'cancelado' && pedido.customer_phone) {
-      const TESTING_PHONE = '+5491123945965';
-      if (pedido.customer_phone === TESTING_PHONE) {
+      if (normalizePhoneForComparison(pedido.customer_phone) === TESTING_PHONE_NORMALIZED) {
         const contactIdClean = pedido.customer_phone.replace('+', '');
         axios.post(
           'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
@@ -2692,6 +2745,61 @@ function verifyTiendaNubeSignature(req) {
   );
 }
 
+
+// ===========================================
+// WEBHOOK: Botmaker Message Status
+// ===========================================
+// GET para validación de Botmaker
+app.get('/webhook/botmaker-status', (req, res) => {
+  res.status(200).json({ status: 'ok', message: 'Webhook endpoint ready' });
+});
+
+app.post('/webhook/botmaker-status', async (req, res) => {
+  try {
+    const authToken = req.headers['auth-bm-token'];
+    const expectedToken = process.env.BOTMAKER_WEBHOOK_SECRET;
+
+    // Validar token si está configurado
+    if (expectedToken && authToken !== expectedToken) {
+      console.error('❌ Botmaker webhook: token inválido');
+      return res.status(401).send('Invalid token');
+    }
+
+    const payload = req.body;
+    console.log('📥 BOTMAKER STATUS:', JSON.stringify(payload));
+
+    // Extraer datos relevantes
+    const {
+      status,
+      contactId,
+      messageId,
+      clientPayload,
+      intentTxId,
+      error: errors
+    } = payload;
+
+    const isError = status === 'error' || (errors && errors.length > 0);
+
+    if (isError) {
+      console.error('⚠️ WhatsApp mensaje fallido:', { contactId, messageId, errors });
+      await pool.query(`
+        INSERT INTO logs (order_number, accion, detalle, created_at)
+        VALUES ($1, $2, $3, NOW())
+      `, [
+        clientPayload || messageId || 'unknown',
+        'whatsapp_failed',
+        JSON.stringify({ contactId, messageId, errors, intentTxId })
+      ]);
+    } else if (status === 'delivered' || status === 'read') {
+      console.log(`✅ WhatsApp ${status}: ${contactId}`);
+    }
+
+    res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('❌ Error webhook Botmaker:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 app.post('/webhook/tiendanube', async (req, res) => {
   // 1️⃣ Validación de firma
@@ -2771,8 +2879,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
         );
         const clienteCancel = clienteCancelRes.rows[0];
         if (clienteCancel?.customer_phone) {
-          const TESTING_PHONE = '+5491123945965';
-          if (clienteCancel.customer_phone === TESTING_PHONE) {
+          if (normalizePhoneForComparison(clienteCancel.customer_phone) === TESTING_PHONE_NORMALIZED) {
             const contactIdClean = clienteCancel.customer_phone.replace('+', '');
             axios.post(
               'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
@@ -2917,9 +3024,8 @@ app.post('/webhook/tiendanube', async (req, res) => {
       return;
     }
 
-    // 🔒 filtro de testing (opcional)
-
-    if (telefono !== '+5491123945965') {
+    // 🔒 filtro de testing - compara últimos 10 dígitos
+    if (normalizePhoneForComparison(telefono) !== TESTING_PHONE_NORMALIZED) {
       console.log('📵 Teléfono ignorado:', telefono);
       return;
     }
@@ -2978,29 +3084,9 @@ app.post('/webhook/tiendanube', async (req, res) => {
       ? pedido.shipping_option
       : pedido.shipping_option?.name) || '';
 
+    // datos_envio se envía al confirmar el primer comprobante (no aquí)
     if (requiresShippingForm(shippingOption)) {
-      console.log(`🚚 Pedido requiere formulario de envío: ${shippingOption}`);
-      await axios.post(
-        'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
-        {
-          chat: {
-            channelId: process.env.BOTMAKER_CHANNEL_ID,
-            contactId: contactIdClean
-          },
-          intentIdOrName: 'datos_envio',
-          variables: {
-            '1': pedido.customer?.name || 'Cliente',
-            '2': String(pedido.number)
-          }
-        },
-        {
-          headers: {
-            'access-token': process.env.BOTMAKER_ACCESS_TOKEN,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      console.log(`✅ WhatsApp datos_envio enviado (Pedido #${pedido.number})`);
+      console.log(`🚚 Pedido requiere formulario de envío: ${shippingOption} (se pedirá al confirmar comprobante)`);
     }
 
   } catch (err) {
