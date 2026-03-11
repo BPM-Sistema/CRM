@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { RefreshCw, AlertCircle, Eye, Receipt, RotateCcw, Printer, Calendar, Search, ChevronLeft, ChevronRight, CheckSquare, X, Truck } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card, PaymentStatusBadge, OrderStatusBadge, Modal } from '../components/ui';
+import { AccessDenied } from '../components/AccessDenied';
 import {
   Table,
   TableHeader,
@@ -375,6 +376,14 @@ export function RealOrders() {
     setIsPrintModalOpen(false);
     setExcludedModalOpen(false);
   };
+
+  // Check permission to view this page
+  const canView = hasPermission('orders.view') || hasPermission('orders.print') ||
+                  hasPermission('orders.update_status') || hasPermission('orders.create_cash_payment');
+
+  if (!canView) {
+    return <AccessDenied message="No tenés permiso para acceder a la sección de Pedidos." />;
+  }
 
   return (
     <div className="min-h-screen">

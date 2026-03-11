@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Header } from '../components/layout';
+import { AccessDenied } from '../components/AccessDenied';
 import {
   RefreshCw,
   AlertCircle,
@@ -226,6 +227,11 @@ export function Financieras() {
         </div>
       </div>
     );
+  }
+
+  // Check permission to view this page
+  if (!hasPermission('financieras.view')) {
+    return <AccessDenied message="No tenés permiso para acceder a la sección de Financieras." />;
   }
 
   return (
