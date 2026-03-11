@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { RefreshCw, AlertCircle, Eye, Banknote, FileText, Download, Calendar, CheckSquare, Square, X, Search, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
+import { AccessDenied } from '../components/AccessDenied';
+import { useAuth } from '../contexts/AuthContext';
 import { fetchComprobantes, fetchFinancieras, ApiComprobanteList, PaginationInfo, Financiera, ComprobantesFilters } from '../services/api';
 import { format } from 'date-fns';
 import { clsx } from 'clsx';
@@ -212,6 +214,7 @@ function ComprobanteCard({ comp, onClick, selectionMode, isSelected, onToggleSel
 }
 
 export function RealReceipts() {
+  const { hasPermission } = useAuth();
   const navigate = useNavigate();
   const [comprobantes, setComprobantes] = useState<ApiComprobanteList[]>([]);
   const [loading, setLoading] = useState(true);
@@ -388,6 +391,14 @@ export function RealReceipts() {
     const folderName = estadoFilter !== 'all' ? `comprobantes_${estadoFilter}` : 'comprobantes';
     downloadComprobantesAsZip(conImagen, setDownloading, folderName);
   };
+
+  // Check permission to view this page
+  const canView = hasPermission('receipts.view') || hasPermission('receipts.confirm') ||
+                  hasPermission('receipts.reject') || hasPermission('receipts.download');
+
+  if (!canView) {
+    return <AccessDenied message="No tenés permiso para acceder a la sección de Comprobantes." />;
+  }
 
   return (
     <div className="min-h-screen">

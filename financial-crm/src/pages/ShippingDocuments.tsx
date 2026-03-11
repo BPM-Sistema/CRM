@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { RefreshCw, Upload, FileText, Check, X, AlertCircle, Loader2, Eye, ChevronLeft, ChevronRight, Search, Maximize2, ExternalLink, Trash2, Package, ZoomIn, ZoomOut, RotateCcw, MapPin, User, Phone, Mail, ShoppingBag, DollarSign, Truck } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
+import { AccessDenied } from '../components/AccessDenied';
+import { useAuth } from '../contexts/AuthContext';
 import {
   fetchRemitos,
   fetchRemitosStats,
@@ -1063,6 +1065,7 @@ function RemitoModal({
 }
 
 export function ShippingDocuments() {
+  const { hasPermission } = useAuth();
   const [remitos, setRemitos] = useState<Remito[]>([]);
   const [stats, setStats] = useState<RemitosStats | null>(null);
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
@@ -1164,6 +1167,14 @@ export function ShippingDocuments() {
       setActionLoading(null);
     }
   };
+
+  // Check permission to view this page
+  const canView = hasPermission('remitos.view') || hasPermission('remitos.upload') ||
+                  hasPermission('remitos.confirm') || hasPermission('remitos.reject');
+
+  if (!canView) {
+    return <AccessDenied message="No tenés permiso para acceder a la sección de Remitos." />;
+  }
 
   return (
     <div className="min-h-screen bg-neutral-50">
