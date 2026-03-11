@@ -576,6 +576,19 @@ function RemitoCard({ remito, onConfirm, onDelete, onOpen, onPreviewOrder, isLoa
           </div>
         )}
 
+        {/* Delete button for confirmed remitos */}
+        {remito.status === 'confirmed' && (
+          <Button
+            variant="secondary"
+            onClick={() => onDelete(remito.id)}
+            disabled={isLoading}
+            className="w-full text-red-600 hover:bg-red-50 py-2 mt-2"
+          >
+            <Trash2 size={16} className="mr-2" />
+            Eliminar
+          </Button>
+        )}
+
         {/* 2. Match result - multiple candidates */}
         {remito.status === 'ready' && remito.match_details?.candidates && remito.match_details.candidates.length > 1 && (
           <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 space-y-2">
