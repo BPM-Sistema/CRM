@@ -2020,12 +2020,13 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
     // Obtener logs del pedido (por comprobante O por order_number directo)
     // Usando UNION (sin ALL) para eliminar duplicados cuando un log tiene ambos comprobante_id y order_number
     const logsRes = await pool.query(`
-      SELECT id, accion, origen, created_at FROM (
+      SELECT id, accion, origen, username, created_at FROM (
         -- Logs vinculados a comprobantes del pedido
         SELECT
           l.id,
           l.accion,
           l.origen,
+          l.username,
           l.created_at
         FROM logs l
         JOIN comprobantes c ON l.comprobante_id = c.id
@@ -2038,6 +2039,7 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
           l.id,
           l.accion,
           l.origen,
+          l.username,
           l.created_at
         FROM logs l
         WHERE l.order_number = $1

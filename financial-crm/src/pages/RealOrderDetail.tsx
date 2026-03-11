@@ -200,19 +200,11 @@ export function RealOrderDetail() {
       return;
     }
 
-    // 3. Actualizar estado si corresponde
-    if (data?.order.estado_pedido === 'a_imprimir' && orderNumber) {
-      try {
-        await updateOrderStatus(orderNumber, 'hoja_impresa');
-      } catch (error) {
-        console.error('Error al actualizar estado:', error);
-      }
-    }
-
-    // 4. Cerrar modal y recargar datos
+    // 3. Cerrar modal y recargar datos después de un delay
+    // (BatchPrint.tsx se encarga de actualizar el estado a hoja_impresa)
     setIsPrintModalOpen(false);
     setPrintData(null);
-    loadOrder();
+    setTimeout(() => loadOrder(), 1500);
   };
 
   if (loading) {
@@ -531,7 +523,7 @@ export function RealOrderDetail() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-neutral-900 whitespace-pre-line">{formatEventLabel(log.accion)}</p>
                           <p className="text-xs text-neutral-500">
-                            {format(new Date(log.created_at), 'dd/MM/yyyy HH:mm', { locale: es })} · {log.origen}
+                            {format(new Date(log.created_at), 'dd/MM/yyyy HH:mm', { locale: es })} · {log.username || 'sistema'}
                           </p>
                         </div>
                       </div>

@@ -142,6 +142,7 @@ export interface ApiLog {
   id: number;
   accion: string;
   origen: string;
+  username: string | null;
   created_at: string;
 }
 
