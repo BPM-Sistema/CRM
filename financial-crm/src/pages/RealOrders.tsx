@@ -563,6 +563,7 @@ export function RealOrders() {
             <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block flex items-center gap-1.5">
               <Truck size={12} />
               Datos de Envío
+              <span className="normal-case font-normal text-neutral-400">(solo transporte a elección)</span>
             </span>
             <div className="flex items-center gap-2">
               <button
