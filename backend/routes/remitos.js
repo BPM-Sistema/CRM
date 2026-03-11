@@ -66,7 +66,13 @@ router.post('/upload',
       try {
         // 1. Subir a Supabase Storage
         const fileBuffer = fs.readFileSync(file.path);
-        const fileName = `${Date.now()}-${file.originalname}`;
+        // Sanitizar nombre de archivo: remover caracteres especiales Unicode
+        const safeName = file.originalname
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')  // Quitar acentos
+          .replace(/[^\w\s.-]/g, '')         // Solo alfanuméricos, espacios, puntos, guiones
+          .replace(/\s+/g, '_');             // Espacios a guiones bajos
+        const fileName = `${Date.now()}-${safeName}`;
         const supabasePath = `remitos/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
@@ -325,6 +331,18 @@ router.post('/:id/confirm',
 
       if (orderRes.rowCount === 0) {
         return res.status(404).json({ error: 'Pedido no encontrado' });
+      }
+
+      // Verificar que el pedido tiene datos de envío
+      const shippingRes = await pool.query(
+        'SELECT id FROM shipping_requests WHERE order_number = $1',
+        [confirmedOrder]
+      );
+
+      if (shippingRes.rowCount === 0) {
+        return res.status(400).json({
+          error: 'El pedido no tiene datos de envío. El cliente debe completar el formulario de envío primero.'
+        });
       }
 
       // Confirmar
