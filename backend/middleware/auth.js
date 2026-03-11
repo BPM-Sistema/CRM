@@ -14,7 +14,13 @@ function calculatePermissionsHash(permissions) {
   return crypto.createHash('md5').update(sorted).digest('hex').substring(0, 16);
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'finops-secret-key-change-in-production';
+// JWT_SECRET MUST be set in environment - no fallback for security (except tests)
+const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === 'test' ? 'test-secret-key' : null);
+if (!JWT_SECRET) {
+  console.error('❌ CRITICAL: JWT_SECRET environment variable is not set!');
+  console.error('   Set it with: export JWT_SECRET=your-secure-random-string');
+  process.exit(1);
+}
 
 /**
  * Middleware para verificar autenticación

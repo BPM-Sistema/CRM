@@ -3,6 +3,9 @@
  * Tests para el backend de PetLove
  */
 
+// Set test environment for JWT_SECRET fallback
+process.env.NODE_ENV = 'test';
+
 module.exports = {
   // Entorno de Node.js
   testEnvironment: 'node',

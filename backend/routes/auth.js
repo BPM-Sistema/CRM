@@ -6,14 +6,15 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const pool = require('../db');
 const { generateToken, authenticate } = require('../middleware/auth');
+const { loginLimiter } = require('../middleware/rateLimit');
 
 const router = express.Router();
 
 /**
  * POST /auth/login
- * Iniciar sesión
+ * Iniciar sesión (rate limited: 5 attempts per 15 min)
  */
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 

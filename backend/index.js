@@ -33,6 +33,7 @@ const pool = require('./db');
 const { ocrFromUrl } = require('./services/ocrFromUrl');
 const { hashText } = require('./hash');
 const { authenticate, requirePermission } = require('./middleware/auth');
+const { uploadLimiter, validationLimiter, shippingFormLimiter } = require('./middleware/rateLimit');
 const crypto = require('crypto');
 const sharp = require('sharp');
 const PDFDocument = require('pdfkit');
@@ -65,6 +66,11 @@ app.use(express.json({
 }));
 
 // CORS para permitir requests del frontend
+// En producción FRONTEND_URL es requerido - en dev/test permite localhost
+if (!process.env.FRONTEND_URL && process.env.NODE_ENV === 'production') {
+  console.error('❌ CRITICAL: FRONTEND_URL must be set in production!');
+  process.exit(1);
+}
 const allowedOrigins = process.env.FRONTEND_URL
   ? [
       process.env.FRONTEND_URL,
@@ -73,7 +79,7 @@ const allowedOrigins = process.env.FRONTEND_URL
       'http://localhost:5173',
       'http://localhost:3001'
     ]
-  : ['*'];
+  : ['http://localhost:5173', 'http://localhost:3001'];
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -3008,12 +3014,18 @@ app.post('/webhook/tiendanube', async (req, res) => {
    PASO 1 — VALIDAR PEDIDO
 ===================================================== */
 
-app.post('/validate-order', async (req, res) => {
+app.post('/validate-order', validationLimiter, async (req, res) => {
   try {
     const { orderNumber } = req.body;
 
     if (!orderNumber) {
       return res.status(400).json({ error: 'Falta orderNumber' });
+    }
+
+    // Validación de seguridad: orderNumber debe ser numérico y razonable
+    const sanitized = String(orderNumber).replace(/\D/g, '');
+    if (!sanitized || sanitized.length > 20) {
+      return res.status(400).json({ error: 'Número de pedido inválido' });
     }
 
     /* ===============================
@@ -3089,7 +3101,7 @@ app.post('/validate-order', async (req, res) => {
 /* =====================================================
    PASO 2 — UPLOAD + OCR + COMPARACIÓN
 ===================================================== */
-app.post('/upload', (req, res, next) => {
+app.post('/upload', uploadLimiter, (req, res, next) => {
   upload.single('file')(req, res, (err) => {
     if (err) {
       console.error('❌ Multer error:', err.message);
@@ -3103,11 +3115,15 @@ app.post('/upload', (req, res, next) => {
     const file = req.file;
 
     console.log('📥 /upload iniciado');
-    console.log('orderNumber:', orderNumber);
-    console.log('file:', file?.originalname);
 
     if (!orderNumber || !file) {
       return res.status(400).json({ error: 'Faltan datos' });
+    }
+
+    // Validación de seguridad: orderNumber debe ser numérico y razonable
+    const sanitizedOrderNumber = String(orderNumber).replace(/\D/g, '');
+    if (!sanitizedOrderNumber || sanitizedOrderNumber.length > 20) {
+      return res.status(400).json({ error: 'Número de pedido inválido' });
     }
 
     /* ===============================
@@ -4176,7 +4192,7 @@ app.delete('/notifications/:id', authenticate, async (req, res) => {
    Para clientes con método "Transporte a elección"
 ===================================================== */
 
-app.post('/shipping-data', async (req, res) => {
+app.post('/shipping-data', shippingFormLimiter, async (req, res) => {
   try {
     const {
       order_number,
@@ -4595,11 +4611,6 @@ app.get('/orders/:orderNumber/shipping-label', authenticate, async (req, res) =>
 /* =====================================================
    SENTRY ERROR HANDLING
 ===================================================== */
-
-// Endpoint de prueba para verificar que Sentry funciona
-app.get('/debug-sentry', (req, res) => {
-  throw new Error('Sentry test error - this is intentional!');
-});
 
 // Sentry error handler - DEBE ir después de todas las rutas
 Sentry.setupExpressErrorHandler(app);
