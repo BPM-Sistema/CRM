@@ -253,6 +253,8 @@ export function RealOrderDetail() {
     (shippingTypeLower.includes('expreso') && shippingTypeLower.includes('elec')) ||
     shippingTypeLower.includes('via cargo') ||
     shippingTypeLower.includes('viacargo');
+  // Cualquier envío (no retiro) - para ocultar botón "Retirado"
+  const isShippedOrder = requiresShippingData || shippingTypeLower.includes('env');
   const canPrint = hasValidPayment && (!requiresShippingData || shippingRequest !== null);
 
   const canShip = paymentStatus === 'total';
@@ -700,7 +702,7 @@ export function RealOrderDetail() {
                         </p>
                       </div>
                     )}
-                    {requiresShippingData ? (
+                    {isShippedOrder ? (
                       <Button
                         variant="primary"
                         className="w-full"
