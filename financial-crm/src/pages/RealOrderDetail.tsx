@@ -700,16 +700,7 @@ export function RealOrderDetail() {
                         </p>
                       </div>
                     )}
-                    <div className="grid grid-cols-2 gap-3">
-                      <Button
-                        variant="primary"
-                        className="w-full"
-                        leftIcon={<UserCheck size={16} />}
-                        onClick={() => handleUpdateOrderStatus('retirado')}
-                        disabled={isUpdatingStatus || !canShip}
-                      >
-                        Retirado
-                      </Button>
+                    {requiresShippingData ? (
                       <Button
                         variant="primary"
                         className="w-full"
@@ -719,7 +710,28 @@ export function RealOrderDetail() {
                       >
                         En Calle
                       </Button>
-                    </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-3">
+                        <Button
+                          variant="primary"
+                          className="w-full"
+                          leftIcon={<UserCheck size={16} />}
+                          onClick={() => handleUpdateOrderStatus('retirado')}
+                          disabled={isUpdatingStatus || !canShip}
+                        >
+                          Retirado
+                        </Button>
+                        <Button
+                          variant="primary"
+                          className="w-full"
+                          leftIcon={<Truck size={16} />}
+                          onClick={() => handleUpdateOrderStatus('en_calle')}
+                          disabled={isUpdatingStatus || !canShip}
+                        >
+                          En Calle
+                        </Button>
+                      </div>
+                    )}
                   </>
                 )}
 
