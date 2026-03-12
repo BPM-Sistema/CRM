@@ -224,7 +224,7 @@ export function RealOrderDetail() {
             {error || 'Pedido no encontrado'}
           </h3>
           <div className="flex gap-3 justify-center mt-4">
-            <Button variant="secondary" onClick={() => navigate('/orders')}>
+            <Button variant="secondary" onClick={() => navigate(-1)}>
               Volver
             </Button>
             <Button onClick={loadOrder}>Reintentar</Button>
@@ -265,7 +265,7 @@ export function RealOrderDetail() {
         title={
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate('/orders')}
+              onClick={() => navigate(-1)}
               className="p-1 -ml-1 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 rounded-lg transition-colors"
             >
               <ArrowLeft size={20} />
