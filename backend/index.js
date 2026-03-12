@@ -882,7 +882,7 @@ function normalizePhoneForComparison(phone) {
 const TESTING_PHONES = ['1123945965', '1126032641'];
 
 // Plantillas que NO llevan sufijo de financiera
-const PLANTILLAS_SIN_SUFIJO = ['datos_envio', 'comprobante_rechazado', 'enviado_env_nube', 'enviado_transporte', 'pedido_cancelado'];
+const PLANTILLAS_SIN_SUFIJO = ['datos__envio', 'comprobante_rechazado', 'enviado_env_nube', 'enviado_transporte', 'pedido_cancelado'];
 
 async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNumber = null }) {
   // 🔒 Filtro de testing - solo enviar a números de prueba (compara últimos 10 dígitos)
@@ -907,9 +907,9 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNu
       if (finResult.rows.length > 0) {
         const nombreFinanciera = finResult.rows[0].nombre.toLowerCase();
         if (nombreFinanciera.includes('wanda')) {
-          plantillaFinal = `${plantilla}_wanda`;
+          plantillaFinal = `${plantilla}_wanda_v2`;
         } else if (nombreFinanciera.includes('kiesel')) {
-          plantillaFinal = `${plantilla}_kiesel`;
+          plantillaFinal = `${plantilla}_kiesel_v2`;
         }
         console.log(`🏦 Financiera default: ${finResult.rows[0].nombre} → plantilla: ${plantillaFinal}`);
       }
@@ -1704,7 +1704,7 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
 
       // partial_paid se envía al SUBIR comprobante, no al confirmar (evita duplicados)
 
-      // Enviar datos_envio si es el primer comprobante confirmado y requiere formulario
+      // Enviar datos__envio si es el primer comprobante confirmado y requiere formulario
       if (requiresShippingForm(shippingType)) {
         // Verificar si es el primer comprobante confirmado
         const countRes = await pool.query(
@@ -1713,12 +1713,12 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
         );
 
         if (parseInt(countRes.rows[0].count) === 1) {
-          console.log(`📱 [${requestId}] Enviando WhatsApp datos_envio a ${customerPhone}`);
+          console.log(`📱 [${requestId}] Enviando WhatsApp datos__envio a ${customerPhone}`);
           enviarWhatsAppPlantilla({
             telefono: customerPhone,
-            plantilla: 'datos_envio',
+            plantilla: 'datos__envio',
             variables: { '1': customerName, '2': comprobante.order_number }
-          }).catch(err => console.error(`❌ Error WhatsApp datos_envio:`, err.message));
+          }).catch(err => console.error(`❌ Error WhatsApp datos__envio:`, err.message));
         }
       }
     }
@@ -3085,7 +3085,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
       ? pedido.shipping_option
       : pedido.shipping_option?.name) || '';
 
-    // datos_envio se envía al confirmar el primer comprobante (no aquí)
+    // datos__envio se envía al confirmar el primer comprobante (no aquí)
     if (requiresShippingForm(shippingOption)) {
       console.log(`🚚 Pedido requiere formulario de envío: ${shippingOption} (se pedirá al confirmar comprobante)`);
     }
