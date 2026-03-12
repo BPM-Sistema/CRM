@@ -2830,32 +2830,8 @@ app.post('/webhook/botmaker-status', async (req, res) => {
             JSON.stringify({ template: msg.template, contactId, error: errorMsg, intentTxId })
           ]);
 
-          // Retry automático si retry_count < 2
-          if (msg.retry_count < 2) {
-            console.log(`🔄 Reintentando WhatsApp (intento ${msg.retry_count + 1})...`);
-            try {
-              const retryResponse = await axios.post(
-                'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
-                {
-                  chat: { channelId: process.env.BOTMAKER_CHANNEL_ID, contactId: msg.contact_id },
-                  intentIdOrName: msg.template,
-                  variables: msg.variables
-                },
-                { headers: { 'access-token': process.env.BOTMAKER_ACCESS_TOKEN, 'Content-Type': 'application/json' } }
-              );
-
-              const newRequestId = retryResponse.data?.requestId;
-              if (newRequestId) {
-                await pool.query(`
-                  INSERT INTO whatsapp_messages (request_id, order_number, template, contact_id, variables, status, retry_count)
-                  VALUES ($1, $2, $3, $4, $5, 'pending', $6)
-                `, [newRequestId, msg.order_number, msg.template, msg.contact_id, JSON.stringify(msg.variables), msg.retry_count + 1]);
-                console.log(`📝 Retry tracked: ${newRequestId}`);
-              }
-            } catch (retryErr) {
-              console.error('❌ Retry fallido:', retryErr.message);
-            }
-          }
+          // No retry automático - el mensaje podría haberse entregado
+          // Los fallos quedan logueados para revisión manual en tabla logs
         }
       }
     }
