@@ -1,5 +1,5 @@
 import { useState, FormEvent, useRef, useEffect } from 'react';
-import { Check, AlertCircle, Loader2, Truck } from 'lucide-react';
+import { Check, AlertCircle, Loader2 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'https://api.bpmadministrador.com';
 
@@ -195,9 +195,7 @@ export function ShippingForm() {
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-neutral-900 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Truck size={32} className="text-white" />
-          </div>
+          <img src="/logo.webp" alt="Blanqueria" className="h-20 mx-auto mb-4" />
           <h1 className="text-3xl font-bold text-neutral-900 mb-2">
             Datos de Envío
           </h1>

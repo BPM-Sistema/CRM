@@ -1,5 +1,5 @@
 import { useState, FormEvent, useRef } from 'react';
-import { Check, AlertCircle, Loader2, Upload, FileImage } from 'lucide-react';
+import { Check, AlertCircle, Loader2, FileImage } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'https://api.bpmadministrador.com';
 
@@ -115,9 +115,7 @@ export function ComprobantesForm() {
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-neutral-900 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Upload size={32} className="text-white" />
-          </div>
+          <img src="/logo.webp" alt="Blanqueria" className="h-20 mx-auto mb-4" />
           <h1 className="text-3xl font-bold text-neutral-900 mb-2">
             Confirmar pago
           </h1>
