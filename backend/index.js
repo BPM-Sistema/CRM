@@ -860,15 +860,15 @@ function normalizePhoneForComparison(phone) {
   return phone.replace(/\D/g, '').slice(-10);
 }
 
-// Teléfono de testing (últimos 10 dígitos)
-const TESTING_PHONE_NORMALIZED = '1123945965';
+// Teléfonos de testing (últimos 10 dígitos)
+const TESTING_PHONES = ['1123945965', '1126032641'];
 
 // Plantillas que NO llevan sufijo de financiera
 const PLANTILLAS_SIN_SUFIJO = ['datos_envio', 'comprobante_rechazado', 'enviado_env_nube', 'enviado_transporte', 'pedido_cancelado'];
 
 async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNumber = null }) {
-  // 🔒 Filtro de testing - solo enviar a número de prueba (compara últimos 10 dígitos)
-  if (normalizePhoneForComparison(telefono) !== TESTING_PHONE_NORMALIZED) {
+  // 🔒 Filtro de testing - solo enviar a números de prueba (compara últimos 10 dígitos)
+  if (!TESTING_PHONES.includes(normalizePhoneForComparison(telefono))) {
     console.log('📵 WhatsApp ignorado (testing):', telefono);
     return { data: { skipped: true, reason: 'testing_filter' } };
   }

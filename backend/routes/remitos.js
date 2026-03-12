@@ -375,45 +375,26 @@ router.post('/:id/confirm',
 
         if (esTransporte) {
           const phoneDigits = pedido.customer_phone.replace(/\D/g, '').slice(-10);
-          const TESTING_DIGITS = '1123945965';
+          const TESTING_PHONES = ['1123945965', '1126032641'];
 
-          if (phoneDigits === TESTING_DIGITS) {
+          if (TESTING_PHONES.includes(phoneDigits)) {
             const contactIdClean = '549' + phoneDigits;
             const headers = { 'access-token': process.env.BOTMAKER_ACCESS_TOKEN, 'Content-Type': 'application/json' };
 
-            // 1. Enviar imagen del remito
+            // Enviar template con imagen del remito como header
             axios.post(
-              'https://api.botmaker.com/v2.0/chats-actions/send-messages',
+              'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
               {
                 chat: { channelId: process.env.BOTMAKER_CHANNEL_ID, contactId: contactIdClean },
-                messages: [{
-                  media: {
-                    mimeType: 'image/jpeg',
-                    url: remito.file_url,
-                    filename: `remito-${confirmedOrder}.jpg`
-                  }
-                }]
+                intentIdOrName: 'enviado_transporte',
+                variables: {
+                  'headerImageUrl': remito.file_url,
+                  '1': pedido.customer_name || 'Cliente',
+                  '2': confirmedOrder
+                }
               },
               { headers }
-            ).then(imgRes => {
-              console.log(`📷 Imagen remito enviada (Pedido #${confirmedOrder}) | requestId: ${imgRes.data?.requestId || 'N/A'}`);
-              // Delay para asegurar orden correcto
-              return new Promise(resolve => setTimeout(resolve, 1500));
-            }).then(() => {
-              // 2. Enviar template
-              return axios.post(
-                'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
-                {
-                  chat: { channelId: process.env.BOTMAKER_CHANNEL_ID, contactId: contactIdClean },
-                  intentIdOrName: 'enviado_transporte',
-                  variables: {
-                    '1': pedido.customer_name || 'Cliente',
-                    '2': confirmedOrder
-                  }
-                },
-                { headers }
-              );
-            }).then(tplRes => {
+            ).then(tplRes => {
               console.log(`📨 WhatsApp enviado_transporte enviado (Pedido #${confirmedOrder}) | requestId: ${tplRes.data?.requestId || 'N/A'}`);
             }).catch(err => {
               const errorData = err.response?.data ? JSON.stringify(err.response.data) : err.message;
