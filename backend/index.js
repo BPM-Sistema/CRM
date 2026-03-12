@@ -4537,8 +4537,7 @@ app.get('/orders/:orderNumber/shipping-label', authenticate, async (req, res) =>
       size: 'A4',
       margin: 40,
       info: {
-        Title: `Etiqueta Envío - Pedido #${orderNumber}`,
-        Author: 'Pet Love Argentina'
+        Title: `Etiqueta Envío - Pedido #${orderNumber}`
       }
     });
 
