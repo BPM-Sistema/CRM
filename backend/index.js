@@ -864,9 +864,9 @@ function normalizePhoneForComparison(phone) {
 const TESTING_PHONE_NORMALIZED = '1123945965';
 
 // Plantillas que NO llevan sufijo de financiera
-const PLANTILLAS_SIN_SUFIJO = ['datos_envio', 'comprobante_rechazado'];
+const PLANTILLAS_SIN_SUFIJO = ['datos_envio', 'comprobante_rechazado', 'enviado_env_nube', 'enviado_transporte', 'pedido_cancelado'];
 
-async function enviarWhatsAppPlantilla({ telefono, plantilla, variables }) {
+async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNumber = null }) {
   // 🔒 Filtro de testing - solo enviar a número de prueba (compara últimos 10 dígitos)
   if (normalizePhoneForComparison(telefono) !== TESTING_PHONE_NORMALIZED) {
     console.log('📵 WhatsApp ignorado (testing):', telefono);
@@ -906,23 +906,45 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables }) {
 
   const contactIdClean = telefono.replace('+', '');
 
-  return axios.post(
-    'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
-    {
-      chat: {
-        channelId: process.env.BOTMAKER_CHANNEL_ID,
-        contactId: contactIdClean
+  try {
+    const response = await axios.post(
+      'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
+      {
+        chat: {
+          channelId: process.env.BOTMAKER_CHANNEL_ID,
+          contactId: contactIdClean
+        },
+        intentIdOrName: plantillaFinal,
+        variables
       },
-      intentIdOrName: plantillaFinal,
-      variables
-    },
-    {
-      headers: {
-        'access-token': process.env.BOTMAKER_ACCESS_TOKEN,
-        'Content-Type': 'application/json'
+      {
+        headers: {
+          'access-token': process.env.BOTMAKER_ACCESS_TOKEN,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    // Guardar en tracking si tenemos requestId
+    const requestId = response.data?.requestId;
+    if (requestId) {
+      try {
+        await pool.query(`
+          INSERT INTO whatsapp_messages (request_id, order_number, template, contact_id, variables, status)
+          VALUES ($1, $2, $3, $4, $5, 'pending')
+          ON CONFLICT (request_id) DO NOTHING
+        `, [requestId, orderNumber, plantillaFinal, contactIdClean, JSON.stringify(variables)]);
+        console.log(`📝 WhatsApp tracked: ${requestId} (pedido: ${orderNumber || 'N/A'})`);
+      } catch (dbErr) {
+        console.error('⚠️ Error guardando tracking WhatsApp:', dbErr.message);
       }
     }
-  );
+
+    return response;
+  } catch (err) {
+    console.error('❌ Error enviando WhatsApp:', err.response?.data || err.message);
+    throw err;
+  }
 }
 
 
@@ -1769,25 +1791,19 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
       username: req.user?.name
     });
 
-    // WhatsApp al cliente - comprobante_rechazado (datos ya están en comprobante)
+    // WhatsApp al cliente - comprobante_rechazado
     if (comprobante.customer_phone) {
-      if (normalizePhoneForComparison(comprobante.customer_phone) === TESTING_PHONE_NORMALIZED) {
-        const contactIdClean = comprobante.customer_phone.replace('+', '');
-        axios.post(
-          'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
-          {
-            chat: { channelId: process.env.BOTMAKER_CHANNEL_ID, contactId: contactIdClean },
-            intentIdOrName: 'comprobante_rechazado',
-            variables: {
-              '1': comprobante.customer_name || 'Cliente',
-              '2': String(comprobante.monto),
-              '3': comprobante.order_number
-            }
-          },
-          { headers: { 'access-token': process.env.BOTMAKER_ACCESS_TOKEN, 'Content-Type': 'application/json' } }
-        ).then(() => console.log('📨 WhatsApp comprobante_rechazado enviado'))
-         .catch(err => console.error('⚠️ Error WhatsApp comprobante_rechazado:', err.message));
-      }
+      enviarWhatsAppPlantilla({
+        telefono: comprobante.customer_phone,
+        plantilla: 'comprobante_rechazado',
+        variables: {
+          '1': comprobante.customer_name || 'Cliente',
+          '2': String(comprobante.monto),
+          '3': comprobante.order_number
+        },
+        orderNumber: comprobante.order_number
+      }).then(() => console.log('📨 WhatsApp comprobante_rechazado enviado'))
+        .catch(err => console.error('⚠️ Error WhatsApp comprobante_rechazado:', err.message));
     }
 
     console.log(`❌ [${requestId}] Comprobante ${id} rechazado exitosamente`);
@@ -2659,25 +2675,18 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
       const esEnvioNube = shippingType.includes('envío nube') || shippingType.includes('envio nube');
 
       if (esEnvioNube && pedido.customer_phone && pedido.tn_order_id && pedido.tn_order_token) {
-        if (normalizePhoneForComparison(pedido.customer_phone) === TESTING_PHONE_NORMALIZED) {
-          const trackingParam = `${pedido.tn_order_id}/${pedido.tn_order_token}`;
-          const contactIdClean = pedido.customer_phone.replace('+', '');
-
-          axios.post(
-            'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
-            {
-              chat: { channelId: process.env.BOTMAKER_CHANNEL_ID, contactId: contactIdClean },
-              intentIdOrName: 'enviado_env_nube',
-              variables: {
-                '1': pedido.customer_name || 'Cliente',
-                '2': orderNumber,
-                '3': trackingParam
-              }
-            },
-            { headers: { 'access-token': process.env.BOTMAKER_ACCESS_TOKEN, 'Content-Type': 'application/json' } }
-          ).then(() => console.log(`📨 WhatsApp enviado_env_nube enviado (Pedido #${orderNumber})`))
-           .catch(err => console.error('⚠️ Error WhatsApp enviado_env_nube:', err.message));
-        }
+        const trackingParam = `${pedido.tn_order_id}/${pedido.tn_order_token}`;
+        enviarWhatsAppPlantilla({
+          telefono: pedido.customer_phone,
+          plantilla: 'enviado_env_nube',
+          variables: {
+            '1': pedido.customer_name || 'Cliente',
+            '2': orderNumber,
+            '3': trackingParam
+          },
+          orderNumber
+        }).then(() => console.log(`📨 WhatsApp enviado_env_nube enviado (Pedido #${orderNumber})`))
+          .catch(err => console.error('⚠️ Error WhatsApp enviado_env_nube:', err.message));
       } else if (esEnvioNube) {
         console.log(`⚠️ No se envió WhatsApp enviado_env_nube: faltan datos (phone: ${!!pedido.customer_phone}, order_id: ${!!pedido.tn_order_id}, token: ${!!pedido.tn_order_token})`);
       }
@@ -2685,22 +2694,16 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
 
     // WhatsApp automático cuando se marca como "cancelado"
     if (estado_pedido === 'cancelado' && pedido.customer_phone) {
-      if (normalizePhoneForComparison(pedido.customer_phone) === TESTING_PHONE_NORMALIZED) {
-        const contactIdClean = pedido.customer_phone.replace('+', '');
-        axios.post(
-          'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
-          {
-            chat: { channelId: process.env.BOTMAKER_CHANNEL_ID, contactId: contactIdClean },
-            intentIdOrName: 'pedido_cancelado',
-            variables: {
-              '1': pedido.customer_name || 'Cliente',
-              '2': orderNumber
-            }
-          },
-          { headers: { 'access-token': process.env.BOTMAKER_ACCESS_TOKEN, 'Content-Type': 'application/json' } }
-        ).then(() => console.log(`📨 WhatsApp pedido_cancelado enviado (Pedido #${orderNumber})`))
-         .catch(err => console.error('⚠️ Error WhatsApp pedido_cancelado:', err.message));
-      }
+      enviarWhatsAppPlantilla({
+        telefono: pedido.customer_phone,
+        plantilla: 'pedido_cancelado',
+        variables: {
+          '1': pedido.customer_name || 'Cliente',
+          '2': orderNumber
+        },
+        orderNumber
+      }).then(() => console.log(`📨 WhatsApp pedido_cancelado enviado (Pedido #${orderNumber})`))
+        .catch(err => console.error('⚠️ Error WhatsApp pedido_cancelado:', err.message));
     }
 
     // Obtener pedido actualizado
@@ -2766,32 +2769,95 @@ app.post('/webhook/botmaker-status', async (req, res) => {
     }
 
     const payload = req.body;
-    console.log('📥 BOTMAKER STATUS:', JSON.stringify(payload));
+
+    // Solo loguear si es un status (no mensajes de usuario)
+    if (payload.type === 'status') {
+      console.log('📥 BOTMAKER STATUS:', JSON.stringify(payload));
+    }
 
     // Extraer datos relevantes
     const {
+      type,
       status,
       contactId,
       messageId,
-      clientPayload,
-      intentTxId,
-      error: errors
+      intentTxId
     } = payload;
 
-    const isError = status === 'error' || (errors && errors.length > 0);
+    // Solo procesar webhooks de tipo status
+    if (type !== 'status') {
+      return res.status(200).json({ received: true, ignored: true });
+    }
 
-    if (isError) {
-      console.error('⚠️ WhatsApp mensaje fallido:', { contactId, messageId, errors });
-      await pool.query(`
-        INSERT INTO logs (order_number, accion, detalle, created_at)
-        VALUES ($1, $2, $3, NOW())
-      `, [
-        clientPayload || messageId || 'unknown',
-        'whatsapp_failed',
-        JSON.stringify({ contactId, messageId, errors, intentTxId })
-      ]);
-    } else if (status === 'delivered' || status === 'read') {
-      console.log(`✅ WhatsApp ${status}: ${contactId}`);
+    // Actualizar estado en whatsapp_messages si tenemos intentTxId
+    if (intentTxId) {
+      const isSuccess = status === 'delivered' || status === 'read' || status === 'sent';
+      const isFailed = status === 'failed' || status === 'error';
+
+      if (isSuccess) {
+        await pool.query(`
+          UPDATE whatsapp_messages
+          SET status = $1, status_updated_at = NOW()
+          WHERE request_id = $2
+        `, [status, intentTxId]);
+        console.log(`✅ WhatsApp ${status}: ${intentTxId}`);
+      } else if (isFailed) {
+        // Obtener mensaje para posible retry
+        const msgResult = await pool.query(`
+          SELECT * FROM whatsapp_messages WHERE request_id = $1
+        `, [intentTxId]);
+
+        if (msgResult.rows.length > 0) {
+          const msg = msgResult.rows[0];
+          const errorMsg = payload.error || payload.reason || 'Unknown error';
+
+          // Actualizar como fallido
+          await pool.query(`
+            UPDATE whatsapp_messages
+            SET status = 'failed', status_updated_at = NOW(), error_message = $1
+            WHERE request_id = $2
+          `, [errorMsg, intentTxId]);
+
+          console.error(`❌ WhatsApp failed: ${intentTxId}`, errorMsg);
+
+          // Loguear el fallo
+          await pool.query(`
+            INSERT INTO logs (order_number, accion, detalle, created_at)
+            VALUES ($1, $2, $3, NOW())
+          `, [
+            msg.order_number || 0,
+            'whatsapp_failed',
+            JSON.stringify({ template: msg.template, contactId, error: errorMsg, intentTxId })
+          ]);
+
+          // Retry automático si retry_count < 2
+          if (msg.retry_count < 2) {
+            console.log(`🔄 Reintentando WhatsApp (intento ${msg.retry_count + 1})...`);
+            try {
+              const retryResponse = await axios.post(
+                'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
+                {
+                  chat: { channelId: process.env.BOTMAKER_CHANNEL_ID, contactId: msg.contact_id },
+                  intentIdOrName: msg.template,
+                  variables: msg.variables
+                },
+                { headers: { 'access-token': process.env.BOTMAKER_ACCESS_TOKEN, 'Content-Type': 'application/json' } }
+              );
+
+              const newRequestId = retryResponse.data?.requestId;
+              if (newRequestId) {
+                await pool.query(`
+                  INSERT INTO whatsapp_messages (request_id, order_number, template, contact_id, variables, status, retry_count)
+                  VALUES ($1, $2, $3, $4, $5, 'pending', $6)
+                `, [newRequestId, msg.order_number, msg.template, msg.contact_id, JSON.stringify(msg.variables), msg.retry_count + 1]);
+                console.log(`📝 Retry tracked: ${newRequestId}`);
+              }
+            } catch (retryErr) {
+              console.error('❌ Retry fallido:', retryErr.message);
+            }
+          }
+        }
+      }
     }
 
     res.status(200).json({ received: true });
@@ -2879,22 +2945,16 @@ app.post('/webhook/tiendanube', async (req, res) => {
         );
         const clienteCancel = clienteCancelRes.rows[0];
         if (clienteCancel?.customer_phone) {
-          if (normalizePhoneForComparison(clienteCancel.customer_phone) === TESTING_PHONE_NORMALIZED) {
-            const contactIdClean = clienteCancel.customer_phone.replace('+', '');
-            axios.post(
-              'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
-              {
-                chat: { channelId: process.env.BOTMAKER_CHANNEL_ID, contactId: contactIdClean },
-                intentIdOrName: 'pedido_cancelado',
-                variables: {
-                  '1': clienteCancel.customer_name || 'Cliente',
-                  '2': orderNumber
-                }
-              },
-              { headers: { 'access-token': process.env.BOTMAKER_ACCESS_TOKEN, 'Content-Type': 'application/json' } }
-            ).then(() => console.log(`📨 WhatsApp pedido_cancelado enviado (Pedido #${orderNumber})`))
-             .catch(err => console.error('⚠️ Error WhatsApp pedido_cancelado:', err.message));
-          }
+          enviarWhatsAppPlantilla({
+            telefono: clienteCancel.customer_phone,
+            plantilla: 'pedido_cancelado',
+            variables: {
+              '1': clienteCancel.customer_name || 'Cliente',
+              '2': orderNumber
+            },
+            orderNumber
+          }).then(() => console.log(`📨 WhatsApp pedido_cancelado enviado (Pedido #${orderNumber})`))
+            .catch(err => console.error('⚠️ Error WhatsApp pedido_cancelado:', err.message));
         }
 
         console.log(`✅ Pedido #${orderNumber} marcado como cancelado en DB`);
@@ -3024,58 +3084,16 @@ app.post('/webhook/tiendanube', async (req, res) => {
       return;
     }
 
-    // 🔒 filtro de testing - compara últimos 10 dígitos
-    if (normalizePhoneForComparison(telefono) !== TESTING_PHONE_NORMALIZED) {
-      console.log('📵 Teléfono ignorado:', telefono);
-      return;
-    }
-    console.log('📤 Enviando WhatsApp a:', telefono);
-
-    // Obtener financiera default para determinar qué plantilla usar
-    let plantilla = 'pedido_creado'; // fallback
-    try {
-      const finResult = await pool.query(`
-        SELECT nombre
-        FROM financieras
-        WHERE is_default = true
-        LIMIT 1
-      `);
-      if (finResult.rows.length > 0) {
-        const nombreFinanciera = finResult.rows[0].nombre.toLowerCase();
-        if (nombreFinanciera.includes('wanda')) {
-          plantilla = 'pedido_creado_wanda';
-        } else if (nombreFinanciera.includes('kiesel')) {
-          plantilla = 'pedido_creado_kiesel';
-        }
-        console.log(`🏦 Financiera default: ${finResult.rows[0].nombre} → plantilla: ${plantilla}`);
-      }
-    } catch (err) {
-      console.error('⚠️ Error obteniendo financiera default:', err.message);
-    }
-
-    const contactIdClean = telefono.replace('+', '');
-
-    // 6️⃣ Botmaker - plantilla según financiera default
-    await axios.post(
-      'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
-      {
-        chat: {
-          channelId: process.env.BOTMAKER_CHANNEL_ID,
-          contactId: contactIdClean
-        },
-        intentIdOrName: plantilla,
-        variables: {
-          '1': pedido.customer?.name || 'Cliente',
-          '2': String(pedido.number)
-        }
+    // 6️⃣ Botmaker - enviarWhatsAppPlantilla maneja testing filter, sufijo y tracking
+    await enviarWhatsAppPlantilla({
+      telefono,
+      plantilla: 'pedido_creado',
+      variables: {
+        '1': pedido.customer?.name || 'Cliente',
+        '2': String(pedido.number)
       },
-      {
-        headers: {
-          'access-token': process.env.BOTMAKER_ACCESS_TOKEN,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
+      orderNumber: pedido.number
+    });
 
     console.log(`✅ WhatsApp enviado (Pedido #${pedido.number})`);
 
