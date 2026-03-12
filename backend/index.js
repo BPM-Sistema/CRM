@@ -1684,18 +1684,7 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
       const customerName = orderData.customer_name || 'Cliente';
       const shippingType = orderData.shipping_type || '';
 
-      // Enviar partial_paid si hay saldo pendiente
-      if (saldo > 0) {
-        const montoFormateado = comprobante.monto.toLocaleString('es-AR');
-        const saldoFormateado = saldo.toLocaleString('es-AR');
-
-        console.log(`📱 [${requestId}] Enviando WhatsApp partial_paid a ${customerPhone}`);
-        enviarWhatsAppPlantilla({
-          telefono: customerPhone,
-          plantilla: 'partial_paid',  // La función agrega el sufijo automáticamente
-          variables: { '1': customerName, '2': montoFormateado, '3': saldoFormateado }
-        }).catch(err => console.error(`❌ Error WhatsApp partial_paid:`, err.message));
-      }
+      // partial_paid se envía al SUBIR comprobante, no al confirmar (evita duplicados)
 
       // Enviar datos_envio si es el primer comprobante confirmado y requiere formulario
       if (requiresShippingForm(shippingType)) {
