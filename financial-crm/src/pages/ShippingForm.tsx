@@ -484,7 +484,7 @@ export function ShippingForm() {
 
         {/* Footer */}
         <p className="text-center text-sm text-neutral-500 mt-6">
-          Pet Love Argentina
+          BPM Administrador
         </p>
       </div>
     </div>
