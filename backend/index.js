@@ -96,6 +96,24 @@ app.use((req, res, next) => {
   next();
 });
 
+// Redirecciones del dominio viejo (api.petlovearg.com) al nuevo
+app.get('/envio', (req, res) => {
+  // Si viene del dominio viejo, redirigir al nuevo
+  if (req.hostname.includes('petlovearg')) {
+    return res.redirect(301, 'https://www.bpmadministrador.com/envio');
+  }
+  // Si es el dominio nuevo, servir el archivo estático
+  res.sendFile(path.join(__dirname, 'public', 'envio.html'));
+});
+
+app.get('/', (req, res, next) => {
+  // Si viene del dominio viejo, redirigir al nuevo
+  if (req.hostname.includes('petlovearg')) {
+    return res.redirect(301, 'https://www.bpmadministrador.com/comprobantes');
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 async function logEvento({ comprobanteId, orderNumber, accion, origen, userId, username }) {
@@ -1680,7 +1698,7 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
 
     // 9️⃣ Enviar WhatsApp si hay teléfono
     const customerPhone = orderData.customer_phone;
-    if (customerPhone && normalizePhoneForComparison(customerPhone) === TESTING_PHONE_NORMALIZED) {
+    if (customerPhone && TESTING_PHONES.includes(normalizePhoneForComparison(customerPhone))) {
       const customerName = orderData.customer_name || 'Cliente';
       const shippingType = orderData.shipping_type || '';
 
