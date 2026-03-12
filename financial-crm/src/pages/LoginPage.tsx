@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getDefaultRoute } from '../utils/navigation';
-import { Lock, Eye, EyeOff, Mail } from 'lucide-react';
+import { Eye, EyeOff, Mail } from 'lucide-react';
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -38,11 +38,8 @@ export function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo / Título */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-neutral-900 rounded-2xl mb-4">
-            <Lock className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-neutral-900">BPM Administrador</h1>
-          <p className="text-neutral-500 mt-1">Sistema de Gestión</p>
+          <img src="/logo.webp" alt="Blanqueria" className="h-24 mx-auto mb-4" />
+          <p className="text-neutral-500">Sistema de Gestión</p>
         </div>
 
         {/* Card de Login */}

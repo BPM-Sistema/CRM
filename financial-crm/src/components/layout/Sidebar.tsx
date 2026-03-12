@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   ShoppingCart,
   Receipt,
-  Building2,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -111,20 +110,16 @@ export function Sidebar() {
       )}
     >
       <div
-        className={clsx(
-          'flex items-center h-16 px-4 border-b border-neutral-100',
-          collapsed ? 'justify-center' : 'gap-3'
-        )}
+        className="flex items-center justify-center h-16 px-4 border-b border-neutral-100"
       >
-        <div className="flex items-center justify-center w-9 h-9 bg-neutral-900 rounded-xl">
-          <Building2 size={20} className="text-white" />
-        </div>
-        {!collapsed && (
-          <div className="flex flex-col">
-            <span className="font-semibold text-neutral-900 text-sm">BPM</span>
-            <span className="text-xs text-neutral-500">Control de Pagos</span>
-          </div>
-        )}
+        <img
+          src="/logo.webp"
+          alt="Blanqueria"
+          className={clsx(
+            'object-contain',
+            collapsed ? 'h-8 w-8' : 'h-10'
+          )}
+        />
       </div>
 
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
