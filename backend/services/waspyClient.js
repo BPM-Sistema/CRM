@@ -129,13 +129,30 @@ async function getEmbedToken(userRole) {
  */
 async function verifyConnection(apiKey, waspyUrl) {
   const url = `${waspyUrl.replace(/\/+$/, '')}/api/v1/integration/tenant-info`;
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Accept': 'application/json',
-    },
-    signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Accept': 'application/json',
+      },
+      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (err.name === 'AbortError' || err.name === 'TimeoutError') {
+      throw new Error('Timeout al conectar con Waspy. Verificá la URL.');
+    }
+    throw new Error(`No se pudo conectar con Waspy: ${err.message}`);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const text = await response.text();
+    throw new Error(
+      `Waspy respondió con ${response.status} pero no devolvió JSON (content-type: ${contentType}). ` +
+      `Verificá que la URL "${waspyUrl}" sea correcta.`
+    );
+  }
 
   const data = await response.json();
   if (!response.ok) {
