@@ -100,7 +100,7 @@ export function useUrlFilters<T extends Record<string, FilterValue>>(
       }
 
       return newParams;
-    }, { replace: true }); // replace: true to avoid polluting history
+    }); // No replace: permite back/forward con filtros
   }, [setSearchParams, defaults]);
 
   // Set single filter
