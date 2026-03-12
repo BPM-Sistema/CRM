@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useUrlFilters } from '../hooks';
 import { RefreshCw, AlertCircle, Eye, Banknote, FileText, Download, Calendar, CheckSquare, Square, X, Search, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
@@ -219,39 +220,49 @@ export function RealReceipts() {
   const [comprobantes, setComprobantes] = useState<ApiComprobanteList[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [estadoFilter, setEstadoFilter] = useState<ComprobanteEstado | 'all'>('all');
-  const [fechaFilter, setFechaFilter] = useState<'all' | 'hoy' | 'custom'>('all');
-  const [customDate, setCustomDate] = useState<string>('');
   const [downloading, setDownloading] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [searchQuery, setSearchQuery] = useState('');
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 48; // Divisible by 2,3,4,6 columns - avoids incomplete last row
 
-  // Filtros (con refs para polling)
+  // Filtros persistidos en URL (se mantienen al navegar y volver)
+  const { filters, setFilter, setFilters } = useUrlFilters({
+    estado: 'all' as ComprobanteEstado | 'all',
+    fecha: 'all' as 'all' | 'hoy' | 'custom',
+    fecha_custom: '',
+    search: '',
+    financiera: null as number | null,
+    page: 1,
+  });
+
+  // Aliases para compatibilidad con código existente
+  const estadoFilter = filters.estado;
+  const fechaFilter = filters.fecha;
+  const customDate = filters.fecha_custom;
+  const searchQuery = filters.search;
+  const financieraFilter = filters.financiera;
+  const currentPage = filters.page;
+
+  // Lista de financieras (no es filtro, es data)
   const [financieras, setFinancieras] = useState<Financiera[]>([]);
-  const [financieraFilter, setFinancieraFilter] = useState<number | null>(null);
-  const financieraFilterRef = useRef<number | null>(null);
-  const estadoFilterRef = useRef<ComprobanteEstado | 'all'>('all');
-  const fechaFilterRef = useRef<'all' | 'hoy' | 'custom'>('all');
-  const customDateRef = useRef<string>('');
+
+  // Estado local para input de búsqueda (con debounce)
+  const [searchInput, setSearchInput] = useState(searchQuery);
 
   // Calcular valor de fecha para enviar al servidor
-  const getFechaParam = (): string | null => {
-    const fecha = fechaFilterRef.current;
-    if (fecha === 'hoy') return 'hoy';
-    if (fecha === 'custom' && customDateRef.current) return customDateRef.current;
+  const getFechaParam = useCallback((): string | null => {
+    if (fechaFilter === 'hoy') return 'hoy';
+    if (fechaFilter === 'custom' && customDate) return customDate;
     return null;
-  };
+  }, [fechaFilter, customDate]);
 
-  const loadComprobantes = async (page?: number, filters?: Partial<ComprobantesFilters>) => {
+  const loadComprobantes = useCallback(async (page?: number, overrideFilters?: Partial<ComprobantesFilters>) => {
     const pageToLoad = page ?? currentPage;
     const currentFilters: ComprobantesFilters = {
-      financieraId: filters?.financieraId !== undefined ? filters.financieraId : financieraFilterRef.current,
-      estado: filters?.estado !== undefined ? filters.estado : (estadoFilterRef.current === 'all' ? null : estadoFilterRef.current),
-      fecha: filters?.fecha !== undefined ? filters.fecha : getFechaParam(),
+      financieraId: overrideFilters?.financieraId !== undefined ? overrideFilters.financieraId : financieraFilter,
+      estado: overrideFilters?.estado !== undefined ? overrideFilters.estado : (estadoFilter === 'all' ? null : estadoFilter),
+      fecha: overrideFilters?.fecha !== undefined ? overrideFilters.fecha : getFechaParam(),
     };
 
     setLoading(true);
@@ -265,55 +276,34 @@ export function RealReceipts() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, financieraFilter, estadoFilter, getFechaParam]);
 
   const handleRefresh = () => loadComprobantes();
 
   const goToPage = (page: number) => {
-    setCurrentPage(page);
+    setFilter('page', page);
     setSelectedIds(new Set()); // Reset selección al cambiar página
-    loadComprobantes(page);
     // Scroll to top
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleEstadoChange = (estado: ComprobanteEstado | 'all') => {
-    setEstadoFilter(estado);
-    estadoFilterRef.current = estado;
-    setCurrentPage(1);
+    setFilters({ estado, page: 1 });
     setSelectedIds(new Set());
-    loadComprobantes(1, { estado: estado === 'all' ? null : estado });
   };
 
   const handleFinancieraChange = (id: number | null) => {
-    setFinancieraFilter(id);
-    financieraFilterRef.current = id;
-    setCurrentPage(1);
+    setFilters({ financiera: id, page: 1 });
     setSelectedIds(new Set());
-    loadComprobantes(1, { financieraId: id });
   };
 
   const handleFechaChange = (fecha: 'all' | 'hoy' | 'custom', customValue?: string) => {
-    setFechaFilter(fecha);
-    fechaFilterRef.current = fecha;
-
-    // Si es 'all' o 'hoy', limpiar la fecha custom del calendario
     if (fecha === 'all' || fecha === 'hoy') {
-      setCustomDate('');
-      customDateRef.current = '';
-    } else if (customValue !== undefined) {
-      setCustomDate(customValue);
-      customDateRef.current = customValue;
+      setFilters({ fecha, fecha_custom: '', page: 1 });
+    } else {
+      setFilters({ fecha, fecha_custom: customValue || '', page: 1 });
     }
-    setCurrentPage(1);
     setSelectedIds(new Set());
-    // Calcular valor para server
-    let fechaParam: string | null = null;
-    if (fecha === 'hoy') fechaParam = 'hoy';
-    if (fecha === 'custom' && (customValue || customDateRef.current)) {
-      fechaParam = customValue || customDateRef.current;
-    }
-    loadComprobantes(1, { fecha: fechaParam });
   };
 
   // Cargar financieras al montar
@@ -321,16 +311,31 @@ export function RealReceipts() {
     fetchFinancieras().then(setFinancieras).catch(console.error);
   }, []);
 
+  // Sincronizar searchInput cuando searchQuery cambia desde URL (back/forward)
+  useEffect(() => {
+    setSearchInput(searchQuery);
+  }, [searchQuery]);
+
+  // Debounce para búsqueda: actualiza URL después de 300ms sin typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchInput !== searchQuery) {
+        setFilters({ search: searchInput, page: 1 });
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
   // Ref para guardar la función loadComprobantes actualizada (evita stale closures)
   const loadComprobantesRef = useRef(loadComprobantes);
   useEffect(() => {
     loadComprobantesRef.current = loadComprobantes;
   });
 
-  // Carga inicial
+  // Recargar cuando cambian los filtros desde la URL
   useEffect(() => {
     loadComprobantes();
-  }, []);
+  }, [estadoFilter, fechaFilter, customDate, financieraFilter, currentPage]);
 
   // Refetch al volver a la pestaña (sin polling para evitar sync issues)
   useEffect(() => {
@@ -474,8 +479,8 @@ export function RealReceipts() {
             <input
               type="text"
               placeholder="Buscar por número de pedido, ID o cliente..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-neutral-200 bg-white text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-300 transition-all"
             />
           </div>

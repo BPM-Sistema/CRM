@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useUrlFilters } from '../hooks';
 import { RefreshCw, AlertCircle, Eye, Receipt, RotateCcw, Printer, Calendar, Search, ChevronLeft, ChevronRight, CheckSquare, X, Truck } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card, PaymentStatusBadge, OrderStatusBadge, Modal } from '../components/ui';
@@ -45,17 +46,27 @@ export function RealOrders() {
   const [orders, setOrders] = useState<ApiOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [paymentFilter, setPaymentFilter] = useState<PaymentStatus | 'all'>('all');
-  const [orderStatusFilter, setOrderStatusFilter] = useState<OrderStatus | 'all'>('all');
-  const [fechaFilter, setFechaFilter] = useState<'all' | 'hoy' | 'custom'>('all');
-  const [customDate, setCustomDate] = useState('');
-  // Refs para mantener estado durante polling
-  const fechaFilterRef = useRef<'all' | 'hoy' | 'custom'>('all');
-  const customDateRef = useRef<string>('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [shippingDataFilter, setShippingDataFilter] = useState<'all' | 'pending' | 'complete'>('all');
+  // Filtros persistidos en URL (se mantienen al navegar y volver)
+  const { filters, setFilter, setFilters } = useUrlFilters({
+    estado_pago: 'all' as PaymentStatus | 'all',
+    estado_pedido: 'all' as OrderStatus | 'all',
+    fecha: 'all' as 'all' | 'hoy' | 'custom',
+    fecha_custom: '',
+    search: '',
+    shipping_data: 'all' as 'all' | 'pending' | 'complete',
+    page: 1,
+  });
+
+  // Aliases para compatibilidad con código existente
+  const paymentFilter = filters.estado_pago;
+  const orderStatusFilter = filters.estado_pedido;
+  const fechaFilter = filters.fecha;
+  const customDate = filters.fecha_custom;
+  const searchQuery = filters.search;
+  const shippingDataFilter = filters.shipping_data;
+  const currentPage = filters.page;
+
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
   // Estado explícito para mostrar spinner cuando se cambian filtros
   const [isFiltering, setIsFiltering] = useState(false);
   const ITEMS_PER_PAGE = 50;
@@ -110,19 +121,19 @@ export function RealOrders() {
     loadPrintCounts();
   };
 
-  const loadOrders = async (page?: number, filters?: OrderFilters, isFilterChange = false) => {
+  const loadOrders = useCallback(async (page?: number, overrideFilters?: OrderFilters, isFilterChange = false) => {
     const pageToLoad = page ?? currentPage;
 
-    // Calcular fecha usando refs para mantener consistencia durante polling
+    // Calcular fecha desde URL filters
     let fechaParam: string | undefined = undefined;
-    const currentFecha = filters?.fecha !== undefined ? filters.fecha : fechaFilterRef.current;
+    const currentFecha = overrideFilters?.fecha !== undefined ? overrideFilters.fecha : fechaFilter;
     if (currentFecha === 'hoy') {
       fechaParam = 'hoy';
-    } else if (currentFecha === 'custom' && customDateRef.current) {
-      fechaParam = customDateRef.current;
+    } else if (currentFecha === 'custom' && customDate) {
+      fechaParam = customDate;
     }
 
-    const filtersToUse = filters ?? {
+    const filtersToUse = overrideFilters ?? {
       estado_pago: paymentFilter,
       estado_pedido: orderStatusFilter,
       search: searchQuery,
@@ -144,60 +155,47 @@ export function RealOrders() {
       setLoading(false);
       setIsFiltering(false);
     }
-  };
+  }, [currentPage, fechaFilter, customDate, paymentFilter, orderStatusFilter, searchQuery, shippingDataFilter]);
 
   const handleRefresh = () => loadOrders();
 
   // Handler para cambios de fecha
   const handleFechaChange = (fecha: 'all' | 'hoy' | 'custom', customValue?: string) => {
-    setFechaFilter(fecha);
-    fechaFilterRef.current = fecha;
-
-    // Si es 'all' o 'hoy', limpiar la fecha custom del calendario
+    // Actualizar filtros en URL (esto dispara el useEffect que recarga)
     if (fecha === 'all' || fecha === 'hoy') {
-      setCustomDate('');
-      customDateRef.current = '';
-    } else if (customValue !== undefined) {
-      setCustomDate(customValue);
-      customDateRef.current = customValue;
+      setFilters({ fecha, fecha_custom: '', page: 1 });
+    } else {
+      setFilters({ fecha, fecha_custom: customValue || '', page: 1 });
     }
-    setCurrentPage(1);
-
-    // Calcular el valor a enviar al backend
-    let fechaParam: string | undefined = undefined;
-    if (fecha === 'hoy') fechaParam = 'hoy';
-    if (fecha === 'custom' && (customValue || customDateRef.current)) {
-      fechaParam = customValue || customDateRef.current;
-    }
-
-    loadOrders(1, {
-      estado_pago: paymentFilter,
-      estado_pedido: orderStatusFilter,
-      search: searchQuery,
-      fecha: fechaParam,
-    }, true);
   };
 
   const goToPage = (page: number) => {
-    setCurrentPage(page);
-    loadOrders(page, undefined, true); // true = mostrar spinner
+    setFilter('page', page);
   };
 
-  // Recargar cuando cambian los filtros (resetear a página 1)
-  // Nota: fechaFilter se maneja en handleFechaChange para evitar doble fetch
+  // Recargar cuando cambian los filtros desde la URL
+  // Este efecto se dispara cuando cualquier filtro cambia (incluyendo navegación back/forward)
   useEffect(() => {
-    setCurrentPage(1);
-    loadOrders(1, undefined, true); // true = es cambio de filtro
-  }, [paymentFilter, orderStatusFilter, shippingDataFilter]);
+    loadOrders(currentPage, undefined, true);
+  }, [paymentFilter, orderStatusFilter, shippingDataFilter, fechaFilter, customDate, currentPage]);
 
-  // Debounce para búsqueda
+  // Estado local para input de búsqueda (con debounce antes de actualizar URL)
+  const [searchInput, setSearchInput] = useState(searchQuery);
+
+  // Sincronizar searchInput cuando searchQuery cambia desde URL (back/forward)
+  useEffect(() => {
+    setSearchInput(searchQuery);
+  }, [searchQuery]);
+
+  // Debounce para búsqueda: actualiza URL después de 300ms sin typing
   useEffect(() => {
     const timer = setTimeout(() => {
-      setCurrentPage(1);
-      loadOrders(1, undefined, true); // true = es cambio de filtro
+      if (searchInput !== searchQuery) {
+        setFilters({ search: searchInput, page: 1 });
+      }
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchInput]);
 
   // Ref para guardar la función loadOrders actualizada (evita stale closures)
   const loadOrdersRef = useRef(loadOrders);
@@ -458,8 +456,8 @@ export function RealOrders() {
             <input
               type="text"
               placeholder="Buscar por número, cliente, email o teléfono..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-neutral-200 bg-white text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-300 transition-all"
             />
           </div>
@@ -520,7 +518,7 @@ export function RealOrders() {
                 {visiblePaymentButtons.map((btn) => (
                   <button
                     key={btn.value}
-                    onClick={() => setPaymentFilter(btn.value)}
+                    onClick={() => setFilters({ estado_pago: btn.value, page: 1 })}
                     className={clsx(
                       'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
                       paymentFilter === btn.value
@@ -543,7 +541,7 @@ export function RealOrders() {
                 {visibleOrderStatusButtons.map((btn) => (
                   <button
                     key={btn.value}
-                    onClick={() => setOrderStatusFilter(btn.value)}
+                    onClick={() => setFilters({ estado_pedido: btn.value, page: 1 })}
                     className={clsx(
                       'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
                       orderStatusFilter === btn.value
@@ -567,7 +565,7 @@ export function RealOrders() {
             </span>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setShippingDataFilter('all')}
+                onClick={() => setFilters({ shipping_data: 'all', page: 1 })}
                 className={clsx(
                   'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
                   shippingDataFilter === 'all'
@@ -578,7 +576,7 @@ export function RealOrders() {
                 Todos
               </button>
               <button
-                onClick={() => setShippingDataFilter('pending')}
+                onClick={() => setFilters({ shipping_data: 'pending', page: 1 })}
                 className={clsx(
                   'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
                   shippingDataFilter === 'pending'
@@ -589,7 +587,7 @@ export function RealOrders() {
                 Pendiente
               </button>
               <button
-                onClick={() => setShippingDataFilter('complete')}
+                onClick={() => setFilters({ shipping_data: 'complete', page: 1 })}
                 className={clsx(
                   'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
                   shippingDataFilter === 'complete'

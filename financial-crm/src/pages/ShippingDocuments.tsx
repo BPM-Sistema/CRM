@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useUrlFilters } from '../hooks';
 import { RefreshCw, Upload, FileText, Check, X, AlertCircle, Loader2, Eye, ChevronLeft, ChevronRight, Search, Maximize2, ExternalLink, Trash2, Package, ZoomIn, ZoomOut, RotateCcw, MapPin, User, Phone, Mail, ShoppingBag, DollarSign, Truck } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
@@ -1069,8 +1070,14 @@ export function ShippingDocuments() {
   const [remitos, setRemitos] = useState<Remito[]>([]);
   const [stats, setStats] = useState<RemitosStats | null>(null);
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
-  const [statusFilter, setStatusFilter] = useState<RemitoStatus | 'all'>('all');
-  const [page, setPage] = useState(1);
+
+  // Filtros persistidos en URL
+  const { filters, setFilter, setFilters } = useUrlFilters({
+    status: 'all' as RemitoStatus | 'all',
+    page: 1,
+  });
+  const statusFilter = filters.status;
+  const page = filters.page;
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
@@ -1188,10 +1195,7 @@ export function ShippingDocuments() {
             {statusFilters.map((filter) => (
               <button
                 key={filter.value}
-                onClick={() => {
-                  setStatusFilter(filter.value);
-                  setPage(1);
-                }}
+                onClick={() => setFilters({ status: filter.value, page: 1 })}
                 className={clsx(
                   'px-3 py-1.5 rounded-lg text-sm transition-colors',
                   statusFilter === filter.value
@@ -1291,7 +1295,7 @@ export function ShippingDocuments() {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => setPage(p => Math.max(1, p - 1))}
+              onClick={() => setFilter('page', Math.max(1, page - 1))}
               disabled={page === 1}
             >
               <ChevronLeft size={16} />
@@ -1302,7 +1306,7 @@ export function ShippingDocuments() {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
+              onClick={() => setFilter('page', Math.min(pagination.totalPages, page + 1))}
               disabled={page === pagination.totalPages}
             >
               <ChevronRight size={16} />
