@@ -13,7 +13,7 @@ import {
   TableHead,
   TableCell,
 } from '../components/ui';
-import { fetchOrders, fetchPrintCounts, fetchOrdersToPrint, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus, PaginationInfo, OrderFilters } from '../services/api';
+import { fetchOrders, fetchPrintCounts, fetchOrdersToPrint, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus, PaginationInfo, OrderFilters, ShippingTypeFilter } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -54,6 +54,7 @@ export function RealOrders() {
     fecha_custom: '',
     search: '',
     shipping_data: 'all' as 'all' | 'pending' | 'complete',
+    shipping_type: 'all' as ShippingTypeFilter,
     page: 1,
   });
 
@@ -64,6 +65,7 @@ export function RealOrders() {
   const customDate = filters.fecha_custom;
   const searchQuery = filters.search;
   const shippingDataFilter = filters.shipping_data;
+  const shippingTypeFilter = filters.shipping_type;
   const currentPage = filters.page;
 
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
@@ -139,6 +141,7 @@ export function RealOrders() {
       search: searchQuery,
       fecha: fechaParam,
       shipping_data: shippingDataFilter === 'all' ? undefined : shippingDataFilter,
+      shipping_type: shippingTypeFilter === 'all' ? undefined : shippingTypeFilter,
     };
     setLoading(true);
     if (isFilterChange) {
@@ -155,7 +158,7 @@ export function RealOrders() {
       setLoading(false);
       setIsFiltering(false);
     }
-  }, [currentPage, fechaFilter, customDate, paymentFilter, orderStatusFilter, searchQuery, shippingDataFilter]);
+  }, [currentPage, fechaFilter, customDate, paymentFilter, orderStatusFilter, searchQuery, shippingDataFilter, shippingTypeFilter]);
 
   const handleRefresh = () => loadOrders();
 
@@ -177,7 +180,7 @@ export function RealOrders() {
   // Este efecto se dispara cuando cualquier filtro cambia (incluyendo navegación back/forward)
   useEffect(() => {
     loadOrders(currentPage, undefined, true);
-  }, [paymentFilter, orderStatusFilter, shippingDataFilter, fechaFilter, customDate, currentPage]);
+  }, [paymentFilter, orderStatusFilter, shippingDataFilter, shippingTypeFilter, fechaFilter, customDate, currentPage]);
 
   // Estado local para input de búsqueda (con debounce antes de actualizar URL)
   const [searchInput, setSearchInput] = useState(searchQuery);
@@ -556,10 +559,39 @@ export function RealOrders() {
             </div>
           )}
 
-          {/* Filtro de datos de envío (solo para Transporte a elección / Via Cargo) */}
+          {/* Filtro de tipo de envío */}
           <div>
             <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block flex items-center gap-1.5">
               <Truck size={12} />
+              Tipo de Envío
+            </span>
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0">
+              {([
+                { value: 'all', label: 'Todos', color: 'bg-neutral-100 text-neutral-700' },
+                { value: 'envio_nube', label: 'Envío Nube', color: 'bg-sky-50 text-sky-700' },
+                { value: 'via_cargo', label: 'Via Cargo', color: 'bg-orange-50 text-orange-700' },
+                { value: 'expreso', label: 'Expreso', color: 'bg-violet-50 text-violet-700' },
+                { value: 'retiro', label: 'Retiro', color: 'bg-emerald-50 text-emerald-700' },
+              ] as const).map((btn) => (
+                <button
+                  key={btn.value}
+                  onClick={() => setFilters({ shipping_type: btn.value, page: 1 })}
+                  className={clsx(
+                    'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
+                    shippingTypeFilter === btn.value
+                      ? clsx(btn.color, 'ring-2 ring-neutral-900/10')
+                      : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
+                  )}
+                >
+                  {btn.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Filtro de datos de envío (solo para Transporte a elección / Via Cargo) */}
+          <div>
+            <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block flex items-center gap-1.5">
               Datos de Envío
               <span className="normal-case font-normal text-neutral-400">(solo transporte a elección)</span>
             </span>

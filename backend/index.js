@@ -1269,7 +1269,7 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
     const offset = (page - 1) * limit;
 
     // Filtros
-    const { estado_pago, estado_pedido, search, fecha, shipping_data } = req.query;
+    const { estado_pago, estado_pedido, search, fecha, shipping_data, shipping_type } = req.query;
 
     // Mapeo de permisos granulares a estados
     const estadoPagoPermisos = {
@@ -1378,6 +1378,25 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
         OR LOWER(COALESCE(o.shipping_type, '')) LIKE '%viacargo%'
       )`);
       conditions.push(`EXISTS (SELECT 1 FROM shipping_requests sr2 WHERE sr2.order_number = o.order_number)`);
+    }
+
+    // Filtro por tipo de envío
+    if (shipping_type && shipping_type !== 'all') {
+      const st = 'LOWER(COALESCE(o.shipping_type, \'\'))';
+      switch (shipping_type) {
+        case 'envio_nube':
+          conditions.push(`(${st} LIKE '%envío nube%' OR ${st} LIKE '%envio nube%')`);
+          break;
+        case 'via_cargo':
+          conditions.push(`(${st} LIKE '%via cargo%' OR ${st} LIKE '%viacargo%')`);
+          break;
+        case 'expreso':
+          conditions.push(`(${st} LIKE '%expreso%' AND ${st} LIKE '%elec%')`);
+          break;
+        case 'retiro':
+          conditions.push(`(${st} LIKE '%retiro%' OR ${st} LIKE '%pickup%' OR ${st} LIKE '%deposito%' OR ${st} LIKE '%depósito%' OR ${st} LIKE '%punto de retiro%')`);
+          break;
+      }
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

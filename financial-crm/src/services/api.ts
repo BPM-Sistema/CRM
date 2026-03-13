@@ -308,6 +308,9 @@ export interface PaginatedResponse<T> {
   pagination: PaginationInfo;
 }
 
+// Tipos de envío para filtro
+export type ShippingTypeFilter = 'all' | 'envio_nube' | 'via_cargo' | 'expreso' | 'retiro';
+
 // Filtros para pedidos
 export interface OrderFilters {
   estado_pago?: string;
@@ -315,6 +318,7 @@ export interface OrderFilters {
   search?: string;
   fecha?: string;
   shipping_data?: 'pending' | 'complete';
+  shipping_type?: ShippingTypeFilter;
 }
 
 // Mapeo inverso: de UI a DB
@@ -344,6 +348,9 @@ export async function fetchOrders(page = 1, limit = 50, filters?: OrderFilters):
   }
   if (filters?.shipping_data) {
     params.append('shipping_data', filters.shipping_data);
+  }
+  if (filters?.shipping_type && filters.shipping_type !== 'all') {
+    params.append('shipping_type', filters.shipping_type);
   }
 
   const response = await authFetch(`${API_BASE_URL}/orders?${params.toString()}`);
