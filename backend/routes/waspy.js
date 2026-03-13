@@ -47,7 +47,7 @@ router.get('/config', requireAnyPermission(['whatsapp.connect', 'inbox.view']), 
         tenantName: config.tenant_name,
         waspyUrl: config.waspy_url,
         embedUrl: config.embed_url,
-        apiKeyPrefix: config.api_key.substring(0, 12) + '...',
+        apiKeyPrefix: 'wspy_••••••••',
         verifiedAt: config.verified_at,
       },
     });
@@ -64,7 +64,7 @@ router.post('/config', requirePermission('whatsapp.connect'), async (req, res) =
   const {
     apiKey,
     waspyUrl = process.env.WASPY_DEFAULT_URL || 'https://waspy-api-453045734595.us-central1.run.app',
-    embedUrl = process.env.WASPY_DEFAULT_EMBED_URL || 'https://web-m2q3m7ufqa-uc.a.run.app/embed/inbox',
+    embedUrl = process.env.WASPY_DEFAULT_EMBED_URL || 'https://waspy-web-i6hmdpyt2a-uc.a.run.app/embed/inbox',
   } = req.body;
 
   if (!apiKey || !apiKey.startsWith('wspy_')) {
