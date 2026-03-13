@@ -243,6 +243,7 @@ async function watermarkReceipt(filePath, { id, orderNumber }) {
 ===================================================== */
 async function obtenerEtiquetasEnvioNube(tnOrderId) {
   const storeId = process.env.TIENDANUBE_STORE_ID;
+  const token = process.env.TIENDANUBE_ACCESS_TOKEN;
 
   try {
     // 1. Obtener fulfillment orders del pedido
@@ -250,9 +251,8 @@ async function obtenerEtiquetasEnvioNube(tnOrderId) {
       `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}/fulfillment-orders`,
       {
         headers: {
-          authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
-          'User-Agent': 'bpm-validator',
-          'Content-Type': 'application/json'
+          authentication: `bearer ${token}`,
+          'User-Agent': 'bpm-validator'
         },
         timeout: 15000
       }
@@ -264,31 +264,112 @@ async function obtenerEtiquetasEnvioNube(tnOrderId) {
       return { ok: false, error: 'No hay fulfillment orders para este pedido' };
     }
 
-    // 2. Extraer URLs de etiquetas de todos los fulfillment orders
+    // 2. Filtrar solo los FO con Envío Nube
+    const envioNubeFOs = fulfillmentOrders.filter(fo =>
+      fo.shipping?.carrier?.name?.toLowerCase().includes('nube') ||
+      fo.shipping?.carrier?.app_id === '9075'
+    );
+
+    if (envioNubeFOs.length === 0) {
+      return { ok: false, error: 'Este pedido no tiene Envío Nube' };
+    }
+
     const labels = [];
 
-    for (const fo of fulfillmentOrders) {
-      if (fo.labels && fo.labels.length > 0) {
-        for (const label of fo.labels) {
-          if (label.status === 'READY_TO_USE' && label.documents && label.documents.length > 0) {
-            for (const doc of label.documents) {
-              if (doc.type === 'LABEL' && doc.url) {
-                labels.push({
-                  fulfillment_id: fo.id,
-                  label_id: label.id,
-                  url: doc.url,
-                  format: doc.format,
-                  tracking_code: label.tracking_info?.code || fo.tracking_info?.code
-                });
-              }
+    for (const fo of envioNubeFOs) {
+      console.log(`📦 FO ${fo.id} - status: ${fo.status}, labels: ${fo.labels?.length || 0}`);
+
+      // 3. Verificar si ya hay labels READY_TO_USE
+      let readyLabel = fo.labels?.find(l => l.status === 'READY_TO_USE');
+
+      // 4. Si no hay label, solicitar generación
+      if (!readyLabel) {
+        console.log(`🚀 Solicitando generación de etiqueta para FO ${fo.id}...`);
+
+        try {
+          // POST al endpoint correcto de creación de labels
+          const createRes = await axios.post(
+            `https://api.tiendanube.com/v1/${storeId}/fulfillment-orders/labels`,
+            [{ id: fo.id }],
+            {
+              headers: {
+                authentication: `bearer ${token}`,
+                'Content-Type': 'application/json',
+                'User-Agent': 'bpm-validator'
+              },
+              timeout: 30000
             }
+          );
+
+          console.log(`✅ Label solicitado:`, JSON.stringify(createRes.data));
+
+          // Esperar a que se genere (polling con timeout)
+          const maxAttempts = 10;
+          for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            const checkRes = await axios.get(
+              `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}/fulfillment-orders`,
+              {
+                headers: { authentication: `bearer ${token}`, 'User-Agent': 'bpm-validator' },
+                timeout: 15000
+              }
+            );
+
+            const updatedFO = checkRes.data.find(f => f.id === fo.id);
+            readyLabel = updatedFO?.labels?.find(l => l.status === 'READY_TO_USE');
+
+            if (readyLabel) {
+              console.log(`✅ Label listo después de ${attempt + 1} intentos`);
+              break;
+            }
+
+            console.log(`⏳ Esperando label... (intento ${attempt + 1}/${maxAttempts})`);
           }
+        } catch (createErr) {
+          console.error(`❌ Error creando label:`, createErr.response?.status, createErr.response?.data);
+          continue;
+        }
+      }
+
+      // 5. Si hay label READY_TO_USE, obtener URL de descarga
+      if (readyLabel) {
+        try {
+          // POST al endpoint de download para obtener URL presignada
+          const downloadRes = await axios.post(
+            `https://api.tiendanube.com/v1/${storeId}/fulfillment-orders/${fo.id}/labels/${readyLabel.id}/download`,
+            {},
+            {
+              headers: {
+                authentication: `bearer ${token}`,
+                'Content-Type': 'application/json',
+                'User-Agent': 'bpm-validator'
+              },
+              timeout: 15000
+            }
+          );
+
+          // La respuesta es un array con URLs presignadas
+          const labelDoc = downloadRes.data.find(d => d.type === 'LABEL');
+
+          if (labelDoc?.url) {
+            labels.push({
+              fulfillment_id: fo.id,
+              label_id: readyLabel.id,
+              url: labelDoc.url,
+              format: labelDoc.format || 'PDF',
+              expires_at: labelDoc.expires_at,
+              tracking_code: readyLabel.tracking_info?.code || fo.tracking_info?.code
+            });
+          }
+        } catch (downloadErr) {
+          console.error(`❌ Error obteniendo URL de descarga:`, downloadErr.response?.status, downloadErr.response?.data);
         }
       }
     }
 
     if (labels.length === 0) {
-      return { ok: false, error: 'No hay etiquetas disponibles (puede que aún no estén generadas)' };
+      return { ok: false, error: 'No se pudo obtener la etiqueta. Verifica que el pedido esté listo para despacho.' };
     }
 
     return { ok: true, labels };
@@ -4880,6 +4961,76 @@ app.get('/orders/:orderNumber/shipping-label', authenticate, async (req, res) =>
   } catch (error) {
     console.error('❌ GET /orders/:orderNumber/shipping-label error:', error.message);
     res.status(500).json({ error: error.message });
+  }
+});
+
+/* =====================================================
+   TIENDANUBE - OAUTH CALLBACK
+===================================================== */
+
+/**
+ * GET /tiendanube/callback
+ * Callback para autorización OAuth de Tiendanube
+ * Recibe el code y lo intercambia por access_token
+ */
+app.get('/tiendanube/callback', async (req, res) => {
+  const { code } = req.query;
+
+  if (!code) {
+    return res.status(400).send('Error: No se recibió código de autorización');
+  }
+
+  try {
+    // Intercambiar code por access_token
+    const response = await axios.post('https://www.tiendanube.com/apps/authorize/token', {
+      client_id: '25216',
+      client_secret: process.env.TIENDANUBE_CLIENT_SECRET,
+      grant_type: 'authorization_code',
+      code: code
+    });
+
+    const { access_token, user_id } = response.data;
+
+    // Mostrar el token para que el usuario lo copie
+    res.send(`
+      <html>
+        <head>
+          <title>Tiendanube - Autorización Exitosa</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 40px; background: #f5f5f5; }
+            .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+            h1 { color: #22c55e; }
+            .token { background: #f0f0f0; padding: 15px; border-radius: 5px; word-break: break-all; font-family: monospace; font-size: 14px; }
+            .info { margin-top: 20px; color: #666; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>✅ Autorización Exitosa</h1>
+            <p>La app BPM fue autorizada correctamente.</p>
+            <h3>Access Token:</h3>
+            <div class="token">${access_token}</div>
+            <h3>Store ID:</h3>
+            <div class="token">${user_id}</div>
+            <p class="info">Copiá el Access Token y pasáselo a Claude para actualizar la configuración.</p>
+          </div>
+        </body>
+      </html>
+    `);
+
+    console.log('✅ Tiendanube OAuth completado. Store ID:', user_id);
+
+  } catch (error) {
+    console.error('❌ Error en OAuth Tiendanube:', error.response?.data || error.message);
+    res.status(500).send(`
+      <html>
+        <body style="font-family: Arial; padding: 40px;">
+          <h1 style="color: red;">❌ Error en autorización</h1>
+          <p>${error.response?.data?.error_description || error.message}</p>
+          <p>Code recibido: ${code}</p>
+        </body>
+      </html>
+    `);
   }
 });
 
