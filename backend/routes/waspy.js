@@ -61,11 +61,10 @@ router.get('/config', requireAnyPermission(['whatsapp.connect', 'inbox.view']), 
 // 3. POST /waspy/config - Save and verify API key
 // ---------------------------------------------------------------------------
 router.post('/config', requirePermission('whatsapp.connect'), async (req, res) => {
-  const {
-    apiKey,
-    waspyUrl = process.env.WASPY_DEFAULT_URL || 'https://waspy-api-453045734595.us-central1.run.app',
-    embedUrl = process.env.WASPY_DEFAULT_EMBED_URL || 'https://waspy-web-i6hmdpyt2a-uc.a.run.app/embed/inbox',
-  } = req.body;
+  const { apiKey } = req.body;
+  const waspyUrl = req.body.waspyUrl || process.env.WASPY_DEFAULT_URL || 'https://waspy-api-453045734595.us-central1.run.app';
+  const embedUrl = req.body.embedUrl || process.env.WASPY_DEFAULT_EMBED_URL || 'https://waspy-web-i6hmdpyt2a-uc.a.run.app/embed/inbox';
+  const hasExplicitEmbedUrl = !!req.body.embedUrl;
 
   if (!apiKey || !apiKey.startsWith('wspy_')) {
     return res.status(400).json({ ok: false, error: 'API Key inválido. Debe empezar con wspy_' });
@@ -79,9 +78,14 @@ router.post('/config', requirePermission('whatsapp.connect'), async (req, res) =
        VALUES ($1, $2, $3, $4, $5, now())
        ON CONFLICT ((true)) DO UPDATE SET
          api_key = $1, tenant_id = $2, tenant_name = $3,
-         waspy_url = $4, embed_url = $5,
+         waspy_url = $4,
+         embed_url = CASE
+          WHEN $6 THEN $5
+          WHEN waspy_config.embed_url IS NULL OR waspy_config.embed_url = '' THEN $5
+          ELSE waspy_config.embed_url
+        END,
          verified_at = now(), updated_at = now()`,
-      [apiKey, info.tenant.id, info.tenant.name, waspyUrl, embedUrl]
+      [apiKey, info.tenant.id, info.tenant.name, waspyUrl, embedUrl, hasExplicitEmbedUrl]
     );
 
     res.json({
