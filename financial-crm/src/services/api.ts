@@ -1502,3 +1502,82 @@ export async function deleteRemito(id: number): Promise<{
 
   return data;
 }
+
+// =====================================================
+// ENVÍO NUBE - ETIQUETAS
+// =====================================================
+
+export interface EnvioNubeLabelPreview {
+  order: string;
+  customer?: string;
+  labels_count?: number;
+  tracking?: string;
+  reason?: string;
+  shipping_type?: string;
+}
+
+export interface EnvioNubePreviewResponse {
+  total_requested: number;
+  available: number;
+  unavailable: number;
+  details: {
+    available: EnvioNubeLabelPreview[];
+    unavailable: EnvioNubeLabelPreview[];
+  };
+}
+
+// Obtener etiqueta individual de Envío Nube (retorna URL del blob)
+export async function getEnvioNubeLabel(orderNumber: string): Promise<string> {
+  const response = await authFetch(`${API_BASE_URL}/orders/${orderNumber}/envio-nube-label`);
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Error al obtener etiqueta');
+  }
+
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
+
+// Obtener etiquetas masivas de Envío Nube (retorna URL del blob con PDF combinado)
+export async function getEnvioNubeLabels(orders: string[]): Promise<{
+  url: string;
+  success: number;
+  failed: number;
+}> {
+  const response = await authFetch(`${API_BASE_URL}/orders/envio-nube-labels`, {
+    method: 'POST',
+    body: JSON.stringify({ orders }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Error al obtener etiquetas');
+  }
+
+  const success = parseInt(response.headers.get('X-Labels-Success') || '0');
+  const failed = parseInt(response.headers.get('X-Labels-Failed') || '0');
+
+  const blob = await response.blob();
+  return {
+    url: URL.createObjectURL(blob),
+    success,
+    failed
+  };
+}
+
+// Preview de qué pedidos tienen etiquetas disponibles
+export async function previewEnvioNubeLabels(orders: string[]): Promise<EnvioNubePreviewResponse> {
+  const response = await authFetch(`${API_BASE_URL}/orders/envio-nube-labels/preview`, {
+    method: 'POST',
+    body: JSON.stringify({ orders }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al verificar etiquetas');
+  }
+
+  return data;
+}

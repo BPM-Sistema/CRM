@@ -88,7 +88,9 @@
       "WebFetch(domain:api.botmaker.com)",
       "Bash(gcloud run:*)",
       "Bash(npm run:*)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(grep -r \"variant_id\" /Users/netaneldabbah/proyecto_bpm/backend/migrations/*.sql)",
+      "Bash(grep -r \"ADD COLUMN.*variant_id\" /Users/netaneldabbah/proyecto_bpm/backend/migrations/*.sql)"
     ]
   }
 }

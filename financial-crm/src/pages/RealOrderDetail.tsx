@@ -20,6 +20,7 @@ import {
   Download,
   Image,
   MessageCircle,
+  Tag,
 } from 'lucide-react';
 import { getEventConfig, formatEventLabel } from '../utils/eventConfig';
 import { Header } from '../components/layout';
@@ -34,6 +35,7 @@ import {
   fetchShippingRequest,
   fetchRemitoByOrder,
   getShippingLabelUrl,
+  getEnvioNubeLabel,
   ApiOrderDetail,
   ApiOrderPrintData,
   ShippingRequest,
@@ -83,6 +85,9 @@ export function RealOrderDetail() {
   const [remito, setRemito] = useState<Remito | null>(null);
   const [showRemitoModal, setShowRemitoModal] = useState(false);
 
+  // Estado para etiqueta Envío Nube
+  const [isLoadingEnvioNubeLabel, setIsLoadingEnvioNubeLabel] = useState(false);
+
   const loadOrder = async () => {
     if (!orderNumber) return;
 
@@ -116,6 +121,20 @@ export function RealOrderDetail() {
       setError(err instanceof Error ? err.message : 'Error al sincronizar');
     } finally {
       setIsResyncing(false);
+    }
+  };
+
+  const handleDownloadEnvioNubeLabel = async () => {
+    if (!orderNumber || isLoadingEnvioNubeLabel) return;
+
+    setIsLoadingEnvioNubeLabel(true);
+    try {
+      const url = await getEnvioNubeLabel(orderNumber);
+      window.open(url, '_blank');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al obtener etiqueta de Envío Nube');
+    } finally {
+      setIsLoadingEnvioNubeLabel(false);
     }
   };
 
@@ -850,6 +869,44 @@ export function RealOrderDetail() {
                     <Download size={18} />
                     {shippingRequest.label_printed_at ? 'Re-imprimir Hoja' : 'Descargar Hoja para Expreso'}
                   </a>
+                </div>
+              </Card>
+            )}
+
+            {/* Etiqueta Envío Nube (solo si es envío nube) */}
+            {(shippingTypeLower.includes('envío nube') || shippingTypeLower.includes('envio nube')) && (
+              <Card>
+                <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider mb-3">
+                  Etiqueta Envío Nube
+                </h3>
+                <div className="space-y-3">
+                  <div className="p-3 bg-sky-50 rounded-lg text-sm border border-sky-100">
+                    <div className="flex items-center gap-2 text-sky-700">
+                      <Truck size={16} />
+                      <span className="font-medium">{order.shipping_type}</span>
+                    </div>
+                    <p className="text-xs text-sky-600 mt-1">
+                      Etiqueta generada por Tiendanube
+                    </p>
+                  </div>
+                  <Button
+                    variant="primary"
+                    className="w-full bg-sky-600 hover:bg-sky-700"
+                    onClick={handleDownloadEnvioNubeLabel}
+                    disabled={isLoadingEnvioNubeLabel}
+                  >
+                    {isLoadingEnvioNubeLabel ? (
+                      <>
+                        <Loader2 size={16} className="mr-2 animate-spin" />
+                        Obteniendo etiqueta...
+                      </>
+                    ) : (
+                      <>
+                        <Tag size={16} className="mr-2" />
+                        Descargar Etiqueta Envío Nube
+                      </>
+                    )}
+                  </Button>
                 </div>
               </Card>
             )}

@@ -37,6 +37,7 @@ const { uploadLimiter, validationLimiter, shippingFormLimiter } = require('./mid
 const crypto = require('crypto');
 const sharp = require('sharp');
 const PDFDocument = require('pdfkit');
+const { PDFDocument: PDFLib } = require('pdf-lib');
 const { runSyncJob } = require('./services/orderSync');
 const { getQueueStats, getSyncState } = require('./services/syncQueue');
 const { verificarConsistencia, getInconsistencias } = require('./utils/orderVerification');
@@ -235,6 +236,71 @@ async function watermarkReceipt(filePath, { id, orderNumber }) {
   fs.renameSync(filePath + '.tmp', filePath);
 
   console.log('🏷️ Watermark aplicado:', filePath);
+}
+
+/* =====================================================
+   UTIL — OBTENER ETIQUETAS ENVÍO NUBE DE TIENDANUBE
+===================================================== */
+async function obtenerEtiquetasEnvioNube(tnOrderId) {
+  const storeId = process.env.TIENDANUBE_STORE_ID;
+
+  try {
+    // 1. Obtener fulfillment orders del pedido
+    const response = await axios.get(
+      `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}/fulfillment-orders`,
+      {
+        headers: {
+          authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
+          'User-Agent': 'bpm-validator',
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      }
+    );
+
+    const fulfillmentOrders = response.data;
+
+    if (!fulfillmentOrders || fulfillmentOrders.length === 0) {
+      return { ok: false, error: 'No hay fulfillment orders para este pedido' };
+    }
+
+    // 2. Extraer URLs de etiquetas de todos los fulfillment orders
+    const labels = [];
+
+    for (const fo of fulfillmentOrders) {
+      if (fo.labels && fo.labels.length > 0) {
+        for (const label of fo.labels) {
+          if (label.status === 'READY_TO_USE' && label.documents && label.documents.length > 0) {
+            for (const doc of label.documents) {
+              if (doc.type === 'LABEL' && doc.url) {
+                labels.push({
+                  fulfillment_id: fo.id,
+                  label_id: label.id,
+                  url: doc.url,
+                  format: doc.format,
+                  tracking_code: label.tracking_info?.code || fo.tracking_info?.code
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (labels.length === 0) {
+      return { ok: false, error: 'No hay etiquetas disponibles (puede que aún no estén generadas)' };
+    }
+
+    return { ok: true, labels };
+
+  } catch (error) {
+    console.error(`❌ Error obteniendo etiquetas de TN para orden ${tnOrderId}:`, error.message);
+    if (error.response) {
+      console.error('   Status:', error.response.status);
+      console.error('   Data:', JSON.stringify(error.response.data));
+    }
+    return { ok: false, error: error.message };
+  }
 }
 
 /* =====================================================
@@ -456,7 +522,25 @@ async function guardarPedidoCompleto(pedido) {
   ]);
 
   // Guardar productos
-  await guardarProductos(orderNumber, pedido.products);
+  const saveResult = await guardarProductos(orderNumber, pedido.products);
+
+  // Auto-resync si hubo errores (una sola vez para evitar loops)
+  if (saveResult.errors.length > 0) {
+    console.log(`🔄 Auto-resync para pedido #${orderNumber} por ${saveResult.errors.length} errores`);
+    try {
+      const pedidoFresh = await obtenerPedidoPorId(pedido.id);
+      if (pedidoFresh && pedidoFresh.products) {
+        const retryResult = await guardarProductos(orderNumber, pedidoFresh.products);
+        if (retryResult.errors.length === 0) {
+          console.log(`✅ Auto-resync exitoso para pedido #${orderNumber}`);
+        } else {
+          console.error(`❌ Auto-resync fallido para pedido #${orderNumber}: ${retryResult.errors.length} errores persisten`);
+        }
+      }
+    } catch (resyncErr) {
+      console.error(`❌ Error en auto-resync #${orderNumber}:`, resyncErr.message);
+    }
+  }
 
   return orderNumber;
 }
@@ -4748,6 +4832,295 @@ app.get('/orders/:orderNumber/shipping-label', authenticate, async (req, res) =>
 
   } catch (error) {
     console.error('❌ GET /orders/:orderNumber/shipping-label error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/* =====================================================
+   ENVÍO NUBE - ETIQUETAS DE TIENDANUBE
+===================================================== */
+
+/**
+ * GET /orders/:orderNumber/envio-nube-label
+ * Obtener etiqueta de Envío Nube para un pedido individual
+ * Retorna el PDF de la etiqueta directamente
+ */
+app.get('/orders/:orderNumber/envio-nube-label', authenticate, async (req, res) => {
+  try {
+    const { orderNumber } = req.params;
+
+    // 1. Obtener tn_order_id de la DB
+    const orderRes = await pool.query(`
+      SELECT tn_order_id, shipping_type, customer_name
+      FROM orders_validated
+      WHERE order_number = $1
+    `, [orderNumber]);
+
+    if (orderRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
+
+    const order = orderRes.rows[0];
+
+    if (!order.tn_order_id) {
+      return res.status(400).json({ error: 'Pedido sin ID de Tiendanube' });
+    }
+
+    // Verificar que sea Envío Nube
+    const shippingType = (order.shipping_type || '').toLowerCase();
+    if (!shippingType.includes('envío nube') && !shippingType.includes('envio nube')) {
+      return res.status(400).json({
+        error: 'Este pedido no usa Envío Nube',
+        shipping_type: order.shipping_type
+      });
+    }
+
+    // 2. Obtener etiquetas de Tiendanube
+    const result = await obtenerEtiquetasEnvioNube(order.tn_order_id);
+
+    if (!result.ok) {
+      return res.status(404).json({ error: result.error });
+    }
+
+    // 3. Descargar el primer PDF y retornarlo
+    const labelUrl = result.labels[0].url;
+
+    const pdfResponse = await axios.get(labelUrl, {
+      responseType: 'arraybuffer',
+      timeout: 30000
+    });
+
+    // Registrar en logs
+    await logEvento({
+      orderNumber,
+      accion: 'envio_nube_label_descargada',
+      origen: 'crm',
+      userId: req.user?.id,
+      username: req.user?.name
+    });
+
+    console.log(`🏷️ Etiqueta Envío Nube descargada para pedido #${orderNumber}`);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename=envio-nube-${orderNumber}.pdf`);
+    res.send(Buffer.from(pdfResponse.data));
+
+  } catch (error) {
+    console.error('❌ GET /orders/:orderNumber/envio-nube-label error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /orders/envio-nube-labels
+ * Obtener etiquetas de Envío Nube para múltiples pedidos
+ * Body: { orders: ["12345", "12346", ...] }
+ * Retorna un único PDF combinado con todas las etiquetas
+ */
+app.post('/orders/envio-nube-labels', authenticate, async (req, res) => {
+  try {
+    const { orders } = req.body;
+
+    if (!orders || !Array.isArray(orders) || orders.length === 0) {
+      return res.status(400).json({ error: 'Se requiere un array de números de pedido' });
+    }
+
+    if (orders.length > 50) {
+      return res.status(400).json({ error: 'Máximo 50 pedidos por solicitud' });
+    }
+
+    console.log(`📦 Solicitando ${orders.length} etiquetas de Envío Nube...`);
+
+    // 1. Obtener tn_order_id de todos los pedidos
+    const orderRes = await pool.query(`
+      SELECT order_number, tn_order_id, shipping_type, customer_name
+      FROM orders_validated
+      WHERE order_number = ANY($1)
+    `, [orders]);
+
+    const ordersMap = new Map(orderRes.rows.map(o => [o.order_number, o]));
+
+    // 2. Procesar cada pedido
+    const results = {
+      success: [],
+      failed: [],
+      pdfBuffers: []
+    };
+
+    for (const orderNumber of orders) {
+      const order = ordersMap.get(orderNumber);
+
+      if (!order) {
+        results.failed.push({ order: orderNumber, error: 'Pedido no encontrado' });
+        continue;
+      }
+
+      if (!order.tn_order_id) {
+        results.failed.push({ order: orderNumber, error: 'Sin ID de Tiendanube' });
+        continue;
+      }
+
+      const shippingType = (order.shipping_type || '').toLowerCase();
+      if (!shippingType.includes('envío nube') && !shippingType.includes('envio nube')) {
+        results.failed.push({ order: orderNumber, error: 'No es Envío Nube' });
+        continue;
+      }
+
+      try {
+        // Obtener etiquetas
+        const labelResult = await obtenerEtiquetasEnvioNube(order.tn_order_id);
+
+        if (!labelResult.ok) {
+          results.failed.push({ order: orderNumber, error: labelResult.error });
+          continue;
+        }
+
+        // Descargar el PDF
+        const labelUrl = labelResult.labels[0].url;
+        const pdfResponse = await axios.get(labelUrl, {
+          responseType: 'arraybuffer',
+          timeout: 30000
+        });
+
+        results.pdfBuffers.push({
+          orderNumber,
+          buffer: pdfResponse.data
+        });
+
+        results.success.push({
+          order: orderNumber,
+          customer: order.customer_name,
+          tracking: labelResult.labels[0].tracking_code
+        });
+
+      } catch (err) {
+        results.failed.push({ order: orderNumber, error: err.message });
+      }
+    }
+
+    // 3. Si no hay PDFs exitosos, retornar error
+    if (results.pdfBuffers.length === 0) {
+      return res.status(400).json({
+        error: 'No se pudo obtener ninguna etiqueta',
+        failed: results.failed
+      });
+    }
+
+    // 4. Combinar todos los PDFs en uno solo
+    const mergedPdf = await PDFLib.create();
+
+    for (const { buffer } of results.pdfBuffers) {
+      try {
+        const pdf = await PDFLib.load(buffer);
+        const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+        pages.forEach(page => mergedPdf.addPage(page));
+      } catch (err) {
+        console.error('Error cargando PDF:', err.message);
+      }
+    }
+
+    const mergedPdfBytes = await mergedPdf.save();
+
+    // 5. Registrar en logs
+    for (const { order } of results.success) {
+      await logEvento({
+        orderNumber: order,
+        accion: 'envio_nube_label_masiva',
+        origen: 'crm',
+        userId: req.user?.id,
+        username: req.user?.name
+      });
+    }
+
+    console.log(`🏷️ ${results.success.length} etiquetas Envío Nube combinadas (${results.failed.length} fallidas)`);
+
+    // 6. Retornar PDF combinado
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=etiquetas-envio-nube-${Date.now()}.pdf`);
+    res.setHeader('X-Labels-Success', results.success.length);
+    res.setHeader('X-Labels-Failed', results.failed.length);
+    res.send(Buffer.from(mergedPdfBytes));
+
+  } catch (error) {
+    console.error('❌ POST /orders/envio-nube-labels error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /orders/envio-nube-labels/preview
+ * Verificar qué pedidos tienen etiquetas disponibles (sin descargar PDFs)
+ * Body: { orders: ["12345", "12346", ...] }
+ */
+app.post('/orders/envio-nube-labels/preview', authenticate, async (req, res) => {
+  try {
+    const { orders } = req.body;
+
+    if (!orders || !Array.isArray(orders) || orders.length === 0) {
+      return res.status(400).json({ error: 'Se requiere un array de números de pedido' });
+    }
+
+    // 1. Obtener info de todos los pedidos
+    const orderRes = await pool.query(`
+      SELECT order_number, tn_order_id, shipping_type, customer_name
+      FROM orders_validated
+      WHERE order_number = ANY($1)
+    `, [orders]);
+
+    const ordersMap = new Map(orderRes.rows.map(o => [o.order_number, o]));
+
+    // 2. Verificar cada pedido
+    const results = {
+      available: [],
+      unavailable: []
+    };
+
+    for (const orderNumber of orders) {
+      const order = ordersMap.get(orderNumber);
+
+      if (!order) {
+        results.unavailable.push({ order: orderNumber, reason: 'Pedido no encontrado' });
+        continue;
+      }
+
+      if (!order.tn_order_id) {
+        results.unavailable.push({ order: orderNumber, reason: 'Sin ID de Tiendanube' });
+        continue;
+      }
+
+      const shippingType = (order.shipping_type || '').toLowerCase();
+      if (!shippingType.includes('envío nube') && !shippingType.includes('envio nube')) {
+        results.unavailable.push({ order: orderNumber, reason: 'No es Envío Nube', shipping_type: order.shipping_type });
+        continue;
+      }
+
+      try {
+        const labelResult = await obtenerEtiquetasEnvioNube(order.tn_order_id);
+
+        if (labelResult.ok) {
+          results.available.push({
+            order: orderNumber,
+            customer: order.customer_name,
+            labels_count: labelResult.labels.length,
+            tracking: labelResult.labels[0]?.tracking_code
+          });
+        } else {
+          results.unavailable.push({ order: orderNumber, reason: labelResult.error });
+        }
+      } catch (err) {
+        results.unavailable.push({ order: orderNumber, reason: err.message });
+      }
+    }
+
+    res.json({
+      total_requested: orders.length,
+      available: results.available.length,
+      unavailable: results.unavailable.length,
+      details: results
+    });
+
+  } catch (error) {
+    console.error('❌ POST /orders/envio-nube-labels/preview error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUrlFilters } from '../hooks';
-import { RefreshCw, AlertCircle, Eye, Receipt, RotateCcw, Printer, Calendar, Search, ChevronLeft, ChevronRight, CheckSquare, X, Truck } from 'lucide-react';
+import { RefreshCw, AlertCircle, Eye, Receipt, RotateCcw, Printer, Calendar, Search, ChevronLeft, ChevronRight, CheckSquare, X, Truck, Tag } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card, PaymentStatusBadge, OrderStatusBadge, Modal } from '../components/ui';
 import { AccessDenied } from '../components/AccessDenied';
@@ -13,7 +13,7 @@ import {
   TableHead,
   TableCell,
 } from '../components/ui';
-import { fetchOrders, fetchPrintCounts, fetchOrdersToPrint, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus, PaginationInfo, OrderFilters, ShippingTypeFilter } from '../services/api';
+import { fetchOrders, fetchPrintCounts, fetchOrdersToPrint, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus, PaginationInfo, OrderFilters, ShippingTypeFilter, getEnvioNubeLabels } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -102,6 +102,9 @@ export function RealOrders() {
   const [excludedModalOpen, setExcludedModalOpen] = useState(false);
   const [excludedOrders, setExcludedOrders] = useState<string[]>([]);
   const [printableOrders, setPrintableOrders] = useState<string[]>([]);
+
+  // Estado para etiquetas Envío Nube
+  const [isLoadingLabels, setIsLoadingLabels] = useState(false);
 
   // Cargar conteos de impresión desde el backend (independiente de filtros)
   const loadPrintCounts = async () => {
@@ -329,6 +332,43 @@ export function RealOrders() {
     clearSelection();
   };
 
+  // Imprimir etiquetas de Envío Nube para pedidos seleccionados
+  const printEnvioNubeLabels = async () => {
+    if (selectedOrderNumbers.size === 0) return;
+
+    setIsLoadingLabels(true);
+    try {
+      // Filtrar solo pedidos con Envío Nube
+      const selectedOrders = orders.filter(o => selectedOrderNumbers.has(o.order_number));
+      const envioNubeOrders = selectedOrders.filter(o => {
+        const shippingType = (o.shipping_type || '').toLowerCase();
+        return shippingType.includes('envío nube') || shippingType.includes('envio nube');
+      });
+
+      if (envioNubeOrders.length === 0) {
+        alert('Ninguno de los pedidos seleccionados usa Envío Nube');
+        return;
+      }
+
+      const orderNumbers = envioNubeOrders.map(o => o.order_number);
+      const result = await getEnvioNubeLabels(orderNumbers);
+
+      // Abrir PDF en nueva pestaña para imprimir
+      window.open(result.url, '_blank');
+
+      if (result.failed > 0) {
+        alert(`Se obtuvieron ${result.success} etiquetas. ${result.failed} fallaron.`);
+      }
+
+      clearSelection();
+    } catch (err) {
+      console.error('Error al obtener etiquetas:', err);
+      alert(err instanceof Error ? err.message : 'Error al obtener etiquetas de Envío Nube');
+    } finally {
+      setIsLoadingLabels(false);
+    }
+  };
+
   const [isPrinting, setIsPrinting] = useState(false);
 
   const handlePrintSelected = async () => {
@@ -410,6 +450,15 @@ export function RealOrders() {
                   disabled={selectedOrderNumbers.size === 0}
                 >
                   Imprimir ({selectedOrderNumbers.size})
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leftIcon={<Tag size={16} />}
+                  onClick={printEnvioNubeLabels}
+                  disabled={selectedOrderNumbers.size === 0 || isLoadingLabels}
+                >
+                  {isLoadingLabels ? 'Cargando...' : 'Etiquetas Envío Nube'}
                 </Button>
                 <Button
                   variant="secondary"
