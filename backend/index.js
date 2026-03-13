@@ -267,13 +267,17 @@ async function obtenerPedidoPorId(storeId, orderId) {
    UTIL — GUARDAR PRODUCTOS DE UN PEDIDO EN DB
    - UPSERT productos que existen en TiendaNube
    - DELETE productos que ya no existen en TiendaNube
+   - Retorna resultado con conteos para verificacion
 ===================================================== */
 async function guardarProductos(orderNumber, products) {
+  const result = { expected: 0, saved: 0, deleted: 0, errors: [] };
+
   if (!products || products.length === 0) {
     console.log(`⚠️ Pedido #${orderNumber} sin productos para guardar`);
-    return;
+    return result;
   }
 
+  result.expected = products.length;
   console.log(`📦 Guardando ${products.length} productos para pedido #${orderNumber}`);
 
   // 1. Crear Set de claves de productos que vienen de TiendaNube
@@ -300,6 +304,7 @@ async function guardarProductos(orderNumber, products) {
       `DELETE FROM order_products WHERE id = ANY($1)`,
       [idsToDelete]
     );
+    result.deleted = idsToDelete.length;
     console.log(`🗑️ Eliminados ${idsToDelete.length} productos removidos del pedido #${orderNumber}`);
   }
 
@@ -326,13 +331,23 @@ async function guardarProductos(orderNumber, products) {
         Number(p.price),
         p.sku || null
       ]);
+      result.saved++;
     } catch (err) {
+      const errorMsg = `${err.message} | Producto: ${p.name} (${p.product_id})`;
+      result.errors.push(errorMsg);
       console.error(`❌ Error INSERT producto en #${orderNumber}:`, err.message);
       console.error('   Producto:', JSON.stringify(p));
     }
   }
 
-  // 5. Auto-resolver inconsistencias pendientes para este pedido
+  // 5. Log resultado
+  if (result.errors.length > 0) {
+    console.error(`⚠️ Pedido #${orderNumber}: ${result.saved}/${result.expected} productos guardados, ${result.errors.length} errores`);
+  } else {
+    console.log(`✅ Pedido #${orderNumber}: ${result.saved}/${result.expected} productos guardados correctamente`);
+  }
+
+  // 6. Auto-resolver inconsistencias pendientes para este pedido
   try {
     const resolved = await pool.query(`
       UPDATE order_inconsistencies
@@ -358,6 +373,8 @@ async function guardarProductos(orderNumber, products) {
     // No bloquear el flujo si falla la auto-resolución
     console.error(`⚠️ Error auto-resolviendo inconsistencias #${orderNumber}:`, err.message);
   }
+
+  return result;
 }
 
 /* =====================================================
@@ -2247,23 +2264,43 @@ app.post('/orders/:orderNumber/resync', authenticate, requirePermission('orders.
     );
 
     const pedido = pedidoRes.data;
+    const productosTN = pedido.products || [];
 
     // 4. Sincronizar productos (UPSERT + DELETE de removidos)
-    await guardarProductos(orderNumber, pedido.products || []);
+    const saveResult = await guardarProductos(orderNumber, productosTN);
 
-    // 5. Resolver inconsistencias previas
+    // 5. Resolver inconsistencias previas (ya lo hace guardarProductos, pero por si acaso)
     await pool.query(`
       UPDATE order_inconsistencies
       SET resolved = TRUE, resolved_at = NOW()
       WHERE order_number = $1 AND resolved = FALSE
     `, [orderNumber]);
 
-    console.log(`✅ Pedido #${orderNumber} re-sincronizado correctamente`);
+    // 6. Verificar resultado post-sync
+    const dbProductsRes = await pool.query(
+      `SELECT COUNT(*) as count FROM order_products WHERE order_number = $1`,
+      [orderNumber]
+    );
+    const dbProductCount = parseInt(dbProductsRes.rows[0].count);
+
+    const isFullySync = dbProductCount === productosTN.length && saveResult.errors.length === 0;
+
+    if (isFullySync) {
+      console.log(`✅ Pedido #${orderNumber} re-sincronizado correctamente (${dbProductCount} productos)`);
+    } else {
+      console.warn(`⚠️ Pedido #${orderNumber} resync parcial: TN=${productosTN.length}, DB=${dbProductCount}, Errores=${saveResult.errors.length}`);
+    }
 
     res.json({
-      ok: true,
-      message: `Pedido #${orderNumber} re-sincronizado`,
-      productos_actualizados: (pedido.products || []).length
+      ok: isFullySync,
+      message: isFullySync
+        ? `Pedido #${orderNumber} re-sincronizado correctamente`
+        : `Pedido #${orderNumber} re-sincronizado con advertencias`,
+      productos_tiendanube: productosTN.length,
+      productos_guardados: saveResult.saved,
+      productos_en_db: dbProductCount,
+      productos_eliminados: saveResult.deleted,
+      errores: saveResult.errors
     });
 
   } catch (error) {
