@@ -1070,7 +1070,29 @@ function normalizePhoneForComparison(phone) {
 // Plantillas que NO llevan sufijo de financiera
 const PLANTILLAS_SIN_SUFIJO = ['datos__envio', 'comprobante_rechazado', 'comprobante_confirmado', 'enviado_env_nube', 'enviado_transporte', 'pedido_cancelado'];
 
+// Mapeo de plantilla base → key en integration_config
+const PLANTILLA_CONFIG_KEY = {
+  'pedido_creado': 'whatsapp_tpl_pedido_creado',
+  'comprobante_confirmado': 'whatsapp_tpl_comprobante_confirmado',
+  'comprobante_rechazado': 'whatsapp_tpl_comprobante_rechazado',
+  'datos__envio': 'whatsapp_tpl_datos_envio',
+  'enviado_env_nube': 'whatsapp_tpl_enviado_env_nube',
+  'pedido_cancelado': 'whatsapp_tpl_pedido_cancelado',
+  'partial_paid': 'whatsapp_tpl_partial_paid',
+  'enviado_transporte': 'whatsapp_tpl_enviado_transporte',
+};
+
 async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNumber = null }) {
+  // 🔒 Verificar si la plantilla está habilitada
+  const configKey = PLANTILLA_CONFIG_KEY[plantilla];
+  if (configKey) {
+    const enabled = await isIntegrationEnabled(configKey, { context: `plantilla:${plantilla}` });
+    if (!enabled) {
+      console.log(`🚫 WhatsApp plantilla '${plantilla}' deshabilitada por toggle`);
+      return { data: { skipped: true, reason: 'template_disabled' } };
+    }
+  }
+
   // 🔒 Filtro de testing desde integrationConfig (con cache)
   const testingConfig = await waConfig.getTestingConfig();
 
@@ -3048,6 +3070,18 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
           .catch(err => console.error('⚠️ Error WhatsApp enviado_env_nube:', err.message));
       } else if (esEnvioNube) {
         console.log(`⚠️ No se envió WhatsApp enviado_env_nube: faltan datos (phone: ${!!pedido.customer_phone}, order_id: ${!!pedido.tn_order_id}, token: ${!!pedido.tn_order_token})`);
+      } else if (!esEnvioNube && pedido.customer_phone) {
+        // Envío por transporte (no Envío Nube) — controlado por toggle
+        enviarWhatsAppPlantilla({
+          telefono: pedido.customer_phone,
+          plantilla: 'enviado_transporte',
+          variables: {
+            '1': pedido.customer_name || 'Cliente',
+            '2': orderNumber
+          },
+          orderNumber
+        }).then(() => console.log(`📨 WhatsApp enviado_transporte enviado (Pedido #${orderNumber})`))
+          .catch(err => console.error('⚠️ Error WhatsApp enviado_transporte:', err.message));
       }
     }
 

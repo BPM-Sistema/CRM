@@ -26,6 +26,7 @@ import {
   Wifi,
   MessageSquare,
   Phone,
+  Send,
 } from 'lucide-react';
 import {
   fetchIntegrations,
@@ -51,6 +52,14 @@ const KEY_ICONS: Record<string, typeof Settings> = {
   tiendanube_sync_cancelled: XCircle,
   tiendanube_mark_paid: CreditCard,
   whatsapp_testing_mode: MessageSquare,
+  whatsapp_tpl_pedido_creado: Send,
+  whatsapp_tpl_comprobante_confirmado: Send,
+  whatsapp_tpl_comprobante_rechazado: Send,
+  whatsapp_tpl_datos_envio: Send,
+  whatsapp_tpl_enviado_env_nube: Send,
+  whatsapp_tpl_pedido_cancelado: Send,
+  whatsapp_tpl_partial_paid: Send,
+  whatsapp_tpl_enviado_transporte: Send,
 };
 
 // Nombres amigables
@@ -64,6 +73,14 @@ const KEY_NAMES: Record<string, string> = {
   tiendanube_sync_cancelled: 'Sync Cancelados',
   tiendanube_mark_paid: 'Marcar Pagado en TN',
   whatsapp_testing_mode: 'Modo Testing',
+  whatsapp_tpl_pedido_creado: 'Pedido Creado',
+  whatsapp_tpl_comprobante_confirmado: 'Comprobante Confirmado',
+  whatsapp_tpl_comprobante_rechazado: 'Comprobante Rechazado',
+  whatsapp_tpl_datos_envio: 'Datos de Envío',
+  whatsapp_tpl_enviado_env_nube: 'Pedido Despachado',
+  whatsapp_tpl_pedido_cancelado: 'Pedido Cancelado',
+  whatsapp_tpl_partial_paid: 'Saldo Pendiente',
+  whatsapp_tpl_enviado_transporte: 'Envío por Transporte',
 };
 
 // Tooltips explicativos (no tecnicos)
@@ -431,7 +448,8 @@ export function IntegrationSettings() {
                 </div>
 
                 <div className="space-y-3">
-                  {whatsappConfigs.map(config => {
+                {/* Modo Testing */}
+                {whatsappConfigs.filter(c => c.key === 'whatsapp_testing_mode').map(config => {
                     const Icon = KEY_ICONS[config.key] || Settings;
                     const friendlyName = KEY_NAMES[config.key] || config.key;
                     const tooltip = KEY_TOOLTIPS[config.key];
@@ -447,7 +465,7 @@ export function IntegrationSettings() {
                             <div
                               className={`p-2 rounded-lg ${
                                 config.enabled
-                                  ? 'bg-red-100 text-red-600'
+                                  ? 'bg-yellow-100 text-yellow-600'
                                   : 'bg-green-100 text-green-600'
                               }`}
                             >
@@ -457,7 +475,7 @@ export function IntegrationSettings() {
                               <div className="flex items-center gap-2">
                                 <h3 className="font-medium text-gray-900">{friendlyName}</h3>
                                 {config.enabled && (
-                                  <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded-full">
+                                  <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-medium rounded-full">
                                     Testing
                                   </span>
                                 )}
@@ -479,11 +497,9 @@ export function IntegrationSettings() {
                                 )}
                               </div>
                               <p className="text-sm text-gray-500 mt-0.5">
-                                {config.key === 'whatsapp_testing_mode'
-                                  ? config.enabled
-                                    ? 'Modo testing: los mensajes se envían solo al número configurado, no al cliente real'
-                                    : 'Modo producción: los mensajes se envían directo al cliente real'
-                                  : config.description}
+                                {config.enabled
+                                  ? 'Modo testing: los mensajes se envían solo al número configurado, no al cliente real'
+                                  : 'Modo producción: los mensajes se envían directo al cliente real'}
                               </p>
                               {config.updated_at && (
                                 <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
@@ -498,10 +514,9 @@ export function IntegrationSettings() {
                             <RefreshCw className="h-5 w-5 text-gray-400 animate-spin" />
                           ) : (
                             <Switch
-                              checked={!config.enabled}
+                              checked={config.enabled}
                               onChange={() => handleToggle(config.key, config.enabled)}
                               disabled={!canUpdate}
-                              variant="danger"
                             />
                           )}
                         </div>
@@ -603,7 +618,71 @@ export function IntegrationSettings() {
                         )}
                       </div>
                     );
-                  })}
+                })}
+
+                {/* Plantillas WhatsApp */}
+                {whatsappConfigs.filter(c => c.key.startsWith('whatsapp_tpl_')).length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                      <Send className="h-4 w-4" />
+                      Plantillas
+                    </h3>
+                    <div className="space-y-2">
+                      {whatsappConfigs.filter(c => c.key.startsWith('whatsapp_tpl_')).map(config => {
+                        const friendlyName = KEY_NAMES[config.key] || config.key;
+                        const isUpdating = updating === config.key;
+                        const isNotImplemented = config.description?.includes('NO IMPLEMENTADA');
+
+                        return (
+                          <div
+                            key={config.key}
+                            className={`flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
+                              isNotImplemented
+                                ? 'bg-red-50 border-red-200'
+                                : config.enabled
+                                  ? 'bg-white border-gray-200'
+                                  : 'bg-gray-50 border-gray-200'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <Send className={`h-4 w-4 ${
+                                isNotImplemented
+                                  ? 'text-red-400'
+                                  : config.enabled
+                                    ? 'text-green-500'
+                                    : 'text-gray-400'
+                              }`} />
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-sm font-medium ${
+                                    isNotImplemented ? 'text-red-700' : 'text-gray-900'
+                                  }`}>
+                                    {friendlyName}
+                                  </span>
+                                  {isNotImplemented && (
+                                    <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-xs font-medium rounded">
+                                      Sin implementar
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-gray-500">{config.description}</p>
+                              </div>
+                            </div>
+                            {isUpdating ? (
+                              <RefreshCw className="h-4 w-4 text-gray-400 animate-spin" />
+                            ) : (
+                              <Switch
+                                checked={config.enabled}
+                                onChange={() => handleToggle(config.key, config.enabled)}
+                                disabled={!canUpdate}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 </div>
               </div>
             )}
