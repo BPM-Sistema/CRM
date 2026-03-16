@@ -117,7 +117,10 @@ export function Dashboard() {
   // Datos para el gráfico de estados
   const chartData = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
-    const rejected = comprobantes.filter(c => c.estado === 'rechazado').length;
+    // Filtrar rechazados solo de hoy
+    const rejected = comprobantes.filter(c =>
+      c.estado === 'rechazado' && isToday(new Date(c.created_at))
+    ).length;
     return [{
       date: today,
       paid: kpis.pagados,
