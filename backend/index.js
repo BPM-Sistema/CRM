@@ -1083,7 +1083,7 @@ async function getWhatsAppTestingConfig() {
     const row = result.rows[0];
     return {
       enabled: row.enabled,
-      testingPhone: row.metadata?.testing_phone || null
+      testingPhone: row.metadata?.active_phone || row.metadata?.testing_phone || null
     };
   } catch (err) {
     console.error('⚠️ Error leyendo whatsapp_testing_mode:', err.message);

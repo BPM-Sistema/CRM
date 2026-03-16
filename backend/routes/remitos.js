@@ -412,7 +412,7 @@ router.post('/:id/confirm',
               `SELECT enabled, metadata FROM integration_config WHERE key = 'whatsapp_testing_mode'`
             );
             if (testingRes.rows.length > 0 && testingRes.rows[0].enabled) {
-              const testPhone = testingRes.rows[0].metadata?.testing_phone;
+              const testPhone = testingRes.rows[0].metadata?.active_phone || testingRes.rows[0].metadata?.testing_phone;
               if (testPhone) {
                 console.log(`🧪 WhatsApp testing remito: redirigiendo de ${pedido.customer_phone} → ${testPhone}`);
                 destinoPhone = testPhone;

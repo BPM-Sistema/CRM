@@ -1635,7 +1635,7 @@ export interface IntegrationConfig {
   enabled: boolean;
   description: string;
   category: string;
-  metadata?: Record<string, string>;
+  metadata?: Record<string, unknown>;
   updated_at: string;
   updated_by_email?: string;
 }
@@ -1696,7 +1696,7 @@ export async function updateIntegration(
 // Actualizar metadata de una configuración
 export async function updateIntegrationMetadata(
   key: string,
-  metadata: Record<string, string>
+  metadata: Record<string, unknown>
 ): Promise<IntegrationConfig> {
   const response = await authFetch(`${API_BASE_URL}/integrations/${key}/metadata`, {
     method: 'PATCH',

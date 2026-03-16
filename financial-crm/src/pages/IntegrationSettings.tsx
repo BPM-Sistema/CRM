@@ -96,7 +96,9 @@ export function IntegrationSettings() {
   const [updating, setUpdating] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [testingPhone, setTestingPhone] = useState('');
+  const [testingPhones, setTestingPhones] = useState<string[]>([]);
+  const [activePhone, setActivePhone] = useState('');
+  const [newPhone, setNewPhone] = useState('');
   const [savingPhone, setSavingPhone] = useState(false);
   const [phoneSaved, setPhoneSaved] = useState(false);
 
@@ -114,10 +116,12 @@ export function IntegrationSettings() {
     try {
       const data = await fetchIntegrations();
       setConfigs(data.configs);
-      // Inicializar teléfono de testing desde metadata
+      // Inicializar teléfonos de testing desde metadata
       const waConfig = data.configs.find((c: IntegrationConfig) => c.key === 'whatsapp_testing_mode');
-      if (waConfig?.metadata?.testing_phone) {
-        setTestingPhone(waConfig.metadata.testing_phone);
+      if (waConfig?.metadata) {
+        const phones = waConfig.metadata.phones;
+        setTestingPhones(Array.isArray(phones) ? phones : (waConfig.metadata.testing_phone ? [waConfig.metadata.testing_phone] : []));
+        setActivePhone(String(waConfig.metadata.active_phone || waConfig.metadata.testing_phone || ''));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar datos');
@@ -182,11 +186,13 @@ export function IntegrationSettings() {
     }
   };
 
-  const handleSavePhone = async () => {
+  const savePhoneMetadata = async (phones: string[], active: string) => {
     setSavingPhone(true);
     setError(null);
     try {
-      await updateIntegrationMetadata('whatsapp_testing_mode', { testing_phone: testingPhone });
+      await updateIntegrationMetadata('whatsapp_testing_mode', { phones, active_phone: active });
+      setTestingPhones(phones);
+      setActivePhone(active);
       setPhoneSaved(true);
       setTimeout(() => setPhoneSaved(false), 2000);
     } catch (err) {
@@ -194,6 +200,24 @@ export function IntegrationSettings() {
     } finally {
       setSavingPhone(false);
     }
+  };
+
+  const handleAddPhone = () => {
+    if (!newPhone || testingPhones.includes(newPhone)) return;
+    const updatedPhones = [...testingPhones, newPhone];
+    const active = updatedPhones.length === 1 ? newPhone : activePhone;
+    setNewPhone('');
+    savePhoneMetadata(updatedPhones, active);
+  };
+
+  const handleRemovePhone = (phone: string) => {
+    const updatedPhones = testingPhones.filter(p => p !== phone);
+    const active = activePhone === phone ? (updatedPhones[0] || '') : activePhone;
+    savePhoneMetadata(updatedPhones, active);
+  };
+
+  const handleSelectActive = (phone: string) => {
+    savePhoneMetadata(testingPhones, phone);
   };
 
   // Separar configs por categoría
@@ -433,7 +457,7 @@ export function IntegrationSettings() {
                             <div
                               className={`p-2 rounded-lg ${
                                 config.enabled
-                                  ? 'bg-yellow-100 text-yellow-600'
+                                  ? 'bg-red-100 text-red-600'
                                   : 'bg-green-100 text-green-600'
                               }`}
                             >
@@ -443,7 +467,7 @@ export function IntegrationSettings() {
                               <div className="flex items-center gap-2">
                                 <h3 className="font-medium text-gray-900">{friendlyName}</h3>
                                 {config.enabled && (
-                                  <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-medium rounded-full">
+                                  <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded-full">
                                     Testing
                                   </span>
                                 )}
@@ -489,50 +513,106 @@ export function IntegrationSettings() {
                             {isUpdating ? (
                               <RefreshCw className="h-8 w-8 text-gray-400 animate-spin" />
                             ) : config.enabled ? (
-                              <ToggleRight className="h-10 w-10 text-yellow-500" />
+                              <ToggleRight className="h-10 w-10 text-red-500" />
                             ) : (
                               <ToggleRight className="h-10 w-10 text-green-500" />
                             )}
                           </button>
                         </div>
 
-                        {/* Teléfono de testing - solo visible si está en modo testing */}
+                        {/* Teléfonos de testing - solo visible si está en modo testing */}
                         {config.enabled && config.key === 'whatsapp_testing_mode' && (
-                          <div className="mt-4 pt-4 border-t border-gray-100">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              <Phone className="h-4 w-4 inline mr-1" />
-                              Numero de testing (todos los mensajes se envian aca)
-                            </label>
-                            <div className="flex gap-2">
-                              <input
-                                type="text"
-                                value={testingPhone}
-                                onChange={e => {
-                                  setTestingPhone(e.target.value.replace(/[^0-9]/g, ''));
-                                  setPhoneSaved(false);
-                                }}
-                                placeholder="Ej: 1123945965"
-                                className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                                disabled={!canUpdate}
-                              />
-                              <button
-                                onClick={handleSavePhone}
-                                disabled={!canUpdate || savingPhone || !testingPhone}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                                  phoneSaved
-                                    ? 'bg-green-100 text-green-700'
-                                    : 'bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50'
-                                }`}
-                              >
-                                {savingPhone ? (
-                                  <RefreshCw className="h-4 w-4 animate-spin" />
-                                ) : phoneSaved ? (
-                                  '✓ Guardado'
-                                ) : (
-                                  'Guardar'
-                                )}
-                              </button>
+                          <div className="mt-4 pt-4 border-t border-gray-100 space-y-4">
+                            {/* Lista de teléfonos */}
+                            {testingPhones.length > 0 && (
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                  <Phone className="h-4 w-4 inline mr-1" />
+                                  Numero activo (todos los mensajes se envian aca)
+                                </label>
+                                <div className="space-y-2">
+                                  {testingPhones.map(phone => (
+                                    <div
+                                      key={phone}
+                                      className={`flex items-center justify-between px-3 py-2 rounded-lg border transition-all ${
+                                        activePhone === phone
+                                          ? 'border-green-300 bg-green-50'
+                                          : 'border-gray-200 bg-white'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-3">
+                                        <button
+                                          onClick={() => handleSelectActive(phone)}
+                                          disabled={!canUpdate || savingPhone || activePhone === phone}
+                                          className="flex items-center gap-2"
+                                        >
+                                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                            activePhone === phone
+                                              ? 'border-green-500'
+                                              : 'border-gray-300 hover:border-gray-400'
+                                          }`}>
+                                            {activePhone === phone && (
+                                              <div className="w-2 h-2 rounded-full bg-green-500" />
+                                            )}
+                                          </div>
+                                          <span className={`text-sm font-mono ${activePhone === phone ? 'font-medium text-gray-900' : 'text-gray-600'}`}>
+                                            {phone}
+                                          </span>
+                                        </button>
+                                        {activePhone === phone && (
+                                          <span className="px-1.5 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded">
+                                            Activo
+                                          </span>
+                                        )}
+                                      </div>
+                                      {canUpdate && (
+                                        <button
+                                          onClick={() => handleRemovePhone(phone)}
+                                          disabled={savingPhone}
+                                          className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                                          title="Eliminar número"
+                                        >
+                                          <XCircle className="h-4 w-4" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Agregar nuevo teléfono */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Agregar numero
+                              </label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={newPhone}
+                                  onChange={e => setNewPhone(e.target.value.replace(/[^0-9]/g, ''))}
+                                  placeholder="Ej: 1123945965"
+                                  className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                  disabled={!canUpdate || savingPhone}
+                                  onKeyDown={e => e.key === 'Enter' && handleAddPhone()}
+                                />
+                                <button
+                                  onClick={handleAddPhone}
+                                  disabled={!canUpdate || savingPhone || !newPhone || testingPhones.includes(newPhone)}
+                                  className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                                >
+                                  {savingPhone ? (
+                                    <RefreshCw className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    'Agregar'
+                                  )}
+                                </button>
+                              </div>
                             </div>
+
+                            {phoneSaved && (
+                              <p className="text-sm text-green-600 font-medium">Guardado</p>
+                            )}
                           </div>
                         )}
                       </div>
