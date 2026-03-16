@@ -40,7 +40,7 @@ const PDFDocument = require('pdfkit');
 const { PDFDocument: PDFLib } = require('pdf-lib');
 const { runSyncJob } = require('./services/orderSync');
 const { getQueueStats, getSyncState } = require('./services/syncQueue');
-const { tiendanube: tnConfig, isEnabled: isIntegrationEnabled } = require('./services/integrationConfig');
+const { tiendanube: tnConfig, whatsapp: waConfig, isEnabled: isIntegrationEnabled } = require('./services/integrationConfig');
 const { verificarConsistencia, getInconsistencias } = require('./utils/orderVerification');
 const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crearNotificacion } = require('./utils/notifications');
 const app = express();
@@ -1070,30 +1070,9 @@ function normalizePhoneForComparison(phone) {
 // Plantillas que NO llevan sufijo de financiera
 const PLANTILLAS_SIN_SUFIJO = ['datos__envio', 'comprobante_rechazado', 'comprobante_confirmado', 'enviado_env_nube', 'enviado_transporte', 'pedido_cancelado'];
 
-/**
- * Obtener config de WhatsApp testing desde DB
- * Retorna { enabled, testingPhone } o null si no hay config
- */
-async function getWhatsAppTestingConfig() {
-  try {
-    const result = await pool.query(
-      `SELECT enabled, metadata FROM integration_config WHERE key = 'whatsapp_testing_mode'`
-    );
-    if (result.rows.length === 0) return null;
-    const row = result.rows[0];
-    return {
-      enabled: row.enabled,
-      testingPhone: row.metadata?.active_phone || row.metadata?.testing_phone || null
-    };
-  } catch (err) {
-    console.error('⚠️ Error leyendo whatsapp_testing_mode:', err.message);
-    return null;
-  }
-}
-
 async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNumber = null }) {
-  // 🔒 Filtro de testing desde DB
-  const testingConfig = await getWhatsAppTestingConfig();
+  // 🔒 Filtro de testing desde integrationConfig (con cache)
+  const testingConfig = await waConfig.getTestingConfig();
 
   if (testingConfig?.enabled) {
     // Modo testing activo: redirigir al número de testing

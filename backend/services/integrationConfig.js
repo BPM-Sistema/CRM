@@ -30,7 +30,7 @@ let cacheTimestamp = 0;
 async function loadConfigFromDB() {
   try {
     const result = await pool.query(`
-      SELECT key, enabled, description, category, updated_at
+      SELECT key, enabled, description, category, metadata, updated_at
       FROM integration_config
     `);
 
@@ -40,6 +40,7 @@ async function loadConfigFromDB() {
         enabled: row.enabled,
         description: row.description,
         category: row.category,
+        metadata: row.metadata,
         updated_at: row.updated_at
       });
     }
@@ -289,6 +290,32 @@ function getCacheStatus() {
   };
 }
 
+/**
+ * Obtener config completa con metadata (para configs que necesitan más que enabled/disabled)
+ */
+async function getConfigWithMetadata(key) {
+  try {
+    await ensureCacheLoaded();
+    return configCache.get(key) || null;
+  } catch (error) {
+    console.error(`⚠️ [IntegrationConfig] Error obteniendo config '${key}':`, error.message);
+    return null;
+  }
+}
+
+// ─── Helpers para WhatsApp ────────────────────────────────
+
+const whatsapp = {
+  async getTestingConfig() {
+    const config = await getConfigWithMetadata('whatsapp_testing_mode');
+    if (!config) return null;
+    return {
+      enabled: config.enabled,
+      testingPhone: config.metadata?.active_phone || config.metadata?.testing_phone || null
+    };
+  }
+};
+
 // ─── Helpers para Tiendanube ──────────────────────────────
 
 /**
@@ -339,13 +366,15 @@ module.exports = {
   updateConfig,
   updateConfigMetadata,
   getConfigHistory,
+  getConfigWithMetadata,
 
   // Cache management
   invalidateCache,
   getCacheStatus,
 
-  // Tiendanube helpers
+  // Integration helpers
   tiendanube,
+  whatsapp,
 
   // Constants
   CACHE_TTL_MS
