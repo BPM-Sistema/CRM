@@ -478,7 +478,13 @@ export function IntegrationSettings() {
                                   </div>
                                 )}
                               </div>
-                              <p className="text-sm text-gray-500 mt-0.5">{config.description}</p>
+                              <p className="text-sm text-gray-500 mt-0.5">
+                                {config.key === 'whatsapp_testing_mode'
+                                  ? config.enabled
+                                    ? 'Modo testing: los mensajes se envían solo al número configurado, no al cliente real'
+                                    : 'Modo producción: los mensajes se envían directo al cliente real'
+                                  : config.description}
+                              </p>
                               {config.updated_at && (
                                 <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
                                   <Clock className="h-3 w-3" />
