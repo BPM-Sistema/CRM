@@ -1605,14 +1605,9 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
     }
 
     if (search) {
-      conditions.push(`(
-        o.order_number ILIKE $${paramIndex} OR
-        o.customer_name ILIKE $${paramIndex} OR
-        o.customer_email ILIKE $${paramIndex} OR
-        o.customer_phone ILIKE $${paramIndex}
-      )`);
+      // Buscar solo por número de pedido
+      conditions.push(`o.order_number ILIKE $${paramIndex++}`);
       params.push(`%${search}%`);
-      paramIndex++;
     }
 
     if (fecha) {
