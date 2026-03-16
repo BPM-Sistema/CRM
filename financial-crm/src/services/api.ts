@@ -1057,6 +1057,50 @@ export async function fetchActivityLog(
 }
 
 // ============================================
+// DASHBOARD STATS - KPIs agrupados por elemento
+// ============================================
+
+export interface DashboardStats {
+  comprobantes: {
+    a_confirmar: number;
+    confirmados_hoy: number;
+    rechazados_hoy: number;
+    monto_confirmado_hoy: number;
+  };
+  remitos: {
+    procesando: number;
+    listos: number;
+    confirmados_hoy: number;
+    con_error: number;
+  };
+  pedidos: {
+    nuevos_hoy: number;
+    a_imprimir: number;
+    armados: number;
+    enviados: number;
+    cancelados_hoy: number;
+  };
+  pagos: {
+    recaudado_hoy: number;
+    efectivo_hoy: number;
+    saldo_pendiente: number;
+    parciales: number;
+  };
+}
+
+export async function fetchDashboardStats(): Promise<DashboardStats> {
+  const response = await authFetch(`${API_BASE_URL}/dashboard/stats`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al obtener estadísticas del dashboard');
+  }
+
+  return data;
+}
+
+// ============================================
 // FINANCIERAS - Gestión de entidades financieras
 // ============================================
 

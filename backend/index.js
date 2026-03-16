@@ -1317,6 +1317,87 @@ app.get('/activity-log', authenticate, requirePermission('activity.view'), async
 
 
 /* =====================================================
+   GET — DASHBOARD STATS (KPIs agrupados por elemento)
+===================================================== */
+app.get('/dashboard/stats', authenticate, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      WITH comprobantes_stats AS (
+        SELECT
+          COUNT(*) FILTER (WHERE estado IN ('pendiente', 'a_confirmar')) as a_confirmar,
+          COUNT(*) FILTER (WHERE estado = 'confirmado' AND confirmed_at::date = CURRENT_DATE) as confirmados_hoy,
+          COUNT(*) FILTER (WHERE estado = 'rechazado' AND confirmed_at::date = CURRENT_DATE) as rechazados_hoy,
+          COALESCE(SUM(monto) FILTER (WHERE estado = 'confirmado' AND confirmed_at::date = CURRENT_DATE), 0) as monto_confirmado_hoy
+        FROM comprobantes
+      ),
+      remitos_stats AS (
+        SELECT
+          COUNT(*) FILTER (WHERE status = 'processing') as procesando,
+          COUNT(*) FILTER (WHERE status = 'ready') as listos,
+          COUNT(*) FILTER (WHERE status = 'confirmed' AND confirmed_at::date = CURRENT_DATE) as confirmados_hoy,
+          COUNT(*) FILTER (WHERE status = 'error') as con_error
+        FROM shipping_documents
+      ),
+      pedidos_stats AS (
+        SELECT
+          COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE) as nuevos_hoy,
+          COUNT(*) FILTER (WHERE estado_pedido = 'a_imprimir') as a_imprimir,
+          COUNT(*) FILTER (WHERE estado_pedido = 'armado') as armados,
+          COUNT(*) FILTER (WHERE estado_pedido IN ('enviado', 'en_calle', 'retirado')) as enviados,
+          COUNT(*) FILTER (WHERE estado_pedido = 'cancelado' AND updated_at::date = CURRENT_DATE) as cancelados_hoy
+        FROM orders_validated
+      ),
+      pagos_stats AS (
+        SELECT
+          COALESCE(SUM(total_pagado) FILTER (WHERE estado_pago IN ('confirmado_total', 'a_favor') AND created_at::date = CURRENT_DATE), 0) as recaudado_hoy,
+          COALESCE(SUM(saldo) FILTER (WHERE saldo > 0), 0) as saldo_pendiente,
+          COUNT(*) FILTER (WHERE estado_pago = 'confirmado_parcial') as parciales
+        FROM orders_validated
+      ),
+      efectivo_stats AS (
+        SELECT COALESCE(SUM(monto), 0) as efectivo_hoy
+        FROM pagos_efectivo
+        WHERE created_at::date = CURRENT_DATE
+      )
+      SELECT
+        json_build_object(
+          'a_confirmar', cs.a_confirmar,
+          'confirmados_hoy', cs.confirmados_hoy,
+          'rechazados_hoy', cs.rechazados_hoy,
+          'monto_confirmado_hoy', cs.monto_confirmado_hoy
+        ) as comprobantes,
+        json_build_object(
+          'procesando', rs.procesando,
+          'listos', rs.listos,
+          'confirmados_hoy', rs.confirmados_hoy,
+          'con_error', rs.con_error
+        ) as remitos,
+        json_build_object(
+          'nuevos_hoy', ps.nuevos_hoy,
+          'a_imprimir', ps.a_imprimir,
+          'armados', ps.armados,
+          'enviados', ps.enviados,
+          'cancelados_hoy', ps.cancelados_hoy
+        ) as pedidos,
+        json_build_object(
+          'recaudado_hoy', pgs.recaudado_hoy,
+          'efectivo_hoy', es.efectivo_hoy,
+          'saldo_pendiente', pgs.saldo_pendiente,
+          'parciales', pgs.parciales
+        ) as pagos
+      FROM comprobantes_stats cs, remitos_stats rs, pedidos_stats ps, pagos_stats pgs, efectivo_stats es
+    `);
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('❌ /dashboard/stats error:', error.message);
+    Sentry.captureException(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+/* =====================================================
    GET — CONTEOS PARA MODAL DE IMPRESIÓN (TODOS los pedidos)
 ===================================================== */
 app.get('/orders/print-counts', authenticate, requirePermission('orders.view'), async (req, res) => {
