@@ -2477,6 +2477,12 @@ app.post('/orders/:orderNumber/resync', authenticate, requirePermission('orders.
   try {
     const { orderNumber } = req.params;
 
+    // Check de integración habilitada
+    const resyncEnabled = await tnConfig.isResyncManualEnabled();
+    if (!resyncEnabled) {
+      return res.status(503).json({ error: 'Resync manual está deshabilitado temporalmente' });
+    }
+
     // 1. Buscar tn_order_id en nuestra DB
     const orderRes = await pool.query(
       'SELECT tn_order_id FROM orders_validated WHERE order_number = $1',
@@ -2582,6 +2588,12 @@ app.post('/orders/:orderNumber/resync', authenticate, requirePermission('orders.
 ===================================================== */
 app.post('/admin/resync-inconsistent-orders', authenticate, requirePermission('users.view'), async (req, res) => {
   try {
+    // Check de integración habilitada
+    const resyncEnabled = await tnConfig.isResyncManualEnabled();
+    if (!resyncEnabled) {
+      return res.status(503).json({ error: 'Resync manual está deshabilitado temporalmente' });
+    }
+
     const storeId = process.env.TIENDANUBE_STORE_ID;
 
     // 1. Obtener pedidos con inconsistencias no resueltas
@@ -2728,6 +2740,12 @@ app.post('/admin/backfill-financieras', authenticate, requirePermission('users.v
 ===================================================== */
 app.post('/admin/resync-all-orders', authenticate, requirePermission('users.view'), async (req, res) => {
   try {
+    // Check de integración habilitada
+    const resyncEnabled = await tnConfig.isResyncManualEnabled();
+    if (!resyncEnabled) {
+      return res.status(503).json({ error: 'Resync manual está deshabilitado temporalmente' });
+    }
+
     const storeId = process.env.TIENDANUBE_STORE_ID;
 
     // 1. Obtener todos los pedidos con tn_order_id
@@ -2815,6 +2833,12 @@ app.post('/admin/resync-all-orders', authenticate, requirePermission('users.view
    Approach: verificar nuestros pedidos contra TiendaNube
 ===================================================== */
 app.post('/admin/sync-cancelled', authenticate, requirePermission('users.view'), async (req, res) => {
+  // Check de integración habilitada
+  const syncCancelledEnabled = await tnConfig.isSyncCancelledEnabled();
+  if (!syncCancelledEnabled) {
+    return res.status(503).json({ error: 'Sync de cancelados está deshabilitado temporalmente' });
+  }
+
   const storeId = process.env.TIENDANUBE_STORE_ID;
   const accessToken = process.env.TIENDANUBE_ACCESS_TOKEN;
 
@@ -4125,6 +4149,13 @@ function calcularEstadoPedido(estadoPago, estadoPedidoActual) {
    Sincroniza estado de pago cuando está completamente pagado
 ===================================================== */
 async function marcarPagadoEnTiendanube(tnOrderId, orderNumber) {
+  // Check de integración habilitada
+  const markPaidEnabled = await tnConfig.isMarkPaidEnabled();
+  if (!markPaidEnabled) {
+    console.log(`🚫 [Orden ${orderNumber}] Marcar pagado en TN deshabilitado`);
+    return false;
+  }
+
   const storeId = process.env.TIENDANUBE_STORE_ID;
   const token = process.env.TIENDANUBE_ACCESS_TOKEN;
 

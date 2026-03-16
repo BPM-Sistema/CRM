@@ -288,6 +288,18 @@ const tiendanube = {
 
   async isSyncImagesEnabled() {
     return isEnabled('tiendanube_sync_images', { context: 'sync-images' });
+  },
+
+  async isResyncManualEnabled() {
+    return isEnabled('tiendanube_resync_manual', { context: 'resync-manual' });
+  },
+
+  async isSyncCancelledEnabled() {
+    return isEnabled('tiendanube_sync_cancelled', { context: 'sync-cancelled' });
+  },
+
+  async isMarkPaidEnabled() {
+    return isEnabled('tiendanube_mark_paid', { context: 'mark-paid' });
   }
 };
 

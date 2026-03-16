@@ -16,6 +16,10 @@ import {
   Tags,
   RefreshCcw,
   Image,
+  Info,
+  RotateCcw,
+  XCircle,
+  CreditCard,
 } from 'lucide-react';
 import {
   fetchIntegrations,
@@ -33,6 +37,9 @@ const KEY_ICONS: Record<string, typeof Settings> = {
   tiendanube_fulfillment_labels: Tags,
   tiendanube_sync_orders: RefreshCcw,
   tiendanube_sync_images: Image,
+  tiendanube_resync_manual: RotateCcw,
+  tiendanube_sync_cancelled: XCircle,
+  tiendanube_mark_paid: CreditCard,
 };
 
 // Nombres amigables
@@ -42,6 +49,29 @@ const KEY_NAMES: Record<string, string> = {
   tiendanube_fulfillment_labels: 'Etiquetas Envio Nube',
   tiendanube_sync_orders: 'Sync Pedidos',
   tiendanube_sync_images: 'Sync Imagenes',
+  tiendanube_resync_manual: 'Resync Manual',
+  tiendanube_sync_cancelled: 'Sync Cancelados',
+  tiendanube_mark_paid: 'Marcar Pagado en TN',
+};
+
+// Tooltips explicativos (no tecnicos)
+const KEY_TOOLTIPS: Record<string, string> = {
+  tiendanube_webhooks_enabled:
+    'Cuando alguien hace un pedido en la tienda, el sistema lo recibe automaticamente. Si esta apagado, los pedidos nuevos no van a aparecer.',
+  tiendanube_validate_orders:
+    'Al subir un comprobante, el sistema verifica que el pedido exista y que el monto sea correcto. Si esta apagado, se aceptan comprobantes sin verificar.',
+  tiendanube_fulfillment_labels:
+    'Permite descargar las etiquetas de envio de Andreani o Correo Argentino desde el panel. Si esta apagado, hay que buscarlas manualmente en Tiendanube.',
+  tiendanube_sync_orders:
+    'Cada 5 minutos el sistema busca pedidos que no hayan llegado por webhook. Si esta apagado, pedidos perdidos no se recuperan automaticamente.',
+  tiendanube_sync_images:
+    'Cada 5 horas se descargan las imagenes de productos para mostrarlas en el panel. Si esta apagado, algunos productos pueden no tener foto.',
+  tiendanube_resync_manual:
+    'Permite actualizar manualmente un pedido desde Tiendanube usando el boton "Resync". Si esta apagado, no se puede forzar la actualizacion.',
+  tiendanube_sync_cancelled:
+    'Detecta pedidos que fueron cancelados en Tiendanube y actualiza su estado aca. Si esta apagado, pedidos cancelados pueden seguir apareciendo como activos.',
+  tiendanube_mark_paid:
+    'Cuando un pedido se paga completamente, se marca como pagado en Tiendanube. Si esta apagado, Tiendanube no se entera de los pagos.',
 };
 
 export function IntegrationSettings() {
@@ -162,6 +192,7 @@ export function IntegrationSettings() {
             {configs.map(config => {
               const Icon = KEY_ICONS[config.key] || Settings;
               const friendlyName = KEY_NAMES[config.key] || config.key;
+              const tooltip = KEY_TOOLTIPS[config.key];
               const isUpdating = updating === config.key;
 
               return (
@@ -181,7 +212,20 @@ export function IntegrationSettings() {
                         <Icon className="h-5 w-5" />
                       </div>
                       <div>
-                        <h3 className="font-medium text-gray-900">{friendlyName}</h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-medium text-gray-900">{friendlyName}</h3>
+                          {tooltip && (
+                            <div className="relative group">
+                              <Info className="h-4 w-4 text-gray-400 cursor-help" />
+                              <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-50">
+                                <div className="bg-gray-900 text-white text-sm rounded-lg py-2 px-3 max-w-xs shadow-lg">
+                                  {tooltip}
+                                  <div className="absolute left-3 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                         <p className="text-sm text-gray-500 mt-0.5">{config.description}</p>
                         {config.updated_at && (
                           <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
