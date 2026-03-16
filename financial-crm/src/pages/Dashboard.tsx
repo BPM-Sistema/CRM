@@ -130,9 +130,16 @@ export function Dashboard() {
     }];
   }, [kpis, comprobantes]);
 
-  // Actividad reciente (últimos comprobantes)
+  // Actividad reciente (últimos comprobantes por actividad más reciente)
   const actividadReciente = useMemo(() => {
-    return comprobantes.slice(0, 10).map(c => ({
+    // Ordenar por fecha de actividad más reciente (confirmed_at si existe, sino created_at)
+    const sorted = [...comprobantes].sort((a, b) => {
+      const dateA = new Date(a.confirmed_at || a.created_at).getTime();
+      const dateB = new Date(b.confirmed_at || b.created_at).getTime();
+      return dateB - dateA;
+    });
+
+    return sorted.slice(0, 10).map(c => ({
       id: c.id.toString(),
       orderId: c.id.toString(),
       action: c.estado === 'confirmado' ? 'validated' as const :
@@ -143,7 +150,7 @@ export function Dashboard() {
         : c.estado === 'rechazado'
         ? `Comprobante rechazado`
         : `Nuevo comprobante recibido - $${c.monto?.toLocaleString('es-AR') || '0'}`,
-      timestamp: c.created_at,
+      timestamp: c.confirmed_at || c.created_at,
       orderNumber: c.order_number || `#${c.id}`,
     }));
   }, [comprobantes]);
