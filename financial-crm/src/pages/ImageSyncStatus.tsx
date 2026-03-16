@@ -23,7 +23,9 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 interface ProductItem {
   product_id: number;
+  product_name: string | null;
   winning_variant_id: number | null;
+  variant_name: string | null;
   winning_image_id: number | null;
   previous_first_image_id: number | null;
   changed: boolean;
@@ -33,7 +35,9 @@ interface ProductItem {
 
 interface ChangedProduct {
   product_id: number;
+  product_name: string | null;
   winning_variant_id: number;
+  variant_name: string | null;
   winning_image_id: number;
   previous_first_image_id: number;
   reason: string;
@@ -331,16 +335,15 @@ export default function ImageSyncStatus() {
                 </h3>
                 <div className="space-y-1">
                   {lastRun.changed_products.map((p) => (
-                    <div key={p.product_id} className="flex items-center gap-3 text-sm text-green-700">
-                      <span className="font-mono font-medium">#{p.product_id}</span>
+                    <div key={p.product_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-green-700">
+                      <span className="font-medium">{p.product_name || `#${p.product_id}`}</span>
                       <span className="text-green-500">&rarr;</span>
                       <span>
-                        Imagen <span className="font-mono">{p.winning_image_id}</span> a posicion 1
-                        {p.previous_first_image_id && (
-                          <span className="text-green-600/70"> (antes: {p.previous_first_image_id})</span>
-                        )}
+                        variante: <span className="font-medium">{p.variant_name || `#${p.winning_variant_id}`}</span>
                       </span>
-                      <span className="text-green-600/50 text-xs">variante #{p.winning_variant_id}</span>
+                      <span className="text-green-600/50 text-xs">
+                        (img {p.winning_image_id}, antes: {p.previous_first_image_id})
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -435,11 +438,11 @@ export default function ImageSyncStatus() {
                 {selectedRun.changed_products.length > 0 && (
                   <div className="space-y-1 mb-3">
                     {selectedRun.changed_products.map((p) => (
-                      <div key={p.product_id} className="flex items-center gap-3 text-sm text-violet-700">
-                        <span className="font-mono font-medium">#{p.product_id}</span>
+                      <div key={p.product_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-violet-700">
+                        <span className="font-medium">{p.product_name || `#${p.product_id}`}</span>
                         <span>&rarr;</span>
-                        <span>img {p.winning_image_id} (antes: {p.previous_first_image_id})</span>
-                        <span className="text-violet-500/60 text-xs">var #{p.winning_variant_id}</span>
+                        <span>variante: <span className="font-medium">{p.variant_name || `#${p.winning_variant_id}`}</span></span>
+                        <span className="text-violet-500/60 text-xs">(img {p.winning_image_id}, antes: {p.previous_first_image_id})</span>
                       </div>
                     ))}
                   </div>
@@ -504,9 +507,12 @@ export default function ImageSyncStatus() {
                         ) : (
                           filteredItems.map((item) => (
                             <tr key={item.product_id} className="hover:bg-gray-50">
-                              <td className="px-4 py-3 text-sm font-mono font-medium text-gray-900">#{item.product_id}</td>
+                              <td className="px-4 py-3">
+                                <div className="text-sm font-medium text-gray-900">{item.product_name || `#${item.product_id}`}</div>
+                                {item.product_name && <div className="text-xs text-gray-400 font-mono">#{item.product_id}</div>}
+                              </td>
                               <td className="px-4 py-3 text-sm text-gray-600">
-                                {item.winning_variant_id ? `#${item.winning_variant_id}` : '-'}
+                                {item.variant_name || (item.winning_variant_id ? `#${item.winning_variant_id}` : '-')}
                               </td>
                               <td className="px-4 py-3 text-sm">
                                 {item.winning_image_id ? (

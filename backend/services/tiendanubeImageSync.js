@@ -263,7 +263,7 @@ async function fetchAllProducts(storeId, accessToken, productId = null) {
       axios.get(`${TN_BASE_URL}/${storeId}/products`, {
         headers,
         timeout: 30000,
-        params: { page, per_page: PER_PAGE, fields: 'id,variants,images' }
+        params: { page, per_page: PER_PAGE, fields: 'id,name,variants,images' }
       })
     );
 
@@ -278,6 +278,19 @@ async function fetchAllProducts(storeId, accessToken, productId = null) {
   }
 
   return products;
+}
+
+function getProductName(product) {
+  if (!product.name) return null;
+  if (typeof product.name === 'string') return product.name;
+  return product.name.es || product.name.en || Object.values(product.name)[0] || null;
+}
+
+function getVariantName(variant) {
+  if (variant.values && Array.isArray(variant.values) && variant.values.length > 0) {
+    return variant.values.map(v => v.es || v.en || (typeof v === 'string' ? v : Object.values(v)[0] || '')).join(' / ');
+  }
+  return null;
 }
 
 // ─── Lógica de negocio ──────────────────────────────────────
@@ -411,7 +424,9 @@ async function syncProductImages({ dryRun = false, productId = null, triggerSour
       result.products_scanned++;
       const item = {
         product_id: product.id,
+        product_name: getProductName(product),
         winning_variant_id: null,
+        variant_name: null,
         winning_image_id: null,
         previous_first_image_id: null,
         changed: false,
@@ -449,6 +464,7 @@ async function syncProductImages({ dryRun = false, productId = null, triggerSour
         }
 
         item.winning_variant_id = winner.id;
+        item.variant_name = getVariantName(winner);
 
         if (!winner.image_id) {
           item.reason = 'variante ganadora sin image_id';
@@ -489,7 +505,9 @@ async function syncProductImages({ dryRun = false, productId = null, triggerSour
         result.products_changed++;
         result.changed_products.push({
           product_id: product.id,
+          product_name: item.product_name,
           winning_variant_id: winner.id,
+          variant_name: item.variant_name,
           winning_image_id: winner.image_id,
           previous_first_image_id: item.previous_first_image_id,
           reason: item.reason
