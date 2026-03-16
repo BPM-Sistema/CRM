@@ -19,6 +19,7 @@ import {
   Activity,
   Landmark,
   Truck,
+  Settings,
 } from 'lucide-react';
 import {
   fetchUsers,
@@ -76,6 +77,8 @@ const PERMISSION_LABELS: Record<string, string> = {
   'remitos.confirm': 'Confirmar remito',
   'remitos.reject': 'Rechazar remito',
   'remitos.reprocess': 'Reprocesar OCR',
+  'integrations.view': 'Ver integraciones',
+  'integrations.update': 'Modificar integraciones',
 };
 
 const SECTIONS = [
@@ -143,6 +146,15 @@ const SECTIONS = [
     color: 'bg-rose-50 text-rose-600',
     subsections: [
       { title: 'Acceso', permissions: ['activity.view'] }
+    ]
+  },
+  {
+    id: 'integrations',
+    title: 'Integraciones',
+    icon: Settings,
+    color: 'bg-indigo-50 text-indigo-600',
+    subsections: [
+      { title: 'Gestión', permissions: ['integrations.view', 'integrations.update'] }
     ]
   }
 ];
