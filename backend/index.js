@@ -4296,6 +4296,44 @@ app.get('/sync/lock-status', authenticate, (req, res) => {
   res.json({ ok: true, ...getSyncStatus() });
 });
 
+// Image sync endpoints
+const imageSync = require('./services/tiendanubeImageSync');
+
+app.get('/sync/image-sync-status', authenticate, requirePermission('activity.view'), (req, res) => {
+  const latest = imageSync.getLatestRun();
+  res.json({ ok: true, lastRun: latest });
+});
+
+app.get('/sync/image-sync-runs', authenticate, requirePermission('activity.view'), (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+  const runs = imageSync.getRunHistory(limit);
+  res.json({ ok: true, runs });
+});
+
+app.get('/sync/image-sync-runs/:runId', authenticate, requirePermission('activity.view'), (req, res) => {
+  const detail = imageSync.getRunDetail(req.params.runId);
+  if (!detail) {
+    return res.json({ ok: true, run: null });
+  }
+  res.json({ ok: true, run: detail });
+});
+
+app.post('/sync/image-sync-trigger', authenticate, requirePermission('activity.view'), async (req, res) => {
+  const dryRun = req.body?.dry_run === true;
+  // Lanzar en background, responder inmediatamente
+  imageSync.syncProductImages({ dryRun, triggerSource: 'panel' })
+    .then(result => {
+      if (result) {
+        console.log(`✅ [ImageSync] Corrida manual desde panel finalizada (${result.run_id})`);
+      }
+    })
+    .catch(err => {
+      console.error(`❌ [ImageSync] Error en corrida manual desde panel: ${err.message}`);
+    });
+
+  res.json({ ok: true, message: 'Sync iniciado' });
+});
+
 // Scheduler: ejecutar sync cada 15 minutos
 const SYNC_INTERVAL = 15 * 60 * 1000; // 15 minutos
 let syncInterval = null;
@@ -4318,6 +4356,15 @@ function startSyncScheduler() {
       console.error('❌ Error en sync programado:', err.message);
     });
   }, SYNC_INTERVAL);
+
+  // Image sync: reordenar imagen principal cada 1 hora
+  const { startScheduler: startImageSyncScheduler } = require('./services/tiendanubeImageSync');
+  if (process.env.TIENDANUBE_STORE_ID && process.env.TIENDANUBE_ACCESS_TOKEN) {
+    // Delay inicial de 60s para no solapar con el sync de órdenes
+    setTimeout(() => {
+      startImageSyncScheduler(60 * 60 * 1000); // cada 1 hora
+    }, 60000);
+  }
 }
 
 /* =====================================================

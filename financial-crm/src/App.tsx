@@ -6,6 +6,7 @@ import SyncQueue from './pages/SyncQueue';
 import BatchPrint from './pages/BatchPrint';
 import { InboxPage } from './pages/InboxPage';
 import WhatsAppSettings from './pages/WhatsAppSettings';
+import ImageSyncStatus from './pages/ImageSyncStatus';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginPage } from './pages/LoginPage';
 import { getDefaultRoute } from './utils/navigation';
@@ -44,6 +45,7 @@ function AppRoutes() {
             <Route path="/admin/financieras" element={<Financieras />} />
             <Route path="/inbox" element={<InboxPage />} />
             <Route path="/admin/whatsapp" element={<WhatsAppSettings />} />
+            <Route path="/admin/image-sync" element={<ImageSyncStatus />} />
             {/* Ruta catch-all: redirige a la primera sección permitida */}
             <Route path="*" element={<DefaultRedirect />} />
           </Routes>
