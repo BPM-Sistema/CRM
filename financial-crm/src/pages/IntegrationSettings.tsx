@@ -38,6 +38,7 @@ import {
   ServiceHealth,
 } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { Switch } from '../components/ui/Switch';
 
 // Mapeo de iconos por key
 const KEY_ICONS: Record<string, typeof Settings> = {
@@ -399,26 +400,15 @@ export function IntegrationSettings() {
                       </div>
 
                       {/* Toggle */}
-                      <button
-                        onClick={() => handleToggle(config.key, config.enabled)}
-                        disabled={!canUpdate || isUpdating}
-                        className={`relative p-1 rounded-full transition-colors ${
-                          isUpdating ? 'opacity-50' : ''
-                        } ${
-                          !canUpdate
-                            ? 'cursor-not-allowed'
-                            : 'cursor-pointer hover:bg-gray-100'
-                        }`}
-                        title={config.enabled ? 'Click para desactivar' : 'Click para activar'}
-                      >
-                        {isUpdating ? (
-                          <RefreshCw className="h-8 w-8 text-gray-400 animate-spin" />
-                        ) : config.enabled ? (
-                          <ToggleRight className="h-10 w-10 text-green-500" />
-                        ) : (
-                          <ToggleLeft className="h-10 w-10 text-gray-300" />
-                        )}
-                      </button>
+                      {isUpdating ? (
+                        <RefreshCw className="h-5 w-5 text-gray-400 animate-spin" />
+                      ) : (
+                        <Switch
+                          checked={config.enabled}
+                          onChange={() => handleToggle(config.key, config.enabled)}
+                          disabled={!canUpdate}
+                        />
+                      )}
                     </div>
                   </div>
                 );
@@ -498,26 +488,16 @@ export function IntegrationSettings() {
                             </div>
                           </div>
 
-                          <button
-                            onClick={() => handleToggle(config.key, config.enabled)}
-                            disabled={!canUpdate || isUpdating}
-                            className={`relative p-1 rounded-full transition-colors ${
-                              isUpdating ? 'opacity-50' : ''
-                            } ${
-                              !canUpdate
-                                ? 'cursor-not-allowed'
-                                : 'cursor-pointer hover:bg-gray-100'
-                            }`}
-                            title={config.enabled ? 'Click para pasar a produccion' : 'Click para activar testing'}
-                          >
-                            {isUpdating ? (
-                              <RefreshCw className="h-8 w-8 text-gray-400 animate-spin" />
-                            ) : config.enabled ? (
-                              <ToggleRight className="h-10 w-10 text-red-500" />
-                            ) : (
-                              <ToggleRight className="h-10 w-10 text-green-500" />
-                            )}
-                          </button>
+                          {isUpdating ? (
+                            <RefreshCw className="h-5 w-5 text-gray-400 animate-spin" />
+                          ) : (
+                            <Switch
+                              checked={!config.enabled}
+                              onChange={() => handleToggle(config.key, config.enabled)}
+                              disabled={!canUpdate}
+                              variant="danger"
+                            />
+                          )}
                         </div>
 
                         {/* Teléfonos de testing - solo visible si está en modo testing */}
