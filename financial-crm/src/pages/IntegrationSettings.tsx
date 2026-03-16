@@ -216,11 +216,11 @@ export function IntegrationSettings() {
                           <h3 className="font-medium text-gray-900">{friendlyName}</h3>
                           {tooltip && (
                             <div className="relative group">
-                              <Info className="h-4 w-4 text-gray-400 cursor-help" />
-                              <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-50">
-                                <div className="bg-gray-900 text-white text-sm rounded-lg py-2 px-3 max-w-xs shadow-lg">
+                              <Info className="h-4 w-4 text-gray-400 cursor-help hover:text-gray-600 transition-colors" />
+                              <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50 pointer-events-none">
+                                <div className="bg-gray-800 text-white text-sm rounded-lg py-3 px-4 w-72 shadow-xl leading-relaxed">
                                   {tooltip}
-                                  <div className="absolute left-3 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+                                  <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-transparent border-t-gray-800" />
                                 </div>
                               </div>
                             </div>
