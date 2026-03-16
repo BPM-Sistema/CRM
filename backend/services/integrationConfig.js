@@ -16,7 +16,6 @@ const pool = require('../db');
 // ─── Configuración ────────────────────────────────────────
 
 const CACHE_TTL_MS = 30 * 1000; // 30 segundos
-const MASTER_KEY = 'tiendanube_master_enabled';
 
 // ─── Cache en memoria ─────────────────────────────────────
 
@@ -87,19 +86,6 @@ async function isEnabled(key, options = {}) {
 
   try {
     await ensureCacheLoaded();
-
-    // Si no es el master key, verificar primero el master
-    if (key !== MASTER_KEY) {
-      const masterEnabled = configCache.get(MASTER_KEY)?.enabled;
-
-      // Master apagado = todo apagado
-      if (masterEnabled === false) {
-        if (logBlocked) {
-          console.log(`🚫 [IntegrationConfig] ${key} bloqueado - master switch apagado${context ? ` (${context})` : ''}`);
-        }
-        return false;
-      }
-    }
 
     // Buscar la config específica
     const config = configCache.get(key);
@@ -284,10 +270,6 @@ function getCacheStatus() {
  * Hacen el código más legible en los puntos de uso
  */
 const tiendanube = {
-  async isMasterEnabled() {
-    return isEnabled(MASTER_KEY);
-  },
-
   async areWebhooksEnabled() {
     return isEnabled('tiendanube_webhooks_enabled', { context: 'webhook' });
   },
@@ -327,6 +309,5 @@ module.exports = {
   tiendanube,
 
   // Constants
-  MASTER_KEY,
   CACHE_TTL_MS
 };

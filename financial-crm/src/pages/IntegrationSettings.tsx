@@ -8,8 +8,6 @@ import {
   ToggleLeft,
   ToggleRight,
   History,
-  Power,
-  PowerOff,
   Clock,
   ChevronDown,
   ChevronUp,
@@ -29,8 +27,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 
 // Mapeo de iconos por key
-const KEY_ICONS: Record<string, typeof Power> = {
-  tiendanube_master_enabled: Power,
+const KEY_ICONS: Record<string, typeof Settings> = {
   tiendanube_webhooks_enabled: Zap,
   tiendanube_validate_orders: Shield,
   tiendanube_fulfillment_labels: Tags,
@@ -40,7 +37,6 @@ const KEY_ICONS: Record<string, typeof Power> = {
 
 // Nombres amigables
 const KEY_NAMES: Record<string, string> = {
-  tiendanube_master_enabled: 'Master Switch',
   tiendanube_webhooks_enabled: 'Webhooks',
   tiendanube_validate_orders: 'Validar Pedidos',
   tiendanube_fulfillment_labels: 'Etiquetas Envio Nube',
@@ -58,12 +54,6 @@ export function IntegrationSettings() {
   const [showHistory, setShowHistory] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  // Modal de confirmacion para master switch
-  const [confirmModal, setConfirmModal] = useState<{
-    key: string;
-    newValue: boolean;
-    reason: string;
-  } | null>(null);
 
   const canView = hasPermission('integrations.view');
   const canUpdate = hasPermission('integrations.update');
@@ -107,24 +97,11 @@ export function IntegrationSettings() {
 
   const handleToggle = async (key: string, currentValue: boolean) => {
     const newValue = !currentValue;
-
-    // Si es el master switch, pedir confirmacion
-    if (key === 'tiendanube_master_enabled') {
-      setConfirmModal({ key, newValue, reason: '' });
-      return;
-    }
-
-    // Para otros toggles, actualizar directamente
-    await performUpdate(key, newValue);
-  };
-
-  const performUpdate = async (key: string, newValue: boolean, reason?: string) => {
     setUpdating(key);
     setError(null);
     try {
-      await updateIntegration(key, newValue, reason);
+      await updateIntegration(key, newValue);
       await loadData();
-      // Recargar historial si esta visible
       if (showHistory) {
         await loadHistory();
       }
@@ -132,13 +109,8 @@ export function IntegrationSettings() {
       setError(err instanceof Error ? err.message : 'Error al actualizar');
     } finally {
       setUpdating(null);
-      setConfirmModal(null);
     }
   };
-
-  // Verificar si el master esta apagado
-  const masterConfig = configs.find(c => c.key === 'tiendanube_master_enabled');
-  const isMasterOff = masterConfig && !masterConfig.enabled;
 
   if (!canView) {
     return <AccessDenied />;
@@ -180,19 +152,6 @@ export function IntegrationSettings() {
           </div>
         )}
 
-        {/* Warning si master esta apagado */}
-        {isMasterOff && (
-          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
-            <PowerOff className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-medium text-amber-800">Integracion Tiendanube desactivada</p>
-              <p className="text-sm text-amber-700 mt-1">
-                El Master Switch esta apagado. Ninguna integracion con Tiendanube esta funcionando.
-              </p>
-            </div>
-          </div>
-        )}
-
         {/* Loading */}
         {loading ? (
           <div className="flex justify-center py-12">
@@ -203,28 +162,18 @@ export function IntegrationSettings() {
             {configs.map(config => {
               const Icon = KEY_ICONS[config.key] || Settings;
               const friendlyName = KEY_NAMES[config.key] || config.key;
-              const isMaster = config.key === 'tiendanube_master_enabled';
-              const isDisabledByMaster = !isMaster && isMasterOff;
               const isUpdating = updating === config.key;
 
               return (
                 <div
                   key={config.key}
-                  className={`bg-white rounded-lg border ${
-                    isMaster
-                      ? config.enabled
-                        ? 'border-green-200 bg-green-50/30'
-                        : 'border-red-200 bg-red-50/30'
-                      : isDisabledByMaster
-                      ? 'border-gray-200 opacity-60'
-                      : 'border-gray-200'
-                  } p-4 transition-all`}
+                  className="bg-white rounded-lg border border-gray-200 p-4 transition-all"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div
                         className={`p-2 rounded-lg ${
-                          config.enabled && !isDisabledByMaster
+                          config.enabled
                             ? 'bg-green-100 text-green-600'
                             : 'bg-gray-100 text-gray-400'
                         }`}
@@ -232,14 +181,7 @@ export function IntegrationSettings() {
                         <Icon className="h-5 w-5" />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-medium text-gray-900">{friendlyName}</h3>
-                          {isMaster && (
-                            <span className="px-2 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-700 rounded">
-                              MASTER
-                            </span>
-                          )}
-                        </div>
+                        <h3 className="font-medium text-gray-900">{friendlyName}</h3>
                         <p className="text-sm text-gray-500 mt-0.5">{config.description}</p>
                         {config.updated_at && (
                           <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
@@ -254,25 +196,19 @@ export function IntegrationSettings() {
                     {/* Toggle */}
                     <button
                       onClick={() => handleToggle(config.key, config.enabled)}
-                      disabled={!canUpdate || isUpdating || isDisabledByMaster}
+                      disabled={!canUpdate || isUpdating}
                       className={`relative p-1 rounded-full transition-colors ${
                         isUpdating ? 'opacity-50' : ''
                       } ${
-                        !canUpdate || isDisabledByMaster
+                        !canUpdate
                           ? 'cursor-not-allowed'
                           : 'cursor-pointer hover:bg-gray-100'
                       }`}
-                      title={
-                        isDisabledByMaster
-                          ? 'Deshabilitado porque el Master Switch esta apagado'
-                          : config.enabled
-                          ? 'Click para desactivar'
-                          : 'Click para activar'
-                      }
+                      title={config.enabled ? 'Click para desactivar' : 'Click para activar'}
                     >
                       {isUpdating ? (
                         <RefreshCw className="h-8 w-8 text-gray-400 animate-spin" />
-                      ) : config.enabled && !isDisabledByMaster ? (
+                      ) : config.enabled ? (
                         <ToggleRight className="h-10 w-10 text-green-500" />
                       ) : (
                         <ToggleLeft className="h-10 w-10 text-gray-300" />
@@ -366,77 +302,6 @@ export function IntegrationSettings() {
           )}
         </div>
       </main>
-
-      {/* Modal de confirmacion para Master Switch */}
-      {confirmModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-xl">
-            <div className="flex items-center gap-3 mb-4">
-              {confirmModal.newValue ? (
-                <Power className="h-8 w-8 text-green-500" />
-              ) : (
-                <PowerOff className="h-8 w-8 text-red-500" />
-              )}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">
-                  {confirmModal.newValue
-                    ? 'Activar integracion Tiendanube'
-                    : 'Desactivar integracion Tiendanube'}
-                </h3>
-                <p className="text-sm text-gray-500">
-                  {confirmModal.newValue
-                    ? 'Todas las integraciones volveran a funcionar'
-                    : 'Esto desactivara TODAS las integraciones con Tiendanube'}
-                </p>
-              </div>
-            </div>
-
-            {!confirmModal.newValue && (
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Razon (opcional)
-                </label>
-                <textarea
-                  value={confirmModal.reason}
-                  onChange={e =>
-                    setConfirmModal({ ...confirmModal, reason: e.target.value })
-                  }
-                  placeholder="Ej: Problemas de performance en Tiendanube..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  rows={2}
-                />
-              </div>
-            )}
-
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setConfirmModal(null)}
-                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() =>
-                  performUpdate(
-                    confirmModal.key,
-                    confirmModal.newValue,
-                    confirmModal.reason || undefined
-                  )
-                }
-                disabled={updating !== null}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-                  confirmModal.newValue
-                    ? 'bg-green-600 hover:bg-green-700 text-white'
-                    : 'bg-red-600 hover:bg-red-700 text-white'
-                } ${updating ? 'opacity-50' : ''}`}
-              >
-                {updating && <RefreshCw className="h-4 w-4 animate-spin" />}
-                {confirmModal.newValue ? 'Activar' : 'Desactivar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
