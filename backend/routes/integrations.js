@@ -76,7 +76,7 @@ async function checkAllServices() {
       const token = process.env.BOTMAKER_ACCESS_TOKEN;
       if (!token) throw new Error('Token no configurado');
 
-      const res = await axios.get('https://api.botmaker.com/v2.0/bots', {
+      const res = await axios.get('https://api.botmaker.com/v2.0/intents/', {
         headers: { 'access-token': token },
         timeout: 5000
       });
