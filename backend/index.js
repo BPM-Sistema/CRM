@@ -4443,7 +4443,7 @@ function startSyncScheduler() {
   if (process.env.TIENDANUBE_STORE_ID && process.env.TIENDANUBE_ACCESS_TOKEN) {
     // Delay inicial de 60s para no solapar con el sync de órdenes
     setTimeout(() => {
-      startImageSyncScheduler(60 * 60 * 1000); // cada 1 hora
+      startImageSyncScheduler(5 * 60 * 60 * 1000); // cada 5 horas
     }, 60000);
   }
 }
