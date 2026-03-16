@@ -648,7 +648,9 @@ function detectarMontoDesdeOCR(texto) {
   const palabrasClaveFuertes = ['importe', 'monto', 'total', '$', 'ars', 'pesos'];
   const palabrasTrampa = ['cbu', 'cvu', 'cuit', 'cuil', 'operacion', 'referencia', 'codigo', 'alias'];
 
-  const regexMonto = /\$?\s?\d{1,3}(?:\.\d{3})*(?:,\d{2})?/g;
+  // Soporta: $106.550,00 | $106.550 | 106550.00 | 106550,00 | $106550
+  // Orden: patrón largo primero para que no sea consumido parcialmente por el corto
+  const regexMonto = /\$?\s?\d{4,}(?:[.,]\d{2})?|\$?\s?\d{1,3}(?:\.\d{3})*(?:,\d{2})?/g;
   const matches = textoNormalizado.match(regexMonto);
 
   if (!matches) return { monto: null, moneda: null };
@@ -657,13 +659,27 @@ function detectarMontoDesdeOCR(texto) {
   let mejorPuntaje = -1;
 
   for (const match of matches) {
-    const valorNumerico = Number(
-      match.replace('$', '').replace(/\./g, '').replace(',', '.')
-    );
+    // Detectar formato: si tiene punto de miles (1-3 dígitos, punto, 3 dígitos) vs punto decimal (muchos dígitos, punto, 2 dígitos)
+    const trimmed = match.replace('$', '').trim();
+    let valorNumerico;
+
+    if (/^\d{1,3}(\.\d{3})+(,\d{2})?$/.test(trimmed)) {
+      // Formato AR: 106.550 o 106.550,00 (punto = miles, coma = decimales)
+      valorNumerico = Number(trimmed.replace(/\./g, '').replace(',', '.'));
+    } else if (/^\d{4,}[.,]\d{2}$/.test(trimmed)) {
+      // Formato sin separador de miles: 106550.00 o 106550,00
+      valorNumerico = Number(trimmed.replace(',', '.'));
+    } else {
+      // Número plano: 106550
+      valorNumerico = Number(trimmed.replace(/\./g, '').replace(',', '.'));
+    }
 
     if (isNaN(valorNumerico)) continue;
     if (valorNumerico < 1000) continue;
-    if (!match.includes('.')) continue;
+
+    // Descartar números que parecen años, códigos largos, CBU, CUIT
+    if (valorNumerico >= 2020 && valorNumerico <= 2030) continue;
+    if (valorNumerico > 99999999 && !match.includes('.') && !match.includes(',')) continue;
 
     let puntaje = 0;
 
@@ -673,10 +689,13 @@ function detectarMontoDesdeOCR(texto) {
       idx + 50
     );
 
-    if (match.includes('$')) puntaje += 2;
-    if (palabrasClaveFuertes.some(p => contexto.includes(p))) puntaje += 3;
+    if (match.includes('$')) puntaje += 3;
+    // "importe" y "monto" son señales muy fuertes
+    if (contexto.includes('importe') || contexto.includes('monto')) puntaje += 5;
+    if (palabrasClaveFuertes.some(p => contexto.includes(p))) puntaje += 2;
     if (!palabrasTrampa.some(p => contexto.includes(p))) puntaje += 2;
-    if (idx < textoNormalizado.length * 0.3) puntaje += 1;
+    // Bonus por tener decimales (formato monetario)
+    if (match.includes(',') || /\.\d{2}$/.test(match.trim())) puntaje += 2;
 
     if (puntaje > mejorPuntaje) {
       mejorPuntaje = puntaje;
@@ -686,9 +705,17 @@ function detectarMontoDesdeOCR(texto) {
 
   if (!mejorMonto) return { monto: null, moneda: null };
 
-  const montoNumero = Number(
-    mejorMonto.replace('$', '').replace(/\./g, '').replace(',', '.')
-  );
+  // Parsear con la misma lógica de detección de formato
+  const trimmedFinal = mejorMonto.replace('$', '').trim();
+  let montoNumero;
+
+  if (/^\d{1,3}(\.\d{3})+(,\d{2})?$/.test(trimmedFinal)) {
+    montoNumero = Number(trimmedFinal.replace(/\./g, '').replace(',', '.'));
+  } else if (/^\d{4,}[.,]\d{2}$/.test(trimmedFinal)) {
+    montoNumero = Number(trimmedFinal.replace(',', '.'));
+  } else {
+    montoNumero = Number(trimmedFinal.replace(/\./g, '').replace(',', '.'));
+  }
 
   if (isNaN(montoNumero)) return { monto: null, moneda: null };
 
