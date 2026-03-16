@@ -1723,3 +1723,31 @@ export async function invalidateIntegrationCache(): Promise<void> {
     throw new Error(data.error || 'Error al invalidar cache');
   }
 }
+
+// ─── Health Check ────────────────────────────────────────
+
+export interface ServiceHealth {
+  name: string;
+  status: 'ok' | 'error';
+  latency: number;
+  error?: string;
+}
+
+export interface HealthCheckResponse {
+  status: 'healthy' | 'degraded';
+  timestamp: string;
+  totalLatency: number;
+  services: ServiceHealth[];
+}
+
+export async function fetchIntegrationHealth(): Promise<HealthCheckResponse> {
+  const response = await authFetch(`${API_BASE_URL}/integrations/health`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al verificar conexiones');
+  }
+
+  return data;
+}
