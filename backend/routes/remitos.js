@@ -28,6 +28,19 @@ const supabase = createClient(
 // Configurar Google Vision
 const visionClient = new vision.ImageAnnotatorClient();
 
+// Función para loguear eventos (misma estructura que index.js)
+async function logEvento({ orderNumber, accion, origen, userId, username }) {
+  try {
+    await pool.query(
+      `INSERT INTO logs (comprobante_id, order_number, accion, origen, user_id, username)
+       VALUES (NULL, $1, $2, $3, $4, $5)`,
+      [orderNumber || null, accion, origen, userId || null, username || null]
+    );
+  } catch (err) {
+    console.error('❌ Error guardando log remito:', err.message);
+  }
+}
+
 // Configurar multer para uploads temporales
 const upload = multer({
   dest: 'uploads/remitos/',
@@ -102,6 +115,15 @@ router.post('/upload',
 
         // 4. Procesar OCR en background (no esperar)
         processOCRAsync(documentId, fileBuffer, file.mimetype);
+
+        // 5. Loguear evento
+        logEvento({
+          orderNumber: null, // Aún no sabemos el pedido
+          accion: 'remito_subido',
+          origen: 'operador',
+          userId: req.user?.id,
+          username: req.user?.name
+        });
 
         results.push({
           id: documentId,
@@ -358,6 +380,15 @@ router.post('/:id/confirm',
       `, [confirmedOrder, req.user?.id, id]);
 
       console.log(`✅ Remito ${id} confirmado para pedido #${confirmedOrder}`);
+
+      // Loguear evento
+      logEvento({
+        orderNumber: confirmedOrder,
+        accion: 'remito_confirmado',
+        origen: 'operador',
+        userId: req.user?.id,
+        username: req.user?.name
+      });
 
       // Enviar WhatsApp enviado_transporte con imagen del remito
       const pedidoRes = await pool.query(

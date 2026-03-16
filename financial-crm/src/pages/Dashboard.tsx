@@ -14,13 +14,15 @@ import {
 } from 'lucide-react';
 import { Header } from '../components/layout';
 import { KPICard, ActivityFeed, StatusDistributionChart } from '../components/dashboard';
-import { fetchOrders, fetchComprobantes, ApiOrder, ApiComprobanteList } from '../services/api';
+import { SystemActivity } from '../components/dashboard/ActivityFeed';
+import { fetchOrders, fetchComprobantes, fetchActivityLog, ApiOrder, ApiComprobanteList, ActivityLog } from '../services/api';
 import { isToday } from 'date-fns';
 
 export function Dashboard() {
   const navigate = useNavigate();
   const [orders, setOrders] = useState<ApiOrder[]>([]);
   const [comprobantes, setComprobantes] = useState<ApiComprobanteList[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,13 +30,15 @@ export function Dashboard() {
     setLoading(true);
     setError(null);
     try {
-      // Dashboard muestra resumen, cargar primera página con más items
-      const [ordersRes, comprobantesRes] = await Promise.all([
-        fetchOrders(1, 100),
-        fetchComprobantes(1, 100)
+      // Dashboard muestra resumen
+      const [ordersRes, comprobantesRes, activityRes] = await Promise.all([
+        fetchOrders(1, 100),        // Para KPIs
+        fetchComprobantes(1, 100),  // Para KPIs y gráfico
+        fetchActivityLog(1, 15)     // Para actividad reciente (solo 15 items)
       ]);
       setOrders(ordersRes.data);
       setComprobantes(comprobantesRes.data);
+      setActivityLogs(activityRes.logs);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar datos');
     } finally {
@@ -130,30 +134,16 @@ export function Dashboard() {
     }];
   }, [kpis, comprobantes]);
 
-  // Actividad reciente (últimos comprobantes por actividad más reciente)
-  const actividadReciente = useMemo(() => {
-    // Ordenar por fecha de actividad más reciente (confirmed_at si existe, sino created_at)
-    const sorted = [...comprobantes].sort((a, b) => {
-      const dateA = new Date(a.confirmed_at || a.created_at).getTime();
-      const dateB = new Date(b.confirmed_at || b.created_at).getTime();
-      return dateB - dateA;
-    });
-
-    return sorted.slice(0, 10).map(c => ({
-      id: c.id.toString(),
-      orderId: c.id.toString(),
-      action: c.estado === 'confirmado' ? 'validated' as const :
-              c.estado === 'rechazado' ? 'rejected' as const : 'created' as const,
-      performedBy: 'Sistema',
-      description: c.estado === 'confirmado'
-        ? `Comprobante confirmado - $${c.monto?.toLocaleString('es-AR') || '0'}`
-        : c.estado === 'rechazado'
-        ? `Comprobante rechazado`
-        : `Nuevo comprobante recibido - $${c.monto?.toLocaleString('es-AR') || '0'}`,
-      timestamp: c.confirmed_at || c.created_at,
-      orderNumber: c.order_number || `#${c.id}`,
+  // Actividad reciente (desde tabla logs - todos los eventos del sistema)
+  const actividadReciente: SystemActivity[] = useMemo(() => {
+    return activityLogs.slice(0, 10).map(log => ({
+      id: log.id,
+      orderNumber: log.order_number,
+      accion: log.accion,
+      timestamp: log.created_at,
+      performedBy: log.user_name || log.username || log.origen,
     }));
-  }, [comprobantes]);
+  }, [activityLogs]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-AR', {

@@ -79,9 +79,38 @@ const EVENT_CONFIG: Record<string, EventConfig> = {
     label: 'WhatsApp enviado',
     color: 'bg-green-100'
   },
+
+  // Remitos
+  'remito_subido': {
+    emoji: '📄',
+    label: 'Remito subido',
+    color: 'bg-slate-100'
+  },
+  'remito_confirmado': {
+    emoji: '✅',
+    label: 'Remito confirmado',
+    color: 'bg-green-100'
+  },
+
+  // Etiquetas
+  'etiqueta_impresa': {
+    emoji: '🏷️',
+    label: 'Etiqueta impresa',
+    color: 'bg-violet-100'
+  },
+  'envio_nube_label_descargada': {
+    emoji: '🏷️',
+    label: 'Etiqueta Envío Nube',
+    color: 'bg-indigo-100'
+  },
+  'envio_nube_label_masiva': {
+    emoji: '🏷️',
+    label: 'Etiquetas masivas',
+    color: 'bg-indigo-100'
+  },
 };
 
-// Patrones para eventos dinámicos (webhooks de TiendaNube)
+// Patrones para eventos dinámicos (webhooks de TiendaNube y otros)
 const DYNAMIC_PATTERNS: Array<{ pattern: RegExp; config: EventConfig }> = [
   {
     pattern: /añadido/i,
@@ -98,6 +127,10 @@ const DYNAMIC_PATTERNS: Array<{ pattern: RegExp; config: EventConfig }> = [
   {
     pattern: /Nuevo monto/i,
     config: { emoji: '💰', label: 'Monto actualizado', color: 'bg-amber-100' }
+  },
+  {
+    pattern: /etiqueta_impresa_\d+_bultos/i,
+    config: { emoji: '🏷️', label: 'Etiqueta impresa', color: 'bg-violet-100' }
   },
 ];
 
