@@ -11,8 +11,8 @@ interface KPIItem {
 interface KPISectionProps {
   title: string;
   icon: ReactNode;
-  iconBgColor: string;
   kpis: KPIItem[];
+  navigateTo?: string;
 }
 
 const colorMap: Record<string, string> = {
@@ -25,37 +25,40 @@ const colorMap: Record<string, string> = {
   amber: 'text-amber-600',
 };
 
-export function KPISection({ title, icon, iconBgColor, kpis }: KPISectionProps) {
+export function KPISection({ title, icon, kpis, navigateTo }: KPISectionProps) {
   const navigate = useNavigate();
 
   return (
-    <div className="bg-white rounded-2xl border border-neutral-200/60 p-5 shadow-soft">
-      <div className="flex items-center gap-3 mb-4">
-        <div className={`flex items-center justify-center w-9 h-9 rounded-xl ${iconBgColor}`}>
-          {icon}
-        </div>
-        <h3 className="text-base font-semibold text-neutral-900">{title}</h3>
+    <div
+      className={`bg-white rounded-xl border border-neutral-200/60 p-4 shadow-soft ${navigateTo ? 'hover:border-neutral-300 cursor-pointer transition-colors' : ''}`}
+      onClick={() => navigateTo && navigate(navigateTo)}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        {icon}
+        <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">{title}</h3>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+      <div className="flex items-end justify-between gap-2">
         {kpis.map((kpi, index) => (
           <button
             key={index}
-            onClick={() => kpi.navigateTo && navigate(kpi.navigateTo)}
-            disabled={!kpi.navigateTo}
-            className={`flex flex-col items-start p-3 rounded-xl transition-colors ${
-              kpi.navigateTo
-                ? 'hover:bg-neutral-50 cursor-pointer'
-                : 'cursor-default'
+            onClick={(e) => {
+              if (kpi.navigateTo) {
+                e.stopPropagation();
+                navigate(kpi.navigateTo);
+              }
+            }}
+            className={`flex-1 flex flex-col items-center p-2 rounded-lg transition-colors ${
+              kpi.navigateTo ? 'hover:bg-neutral-50 cursor-pointer' : 'cursor-default'
             }`}
           >
-            <span className={`text-2xl font-bold ${colorMap[kpi.color || 'neutral']}`}>
+            <span className={`text-xl font-bold ${colorMap[kpi.color || 'neutral']}`}>
               {typeof kpi.value === 'number' && kpi.value > 999999
                 ? new Intl.NumberFormat('es-AR', { notation: 'compact', maximumFractionDigits: 1 }).format(kpi.value)
                 : typeof kpi.value === 'number' && kpi.value > 999
                 ? new Intl.NumberFormat('es-AR').format(kpi.value)
                 : kpi.value}
             </span>
-            <span className="text-xs text-neutral-500 mt-0.5">{kpi.label}</span>
+            <span className="text-[10px] text-neutral-400 mt-0.5 text-center leading-tight">{kpi.label}</span>
           </button>
         ))}
       </div>

@@ -134,61 +134,62 @@ export function Dashboard() {
       />
 
       <div className="p-6 space-y-4">
-        {/* Comprobantes */}
-        <KPISection
-          title="Comprobantes"
-          icon={<FileText size={20} className="text-blue-600" />}
-          iconBgColor="bg-blue-100"
-          kpis={[
-            { label: 'A confirmar', value: stats.comprobantes.a_confirmar, color: 'amber', navigateTo: '/receipts?estado=a_confirmar' },
-            { label: 'Confirmados hoy', value: stats.comprobantes.confirmados_hoy, color: 'green', navigateTo: '/receipts?estado=confirmado' },
-            { label: 'Rechazados hoy', value: stats.comprobantes.rechazados_hoy, color: 'red', navigateTo: '/receipts?estado=rechazado' },
-            { label: 'Monto hoy', value: formatCurrency(stats.comprobantes.monto_confirmado_hoy), color: 'green' },
-          ]}
-        />
+        {/* KPIs en grid 2x2 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Comprobantes */}
+          <KPISection
+            title="Comprobantes"
+            icon={<FileText size={14} className="text-blue-500" />}
+            navigateTo="/receipts"
+            kpis={[
+              { label: 'Pend', value: stats.comprobantes.a_confirmar, color: 'amber', navigateTo: '/receipts?estado=a_confirmar' },
+              { label: 'Confirm', value: stats.comprobantes.confirmados_hoy, color: 'green', navigateTo: '/receipts?estado=confirmado' },
+              { label: 'Rech', value: stats.comprobantes.rechazados_hoy, color: 'red', navigateTo: '/receipts?estado=rechazado' },
+              { label: 'Monto', value: formatCurrency(stats.comprobantes.monto_confirmado_hoy), color: 'green' },
+            ]}
+          />
 
-        {/* Remitos */}
-        <KPISection
-          title="Remitos"
-          icon={<Truck size={20} className="text-indigo-600" />}
-          iconBgColor="bg-indigo-100"
-          kpis={[
-            { label: 'Procesando', value: stats.remitos.procesando, color: 'blue', navigateTo: '/remitos?status=processing' },
-            { label: 'Listos', value: stats.remitos.listos, color: 'amber', navigateTo: '/remitos?status=ready' },
-            { label: 'Confirmados hoy', value: stats.remitos.confirmados_hoy, color: 'green', navigateTo: '/remitos?status=confirmed' },
-            { label: 'Con error', value: stats.remitos.con_error, color: 'red', navigateTo: '/remitos?status=error' },
-          ]}
-        />
+          {/* Remitos */}
+          <KPISection
+            title="Remitos"
+            icon={<Truck size={14} className="text-indigo-500" />}
+            navigateTo="/remitos"
+            kpis={[
+              { label: 'Proc', value: stats.remitos.procesando, color: 'blue', navigateTo: '/remitos?status=processing' },
+              { label: 'Listos', value: stats.remitos.listos, color: 'amber', navigateTo: '/remitos?status=ready' },
+              { label: 'Confirm', value: stats.remitos.confirmados_hoy, color: 'green', navigateTo: '/remitos?status=confirmed' },
+              { label: 'Error', value: stats.remitos.con_error, color: 'red', navigateTo: '/remitos?status=error' },
+            ]}
+          />
 
-        {/* Pedidos */}
-        <KPISection
-          title="Pedidos"
-          icon={<Package size={20} className="text-violet-600" />}
-          iconBgColor="bg-violet-100"
-          kpis={[
-            { label: 'Nuevos hoy', value: stats.pedidos.nuevos_hoy, color: 'neutral', navigateTo: '/orders' },
-            { label: 'A imprimir', value: stats.pedidos.a_imprimir, color: 'violet', navigateTo: '/orders?estado_pedido=a_imprimir' },
-            { label: 'Armados', value: stats.pedidos.armados, color: 'blue', navigateTo: '/orders?estado_pedido=armado' },
-            { label: 'Enviados', value: stats.pedidos.enviados, color: 'green', navigateTo: '/orders?estado_pedido=enviado' },
-            { label: 'Cancelados hoy', value: stats.pedidos.cancelados_hoy, color: 'red', navigateTo: '/orders?estado_pedido=cancelado' },
-          ]}
-        />
+          {/* Pedidos */}
+          <KPISection
+            title="Pedidos"
+            icon={<Package size={14} className="text-violet-500" />}
+            navigateTo="/orders"
+            kpis={[
+              { label: 'Hoy', value: stats.pedidos.nuevos_hoy, color: 'neutral' },
+              { label: 'A impr', value: stats.pedidos.a_imprimir, color: 'violet', navigateTo: '/orders?estado_pedido=a_imprimir' },
+              { label: 'Armado', value: stats.pedidos.armados, color: 'blue', navigateTo: '/orders?estado_pedido=armado' },
+              { label: 'Enviado', value: stats.pedidos.enviados, color: 'green', navigateTo: '/orders?estado_pedido=enviado' },
+            ]}
+          />
 
-        {/* Pagos */}
-        <KPISection
-          title="Pagos"
-          icon={<DollarSign size={20} className="text-emerald-600" />}
-          iconBgColor="bg-emerald-100"
-          kpis={[
-            { label: 'Recaudado hoy', value: formatCurrency(stats.pagos.recaudado_hoy), color: 'green' },
-            { label: 'Efectivo hoy', value: formatCurrency(stats.pagos.efectivo_hoy), color: 'amber' },
-            { label: 'Saldo pendiente', value: formatCurrency(stats.pagos.saldo_pendiente), color: 'red' },
-            { label: 'Parciales', value: stats.pagos.parciales, color: 'amber', navigateTo: '/orders?estado_pago=confirmado_parcial' },
-          ]}
-        />
+          {/* Pagos */}
+          <KPISection
+            title="Pagos"
+            icon={<DollarSign size={14} className="text-emerald-500" />}
+            kpis={[
+              { label: 'Hoy', value: formatCurrency(stats.pagos.recaudado_hoy), color: 'green' },
+              { label: 'Efectivo', value: formatCurrency(stats.pagos.efectivo_hoy), color: 'amber' },
+              { label: 'Pend', value: formatCurrency(stats.pagos.saldo_pendiente), color: 'red' },
+              { label: 'Parcial', value: stats.pagos.parciales, color: 'amber', navigateTo: '/orders?estado_pago=confirmado_parcial' },
+            ]}
+          />
+        </div>
 
         {/* Gráfico y Actividad */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <StatusDistributionChart data={chartData} />
           <ActivityFeed activities={actividadReciente} />
         </div>
