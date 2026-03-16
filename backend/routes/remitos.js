@@ -405,14 +405,30 @@ router.post('/:id/confirm',
                             shippingType.includes('elec');
 
         if (esTransporte) {
-          const phoneDigits = pedido.customer_phone.replace(/\D/g, '').slice(-10);
-          const TESTING_PHONES = ['1123945965', '1126032641'];
+          // Leer config de testing desde DB
+          let destinoPhone = pedido.customer_phone;
+          try {
+            const testingRes = await pool.query(
+              `SELECT enabled, metadata FROM integration_config WHERE key = 'whatsapp_testing_mode'`
+            );
+            if (testingRes.rows.length > 0 && testingRes.rows[0].enabled) {
+              const testPhone = testingRes.rows[0].metadata?.testing_phone;
+              if (testPhone) {
+                console.log(`🧪 WhatsApp testing remito: redirigiendo de ${pedido.customer_phone} → ${testPhone}`);
+                destinoPhone = testPhone;
+              } else {
+                console.log('📵 WhatsApp remito ignorado: modo testing sin número configurado');
+                destinoPhone = null;
+              }
+            }
+          } catch (err) {
+            console.error('⚠️ Error leyendo whatsapp_testing_mode:', err.message);
+          }
 
-          if (TESTING_PHONES.includes(phoneDigits)) {
-            const contactIdClean = '549' + phoneDigits;
+          if (destinoPhone) {
+            const contactIdClean = '549' + destinoPhone.replace(/\D/g, '').slice(-10);
             const headers = { 'access-token': process.env.BOTMAKER_ACCESS_TOKEN, 'Content-Type': 'application/json' };
 
-            // Enviar template con imagen del remito como header
             axios.post(
               'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
               {

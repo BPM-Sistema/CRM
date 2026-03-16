@@ -1635,6 +1635,7 @@ export interface IntegrationConfig {
   enabled: boolean;
   description: string;
   category: string;
+  metadata?: Record<string, string>;
   updated_at: string;
   updated_by_email?: string;
 }
@@ -1687,6 +1688,25 @@ export async function updateIntegration(
 
   if (!response.ok) {
     throw new Error(data.error || 'Error al actualizar configuración');
+  }
+
+  return data.config;
+}
+
+// Actualizar metadata de una configuración
+export async function updateIntegrationMetadata(
+  key: string,
+  metadata: Record<string, string>
+): Promise<IntegrationConfig> {
+  const response = await authFetch(`${API_BASE_URL}/integrations/${key}/metadata`, {
+    method: 'PATCH',
+    body: JSON.stringify({ metadata }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al actualizar metadata');
   }
 
   return data.config;

@@ -24,10 +24,13 @@ import {
   CheckCircle2,
   XOctagon,
   Wifi,
+  MessageSquare,
+  Phone,
 } from 'lucide-react';
 import {
   fetchIntegrations,
   updateIntegration,
+  updateIntegrationMetadata,
   fetchIntegrationHistory,
   fetchIntegrationHealth,
   IntegrationConfig,
@@ -46,6 +49,7 @@ const KEY_ICONS: Record<string, typeof Settings> = {
   tiendanube_resync_manual: RotateCcw,
   tiendanube_sync_cancelled: XCircle,
   tiendanube_mark_paid: CreditCard,
+  whatsapp_testing_mode: MessageSquare,
 };
 
 // Nombres amigables
@@ -58,6 +62,7 @@ const KEY_NAMES: Record<string, string> = {
   tiendanube_resync_manual: 'Resync Manual',
   tiendanube_sync_cancelled: 'Sync Cancelados',
   tiendanube_mark_paid: 'Marcar Pagado en TN',
+  whatsapp_testing_mode: 'Modo Testing',
 };
 
 // Tooltips explicativos (no tecnicos)
@@ -78,6 +83,8 @@ const KEY_TOOLTIPS: Record<string, string> = {
     'Detecta pedidos que fueron cancelados en Tiendanube y actualiza su estado aca. Si esta apagado, pedidos cancelados pueden seguir apareciendo como activos.',
   tiendanube_mark_paid:
     'Cuando un pedido se paga completamente, se marca como pagado en Tiendanube. Si esta apagado, Tiendanube no se entera de los pagos.',
+  whatsapp_testing_mode:
+    'Cuando esta activado, TODOS los mensajes de WhatsApp se envian al numero de testing configurado en vez de al cliente real. Al desactivarlo, los mensajes van directo al cliente.',
 };
 
 export function IntegrationSettings() {
@@ -89,6 +96,9 @@ export function IntegrationSettings() {
   const [updating, setUpdating] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [testingPhone, setTestingPhone] = useState('');
+  const [savingPhone, setSavingPhone] = useState(false);
+  const [phoneSaved, setPhoneSaved] = useState(false);
 
   // Health check state
   const [healthServices, setHealthServices] = useState<ServiceHealth[]>([]);
@@ -104,6 +114,11 @@ export function IntegrationSettings() {
     try {
       const data = await fetchIntegrations();
       setConfigs(data.configs);
+      // Inicializar teléfono de testing desde metadata
+      const waConfig = data.configs.find((c: IntegrationConfig) => c.key === 'whatsapp_testing_mode');
+      if (waConfig?.metadata?.testing_phone) {
+        setTestingPhone(waConfig.metadata.testing_phone);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar datos');
     } finally {
@@ -166,6 +181,24 @@ export function IntegrationSettings() {
       setUpdating(null);
     }
   };
+
+  const handleSavePhone = async () => {
+    setSavingPhone(true);
+    setError(null);
+    try {
+      await updateIntegrationMetadata('whatsapp_testing_mode', { testing_phone: testingPhone });
+      setPhoneSaved(true);
+      setTimeout(() => setPhoneSaved(false), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al guardar teléfono');
+    } finally {
+      setSavingPhone(false);
+    }
+  };
+
+  // Separar configs por categoría
+  const tiendanubeConfigs = configs.filter(c => c.category === 'tiendanube');
+  const whatsappConfigs = configs.filter(c => c.category === 'whatsapp');
 
   if (!canView) {
     return <AccessDenied />;
@@ -290,81 +323,225 @@ export function IntegrationSettings() {
             <RefreshCw className="h-8 w-8 text-indigo-500 animate-spin" />
           </div>
         ) : (
-          <div className="space-y-3">
-            {configs.map(config => {
-              const Icon = KEY_ICONS[config.key] || Settings;
-              const friendlyName = KEY_NAMES[config.key] || config.key;
-              const tooltip = KEY_TOOLTIPS[config.key];
-              const isUpdating = updating === config.key;
+          <>
+            {/* Tiendanube configs */}
+            <div className="space-y-3">
+              {tiendanubeConfigs.map(config => {
+                const Icon = KEY_ICONS[config.key] || Settings;
+                const friendlyName = KEY_NAMES[config.key] || config.key;
+                const tooltip = KEY_TOOLTIPS[config.key];
+                const isUpdating = updating === config.key;
 
-              return (
-                <div
-                  key={config.key}
-                  className="bg-white rounded-lg border border-gray-200 p-4 transition-all"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`p-2 rounded-lg ${
-                          config.enabled
-                            ? 'bg-green-100 text-green-600'
-                            : 'bg-gray-100 text-gray-400'
-                        }`}
-                      >
-                        <Icon className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-medium text-gray-900">{friendlyName}</h3>
-                          {tooltip && (
-                            <div className="relative group">
-                              <Info className="h-4 w-4 text-gray-400 cursor-help hover:text-gray-600 transition-colors" />
-                              <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50 pointer-events-none">
-                                <div className="bg-gray-800 text-white text-sm rounded-lg py-3 px-4 w-72 shadow-xl leading-relaxed">
-                                  {tooltip}
-                                  <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-transparent border-t-gray-800" />
+                return (
+                  <div
+                    key={config.key}
+                    className="bg-white rounded-lg border border-gray-200 p-4 transition-all"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`p-2 rounded-lg ${
+                            config.enabled
+                              ? 'bg-green-100 text-green-600'
+                              : 'bg-gray-100 text-gray-400'
+                          }`}
+                        >
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-medium text-gray-900">{friendlyName}</h3>
+                            {tooltip && (
+                              <div className="relative group">
+                                <Info className="h-4 w-4 text-gray-400 cursor-help hover:text-gray-600 transition-colors" />
+                                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50 pointer-events-none">
+                                  <div className="bg-gray-800 text-white text-sm rounded-lg py-3 px-4 w-72 shadow-xl leading-relaxed">
+                                    {tooltip}
+                                    <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-transparent border-t-gray-800" />
+                                  </div>
                                 </div>
                               </div>
-                            </div>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-500 mt-0.5">{config.description}</p>
+                          {config.updated_at && (
+                            <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {new Date(config.updated_at).toLocaleString('es-AR')}
+                              {config.updated_by_email && ` - ${config.updated_by_email}`}
+                            </p>
                           )}
                         </div>
-                        <p className="text-sm text-gray-500 mt-0.5">{config.description}</p>
-                        {config.updated_at && (
-                          <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {new Date(config.updated_at).toLocaleString('es-AR')}
-                            {config.updated_by_email && ` - ${config.updated_by_email}`}
-                          </p>
-                        )}
                       </div>
-                    </div>
 
-                    {/* Toggle */}
-                    <button
-                      onClick={() => handleToggle(config.key, config.enabled)}
-                      disabled={!canUpdate || isUpdating}
-                      className={`relative p-1 rounded-full transition-colors ${
-                        isUpdating ? 'opacity-50' : ''
-                      } ${
-                        !canUpdate
-                          ? 'cursor-not-allowed'
-                          : 'cursor-pointer hover:bg-gray-100'
-                      }`}
-                      title={config.enabled ? 'Click para desactivar' : 'Click para activar'}
-                    >
-                      {isUpdating ? (
-                        <RefreshCw className="h-8 w-8 text-gray-400 animate-spin" />
-                      ) : config.enabled ? (
-                        <ToggleRight className="h-10 w-10 text-green-500" />
-                      ) : (
-                        <ToggleLeft className="h-10 w-10 text-gray-300" />
-                      )}
-                    </button>
+                      {/* Toggle */}
+                      <button
+                        onClick={() => handleToggle(config.key, config.enabled)}
+                        disabled={!canUpdate || isUpdating}
+                        className={`relative p-1 rounded-full transition-colors ${
+                          isUpdating ? 'opacity-50' : ''
+                        } ${
+                          !canUpdate
+                            ? 'cursor-not-allowed'
+                            : 'cursor-pointer hover:bg-gray-100'
+                        }`}
+                        title={config.enabled ? 'Click para desactivar' : 'Click para activar'}
+                      >
+                        {isUpdating ? (
+                          <RefreshCw className="h-8 w-8 text-gray-400 animate-spin" />
+                        ) : config.enabled ? (
+                          <ToggleRight className="h-10 w-10 text-green-500" />
+                        ) : (
+                          <ToggleLeft className="h-10 w-10 text-gray-300" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* WhatsApp section */}
+            {whatsappConfigs.length > 0 && (
+              <div className="mt-8">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-green-100 rounded-lg">
+                    <MessageSquare className="h-6 w-6 text-green-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900">WhatsApp</h2>
+                    <p className="text-sm text-gray-500">
+                      Control de envío de mensajes
+                    </p>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+
+                <div className="space-y-3">
+                  {whatsappConfigs.map(config => {
+                    const Icon = KEY_ICONS[config.key] || Settings;
+                    const friendlyName = KEY_NAMES[config.key] || config.key;
+                    const tooltip = KEY_TOOLTIPS[config.key];
+                    const isUpdating = updating === config.key;
+
+                    return (
+                      <div
+                        key={config.key}
+                        className="bg-white rounded-lg border border-gray-200 p-4 transition-all"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`p-2 rounded-lg ${
+                                config.enabled
+                                  ? 'bg-yellow-100 text-yellow-600'
+                                  : 'bg-green-100 text-green-600'
+                              }`}
+                            >
+                              <Icon className="h-5 w-5" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-medium text-gray-900">{friendlyName}</h3>
+                                {config.enabled && (
+                                  <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-medium rounded-full">
+                                    Testing
+                                  </span>
+                                )}
+                                {!config.enabled && (
+                                  <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">
+                                    Produccion
+                                  </span>
+                                )}
+                                {tooltip && (
+                                  <div className="relative group">
+                                    <Info className="h-4 w-4 text-gray-400 cursor-help" />
+                                    <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-50">
+                                      <div className="bg-gray-900 text-white text-sm rounded-lg py-2 px-3 max-w-xs shadow-lg">
+                                        {tooltip}
+                                        <div className="absolute left-3 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                              <p className="text-sm text-gray-500 mt-0.5">{config.description}</p>
+                              {config.updated_at && (
+                                <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  {new Date(config.updated_at).toLocaleString('es-AR')}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handleToggle(config.key, config.enabled)}
+                            disabled={!canUpdate || isUpdating}
+                            className={`relative p-1 rounded-full transition-colors ${
+                              isUpdating ? 'opacity-50' : ''
+                            } ${
+                              !canUpdate
+                                ? 'cursor-not-allowed'
+                                : 'cursor-pointer hover:bg-gray-100'
+                            }`}
+                            title={config.enabled ? 'Click para pasar a produccion' : 'Click para activar testing'}
+                          >
+                            {isUpdating ? (
+                              <RefreshCw className="h-8 w-8 text-gray-400 animate-spin" />
+                            ) : config.enabled ? (
+                              <ToggleRight className="h-10 w-10 text-yellow-500" />
+                            ) : (
+                              <ToggleRight className="h-10 w-10 text-green-500" />
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Teléfono de testing - solo visible si está en modo testing */}
+                        {config.enabled && config.key === 'whatsapp_testing_mode' && (
+                          <div className="mt-4 pt-4 border-t border-gray-100">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              <Phone className="h-4 w-4 inline mr-1" />
+                              Numero de testing (todos los mensajes se envian aca)
+                            </label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={testingPhone}
+                                onChange={e => {
+                                  setTestingPhone(e.target.value.replace(/[^0-9]/g, ''));
+                                  setPhoneSaved(false);
+                                }}
+                                placeholder="Ej: 1123945965"
+                                className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                disabled={!canUpdate}
+                              />
+                              <button
+                                onClick={handleSavePhone}
+                                disabled={!canUpdate || savingPhone || !testingPhone}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                  phoneSaved
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50'
+                                }`}
+                              >
+                                {savingPhone ? (
+                                  <RefreshCw className="h-4 w-4 animate-spin" />
+                                ) : phoneSaved ? (
+                                  '✓ Guardado'
+                                ) : (
+                                  'Guardar'
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Historial de cambios */}

@@ -1067,17 +1067,43 @@ function normalizePhoneForComparison(phone) {
   return phone.replace(/\D/g, '').slice(-10);
 }
 
-// Teléfonos de testing (últimos 10 dígitos)
-const TESTING_PHONES = ['1123945965', '1126032641'];
-
 // Plantillas que NO llevan sufijo de financiera
 const PLANTILLAS_SIN_SUFIJO = ['datos__envio', 'comprobante_rechazado', 'comprobante_confirmado', 'enviado_env_nube', 'enviado_transporte', 'pedido_cancelado'];
 
+/**
+ * Obtener config de WhatsApp testing desde DB
+ * Retorna { enabled, testingPhone } o null si no hay config
+ */
+async function getWhatsAppTestingConfig() {
+  try {
+    const result = await pool.query(
+      `SELECT enabled, metadata FROM integration_config WHERE key = 'whatsapp_testing_mode'`
+    );
+    if (result.rows.length === 0) return null;
+    const row = result.rows[0];
+    return {
+      enabled: row.enabled,
+      testingPhone: row.metadata?.testing_phone || null
+    };
+  } catch (err) {
+    console.error('⚠️ Error leyendo whatsapp_testing_mode:', err.message);
+    return null;
+  }
+}
+
 async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNumber = null }) {
-  // 🔒 Filtro de testing - solo enviar a números de prueba (compara últimos 10 dígitos)
-  if (!TESTING_PHONES.includes(normalizePhoneForComparison(telefono))) {
-    console.log('📵 WhatsApp ignorado (testing):', telefono);
-    return { data: { skipped: true, reason: 'testing_filter' } };
+  // 🔒 Filtro de testing desde DB
+  const testingConfig = await getWhatsAppTestingConfig();
+
+  if (testingConfig?.enabled) {
+    // Modo testing activo: redirigir al número de testing
+    const testingPhone = testingConfig.testingPhone;
+    if (!testingPhone) {
+      console.log('📵 WhatsApp ignorado: modo testing activo pero sin número configurado');
+      return { data: { skipped: true, reason: 'testing_no_phone' } };
+    }
+    console.log(`🧪 WhatsApp testing: redirigiendo de ${telefono} → ${testingPhone}`);
+    telefono = testingPhone;
   }
 
   // Determinar nombre final de plantilla
@@ -1994,7 +2020,7 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
 
     // 9️⃣ Enviar WhatsApp si hay teléfono
     const customerPhone = orderData.customer_phone;
-    if (customerPhone && TESTING_PHONES.includes(normalizePhoneForComparison(customerPhone))) {
+    if (customerPhone) {
       const customerName = orderData.customer_name || 'Cliente';
       const shippingType = orderData.shipping_type || '';
 

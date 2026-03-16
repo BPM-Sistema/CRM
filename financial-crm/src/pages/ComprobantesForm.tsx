@@ -10,6 +10,7 @@ export function ComprobantesForm() {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isOrderNotFound, setIsOrderNotFound] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleOrderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -27,6 +28,26 @@ export function ComprobantesForm() {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       setFile(selectedFile);
+      setSubmitError(null);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const droppedFile = e.dataTransfer.files?.[0];
+    if (droppedFile) {
+      setFile(droppedFile);
       setSubmitError(null);
     }
   };
@@ -154,7 +175,10 @@ export function ComprobantesForm() {
             </label>
             <div
               onClick={() => fileInputRef.current?.click()}
-              className={`w-full rounded-lg border-2 border-dashed ${file ? 'border-emerald-300 bg-emerald-50' : 'border-neutral-200 bg-neutral-50'} px-4 py-6 text-center cursor-pointer hover:border-neutral-400 transition-all`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`w-full rounded-lg border-2 border-dashed ${isDragging ? 'border-neutral-900 bg-neutral-100' : file ? 'border-emerald-300 bg-emerald-50' : 'border-neutral-200 bg-neutral-50'} px-4 py-6 text-center cursor-pointer hover:border-neutral-400 transition-all`}
             >
               <input
                 ref={fileInputRef}
@@ -171,7 +195,7 @@ export function ComprobantesForm() {
               ) : (
                 <div className="text-neutral-500">
                   <FileImage size={32} className="mx-auto mb-2 text-neutral-400" />
-                  <p className="font-medium">Tocá para seleccionar</p>
+                  <p className="font-medium">{isDragging ? 'Soltá el archivo acá' : 'Arrastrá o tocá para seleccionar'}</p>
                   <p className="text-sm">Imagen o PDF</p>
                 </div>
               )}

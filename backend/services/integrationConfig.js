@@ -140,6 +140,7 @@ async function getAllConfigs() {
         ic.enabled,
         ic.description,
         ic.category,
+        ic.metadata,
         ic.updated_at,
         u.email as updated_by_email
       FROM integration_config ic
@@ -199,6 +200,31 @@ async function updateConfig(key, enabled, userId, reason = null) {
 
   } catch (error) {
     console.error('❌ [IntegrationConfig] Error actualizando config:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Actualizar metadata de una configuración
+ */
+async function updateConfigMetadata(key, metadata, userId) {
+  try {
+    const result = await pool.query(`
+      UPDATE integration_config
+      SET metadata = $1, updated_by = $2
+      WHERE key = $3
+      RETURNING key, enabled, description, category, metadata, updated_at
+    `, [JSON.stringify(metadata), userId, key]);
+
+    if (result.rowCount === 0) {
+      throw new Error(`Configuración '${key}' no encontrada`);
+    }
+
+    cacheTimestamp = 0;
+    console.log(`🔧 [IntegrationConfig] ${key} metadata actualizado por usuario ${userId}`);
+    return result.rows[0];
+  } catch (error) {
+    console.error('❌ [IntegrationConfig] Error actualizando metadata:', error.message);
     throw error;
   }
 }
@@ -311,6 +337,7 @@ module.exports = {
   areAllEnabled,
   getAllConfigs,
   updateConfig,
+  updateConfigMetadata,
   getConfigHistory,
 
   // Cache management

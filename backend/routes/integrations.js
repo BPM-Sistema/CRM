@@ -12,6 +12,7 @@ const { authenticate, requirePermission } = require('../middleware/auth');
 const {
   getAllConfigs,
   updateConfig,
+  updateConfigMetadata,
   getConfigHistory,
   getCacheStatus,
   invalidateCache
@@ -193,6 +194,35 @@ router.patch('/:key', requirePermission('integrations.update'), async (req, res)
     }
 
     res.status(500).json({ error: 'Error actualizando configuración' });
+  }
+});
+
+// ─── PATCH /integrations/:key/metadata ────────────────────
+// Actualizar metadata de una configuración (ej: teléfono de testing)
+
+router.patch('/:key/metadata', requirePermission('integrations.update'), async (req, res) => {
+  try {
+    const { key } = req.params;
+    const { metadata } = req.body;
+
+    if (!metadata || typeof metadata !== 'object') {
+      return res.status(400).json({ error: 'El campo "metadata" debe ser un objeto' });
+    }
+
+    const updated = await updateConfigMetadata(key, metadata, req.user.id);
+
+    res.json({
+      success: true,
+      config: updated,
+      message: `Metadata de '${key}' actualizado`
+    });
+
+  } catch (error) {
+    console.error('❌ PATCH /integrations/:key/metadata error:', error.message);
+    if (error.message.includes('no encontrada')) {
+      return res.status(404).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Error actualizando metadata' });
   }
 });
 
