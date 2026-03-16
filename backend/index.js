@@ -4433,6 +4433,25 @@ function getSyncStatus() {
 }
 // ═══════════════════════════════════════════════════════════════
 
+// Ejecutar sincronización desde Cloud Scheduler (cron)
+app.post('/sync/cron', async (req, res) => {
+  const secret = req.headers['x-cron-secret'];
+
+  if (!secret || secret !== process.env.CRON_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  console.log('🕐 Sincronización cron iniciada');
+
+  try {
+    const result = await triggerSync('cloud-scheduler');
+    res.json({ ok: true, status: result.status, result: result.result });
+  } catch (error) {
+    console.error('❌ Error en sync cron:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Ejecutar sincronización manual
 app.post('/sync/run', authenticate, requirePermission('users.view'), async (req, res) => {
   const source = `manual-${req.user.email}`;
