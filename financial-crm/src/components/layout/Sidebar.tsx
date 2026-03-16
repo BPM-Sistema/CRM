@@ -15,6 +15,7 @@ import {
   MessageCircle,
   Smartphone,
   ImageIcon,
+  Settings,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -88,6 +89,7 @@ const adminItems = [
   { to: '/admin/sync-queue', icon: <RefreshCw size={20} />, label: 'Sincronización', permissions: ['activity.view'] },
   { to: '/admin/whatsapp', icon: <Smartphone size={20} />, label: 'WhatsApp', permissions: ['whatsapp.connect'] },
   { to: '/admin/image-sync', icon: <ImageIcon size={20} />, label: 'Sync Imagenes', permissions: ['activity.view'] },
+  { to: '/admin/integrations', icon: <Settings size={20} />, label: 'Integraciones', permissions: ['integrations.view'] },
 ];
 
 export function Sidebar() {

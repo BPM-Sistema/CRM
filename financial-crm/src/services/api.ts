@@ -1625,3 +1625,101 @@ export async function previewEnvioNubeLabels(orders: string[]): Promise<EnvioNub
 
   return data;
 }
+
+// ============================================
+// Integraciones - Feature Flags
+// ============================================
+
+export interface IntegrationConfig {
+  key: string;
+  enabled: boolean;
+  description: string;
+  category: string;
+  updated_at: string;
+  updated_by_email?: string;
+}
+
+export interface IntegrationConfigHistory {
+  config_key: string;
+  old_value: boolean | null;
+  new_value: boolean;
+  reason?: string;
+  changed_at: string;
+  changed_by_email?: string;
+}
+
+export interface IntegrationsResponse {
+  configs: IntegrationConfig[];
+  grouped: Record<string, IntegrationConfig[]>;
+  cache: {
+    size: number;
+    age_ms: number;
+    valid: boolean;
+    ttl_ms: number;
+  };
+}
+
+// Obtener todas las configuraciones de integraciones
+export async function fetchIntegrations(): Promise<IntegrationsResponse> {
+  const response = await authFetch(`${API_BASE_URL}/integrations`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al obtener configuraciones');
+  }
+
+  return data;
+}
+
+// Actualizar una configuración
+export async function updateIntegration(
+  key: string,
+  enabled: boolean,
+  reason?: string
+): Promise<IntegrationConfig> {
+  const response = await authFetch(`${API_BASE_URL}/integrations/${key}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled, reason }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al actualizar configuración');
+  }
+
+  return data.config;
+}
+
+// Obtener historial de cambios
+export async function fetchIntegrationHistory(
+  key?: string,
+  limit: number = 50
+): Promise<IntegrationConfigHistory[]> {
+  const url = key
+    ? `${API_BASE_URL}/integrations/${key}/history?limit=${limit}`
+    : `${API_BASE_URL}/integrations/history?limit=${limit}`;
+
+  const response = await authFetch(url);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al obtener historial');
+  }
+
+  return data.history;
+}
+
+// Invalidar cache
+export async function invalidateIntegrationCache(): Promise<void> {
+  const response = await authFetch(`${API_BASE_URL}/integrations/cache/invalidate`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Error al invalidar cache');
+  }
+}

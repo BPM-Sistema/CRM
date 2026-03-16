@@ -19,6 +19,7 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { tiendanube: tnConfig } = require('./integrationConfig');
 
 // ─── Configuración ──────────────────────────────────────────
 
@@ -372,6 +373,17 @@ async function updateImagePositions(storeId, accessToken, productId, newOrder) {
 
 async function syncProductImages({ dryRun = false, productId = null, triggerSource = 'manual' } = {}) {
   ensureRuntimeDir();
+
+  // Check de integración habilitada
+  const syncImagesEnabled = await tnConfig.isSyncImagesEnabled();
+  if (!syncImagesEnabled) {
+    console.log(`🚫 [ImageSync] Sync deshabilitado - source=${triggerSource}`);
+    return {
+      run_id: null,
+      status: 'skipped',
+      reason: 'integration_disabled'
+    };
+  }
 
   // Lock
   if (!acquireLock(triggerSource)) {

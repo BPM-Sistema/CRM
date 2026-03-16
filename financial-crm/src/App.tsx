@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/layout';
-import { Dashboard, RealOrders, RealOrderDetail, RealReceipts, RealReceiptDetail, AdminUsers, Financieras, ShippingForm, ShippingDocuments, ComprobantesForm } from './pages';
+import { Dashboard, RealOrders, RealOrderDetail, RealReceipts, RealReceiptDetail, AdminUsers, Financieras, ShippingForm, ShippingDocuments, ComprobantesForm, IntegrationSettings } from './pages';
 import ActivityLog from './pages/ActivityLog';
 import SyncQueue from './pages/SyncQueue';
 import BatchPrint from './pages/BatchPrint';
@@ -46,6 +46,7 @@ function AppRoutes() {
             <Route path="/inbox" element={<InboxPage />} />
             <Route path="/admin/whatsapp" element={<WhatsAppSettings />} />
             <Route path="/admin/image-sync" element={<ImageSyncStatus />} />
+            <Route path="/admin/integrations" element={<IntegrationSettings />} />
             {/* Ruta catch-all: redirige a la primera sección permitida */}
             <Route path="*" element={<DefaultRedirect />} />
           </Routes>

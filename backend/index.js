@@ -40,6 +40,7 @@ const PDFDocument = require('pdfkit');
 const { PDFDocument: PDFLib } = require('pdf-lib');
 const { runSyncJob } = require('./services/orderSync');
 const { getQueueStats, getSyncState } = require('./services/syncQueue');
+const { tiendanube: tnConfig, isEnabled: isIntegrationEnabled } = require('./services/integrationConfig');
 const { verificarConsistencia, getInconsistencias } = require('./utils/orderVerification');
 const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crearNotificacion } = require('./utils/notifications');
 const app = express();
@@ -242,6 +243,12 @@ async function watermarkReceipt(filePath, { id, orderNumber }) {
    UTIL — OBTENER ETIQUETAS ENVÍO NUBE DE TIENDANUBE
 ===================================================== */
 async function obtenerEtiquetasEnvioNube(tnOrderId) {
+  // Check de integración habilitada
+  const fulfillmentEnabled = await tnConfig.isFulfillmentEnabled();
+  if (!fulfillmentEnabled) {
+    return { ok: false, error: 'Integración de etiquetas temporalmente deshabilitada', disabled: true };
+  }
+
   const storeId = process.env.TIENDANUBE_STORE_ID;
   const token = process.env.TIENDANUBE_ACCESS_TOKEN;
 
@@ -1064,7 +1071,7 @@ function normalizePhoneForComparison(phone) {
 const TESTING_PHONES = ['1123945965', '1126032641'];
 
 // Plantillas que NO llevan sufijo de financiera
-const PLANTILLAS_SIN_SUFIJO = ['datos__envio', 'comprobante_rechazado', 'enviado_env_nube', 'enviado_transporte', 'pedido_cancelado'];
+const PLANTILLAS_SIN_SUFIJO = ['datos__envio', 'comprobante_rechazado', 'comprobante_confirmado', 'enviado_env_nube', 'enviado_transporte', 'pedido_cancelado'];
 
 async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNumber = null }) {
   // 🔒 Filtro de testing - solo enviar a números de prueba (compara últimos 10 dígitos)
@@ -1605,9 +1612,10 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
     }
 
     if (search) {
-      // Buscar solo por número de pedido
-      conditions.push(`o.order_number ILIKE $${paramIndex++}`);
+      // Buscar por número de pedido o nombre de cliente
+      conditions.push(`(o.order_number ILIKE $${paramIndex} OR o.customer_name ILIKE $${paramIndex})`);
       params.push(`%${search}%`);
+      paramIndex++;
     }
 
     if (fecha) {
@@ -1934,7 +1942,7 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
 
     // 4️⃣ Obtener monto, estado actual y datos de cliente del pedido
     const orderRes = await pool.query(
-      `SELECT monto_tiendanube, estado_pedido, customer_name, customer_phone, shipping_type FROM orders_validated WHERE order_number = $1`,
+      `SELECT monto_tiendanube, estado_pedido, customer_name, customer_phone, shipping_type, tn_order_id FROM orders_validated WHERE order_number = $1`,
       [comprobante.order_number]
     );
 
@@ -1962,6 +1970,12 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
       [totalPagado, saldo, estadoPago, nuevoEstadoPedido, comprobante.order_number]
     );
 
+    // 7.5️⃣ Sincronizar con Tiendanube si está completamente pagado
+    if (estadoPago === 'confirmado_total' && orderData.tn_order_id) {
+      marcarPagadoEnTiendanube(orderData.tn_order_id, comprobante.order_number);
+      // No await - no bloqueamos la respuesta
+    }
+
     // 8️⃣ Log
     console.log(`📝 [${requestId}] Insertando log de confirmación`);
     await logEvento({
@@ -1984,7 +1998,14 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
       const customerName = orderData.customer_name || 'Cliente';
       const shippingType = orderData.shipping_type || '';
 
-      // partial_paid se envía al SUBIR comprobante, no al confirmar (evita duplicados)
+      // Enviar comprobante_confirmado siempre al confirmar
+      console.log(`📱 [${requestId}] Enviando WhatsApp comprobante_confirmado a ${customerPhone}`);
+      enviarWhatsAppPlantilla({
+        telefono: customerPhone,
+        plantilla: 'comprobante_confirmado',
+        variables: { '1': customerName, '2': String(comprobante.monto), '3': comprobante.order_number },
+        orderNumber: comprobante.order_number
+      }).catch(err => console.error(`❌ Error WhatsApp comprobante_confirmado:`, err.message));
 
       // Enviar datos__envio si es el primer comprobante confirmado y requiere formulario
       if (requiresShippingForm(shippingType)) {
@@ -3153,6 +3174,14 @@ app.post('/webhook/botmaker-status', async (req, res) => {
 });
 
 app.post('/webhook/tiendanube', async (req, res) => {
+  // 0️⃣ Check de integración habilitada
+  const webhooksEnabled = await tnConfig.areWebhooksEnabled();
+  if (!webhooksEnabled) {
+    // Responder 200 para que TN no reintente, pero no procesar
+    console.log('🚫 Webhook Tiendanube ignorado - integración deshabilitada');
+    return res.status(200).json({ ok: true, ignored: true, reason: 'integration_disabled' });
+  }
+
   // 1️⃣ Validación de firma
   if (!verifyTiendaNubeSignature(req)) {
     console.error('❌ Firma de Tiendanube inválida');
@@ -3407,6 +3436,15 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
 app.post('/validate-order', validationLimiter, async (req, res) => {
   try {
+    // Check de integración habilitada
+    const validateEnabled = await tnConfig.isValidateOrdersEnabled();
+    if (!validateEnabled) {
+      return res.status(503).json({
+        error: 'Validación de pedidos temporalmente deshabilitada',
+        retry: true
+      });
+    }
+
     const { orderNumber } = req.body;
 
     if (!orderNumber) {
@@ -3414,6 +3452,7 @@ app.post('/validate-order', validationLimiter, async (req, res) => {
     }
 
     // Validación de seguridad: orderNumber debe ser numérico y razonable
+    // También quita el # inicial si el usuario lo incluye
     const sanitized = String(orderNumber).replace(/\D/g, '');
     if (!sanitized || sanitized.length > 20) {
       return res.status(400).json({ error: 'Número de pedido inválido' });
@@ -3433,7 +3472,7 @@ app.post('/validate-order', validationLimiter, async (req, res) => {
           'User-Agent': 'bpm-validator'
         },
         params: {
-          q: orderNumber
+          q: sanitized
         }
       }
     );
@@ -3464,7 +3503,7 @@ app.post('/validate-order', validationLimiter, async (req, res) => {
         customer_email = coalesce(orders_validated.customer_email, excluded.customer_email),
         customer_phone = coalesce(orders_validated.customer_phone, excluded.customer_phone)
       `,
-      [orderNumber, montoTiendanube, currency, customerName, customerEmail, customerPhone]
+      [sanitized, montoTiendanube, currency, customerName, customerEmail, customerPhone]
     );
 
     /* ===============================
@@ -3472,7 +3511,7 @@ app.post('/validate-order', validationLimiter, async (req, res) => {
     ================================ */
     res.json({
       ok: true,
-      orderNumber,
+      orderNumber: sanitized,
       monto_tiendanube: montoTiendanube,
       currency
     });
@@ -3502,18 +3541,19 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
   });
 }, async (req, res) => {
   try {
-    const { orderNumber } = req.body;
+    const { orderNumber: rawOrderNumber } = req.body;
     const file = req.file;
 
     console.log('📥 /upload iniciado');
 
-    if (!orderNumber || !file) {
+    if (!rawOrderNumber || !file) {
       return res.status(400).json({ error: 'Faltan datos' });
     }
 
     // Validación de seguridad: orderNumber debe ser numérico y razonable
-    const sanitizedOrderNumber = String(orderNumber).replace(/\D/g, '');
-    if (!sanitizedOrderNumber || sanitizedOrderNumber.length > 20) {
+    // También quita el # inicial si el usuario lo incluye
+    const orderNumber = String(rawOrderNumber).replace(/\D/g, '');
+    if (!orderNumber || orderNumber.length > 20) {
       return res.status(400).json({ error: 'Número de pedido inválido' });
     }
 
@@ -4081,6 +4121,40 @@ function calcularEstadoPedido(estadoPago, estadoPedidoActual) {
 
 
 /* =====================================================
+   UTIL — MARCAR PAGADO EN TIENDANUBE
+   Sincroniza estado de pago cuando está completamente pagado
+===================================================== */
+async function marcarPagadoEnTiendanube(tnOrderId, orderNumber) {
+  const storeId = process.env.TIENDANUBE_STORE_ID;
+  const token = process.env.TIENDANUBE_ACCESS_TOKEN;
+
+  if (!storeId || !token || !tnOrderId) {
+    console.log(`⚠️ [Orden ${orderNumber}] No se puede sincronizar con Tiendanube - faltan credenciales o tn_order_id`);
+    return false;
+  }
+
+  try {
+    await axios.put(
+      `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}`,
+      { status: 'paid' },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authentication': `bearer ${token}`,
+          'User-Agent': 'BPM Administrador (netubpm@gmail.com)'
+        }
+      }
+    );
+    console.log(`✅ [Orden ${orderNumber}] Marcada como pagada en Tiendanube (tn_order_id: ${tnOrderId})`);
+    return true;
+  } catch (err) {
+    console.error(`❌ [Orden ${orderNumber}] Error marcando pagado en Tiendanube: ${err.response?.status} ${JSON.stringify(err.response?.data || err.message)}`);
+    return false;
+  }
+}
+
+
+/* =====================================================
    PAGO EN EFECTIVO
 ===================================================== */
 app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_payment'), async (req, res) => {
@@ -4106,7 +4180,7 @@ app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_p
        1️⃣ VERIFICAR QUE EXISTE EL PEDIDO
     ================================ */
     const orderRes = await pool.query(
-      `SELECT order_number, monto_tiendanube, estado_pedido
+      `SELECT order_number, monto_tiendanube, estado_pedido, tn_order_id
        FROM orders_validated
        WHERE order_number = $1`,
       [orderNumber]
@@ -4118,6 +4192,7 @@ app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_p
 
     const montoTiendanube = Number(orderRes.rows[0].monto_tiendanube);
     const estadoPedidoActual = orderRes.rows[0].estado_pedido;
+    const tnOrderId = orderRes.rows[0].tn_order_id;
 
     /* ===============================
        2️⃣ INSERTAR EN PAGOS_EFECTIVO
@@ -4166,6 +4241,11 @@ app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_p
        WHERE order_number = $5`,
       [totalPagado, saldo, estadoPago, nuevoEstadoPedido, orderNumber]
     );
+
+    // 6.5️⃣ Sincronizar con Tiendanube si está completamente pagado
+    if (estadoPago === 'confirmado_total' && tnOrderId) {
+      marcarPagadoEnTiendanube(tnOrderId, orderNumber);
+    }
 
     // Log de actividad
     await logEvento({
@@ -4269,6 +4349,7 @@ const rolesRoutes = require('./routes/roles');
 const financierasRoutes = require('./routes/financieras');
 const remitosRoutes = require('./routes/remitos');
 const waspyRoutes = require('./routes/waspy');
+const integrationsRoutes = require('./routes/integrations');
 
 app.use('/auth', authRoutes);
 app.use('/users', usersRoutes);
@@ -4276,6 +4357,7 @@ app.use('/roles', rolesRoutes);
 app.use('/financieras', financierasRoutes);
 app.use('/remitos', remitosRoutes);
 app.use('/waspy', waspyRoutes);
+app.use('/integrations', integrationsRoutes);
 
 /* =====================================================
    SYNC QUEUE - Endpoints y Scheduler
@@ -4369,6 +4451,14 @@ async function releaseSyncLock() {
  */
 async function triggerSync(source) {
   const timestamp = new Date().toISOString();
+
+  // Check de integración habilitada
+  const syncEnabled = await tnConfig.isSyncOrdersEnabled();
+  if (!syncEnabled) {
+    console.log(`[SYNC] ${timestamp} | SKIP | source=${source} | reason=integration_disabled`);
+    return { status: 'skipped', message: 'Order sync integration is disabled' };
+  }
+
   const currentRunId = ++syncRunId;
 
   // Intentar obtener distributed lock
