@@ -1716,6 +1716,7 @@ app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async
         c.file_url,
         NULL as registrado_por,
         c.created_at,
+        c.confirmed_at,
         c.financiera_id,
         f.nombre as financiera_nombre,
         o.customer_name,
@@ -1985,8 +1986,8 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
       return res.status(400).json({ error: 'Este comprobante ya fue procesado' });
     }
 
-    // Rechazar comprobante
-    await pool.query(`UPDATE comprobantes SET estado = 'rechazado' WHERE id = $1`, [id]);
+    // Rechazar comprobante (guardar fecha de procesamiento en confirmed_at)
+    await pool.query(`UPDATE comprobantes SET estado = 'rechazado', confirmed_at = NOW(), confirmed_by = $2 WHERE id = $1`, [id, req.user?.id]);
 
     // Log
     console.log(`📝 [${requestId}] Insertando log de rechazo`);
