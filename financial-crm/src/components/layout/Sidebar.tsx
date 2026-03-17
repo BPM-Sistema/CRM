@@ -17,6 +17,7 @@ import {
   ImageIcon,
   Settings,
   Monitor,
+  UserCheck,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -80,6 +81,12 @@ const navItems = [
     icon: <MessageCircle size={20} />,
     label: 'Inbox',
     permissions: ['inbox.view', 'inbox.send']
+  },
+  {
+    to: '/customers',
+    icon: <UserCheck size={20} />,
+    label: 'Clientes',
+    permissions: ['customers.view']
   },
 ];
 

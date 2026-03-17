@@ -1771,3 +1771,133 @@ export async function fetchIntegrationHealth(): Promise<HealthCheckResponse> {
 
   return data;
 }
+
+// ─── Customer Segmentation ────────────────────────────────────────
+
+export interface Customer {
+  id: string;
+  tn_customer_id: number | null;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  orders_count: number;
+  total_spent: number;
+  first_order_at: string | null;
+  last_order_at: string | null;
+  avg_order_value: number | null;
+  segment: string | null;
+  segment_updated_at: string | null;
+  created_at: string;
+}
+
+export interface SegmentDefinition {
+  segment: string;
+  label: string;
+  description: string;
+}
+
+export interface CustomerSyncStatus {
+  lastSync: string | null;
+  total: number;
+  synced: number;
+  segmented: number;
+}
+
+export interface CustomerMetrics {
+  total_customers: number;
+  customers_with_orders: number;
+  avg_orders_per_customer: number;
+  avg_total_spent: number;
+  total_revenue: number;
+  avg_days_since_last_order: number;
+}
+
+// Obtener estado del sync de clientes
+export async function fetchCustomerSyncStatus(): Promise<CustomerSyncStatus> {
+  const response = await authFetch(`${API_BASE_URL}/sync/customers/status`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al obtener estado de sync');
+  return data;
+}
+
+// Iniciar sync completo de clientes
+export async function startCustomerFullSync(): Promise<{ ok: boolean; message: string }> {
+  const response = await authFetch(`${API_BASE_URL}/sync/customers/full`, { method: 'POST' });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al iniciar sync');
+  return data;
+}
+
+// Iniciar sync incremental de clientes
+export async function startCustomerIncrementalSync(): Promise<{ ok: boolean; message: string }> {
+  const response = await authFetch(`${API_BASE_URL}/sync/customers/incremental`, { method: 'POST' });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al iniciar sync incremental');
+  return data;
+}
+
+// Recalcular métricas de clientes
+export async function recalculateCustomerMetrics(): Promise<{ ok: boolean; updated: number }> {
+  const response = await authFetch(`${API_BASE_URL}/customers/metrics/recalculate`, { method: 'POST' });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al recalcular métricas');
+  return data;
+}
+
+// Recalcular segmentos de clientes
+export async function recalculateCustomerSegments(): Promise<{ ok: boolean; updated: number; bySegment: Record<string, number> }> {
+  const response = await authFetch(`${API_BASE_URL}/customers/segments/recalculate`, { method: 'POST' });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al recalcular segmentos');
+  return data;
+}
+
+// Obtener métricas globales
+export async function fetchCustomerMetrics(): Promise<CustomerMetrics> {
+  const response = await authFetch(`${API_BASE_URL}/customers/metrics`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al obtener métricas');
+  return data.metrics;
+}
+
+// Obtener conteo por segmento
+export async function fetchCustomerSegments(): Promise<{
+  counts: Record<string, number>;
+  definitions: SegmentDefinition[];
+}> {
+  const response = await authFetch(`${API_BASE_URL}/customers/segments`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al obtener segmentos');
+  return { counts: data.counts, definitions: data.definitions };
+}
+
+// Obtener clientes de un segmento
+export async function fetchCustomersBySegment(
+  segment: string,
+  page: number = 1,
+  limit: number = 50
+): Promise<{ customers: Customer[]; total: number; page: number; limit: number }> {
+  const response = await authFetch(
+    `${API_BASE_URL}/customers/segments/${segment}?page=${page}&limit=${limit}`
+  );
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al obtener clientes');
+  return data;
+}
+
+// Listar todos los clientes
+export async function fetchCustomers(
+  page: number = 1,
+  limit: number = 50,
+  segment?: string,
+  search?: string
+): Promise<{ customers: Customer[]; total: number; page: number; limit: number }> {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (segment) params.append('segment', segment);
+  if (search) params.append('search', search);
+
+  const response = await authFetch(`${API_BASE_URL}/customers?${params.toString()}`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al obtener clientes');
+  return data;
+}
