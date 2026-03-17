@@ -376,12 +376,11 @@ export default function Customers() {
           </div>
         )}
 
-        {/* Tabla de clientes */}
-        {(selectedSegment || search) && (
-          <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
+        {/* Tabla de clientes - siempre visible */}
+        <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
             <div className="p-4 border-b border-neutral-200 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-neutral-900">
-                {selectedSegment ? SEGMENT_LABELS[selectedSegment] : 'Resultados'}
+                {selectedSegment ? SEGMENT_LABELS[selectedSegment] : 'Todos los clientes'}
                 <span className="ml-2 text-sm font-normal text-neutral-500">
                   ({totalCustomers.toLocaleString('es-AR')})
                 </span>
@@ -441,7 +440,6 @@ export default function Customers() {
               </>
             )}
           </div>
-        )}
 
         {/* Sync status */}
         {syncStatus && (
