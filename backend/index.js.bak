@@ -225,6 +225,51 @@ function buildOrderUpdateMessage(oldProducts, newProducts, montoNuevo) {
 }
 
 /* =====================================================
+   UTIL — WATERMARK RECEIPT IMAGE
+===================================================== */
+async function watermarkReceipt(filePath, { id, orderNumber }) {
+  const image = sharp(filePath);
+  const metadata = await image.metadata();
+
+  const width = metadata.width || 800;
+  const fontSize = Math.max(18, Math.round(width * 0.03));
+  const padding = Math.round(fontSize * 0.6);
+  const lineHeight = Math.round(fontSize * 1.3);
+
+  const lines = [
+    `ID: ${id}`,
+    `Pedido: ${orderNumber}`
+  ];
+
+  const textWidth = Math.round(fontSize * 10);
+  const textHeight = lines.length * lineHeight + padding * 2;
+
+  const svgOverlay = `
+    <svg width="${textWidth}" height="${textHeight}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="${textWidth}" height="${textHeight}"
+            fill="rgba(0,0,0,0.7)" rx="4" ry="4"/>
+      ${lines.map((line, i) => `
+        <text x="${padding}" y="${padding + fontSize + i * lineHeight}"
+              font-family="DejaVu Sans, Liberation Sans, sans-serif" font-size="${fontSize}"
+              fill="white" font-weight="bold">${line}</text>
+      `).join('')}
+    </svg>
+  `;
+
+  await sharp(filePath)
+    .composite([{
+      input: Buffer.from(svgOverlay),
+      top: padding,
+      left: padding
+    }])
+    .toFile(filePath + '.tmp');
+
+  await fs.promises.rename(filePath + '.tmp', filePath);
+
+  console.log('🏷️ Watermark aplicado:', filePath);
+}
+
+/* =====================================================
    UTIL — OBTENER ETIQUETAS ENVÍO NUBE DE TIENDANUBE
 ===================================================== */
 async function obtenerEtiquetasEnvioNube(tnOrderId) {
@@ -618,6 +663,563 @@ async function guardarPedidoCompleto(pedido) {
   return orderNumber;
 }
 
+
+/* =====================================================
+   UTIL — DETECTAR MONTO DESDE OCR (LÓGICA PROBADA)
+===================================================== */
+function detectarMontoDesdeOCR(texto) {
+  if (!texto) return { monto: null, moneda: null };
+
+  const textoNormalizado = texto
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[^\x00-\x7F]/g, '');
+
+  const palabrasClaveFuertes = ['importe', 'monto', 'total', '$', 'ars', 'pesos'];
+  const palabrasTrampa = ['cbu', 'cvu', 'cuit', 'cuil', 'operacion', 'referencia', 'codigo', 'alias'];
+
+  // Soporta: $106.550,00 | $106.550 | 106550.00 | 106550,00 | $106550
+  // Orden: patrón largo primero para que no sea consumido parcialmente por el corto
+  const regexMonto = /\$?\s?\d{4,}(?:[.,]\d{2})?|\$?\s?\d{1,3}(?:\.\d{3})*(?:,\d{2})?/g;
+  const matches = textoNormalizado.match(regexMonto);
+
+  if (!matches) return { monto: null, moneda: null };
+
+  let mejorMonto = null;
+  let mejorPuntaje = -1;
+
+  for (const match of matches) {
+    // Detectar formato: si tiene punto de miles (1-3 dígitos, punto, 3 dígitos) vs punto decimal (muchos dígitos, punto, 2 dígitos)
+    const trimmed = match.replace('$', '').trim();
+    let valorNumerico;
+
+    if (/^\d{1,3}(\.\d{3})+(,\d{2})?$/.test(trimmed)) {
+      // Formato AR: 106.550 o 106.550,00 (punto = miles, coma = decimales)
+      valorNumerico = Number(trimmed.replace(/\./g, '').replace(',', '.'));
+    } else if (/^\d{4,}[.,]\d{2}$/.test(trimmed)) {
+      // Formato sin separador de miles: 106550.00 o 106550,00
+      valorNumerico = Number(trimmed.replace(',', '.'));
+    } else {
+      // Número plano: 106550
+      valorNumerico = Number(trimmed.replace(/\./g, '').replace(',', '.'));
+    }
+
+    if (isNaN(valorNumerico)) continue;
+    if (valorNumerico < 1000) continue;
+
+    // Descartar números que parecen años, códigos largos, CBU, CUIT
+    if (valorNumerico >= 2020 && valorNumerico <= 2030) continue;
+    if (valorNumerico > 99999999 && !match.includes('.') && !match.includes(',')) continue;
+
+    let puntaje = 0;
+
+    const idx = textoNormalizado.indexOf(match);
+    const contexto = textoNormalizado.substring(
+      Math.max(0, idx - 50),
+      idx + 50
+    );
+
+    if (match.includes('$')) puntaje += 3;
+    // "importe" y "monto" son señales muy fuertes
+    if (contexto.includes('importe') || contexto.includes('monto')) puntaje += 5;
+    if (palabrasClaveFuertes.some(p => contexto.includes(p))) puntaje += 2;
+    if (!palabrasTrampa.some(p => contexto.includes(p))) puntaje += 2;
+    // Bonus por tener decimales (formato monetario)
+    if (match.includes(',') || /\.\d{2}$/.test(match.trim())) puntaje += 2;
+
+    if (puntaje > mejorPuntaje) {
+      mejorPuntaje = puntaje;
+      mejorMonto = match;
+    }
+  }
+
+  if (!mejorMonto) return { monto: null, moneda: null };
+
+  // Parsear con la misma lógica de detección de formato
+  const trimmedFinal = mejorMonto.replace('$', '').trim();
+  let montoNumero;
+
+  if (/^\d{1,3}(\.\d{3})+(,\d{2})?$/.test(trimmedFinal)) {
+    montoNumero = Number(trimmedFinal.replace(/\./g, '').replace(',', '.'));
+  } else if (/^\d{4,}[.,]\d{2}$/.test(trimmedFinal)) {
+    montoNumero = Number(trimmedFinal.replace(',', '.'));
+  } else {
+    montoNumero = Number(trimmedFinal.replace(/\./g, '').replace(',', '.'));
+  }
+
+  if (isNaN(montoNumero)) return { monto: null, moneda: null };
+
+  return { monto: montoNumero, moneda: 'ARS' };
+}
+
+/* =====================================================
+   UTIL — VALIDAR QUE SEA COMPROBANTE REAL
+===================================================== */
+function validarComprobante(textoOcr) {
+  const mensajeError =
+    'El archivo no parece ser un comprobante válido. Contactate con nosotros por WhatsApp para que te ayudemos.';
+
+  if (!textoOcr) {
+    throw new Error(mensajeError);
+  }
+
+  const texto = textoOcr.toLowerCase().replace(/\s+/g, ' ');
+
+  const keywords = [
+    'transferencia',
+    'comprobante',
+    'pago',
+    'importe',
+    'total',
+    'fecha',
+    'operacion',
+    'referencia',
+    'cbu',
+    'cvu',
+    'alias'
+  ];
+
+  const esValido =
+    texto.length >= 30 &&
+    keywords.some(k => texto.includes(k));
+
+  if (!esValido) {
+    throw new Error(mensajeError);
+  }
+}
+
+/* =====================================================
+   UTIL — NORMALIZAR TEXTO (quitar tildes, lowercase, trim)
+===================================================== */
+function normalizeText(str) {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // quitar tildes
+    .replace(/\s+/g, ' ')            // colapsar espacios
+    .trim();
+}
+
+/* =====================================================
+   UTIL — REQUIERE FORMULARIO DE ENVÍO
+   Detecta si un pedido requiere completar el formulario /envio
+   Casos: "Expreso a elección" o "Via Cargo"
+===================================================== */
+function requiresShippingForm(shippingType) {
+  if (!shippingType) return false;
+  const lower = shippingType.toLowerCase();
+  return (
+    (lower.includes('expreso') && lower.includes('elec')) ||
+    lower.includes('via cargo') ||
+    lower.includes('viacargo')
+  );
+}
+
+/* =====================================================
+   UTIL — EXTRAER CUENTA DESTINO DEL OCR (ROBUSTO)
+===================================================== */
+function extractDestinationAccount(textoOcr) {
+  const texto = textoOcr.replace(/\r/g, '\n');
+  const lines = texto.split('\n').map(l => l.trim()).filter(Boolean);
+
+  let alias = null;
+  let cbu = null;
+  let cvu = null;
+  let titular = null;
+  const nombres = []; // Guardar todos los posibles nombres encontrados
+
+  // DEBUG: Buscar secuencias numéricas largas en el OCR
+  const digitSequences = texto.match(/\d[\d\s\-\.]{15,30}\d/g) || [];
+  console.log('🔢 Secuencias numéricas encontradas:', digitSequences.map(s => {
+    const clean = s.replace(/\D/g, '');
+    return `"${s}" → ${clean} (${clean.length} dígitos)`;
+  }));
+
+  // Keywords que indican sección destino (case insensitive, sin depender de ":")
+  const destinoKeywords = [
+    'destinatario', 'destino', 'beneficiario', 'receptor', 'titular',
+    'para', 'cuenta destino', 'transferiste a', 'enviaste a', 'le enviaste'
+  ];
+
+  // Keywords que indican FIN de sección destino (NO incluir cuit porque viene después del nombre)
+  const finSeccionKeywords = [
+    'origen', 'desde', 'remitente', 'ordenante', 'monto', 'importe',
+    'fecha', 'concepto', 'motivo', 'banco'
+  ];
+
+  // 1) BUSCAR POR SECCIONES
+  let enSeccionDestino = false;
+  let lineasDesdeDestino = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lineLower = line.toLowerCase();
+
+    // Detectar INICIO de sección destino
+    const isDestinoLine = destinoKeywords.some(k => lineLower.includes(k));
+    // Detectar INICIO de sección origen (para ignorar sus datos)
+    const isOrigenLine = finSeccionKeywords.some(k => lineLower.includes(k));
+
+    if (isOrigenLine && enSeccionDestino) {
+      console.log(`🚫 Fin sección destino en línea ${i}: "${line}"`);
+      enSeccionDestino = false;
+    }
+
+    if (isDestinoLine) {
+      console.log(`✅ Inicio sección destino en línea ${i}: "${line}"`);
+      enSeccionDestino = true;
+      lineasDesdeDestino = 0;
+
+      // Buscar valor en misma línea después de ":"
+      const colonIndex = line.indexOf(':');
+      if (colonIndex !== -1) {
+        const valor = line.substring(colonIndex + 1).trim();
+        if (valor.length > 3 && !titular) {
+          console.log(`📝 Titular en misma línea: "${valor}"`);
+          titular = valor;
+        }
+      }
+      continue;
+    }
+
+    // Si estamos en sección destino, buscar datos (hasta 6 líneas)
+    if (enSeccionDestino && lineasDesdeDestino < 6) {
+      lineasDesdeDestino++;
+      console.log(`  → Línea destino ${lineasDesdeDestino}: "${line}"`);
+
+      // Si es un nombre (letras y espacios, 2+ palabras) - MÁS FLEXIBLE
+      if (!titular) {
+        // Aceptar mayúsculas, minúsculas, tildes, y que tenga al menos 2 palabras
+        const esNombre = /^[A-Za-zÁÉÍÓÚÑáéíóúñ\s]{5,60}$/.test(line) &&
+                         line.trim().split(/\s+/).length >= 2 &&
+                         !lineLower.includes('cbu') &&
+                         !lineLower.includes('cvu') &&
+                         !lineLower.includes('alias');
+        if (esNombre) {
+          console.log(`📝 Titular detectado: "${line}"`);
+          titular = line;
+        }
+      }
+
+      // Si es alias (palabra.palabra.palabra)
+      const aliasMatch = line.match(/([a-zA-Z0-9]+\.[a-zA-Z0-9]+\.[a-zA-Z0-9]+)/);
+      if (aliasMatch && !alias) {
+        console.log(`📝 Alias detectado: "${aliasMatch[1]}"`);
+        alias = aliasMatch[1].toUpperCase();
+      }
+
+      // Si es CBU/CVU (22 dígitos) - SOLO en sección destino
+      const cbuMatch = line.match(/(\d{22})/);
+      if (cbuMatch && !cbu && !cvu) {
+        console.log(`📝 CBU/CVU detectado en sección destino: "${cbuMatch[1]}"`);
+        if (cbuMatch[1].startsWith('000')) cvu = cbuMatch[1];
+        else cbu = cbuMatch[1];
+      }
+
+      // CBU/CVU con espacios o separadores
+      const cbuSeparado = line.replace(/[\s\-\.]/g, '');
+      if (cbuSeparado.length === 22 && /^\d+$/.test(cbuSeparado) && !cbu && !cvu) {
+        console.log(`📝 CBU/CVU (separado) detectado: "${cbuSeparado}"`);
+        if (cbuSeparado.startsWith('000')) cvu = cbuSeparado;
+        else cbu = cbuSeparado;
+      }
+    }
+  }
+
+  // 2) FALLBACK GLOBAL - buscar en todo el texto (SOLO si no encontramos en sección destino)
+  const textoCompleto = texto;
+
+  // Alias en cualquier parte (si no lo encontramos en sección destino)
+  if (!alias) {
+    const aliasMatches = textoCompleto.match(/[a-zA-Z0-9]+\.[a-zA-Z0-9]+\.[a-zA-Z0-9]+/g);
+    if (aliasMatches) {
+      console.log(`🔍 Alias por fallback global: "${aliasMatches[0]}"`);
+      alias = aliasMatches[0].toUpperCase();
+    }
+  }
+
+  // CBU/CVU - NO buscar en fallback global porque podría tomar el ORIGEN
+  // Solo loguear las secuencias encontradas para debug
+  if (!cbu && !cvu) {
+    console.log('⚠️ No se encontró CBU/CVU en sección destino (no se busca en texto completo para evitar tomar el origen)');
+  }
+
+  // Nombres en mayúsculas (posibles titulares)
+  if (!titular) {
+    for (const line of lines) {
+      // Nombre: 2+ palabras en mayúsculas, sin números, sin keywords
+      if (/^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]{5,50}$/.test(line) && line.includes(' ')) {
+        const lower = line.toLowerCase();
+        const esKeyword = [...destinoKeywords, ...finSeccionKeywords, 'alias', 'cbu', 'cvu', 'banco', 'santander', 'nacion', 'galicia'].some(k => lower.includes(k));
+        if (!esKeyword) {
+          nombres.push(line);
+        }
+      }
+    }
+    // Tomar el primer nombre encontrado
+    if (nombres.length > 0) {
+      titular = nombres[0];
+    }
+  }
+
+  return { alias, cbu, cvu, titular, nombres };
+}
+
+/* =====================================================
+   UTIL — VALIDAR CUENTA DESTINO CONTRA DB
+===================================================== */
+async function isValidDestination(account, textoOcr) {
+  const { alias, cbu, cvu, titular, nombres = [] } = account;
+
+  // Obtener TODAS las financieras activas de la DB
+  const result = await pool.query(`
+    SELECT id, nombre, alias, cbu, titular_principal, palabras_clave
+    FROM financieras
+    WHERE activa = true
+  `);
+
+  if (result.rows.length === 0) {
+    // No hay financieras configuradas, permitir todo
+    return { valid: true, reason: 'no_financieras_configured' };
+  }
+
+  const textoNormalizado = normalizeText(textoOcr);
+
+  for (const fin of result.rows) {
+    // 1) Match por ALIAS (exacto)
+    if (alias && fin.alias) {
+      if (normalizeText(alias) === normalizeText(fin.alias)) {
+        return { valid: true, cuenta: fin, matchedBy: 'alias' };
+      }
+    }
+
+    // 2) Match por CBU
+    if (cbu && fin.cbu) {
+      if (cbu === fin.cbu) {
+        return { valid: true, cuenta: fin, matchedBy: 'cbu' };
+      }
+    }
+
+    // 3) Match por CVU (si existe en DB)
+    if (cvu && fin.cvu) {
+      if (cvu === fin.cvu) {
+        return { valid: true, cuenta: fin, matchedBy: 'cvu' };
+      }
+    }
+
+    // 4) Match por TITULAR (flexible - todas las palabras presentes)
+    if (fin.titular_principal) {
+      const titularDbNorm = normalizeText(fin.titular_principal);
+      const palabrasDb = titularDbNorm.split(' ').filter(p => p.length > 2);
+
+      // Verificar contra titular extraído
+      if (titular) {
+        const titularOcrNorm = normalizeText(titular);
+        const todasPresentes = palabrasDb.every(p => titularOcrNorm.includes(p));
+        if (todasPresentes) {
+          return { valid: true, cuenta: fin, matchedBy: 'titular' };
+        }
+      }
+
+      // Verificar contra todos los posibles nombres encontrados
+      for (const nombre of nombres) {
+        const nombreNorm = normalizeText(nombre);
+        const todasPresentes = palabrasDb.every(p => nombreNorm.includes(p));
+        if (todasPresentes) {
+          return { valid: true, cuenta: fin, matchedBy: 'titular_alternativo' };
+        }
+      }
+
+      // Verificar si el titular de la DB aparece en el texto completo del OCR
+      const todasEnTexto = palabrasDb.every(p => textoNormalizado.includes(p));
+      if (todasEnTexto) {
+        return { valid: true, cuenta: fin, matchedBy: 'titular_en_texto' };
+      }
+    }
+
+    // 5) Match por PALABRAS CLAVE
+    if (fin.palabras_clave && Array.isArray(fin.palabras_clave)) {
+      for (const keyword of fin.palabras_clave) {
+        if (textoNormalizado.includes(normalizeText(keyword))) {
+          return { valid: true, cuenta: fin, matchedBy: 'palabra_clave' };
+        }
+      }
+    }
+
+    // 6) Match por ALIAS en texto completo (por si OCR no lo parseó bien)
+    if (fin.alias) {
+      const aliasNorm = normalizeText(fin.alias);
+      if (textoNormalizado.includes(aliasNorm)) {
+        return { valid: true, cuenta: fin, matchedBy: 'alias_en_texto' };
+      }
+    }
+  }
+
+  return { valid: false, reason: 'destination_not_registered', extracted: account };
+}
+
+/* =====================================================
+   UTIL — DETECTAR FINANCIERA DESDE TEXTO OCR (para backfill)
+   Retorna financiera_id si hay match único, null si hay dudas
+===================================================== */
+async function detectarFinancieraDesdeOCR(textoOcr) {
+  if (!textoOcr) return null;
+
+  const result = await pool.query(`
+    SELECT id, nombre, palabras_clave
+    FROM financieras
+    WHERE activa = true AND palabras_clave IS NOT NULL
+  `);
+
+  if (result.rows.length === 0) return null;
+
+  const textoNormalizado = normalizeText(textoOcr);
+  const matches = [];
+
+  for (const fin of result.rows) {
+    if (!fin.palabras_clave || !Array.isArray(fin.palabras_clave)) continue;
+
+    for (const keyword of fin.palabras_clave) {
+      if (textoNormalizado.includes(normalizeText(keyword))) {
+        matches.push({ id: fin.id, nombre: fin.nombre, keyword });
+        break; // Solo contar una vez por financiera
+      }
+    }
+  }
+
+  // Match único → asignar
+  if (matches.length === 1) {
+    return { financieraId: matches[0].id, nombre: matches[0].nombre, keyword: matches[0].keyword };
+  }
+
+  // Múltiples matches o ninguno → no asignar
+  if (matches.length > 1) {
+    console.log(`⚠️ Múltiples matches de financiera: ${matches.map(m => m.nombre).join(', ')}`);
+  }
+
+  return null;
+}
+
+// Helper: normaliza teléfono a últimos 10 dígitos para comparación
+function normalizePhoneForComparison(phone) {
+  if (!phone) return '';
+  return phone.replace(/\D/g, '').slice(-10);
+}
+
+// Plantillas que NO llevan sufijo de financiera
+const PLANTILLAS_SIN_SUFIJO = ['datos__envio', 'comprobante_rechazado', 'comprobante_confirmado', 'enviado_env_nube', 'enviado_transporte', 'pedido_cancelado'];
+
+// Mapeo de plantilla base → key en integration_config
+const PLANTILLA_CONFIG_KEY = {
+  'pedido_creado': 'whatsapp_tpl_pedido_creado',
+  'comprobante_confirmado': 'whatsapp_tpl_comprobante_confirmado',
+  'comprobante_rechazado': 'whatsapp_tpl_comprobante_rechazado',
+  'datos__envio': 'whatsapp_tpl_datos_envio',
+  'enviado_env_nube': 'whatsapp_tpl_enviado_env_nube',
+  'pedido_cancelado': 'whatsapp_tpl_pedido_cancelado',
+  'partial_paid': 'whatsapp_tpl_partial_paid',
+  'enviado_transporte': 'whatsapp_tpl_enviado_transporte',
+};
+
+async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNumber = null }) {
+  // 🔒 Verificar si la plantilla está habilitada
+  const configKey = PLANTILLA_CONFIG_KEY[plantilla];
+  if (configKey) {
+    const enabled = await isIntegrationEnabled(configKey, { context: `plantilla:${plantilla}` });
+    if (!enabled) {
+      log.info({ plantilla, configKey }, 'WhatsApp template disabled by toggle');
+      return { data: { skipped: true, reason: 'template_disabled' } };
+    }
+  }
+
+  // 🔒 Filtro de testing desde integrationConfig (con cache)
+  const testingConfig = await waConfig.getTestingConfig();
+
+  if (testingConfig?.enabled) {
+    // Modo testing activo: redirigir al número de testing
+    const testingPhone = testingConfig.testingPhone;
+    if (!testingPhone) {
+      log.warn({ plantilla }, 'WhatsApp skipped: testing mode active but no testing phone configured');
+      return { data: { skipped: true, reason: 'testing_no_phone' } };
+    }
+    log.info({ originalPhone: telefono, testingPhone, plantilla }, 'WhatsApp testing: redirecting to test phone');
+    telefono = testingPhone;
+  }
+
+  // Determinar nombre final de plantilla
+  let plantillaFinal = plantilla;
+
+  // Solo agregar sufijo de financiera si la plantilla lo requiere
+  if (!PLANTILLAS_SIN_SUFIJO.includes(plantilla)) {
+    try {
+      const finResult = await pool.query(`
+        SELECT nombre
+        FROM financieras
+        WHERE is_default = true
+        LIMIT 1
+      `);
+
+      if (finResult.rows.length > 0) {
+        const nombreFinanciera = finResult.rows[0].nombre.toLowerCase();
+        if (nombreFinanciera.includes('wanda')) {
+          plantillaFinal = `${plantilla}_wanda_v2`;
+        } else if (nombreFinanciera.includes('kiesel')) {
+          plantillaFinal = `${plantilla}_kiesel_v2`;
+        }
+        log.info({ financiera: finResult.rows[0].nombre, plantillaFinal }, 'Financiera default resolved');
+      }
+    } catch (err) {
+      log.error({ err, plantilla }, 'Error fetching default financiera');
+    }
+  } else {
+    log.info({ plantilla }, 'Template without financiera suffix');
+  }
+
+  log.info({ telefono, plantillaFinal, orderNumber }, 'Sending WhatsApp message');
+
+  const contactIdClean = telefono.replace('+', '');
+
+  try {
+    const response = await axios.post(
+      'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
+      {
+        chat: {
+          channelId: process.env.BOTMAKER_CHANNEL_ID,
+          contactId: contactIdClean
+        },
+        intentIdOrName: plantillaFinal,
+        variables
+      },
+      {
+        headers: {
+          'access-token': process.env.BOTMAKER_ACCESS_TOKEN,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    // Guardar en tracking si tenemos requestId
+    const requestId = response.data?.requestId;
+    if (requestId) {
+      try {
+        await pool.query(`
+          INSERT INTO whatsapp_messages (request_id, order_number, template, contact_id, variables, status)
+          VALUES ($1, $2, $3, $4, $5, 'pending')
+          ON CONFLICT (request_id) DO NOTHING
+        `, [requestId, orderNumber, plantillaFinal, contactIdClean, JSON.stringify(variables)]);
+        log.info({ requestId, orderNumber, plantillaFinal }, 'WhatsApp message tracked');
+      } catch (dbErr) {
+        log.error({ err: dbErr, requestId, orderNumber }, 'Error saving WhatsApp tracking');
+      }
+    }
+
+    return response;
+  } catch (err) {
+    log.error({ err, responseData: err.response?.data, telefono, plantillaFinal, orderNumber }, 'Error sending WhatsApp');
+    throw err;
+  }
+}
 
 /**
  * Queue a WhatsApp message via BullMQ if available, otherwise send directly.
@@ -2948,7 +3550,8 @@ app.post('/webhook/tiendanube', async (req, res) => {
     }
 
   } catch (err) {
-    log.error({ err, event, orderId }, 'Error processing Tiendanube webhook');
+    console.error('❌ Error webhook:', err.message);
+    console.error('   Stack:', err.stack?.split('\n')[1]);
   }
 });
 
@@ -3069,7 +3672,7 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     const { orderNumber: rawOrderNumber } = req.body;
     const file = req.file;
 
-    log.info({ requestId: req.requestId, orderNumber: rawOrderNumber }, '/upload started');
+    console.log('📥 /upload iniciado');
 
     if (!rawOrderNumber || !file) {
       return res.status(400).json({ error: 'Faltan datos' });
@@ -3154,7 +3757,6 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
       );
       const comprobanteId = insertRes.rows[0].id;
 
-      const ocrRequestId = req.requestId || crypto.randomUUID();
       await ocrQueue.add('process-ocr', {
         filePath: file.path,
         orderNumber,
@@ -3165,14 +3767,12 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
         comprobanteId,
         supabasePath,
         fileUrl,
-        requestId: ocrRequestId
+        requestId: req.requestId || crypto.randomUUID()
       }, {
         jobId: `ocr-${comprobanteId}`,
         attempts: 3,
         backoff: { type: 'exponential', delay: 5000 }
       });
-
-      log.info({ requestId: ocrRequestId, orderNumber, comprobanteId }, 'OCR job enqueued');
 
       return res.status(202).json({
         ok: true,
@@ -3183,7 +3783,6 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     }
 
     // Fallback: existing synchronous OCR processing continues below
-    log.warn({ requestId: req.requestId, orderNumber }, 'OCR queue unavailable, falling back to synchronous processing');
 
     /* ===============================
        2️⃣ ANÁLISIS CON CLAUDE VISION
@@ -3693,6 +4292,53 @@ app.get('/rechazar/:id', async (req, res) => {
 
 
 /* =====================================================
+   UTIL — CALCULAR TOTAL PAGADO (comprobantes + efectivo)
+===================================================== */
+async function calcularTotalPagado(orderNumber) {
+  // Sumar comprobantes confirmados
+  const compRes = await pool.query(
+    `SELECT COALESCE(SUM(monto), 0) AS total
+     FROM comprobantes
+     WHERE order_number = $1 AND estado = 'confirmado'`,
+    [orderNumber]
+  );
+
+  // Sumar pagos en efectivo
+  const efectivoRes = await pool.query(
+    `SELECT COALESCE(SUM(monto), 0) AS total
+     FROM pagos_efectivo
+     WHERE order_number = $1`,
+    [orderNumber]
+  );
+
+  return Number(compRes.rows[0].total) + Number(efectivoRes.rows[0].total);
+}
+
+
+/* =====================================================
+   UTIL — CALCULAR ESTADO PEDIDO (centralizado)
+   Regla: si hay plata pagada → puede avanzar en flujo logístico
+   Independiente del método de pago (transferencia, efectivo, etc.)
+===================================================== */
+function calcularEstadoPedido(estadoPago, estadoPedidoActual) {
+  // Si ya avanzó más allá de pendiente_pago, no retroceder
+  if (estadoPedidoActual !== 'pendiente_pago') {
+    return estadoPedidoActual;
+  }
+
+  // Estados de pago que indican que hay plata pagada → avanzar a a_imprimir
+  const estadosPagados = ['confirmado_total', 'confirmado_parcial', 'a_favor'];
+
+  if (estadosPagados.includes(estadoPago)) {
+    return 'a_imprimir';
+  }
+
+  // Si no hay pago confirmado, mantener pendiente_pago
+  return 'pendiente_pago';
+}
+
+
+/* =====================================================
    UTIL — MARCAR PAGADO EN TIENDANUBE
    Sincroniza estado de pago cuando está completamente pagado
 ===================================================== */
@@ -3749,7 +4395,10 @@ app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_p
     return res.status(400).json({ error: 'Monto inválido' });
   }
 
-  log.info({ requestId: req.requestId, orderNumber, monto: montoNumerico, registradoPor: registradoPor || 'sistema', action: 'cash_payment_start' }, 'Registering cash payment');
+  console.log('💵 Registrando pago en efectivo');
+  console.log('Pedido:', orderNumber);
+  console.log('Monto:', montoNumerico);
+  console.log('Registrado por:', registradoPor || 'sistema');
 
   const client = await pool.connect();
   try {
@@ -3786,7 +4435,7 @@ app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_p
     );
 
     const pagoId = insert.rows[0].id;
-    log.info({ requestId: req.requestId, orderNumber, pagoId }, 'Cash payment record inserted');
+    console.log('🧾 Pago en efectivo registrado ID:', pagoId);
 
     /* ===============================
        3️⃣ RECALCULAR TOTAL PAGADO (comprobantes + efectivo) using client
@@ -3847,9 +4496,12 @@ app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_p
       username: req.user?.name
     });
 
-    log.info({ requestId: req.requestId, orderNumber, pagoId, totalPagado, saldo, estadoPago, action: 'cash_payment_success' }, 'Cash payment processed successfully');
+    console.log('✅ Pago en efectivo procesado');
+    console.log('Total pagado:', totalPagado);
+    console.log('Saldo:', saldo);
+    console.log('Estado pago:', estadoPago);
     if (nuevoEstadoPedido !== estadoPedidoActual) {
-      log.info({ requestId: req.requestId, orderNumber, estadoPedidoAnterior: estadoPedidoActual, nuevoEstadoPedido }, 'Order status changed');
+      console.log(`📦 Estado pedido: ${estadoPedidoActual} → ${nuevoEstadoPedido}`);
     }
 
     /* ===============================
@@ -3868,7 +4520,7 @@ app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_p
 
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
-    log.error({ err: error, requestId: req.requestId, orderNumber }, '/pago-efectivo error');
+    console.error('❌ /pago-efectivo error:', error.message);
     res.status(500).json({ error: error.message });
   } finally {
     client.release();
@@ -4019,7 +4671,7 @@ async function tryAcquireSyncLock(source) {
 
     return result.rowCount > 0;
   } catch (err) {
-    log.error({ err }, 'SYNC: Error acquiring lock');
+    console.error(`[SYNC] Error acquiring lock: ${err.message}`);
     return false;
   }
 }
@@ -4037,7 +4689,7 @@ async function releaseSyncLock() {
       SYNC_LOCK_KEY
     ]);
   } catch (err) {
-    log.error({ err }, 'SYNC: Error releasing lock');
+    console.error(`[SYNC] Error releasing lock: ${err.message}`);
   }
 }
 
@@ -4052,7 +4704,7 @@ async function triggerSync(source) {
   // Check de integración habilitada
   const syncEnabled = await tnConfig.isSyncOrdersEnabled();
   if (!syncEnabled) {
-    log.info({ source, reason: 'integration_disabled' }, 'SYNC: Skipped - integration disabled');
+    console.log(`[SYNC] ${timestamp} | SKIP | source=${source} | reason=integration_disabled`);
     return { status: 'skipped', message: 'Order sync integration is disabled' };
   }
 
@@ -4063,7 +4715,7 @@ async function triggerSync(source) {
 
   if (!lockAcquired) {
     // Otra instancia tiene el lock - salir silenciosamente
-    log.info({ source, reason: 'distributed_lock_held' }, 'SYNC: Skipped - another instance running');
+    console.log(`[SYNC] ${timestamp} | SKIP | source=${source} | reason=distributed_lock_held`);
     return { status: 'skipped', message: 'Another instance is running sync' };
   }
 
@@ -4075,7 +4727,7 @@ async function triggerSync(source) {
   lastError = null;
   lastResult = null;
 
-  log.info({ runId: currentRunId, source }, 'SYNC: Started');
+  console.log(`[SYNC] ${timestamp} | START | runId=${currentRunId} | source=${source}`);
 
   try {
     const result = await runSyncJob();
@@ -4084,7 +4736,7 @@ async function triggerSync(source) {
 
   } catch (error) {
     lastError = error.message;
-    log.error({ err: error, runId: currentRunId, source }, 'SYNC: Error');
+    console.error(`[SYNC] ERROR | runId=${currentRunId} | source=${source} | error=${error.message}`);
     throw error;
 
   } finally {
@@ -4095,7 +4747,7 @@ async function triggerSync(source) {
     // Liberar distributed lock
     await releaseSyncLock();
 
-    log.info({ runId: currentRunId, source, durationMs: duration }, 'SYNC: Completed');
+    console.log(`[SYNC] ${lastEndAt} | END | runId=${currentRunId} | source=${source} | duration=${duration}ms`);
   }
 }
 
@@ -4118,13 +4770,13 @@ function getSyncStatus() {
 // Ejecutar sincronización desde Cloud Scheduler (cron)
 // Protegido por OIDC token (Cloud Scheduler) o shared secret (fallback)
 app.post('/sync/cron', verifyCronAuth, async (req, res) => {
-  log.info({ authMethod: req.cronAuth?.method }, 'Cron sync started');
+  console.log('🕐 Sincronización cron iniciada (auth:', req.cronAuth?.method, ')');
 
   try {
     const result = await triggerSync('cloud-scheduler');
     res.json({ ok: true, status: result.status, result: result.result });
   } catch (error) {
-    log.error({ err: error }, 'Cron sync error');
+    console.error('❌ Error en sync cron:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -4132,7 +4784,7 @@ app.post('/sync/cron', verifyCronAuth, async (req, res) => {
 // Ejecutar sincronización manual
 app.post('/sync/run', authenticate, requirePermission('users.view'), async (req, res) => {
   const source = `manual-${req.user.email}`;
-  log.info({ source, email: req.user.email }, 'Manual sync requested');
+  console.log(`🔄 Sincronización manual solicitada por: ${req.user.email}`);
 
   try {
     const result = await triggerSync(source);
@@ -4204,19 +4856,19 @@ let syncInterval = null;
 function startSyncScheduler() {
   if (syncInterval) return;
 
-  log.info('Sync scheduler started (every 5 min)');
+  console.log('⏰ Scheduler de sincronización iniciado (cada 5 min)');
 
   // Primera ejecución después de 30 segundos
   setTimeout(() => {
     triggerSync('startup-30s').catch(err => {
-      log.error({ err }, 'Error in startup sync');
+      console.error('❌ Error en sync inicial:', err.message);
     });
   }, 30000);
 
   // Luego cada 5 minutos
   syncInterval = setInterval(() => {
     triggerSync('interval-5min').catch(err => {
-      log.error({ err }, 'Error in scheduled sync');
+      console.error('❌ Error en sync programado:', err.message);
     });
   }, SYNC_INTERVAL);
 

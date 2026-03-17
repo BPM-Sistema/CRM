@@ -8,6 +8,7 @@
 const axios = require('axios');
 const pool = require('../db');
 const { whatsapp: waConfig, isEnabled: isIntegrationEnabled } = require('../services/integrationConfig');
+const { apiLogger: log } = require('./logger');
 
 // Plantillas que NO llevan sufijo de financiera
 const PLANTILLAS_SIN_SUFIJO = ['datos__envio', 'comprobante_rechazado', 'comprobante_confirmado', 'enviado_env_nube', 'enviado_transporte', 'pedido_cancelado'];
@@ -30,7 +31,7 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNu
   if (configKey) {
     const enabled = await isIntegrationEnabled(configKey, { context: `plantilla:${plantilla}` });
     if (!enabled) {
-      console.log(`🚫 WhatsApp plantilla '${plantilla}' deshabilitada por toggle`);
+      log.info({ plantilla, configKey }, 'WhatsApp template disabled by toggle');
       return { data: { skipped: true, reason: 'template_disabled' } };
     }
   }

@@ -7,3 +7,5 @@ uploads/
 *.tmp
 CLAUDE.md
 runtime/
+.vercel
+.env*.local

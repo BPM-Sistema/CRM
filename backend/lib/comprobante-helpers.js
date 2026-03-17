@@ -52,7 +52,7 @@ async function watermarkReceipt(filePath, { id, orderNumber }) {
     }])
     .toFile(filePath + '.tmp');
 
-  fs.renameSync(filePath + '.tmp', filePath);
+  await fs.promises.rename(filePath + '.tmp', filePath);
 
   console.log('🏷️ Watermark aplicado:', filePath);
 }
