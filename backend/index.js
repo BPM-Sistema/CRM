@@ -48,7 +48,7 @@ const { verificarConsistencia, getInconsistencias } = require('./utils/orderVeri
 const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crearNotificacion } = require('./utils/notifications');
 const { enviarWhatsAppPlantilla, PLANTILLAS_SIN_SUFIJO, PLANTILLA_CONFIG_KEY } = require('./lib/whatsapp-helpers');
 const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, normalizePhoneForComparison } = require('./lib/payment-helpers');
-const { watermarkReceipt, detectarMontoDesdeOCR, validarComprobante, normalizeText, extractDestinationAccount, isValidDestination, detectarFinancieraDesdeOCR } = require('./lib/comprobante-helpers');
+const { watermarkReceipt, isValidDestination, detectarFinancieraDesdeOCR } = require('./lib/comprobante-helpers');
 const customerSync = require('./services/customerSync');
 const customerMetrics = require('./services/customerMetrics');
 const customerSegmentation = require('./services/customerSegmentation');
@@ -57,14 +57,6 @@ const PORT = process.env.PORT || 3000;
 
 // Desactivar ETag globalmente para evitar respuestas 304
 app.set('etag', false);
-
-// Configurar Google Cloud credentials (aún usado por workers/ocr.worker.js)
-if (process.env.GOOGLE_CREDENTIALS_JSON) {
-  const credentialsPath = '/tmp/google-credentials.json';
-  fs.writeFileSync(credentialsPath, process.env.GOOGLE_CREDENTIALS_JSON);
-  process.env.GOOGLE_APPLICATION_CREDENTIALS = credentialsPath;
-  console.log('✅ Google credentials configuradas desde variable de entorno');
-}
 
 app.use(express.json({
   verify: (req, res, buf) => {
@@ -3138,66 +3130,6 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
       `,
       [orderNumber, montoTiendanube, currency, customerName, customerEmail, customerPhone]
     );
-
-    /* ===============================
-       1️⃣c TRY TO ENQUEUE OCR JOB
-    ================================ */
-    // OCR queue desactivada - Claude Vision procesa sincrónicamente (~5s)
-    // El worker de Google Vision ya no se usa para comprobantes
-    const ocrQueueDisabled = true;
-    if (!ocrQueueDisabled) {
-      // Sanitizar nombre de archivo para la ruta de Supabase
-      const sanitizedFn = file.originalname
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^\w.-]/g, '_')
-        .replace(/_+/g, '_');
-      const supabasePath = `pendientes/${Date.now()}-${sanitizedFn}`;
-      const { data: publicUrlData } = supabase.storage
-        .from('comprobantes')
-        .getPublicUrl(supabasePath);
-      const fileUrl = publicUrlData.publicUrl;
-
-      // hash_ocr placeholder: se actualiza después del OCR en el worker
-      const placeholderHash = crypto.createHash('sha256').update(`pending-${orderNumber}-${Date.now()}`).digest('hex');
-      const insertRes = await pool.query(
-        `INSERT INTO comprobantes (order_number, file_url, estado, monto_tiendanube, hash_ocr)
-         VALUES ($1, $2, 'procesando_ocr', $3, $4)
-         RETURNING id`,
-        [orderNumber, fileUrl, montoTiendanube, placeholderHash]
-      );
-      const comprobanteId = insertRes.rows[0].id;
-
-      const ocrRequestId = req.requestId || crypto.randomUUID();
-      await ocrQueue.add('process-ocr', {
-        filePath: file.path,
-        orderNumber,
-        montoTiendanube,
-        currency,
-        customerName,
-        customerPhone: telefono,
-        comprobanteId,
-        supabasePath,
-        fileUrl,
-        requestId: ocrRequestId
-      }, {
-        jobId: `ocr-${comprobanteId}`,
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 5000 }
-      });
-
-      log.info({ requestId: ocrRequestId, orderNumber, comprobanteId }, 'OCR job enqueued');
-
-      return res.status(202).json({
-        ok: true,
-        queued: true,
-        comprobante_id: comprobanteId,
-        message: 'Comprobante recibido, procesando OCR...'
-      });
-    }
-
-    // Fallback: existing synchronous OCR processing continues below
-    log.warn({ requestId: req.requestId, orderNumber }, 'OCR queue unavailable, falling back to synchronous processing');
 
     /* ===============================
        2️⃣ ANÁLISIS CON CLAUDE VISION
