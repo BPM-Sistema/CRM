@@ -7,14 +7,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowRight,
-  Star,
-  Heart,
-  Zap,
-  Crown,
-  Gift,
-  Flame,
-  AlertTriangle,
-  TrendingDown,
 } from 'lucide-react';
 import { Header } from '../components/layout';
 import {
@@ -43,29 +35,6 @@ const SEGMENT_LABELS: Record<string, string> = {
   sin_compras: 'Sin compras',
 };
 
-const SEGMENT_DESCRIPTIONS: Record<string, string> = {
-  campeones: 'Clientes que han realizado 6 o más compras y la última fue dentro de los últimos 45 días.',
-  leales: 'Clientes que han realizado entre 3 y 5 compras y la última fue dentro de los últimos 45 días.',
-  recientes: 'Clientes que han realizado entre 1 y 2 compras y la última fue dentro de los últimos 45 días.',
-  alto_potencial: 'Clientes que han realizado 5 o más compras y la última fue dentro de los últimos 45 a 90 días.',
-  necesitan_incentivo: 'Clientes que han realizado entre 1 y 4 compras y la última fue dentro de los últimos 45 a 90 días.',
-  no_pueden_perder: 'Clientes que han realizado 5 o más compras y la última fue dentro de los últimos 90 a 180 días.',
-  en_riesgo: 'Clientes que han realizado entre 1 y 4 compras y la última fue dentro de los últimos 90 a 180 días.',
-  por_perder: 'Clientes que han realizado 1 o más compras y la última fue dentro de los últimos 180 a 365 días.',
-  perdidos: 'Clientes sin actividad en más de un año.',
-  sin_compras: 'Clientes registrados que nunca han comprado.',
-};
-
-const SEGMENT_ICONS: Record<string, React.ReactNode> = {
-  campeones: <Star size={16} />,
-  leales: <Heart size={16} />,
-  recientes: <Zap size={16} />,
-  alto_potencial: <Crown size={16} />,
-  necesitan_incentivo: <Gift size={16} />,
-  no_pueden_perder: <Flame size={16} />,
-  en_riesgo: <AlertTriangle size={16} />,
-  por_perder: <TrendingDown size={16} />,
-};
 
 function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return '-';
@@ -137,42 +106,6 @@ function MatrixCell({
   );
 }
 
-// Fila de segmento en la lista inferior
-function SegmentListRow({
-  segment,
-  count,
-  onClick,
-}: {
-  segment: string;
-  count: number;
-  onClick: () => void;
-}) {
-  return (
-    <div className="flex items-start justify-between py-4 border-b border-neutral-100 last:border-0">
-      <div className="flex items-start gap-3">
-        <div className="w-8 h-8 rounded-lg bg-neutral-100 flex items-center justify-center mt-0.5 text-neutral-500">
-          {SEGMENT_ICONS[segment] || <Users size={16} />}
-        </div>
-        <div>
-          <h4 className="font-semibold text-neutral-900">{SEGMENT_LABELS[segment]}</h4>
-          <p className="text-sm text-neutral-500">
-            {count.toLocaleString('es-AR')} compradores
-          </p>
-          <p className="text-sm text-neutral-400 mt-1">
-            {SEGMENT_DESCRIPTIONS[segment]}
-          </p>
-        </div>
-      </div>
-      <button
-        onClick={onClick}
-        className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-900 transition-colors whitespace-nowrap mt-1"
-      >
-        Ir a la lista
-        <ArrowRight size={16} />
-      </button>
-    </div>
-  );
-}
 
 // Fila de cliente
 function CustomerRow({ customer }: { customer: Customer }) {
@@ -416,19 +349,6 @@ export default function Customers() {
           </div>
         )}
 
-        {/* Lista de segmentos con descripciones */}
-        {segments && (
-          <div className="bg-white rounded-xl border border-neutral-200 p-6">
-            {['campeones', 'leales', 'recientes', 'alto_potencial', 'necesitan_incentivo', 'no_pueden_perder', 'en_riesgo', 'por_perder'].map((segment) => (
-              <SegmentListRow
-                key={segment}
-                segment={segment}
-                count={getCount(segment)}
-                onClick={() => handleSegmentClick(segment)}
-              />
-            ))}
-          </div>
-        )}
 
         {/* Sin compras */}
         {segments && getCount('sin_compras') > 0 && (
