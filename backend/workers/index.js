@@ -9,7 +9,6 @@ require('dotenv').config();
 
 const { logger, workerLogger: log } = require('../lib/logger');
 const { redis } = require('../lib/redis');
-const { createOcrWorker } = require('./ocr.worker');
 const { createWhatsAppWorker } = require('./whatsapp.worker');
 // AI Bot workers — loaded defensively so BPM workers always start even if bot code fails
 let createMetaEventsWorker, createAiGenerateWorker, createAiSendReplyWorker;
@@ -79,10 +78,6 @@ async function start() {
   }
 
   // Iniciar workers
-  const ocrWorker = createOcrWorker(connection);
-  workers.push(ocrWorker);
-  log.info('OCR worker iniciado');
-
   const whatsappWorker = createWhatsAppWorker(connection);
   workers.push(whatsappWorker);
   log.info('WhatsApp worker iniciado');
