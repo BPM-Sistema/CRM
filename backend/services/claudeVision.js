@@ -240,6 +240,11 @@ async function analizarRemito(imageBuffer, mimeType) {
     if (jsonStr.startsWith('```')) {
       jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
     }
+    // Si hay texto extra después del JSON, extraer solo el JSON
+    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[0];
+    }
     datos = JSON.parse(jsonStr);
   } catch (e) {
     console.error('❌ Claude Vision remito respuesta no parseable:', textContent.text);
