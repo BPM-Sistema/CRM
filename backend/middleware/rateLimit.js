@@ -67,16 +67,6 @@ const apiLimiter = rateLimit({
   skip: () => skipInTest,
 });
 
-// WhatsApp leads: 10 submissions per hour per IP
-const leadsLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10,
-  message: { error: 'Demasiados envíos. Intenta de nuevo más tarde.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: () => skipInTest,
-});
-
 module.exports = {
   loginLimiter,
   uploadLimiter,
