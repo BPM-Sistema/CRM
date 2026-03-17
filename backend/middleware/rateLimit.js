@@ -47,6 +47,16 @@ const shippingFormLimiter = rateLimit({
   skip: () => skipInTest,
 });
 
+// WhatsApp leads: 20 submissions per hour per IP
+const leadsLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 20,
+  message: { error: 'Demasiados envíos. Intenta de nuevo más tarde.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => skipInTest,
+});
+
 // General API: 100 requests per minute per IP
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
