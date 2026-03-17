@@ -30,9 +30,11 @@ const axios = require('axios');
 const supabase = require('./supabase');
 const { calcularEstadoCuenta } = require('./utils/calcularEstadoCuenta');
 const pool = require('./db');
-const { ocrFromUrl } = require('./services/ocrFromUrl');
 const { hashText } = require('./hash');
-const { authenticate, requirePermission } = require('./middleware/auth');
+const { analizarComprobante, convertirAFormatoLegacy } = require('./services/claudeVision');
+const { authenticate, requirePermission, JWT_SECRET } = require('./middleware/auth');
+const helmet = require('helmet');
+const jwt = require('jsonwebtoken');
 const { uploadLimiter, validationLimiter, shippingFormLimiter } = require('./middleware/rateLimit');
 const crypto = require('crypto');
 const sharp = require('sharp');
@@ -756,23 +758,6 @@ function validarComprobante(textoOcr) {
   if (!esValido) {
     throw new Error(mensajeError);
   }
-}
-
-async function detectarFinancieraDesdeOCR(textoOcr) {
-  const res = await pool.query(
-    `select id, nombre, celular, palabras_clave
-     from financieras
-     where activa = true`
-  );
-
-  const texto = textoOcr.toLowerCase();
-
-  for (const fin of res.rows) {
-    const keywords = fin.palabras_clave || [];
-    const match = keywords.some(k => texto.includes(k.toLowerCase()));
-    if (match) return fin;
-  }
-  return null;
 }
 
 /* =====================================================
@@ -3695,23 +3680,26 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     );
 
     /* ===============================
-       2️⃣ OCR (antes de cualquier modificación)
+       2️⃣ ANÁLISIS CON CLAUDE VISION
     ================================ */
-    const imageBuffer = fs.readFileSync(file.path);
-    const [result] = await visionClient.textDetection({
-      image: { content: imageBuffer }
-    });
+    const datosClaudeRaw = await analizarComprobante(file.path);
+    const datosClaude = convertirAFormatoLegacy(datosClaudeRaw);
 
-    const textoOcr = result.fullTextAnnotation?.text || '';
-    if (!textoOcr) throw new Error('OCR vacío');
+    // Validar que sea un comprobante real
+    if (!datosClaude.esComprobante) {
+      fs.unlinkSync(file.path);
+      return res.status(400).json({
+        error: 'El archivo no parece ser un comprobante válido. Contactate con nosotros por WhatsApp para que te ayudemos.'
+      });
+    }
+    console.log('🧠 Claude Vision OK | monto:', datosClaude.monto, '| banco:', datosClaude.banco);
 
-    validarComprobante(textoOcr);
-    console.log('🧠 OCR OK');
+    const textoOcr = datosClaude.textoOcr;
+    const cuentaDestino = datosClaude.cuenta;
 
     /* ===============================
        2.5️⃣ VALIDAR CUENTA DESTINO
     ================================ */
-    const cuentaDestino = extractDestinationAccount(textoOcr);
     console.log('🔍 Cuenta destino extraída:', cuentaDestino);
 
     const destinoValidation = await isValidDestination(cuentaDestino, textoOcr);
@@ -3737,7 +3725,6 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     );
 
     if (dup.rows.length > 0) {
-      // Loguear intento de duplicado para auditoría
       await logEvento({
         orderNumber,
         accion: 'comprobante_duplicado',
@@ -3750,10 +3737,9 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     }
 
     /* ===============================
-       4️⃣ MONTO DESDE OCR
+       4️⃣ MONTO DESDE CLAUDE
     ================================ */
-    const { monto } = detectarMontoDesdeOCR(textoOcr);
-    const montoDetectado = Math.round(monto);
+    const montoDetectado = datosClaude.monto;
 
     /* ===============================
        5️⃣ PREPARAR URL DE SUPABASE
