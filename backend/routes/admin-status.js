@@ -244,7 +244,8 @@ router.get('/incidents', requirePermission('integrations.view'), async (req, res
         SELECT id, monto, created_at FROM comprobantes
         WHERE estado = 'a_confirmar'
           AND created_at < NOW() - INTERVAL '2 hours'
-        ORDER BY created_at ASC
+          AND created_at > NOW() - INTERVAL '7 days'
+        ORDER BY created_at DESC
         LIMIT 20
       `);
       for (const row of stuckResult.rows) {
