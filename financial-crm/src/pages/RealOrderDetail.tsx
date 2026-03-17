@@ -544,7 +544,7 @@ export function RealOrderDetail() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-neutral-900 whitespace-pre-line">{formatEventLabel(log.accion)}</p>
                           <p className="text-xs text-neutral-500">
-                            {format(new Date(log.created_at), 'dd/MM/yyyy HH:mm', { locale: es })} · {log.username || 'sistema'}
+                            {format(new Date(log.created_at), 'dd/MM/yyyy HH:mm', { locale: es })} · {log.username || ({ webhook_tiendanube: 'TiendaNube', cliente: 'Cliente', admin_sync: 'Sync automático', sistem: 'Sistema', caja: 'Caja' } as Record<string, string>)[log.origen] || log.origen || 'sistema'}
                           </p>
                         </div>
                       </div>
