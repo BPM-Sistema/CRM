@@ -157,73 +157,56 @@ function determineSegment(customer) {
 }
 
 /**
- * Recalcula segmentos para todos los clientes (versión optimizada con SQL)
+ * Recalcula segmentos para todos los clientes
+ * Usa la función determineSegment() para consistencia con segmentación individual
  * @returns {Promise<Object>} { updated, bySegment }
  */
 async function segmentAllCustomers() {
   console.log('[CustomerSegmentation] Calculando segmentos para todos los clientes...');
 
-  // Una sola query UPDATE con CASE WHEN - mucho más rápido
-  const result = await pool.query(`
-    UPDATE customers
-    SET
-      segment = CASE
-        -- Primero determinamos si tiene compras (orders_count > 0 O total_spent > 0)
-        WHEN (orders_count > 0 OR COALESCE(total_spent, 0) > 0) THEN
-          CASE
-            -- Calcular días desde última orden (usar last_order_at o tn_updated_at)
-            WHEN COALESCE(last_order_at, tn_updated_at) IS NOT NULL THEN
-              CASE
-                -- Campeones: 5+ órdenes Y última < 30 días
-                WHEN orders_count >= 5
-                  AND EXTRACT(EPOCH FROM (NOW() - COALESCE(last_order_at, tn_updated_at))) / 86400 <= 30
-                  THEN 'campeones'
-                -- Leales: 3+ órdenes Y última < 90 días
-                WHEN orders_count >= 3
-                  AND EXTRACT(EPOCH FROM (NOW() - COALESCE(last_order_at, tn_updated_at))) / 86400 <= 90
-                  THEN 'leales'
-                -- Potenciales: 2-4 órdenes Y última < 60 días
-                WHEN orders_count >= 2 AND orders_count <= 4
-                  AND EXTRACT(EPOCH FROM (NOW() - COALESCE(last_order_at, tn_updated_at))) / 86400 <= 60
-                  THEN 'potenciales'
-                -- Nuevos: 1 orden Y última < 30 días (o total_spent > 0 sin orders_count)
-                WHEN (orders_count = 1 OR (orders_count = 0 AND COALESCE(total_spent, 0) > 0))
-                  AND EXTRACT(EPOCH FROM (NOW() - COALESCE(last_order_at, tn_updated_at))) / 86400 <= 30
-                  THEN 'nuevos'
-                -- Prometedores: 1 orden Y última 31-90 días
-                WHEN (orders_count = 1 OR (orders_count = 0 AND COALESCE(total_spent, 0) > 0))
-                  AND EXTRACT(EPOCH FROM (NOW() - COALESCE(last_order_at, tn_updated_at))) / 86400 BETWEEN 31 AND 90
-                  THEN 'prometedores'
-                -- En riesgo: 2+ órdenes Y última 91-180 días
-                WHEN orders_count >= 2
-                  AND EXTRACT(EPOCH FROM (NOW() - COALESCE(last_order_at, tn_updated_at))) / 86400 BETWEEN 91 AND 180
-                  THEN 'en_riesgo'
-                -- Hibernando: cualquier orden Y última 181-365 días
-                WHEN EXTRACT(EPOCH FROM (NOW() - COALESCE(last_order_at, tn_updated_at))) / 86400 BETWEEN 181 AND 365
-                  THEN 'hibernando'
-                -- Perdidos: cualquier orden Y última > 365 días
-                WHEN EXTRACT(EPOCH FROM (NOW() - COALESCE(last_order_at, tn_updated_at))) / 86400 > 365
-                  THEN 'perdidos'
-                ELSE 'sin_clasificar'
-              END
-            ELSE 'sin_clasificar'
-          END
-        ELSE 'sin_compras'
-      END,
-      segment_updated_at = NOW()
+  // Obtener todos los clientes con sus métricas
+  const { rows: customers } = await pool.query(`
+    SELECT id, orders_count, last_order_at, total_spent, tn_updated_at
+    FROM customers
   `);
 
-  console.log('[CustomerSegmentation] Segmentación completada, filas actualizadas:', result.rowCount);
+  console.log(`[CustomerSegmentation] Procesando ${customers.length} clientes...`);
 
-  // Obtener conteo por segmento
-  const { rows } = await pool.query(`
-    SELECT segment, COUNT(*) as count FROM customers GROUP BY segment
-  `);
+  // Calcular segmento para cada uno usando la lógica JS (consistente)
+  const updates = customers.map(c => ({
+    id: c.id,
+    segment: determineSegment(c)
+  }));
 
+  // Agrupar por segmento para UPDATE batch
   const bySegment = {};
-  rows.forEach(r => { bySegment[r.segment] = parseInt(r.count); });
+  for (const u of updates) {
+    if (!bySegment[u.segment]) bySegment[u.segment] = [];
+    bySegment[u.segment].push(u.id);
+  }
 
-  return { updated: result.rowCount, bySegment };
+  // Ejecutar UPDATEs por segmento (máximo 9 queries vs miles)
+  let totalUpdated = 0;
+  for (const [segment, ids] of Object.entries(bySegment)) {
+    if (ids.length === 0) continue;
+    const result = await pool.query(`
+      UPDATE customers
+      SET segment = $1, segment_updated_at = NOW()
+      WHERE id = ANY($2)
+    `, [segment, ids]);
+    totalUpdated += result.rowCount;
+    console.log(`[CustomerSegmentation] ${segment}: ${result.rowCount} clientes`);
+  }
+
+  console.log('[CustomerSegmentation] Segmentación completada, total actualizado:', totalUpdated);
+
+  // Conteo final
+  const counts = {};
+  for (const [segment, ids] of Object.entries(bySegment)) {
+    counts[segment] = ids.length;
+  }
+
+  return { updated: totalUpdated, bySegment: counts };
 }
 
 /**
