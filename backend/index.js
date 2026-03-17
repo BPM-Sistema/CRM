@@ -2537,19 +2537,8 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
           .catch(err => console.error('⚠️ Error WhatsApp enviado_env_nube:', err.message));
       } else if (esEnvioNube) {
         console.log(`⚠️ No se envió WhatsApp enviado_env_nube: faltan datos (phone: ${!!pedido.customer_phone}, order_id: ${!!pedido.tn_order_id}, token: ${!!pedido.tn_order_token})`);
-      } else if (!esEnvioNube && pedido.customer_phone) {
-        // Envío por transporte (no Envío Nube) — controlado por toggle
-        queueWhatsApp({
-          telefono: pedido.customer_phone,
-          plantilla: 'enviado_transporte',
-          variables: {
-            '1': pedido.customer_name || 'Cliente',
-            '2': orderNumber
-          },
-          orderNumber
-        }).then(() => console.log(`📨 WhatsApp enviado_transporte enviado (Pedido #${orderNumber})`))
-          .catch(err => console.error('⚠️ Error WhatsApp enviado_transporte:', err.message));
       }
+      // Nota: enviado_transporte se envía desde remitos.js al confirmar remito (con imagen)
     }
 
     // WhatsApp automático cuando se marca como "cancelado"

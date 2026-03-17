@@ -11,5 +11,5 @@ INSERT INTO integration_config (key, enabled, description, category) VALUES
   ('whatsapp_tpl_enviado_env_nube',       true, 'Notificar al cliente que su pedido fue despachado (Envío Nube)', 'whatsapp'),
   ('whatsapp_tpl_pedido_cancelado',       true, 'Notificar al cliente que su pedido fue cancelado', 'whatsapp'),
   ('whatsapp_tpl_partial_paid',           true, 'Notificar al cliente que tiene saldo pendiente de pago', 'whatsapp'),
-  ('whatsapp_tpl_enviado_transporte',     false, 'Notificar envío por transporte (NO IMPLEMENTADA)', 'whatsapp')
+  ('whatsapp_tpl_enviado_transporte',     true, 'Notificar al cliente que su pedido fue enviado por transporte (con imagen del remito)', 'whatsapp')
 ON CONFLICT (key) DO NOTHING;

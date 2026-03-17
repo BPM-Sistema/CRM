@@ -18,6 +18,7 @@ const pool = require('../db');
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { processDocumentWithClaude } = require('../services/shippingDocuments');
 const { analizarRemito } = require('../services/claudeVision');
+const { enviarWhatsAppPlantilla } = require('../lib/whatsapp-helpers');
 
 // Configurar Supabase
 const supabase = createClient(
@@ -356,7 +357,16 @@ router.post('/:id/confirm',
 
       console.log(`✅ Remito ${id} confirmado para pedido #${confirmedOrder}`);
 
-      // Loguear evento
+      // Marcar pedido como enviado (igual que Envío Nube al despachar)
+      await pool.query(`
+        UPDATE orders_validated
+        SET estado_pedido = 'enviado',
+            shipped_at = COALESCE(shipped_at, NOW())
+        WHERE order_number = $1
+      `, [confirmedOrder]);
+      console.log(`📦 Pedido #${confirmedOrder} marcado como enviado`);
+
+      // Loguear eventos
       logEvento({
         orderNumber: confirmedOrder,
         accion: 'remito_confirmado',
@@ -364,66 +374,36 @@ router.post('/:id/confirm',
         userId: req.user?.id,
         username: req.user?.name
       });
+      logEvento({
+        orderNumber: confirmedOrder,
+        accion: 'pedido_enviado',
+        origen: 'operador',
+        userId: req.user?.id,
+        username: req.user?.name
+      });
 
       // Enviar WhatsApp enviado_transporte con imagen del remito
       const pedidoRes = await pool.query(
-        `SELECT customer_name, customer_phone, shipping_type FROM orders_validated WHERE order_number = $1`,
+        `SELECT customer_name, customer_phone FROM orders_validated WHERE order_number = $1`,
         [confirmedOrder]
       );
       const pedido = pedidoRes.rows[0];
 
       if (pedido?.customer_phone) {
-        const shippingType = (pedido.shipping_type || '').toLowerCase();
-        const esTransporte = shippingType.includes('expreso') ||
-                            shippingType.includes('via cargo') ||
-                            shippingType.includes('viacargo') ||
-                            shippingType.includes('elec');
-
-        if (esTransporte) {
-          // Leer config de testing desde DB
-          let destinoPhone = pedido.customer_phone;
-          try {
-            const testingRes = await pool.query(
-              `SELECT enabled, metadata FROM integration_config WHERE key = 'whatsapp_testing_mode'`
-            );
-            if (testingRes.rows.length > 0 && testingRes.rows[0].enabled) {
-              const testPhone = testingRes.rows[0].metadata?.active_phone || testingRes.rows[0].metadata?.testing_phone;
-              if (testPhone) {
-                console.log(`🧪 WhatsApp testing remito: redirigiendo de ${pedido.customer_phone} → ${testPhone}`);
-                destinoPhone = testPhone;
-              } else {
-                console.log('📵 WhatsApp remito ignorado: modo testing sin número configurado');
-                destinoPhone = null;
-              }
-            }
-          } catch (err) {
-            console.error('⚠️ Error leyendo whatsapp_testing_mode:', err.message);
-          }
-
-          if (destinoPhone) {
-            const contactIdClean = '549' + destinoPhone.replace(/\D/g, '').slice(-10);
-            const headers = { 'access-token': process.env.BOTMAKER_ACCESS_TOKEN, 'Content-Type': 'application/json' };
-
-            axios.post(
-              'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
-              {
-                chat: { channelId: process.env.BOTMAKER_CHANNEL_ID, contactId: contactIdClean },
-                intentIdOrName: 'enviado_transporte',
-                variables: {
-                  'headerImageUrl': remito.file_url,
-                  '1': pedido.customer_name || 'Cliente',
-                  '2': confirmedOrder
-                }
-              },
-              { headers }
-            ).then(tplRes => {
-              console.log(`📨 WhatsApp enviado_transporte enviado (Pedido #${confirmedOrder}) | requestId: ${tplRes.data?.requestId || 'N/A'}`);
-            }).catch(err => {
-              const errorData = err.response?.data ? JSON.stringify(err.response.data) : err.message;
-              console.error(`❌ Error WhatsApp enviado_transporte (Pedido #${confirmedOrder}): ${errorData}`);
-            });
-          }
-        }
+        enviarWhatsAppPlantilla({
+          telefono: pedido.customer_phone,
+          plantilla: 'enviado_transporte',
+          variables: {
+            'headerImageUrl': remito.file_url,
+            '1': pedido.customer_name || 'Cliente',
+            '2': confirmedOrder
+          },
+          orderNumber: confirmedOrder
+        }).then(() => {
+          console.log(`📨 WhatsApp enviado_transporte enviado (Pedido #${confirmedOrder})`);
+        }).catch(err => {
+          console.error(`❌ Error WhatsApp enviado_transporte (Pedido #${confirmedOrder}): ${err.message}`);
+        });
       }
 
       res.json({
