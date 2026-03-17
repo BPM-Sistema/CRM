@@ -336,6 +336,26 @@ async function sendReply(job) {
     throw new Error('RATE_LIMITED'); // Let BullMQ retry with backoff
   }
 
+  // Human-like delay: wait random seconds before sending (configurable from panel)
+  try {
+    const delayResult = await pool.query(
+      `SELECT value FROM ai_bot_config WHERE key = 'reply_delay' LIMIT 1`
+    );
+    const delayCfg = delayResult.rows[0]?.value || { min_seconds: 5, max_seconds: 30, enabled: true };
+    if (delayCfg.enabled !== false) {
+      const min = Math.max(0, delayCfg.min_seconds || 5);
+      const max = Math.max(min, delayCfg.max_seconds || 30);
+      const delayMs = (min + Math.random() * (max - min)) * 1000;
+      jobLog.info({ delayMs: Math.round(delayMs), min, max }, 'Aplicando delay humano antes de enviar');
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  } catch (delayCfgErr) {
+    // Si falla la lectura de config, aplicar default 5-30s
+    const delayMs = (5 + Math.random() * 25) * 1000;
+    jobLog.warn({ delayMs: Math.round(delayMs), err: delayCfgErr.message }, 'Delay config read failed, using default');
+    await new Promise(resolve => setTimeout(resolve, delayMs));
+  }
+
   try {
     // 1. Load event and reply from DB (validate they exist)
     const eventResult = await pool.query(

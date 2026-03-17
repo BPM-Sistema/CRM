@@ -73,6 +73,11 @@ export function AiBotConfig() {
     max_replies_per_hour: 100,
     max_tokens_per_day: 500000,
   });
+  const [replyDelay, setReplyDelay] = useState({
+    min_seconds: 5,
+    max_seconds: 30,
+    enabled: true,
+  });
   const [claudeConfig, setClaudeConfig] = useState({
     model: 'claude-sonnet-4-5-20250514',
     max_tokens: 1024,
@@ -104,6 +109,8 @@ export function AiBotConfig() {
         max_replies_per_hour: getConfigValue(data, 'max_replies_per_hour', 100),
         max_tokens_per_day: getConfigValue(data, 'max_tokens_per_day', 500000),
       });
+      const delayVal = getConfigValue(data, 'reply_delay', { min_seconds: 5, max_seconds: 30, enabled: true });
+      setReplyDelay(delayVal as { min_seconds: number; max_seconds: number; enabled: boolean });
       setClaudeConfig({
         model: getConfigValue(data, 'claude_model', 'claude-sonnet-4-5-20250514'),
         max_tokens: getConfigValue(data, 'claude_max_tokens', 1024),
@@ -375,6 +382,59 @@ export function AiBotConfig() {
               isLoading={saving === 'rate_limits'}
               leftIcon={<Save size={14} />}
               onClick={() => saveSection('rate_limits', rateLimits)}
+            >
+              Guardar
+            </Button>
+          </div>
+        </Card>
+
+        {/* ── Reply Delay (Human-like) ─────────────────────────────────── */}
+        <Card>
+          <CardHeader
+            title="Delay de respuesta"
+            description="Espera aleatoria antes de responder para simular comportamiento humano"
+            action={
+              <Switch
+                checked={replyDelay.enabled}
+                onChange={() => setReplyDelay((prev) => ({ ...prev, enabled: !prev.enabled }))}
+              />
+            }
+          />
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input
+              label="Minimo (segundos)"
+              type="number"
+              min={0}
+              max={120}
+              value={replyDelay.min_seconds}
+              disabled={!replyDelay.enabled}
+              onChange={(e) =>
+                setReplyDelay((prev) => ({ ...prev, min_seconds: parseInt(e.target.value) || 0 }))
+              }
+            />
+            <Input
+              label="Maximo (segundos)"
+              type="number"
+              min={1}
+              max={300}
+              value={replyDelay.max_seconds}
+              disabled={!replyDelay.enabled}
+              onChange={(e) =>
+                setReplyDelay((prev) => ({ ...prev, max_seconds: parseInt(e.target.value) || 1 }))
+              }
+            />
+          </div>
+          {replyDelay.enabled && (
+            <p className="mt-3 text-sm text-neutral-500">
+              Cada respuesta esperara entre <span className="font-medium text-neutral-300">{replyDelay.min_seconds}s</span> y <span className="font-medium text-neutral-300">{replyDelay.max_seconds}s</span> antes de enviarse.
+            </p>
+          )}
+          <div className="flex justify-end mt-4">
+            <Button
+              size="sm"
+              isLoading={saving === 'reply_delay'}
+              leftIcon={<Save size={14} />}
+              onClick={() => saveSection('reply_delay', replyDelay)}
             >
               Guardar
             </Button>
