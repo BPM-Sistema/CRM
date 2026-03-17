@@ -521,69 +521,86 @@ export function IntegrationSettings() {
                     );
                 })}
 
-                {/* Plantillas WhatsApp */}
-                {whatsappConfigs.filter(c => c.key.startsWith('whatsapp_tpl_')).length > 0 && (
-                  <div className="mt-6">
-                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                      <Send className="h-4 w-4" />
-                      Plantillas
-                    </h3>
-                    <div className="space-y-2">
-                      {whatsappConfigs.filter(c => c.key.startsWith('whatsapp_tpl_')).map(config => {
-                        const friendlyName = KEY_NAMES[config.key] || config.key;
-                        const isUpdating = updating === config.key;
-                        const isNotImplemented = config.description?.includes('NO IMPLEMENTADA');
+                {/* Plantillas WhatsApp por categoría */}
+                {(() => {
+                  const templates = whatsappConfigs.filter(c => c.key.startsWith('whatsapp_tpl_'));
+                  if (templates.length === 0) return null;
 
-                        return (
-                          <div
-                            key={config.key}
-                            className={`flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
-                              isNotImplemented
-                                ? 'bg-red-50 border-red-200'
-                                : config.enabled
-                                  ? 'bg-white border-gray-200'
-                                  : 'bg-gray-50 border-gray-200'
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <Send className={`h-4 w-4 ${
-                                isNotImplemented
-                                  ? 'text-red-400'
-                                  : config.enabled
-                                    ? 'text-green-500'
-                                    : 'text-gray-400'
-                              }`} />
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <span className={`text-sm font-medium ${
-                                    isNotImplemented ? 'text-red-700' : 'text-gray-900'
-                                  }`}>
-                                    {friendlyName}
-                                  </span>
-                                  {isNotImplemented && (
-                                    <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-xs font-medium rounded">
-                                      Sin implementar
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-gray-500">{config.description}</p>
-                              </div>
+                  const TEMPLATE_CATEGORIES: { label: string; icon: string; keys: string[] }[] = [
+                    { label: 'Pedidos', icon: '📦', keys: ['whatsapp_tpl_pedido_creado', 'whatsapp_tpl_pedido_cancelado'] },
+                    { label: 'Pagos', icon: '💰', keys: ['whatsapp_tpl_comprobante_confirmado', 'whatsapp_tpl_comprobante_rechazado', 'whatsapp_tpl_partial_paid'] },
+                    { label: 'Envíos', icon: '🚚', keys: ['whatsapp_tpl_datos_envio', 'whatsapp_tpl_enviado_env_nube', 'whatsapp_tpl_enviado_transporte'] },
+                  ];
+
+                  const renderTemplateRow = (config: typeof templates[0]) => {
+                    const friendlyName = KEY_NAMES[config.key] || config.key;
+                    const isUpd = updating === config.key;
+                    const isNotImpl = config.description?.includes('NO IMPLEMENTADA');
+
+                    return (
+                      <div
+                        key={config.key}
+                        className={`flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
+                          isNotImpl
+                            ? 'bg-red-50 border-red-200'
+                            : config.enabled
+                              ? 'bg-white border-gray-200'
+                              : 'bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Send className={`h-4 w-4 ${
+                            isNotImpl ? 'text-red-400' : config.enabled ? 'text-green-500' : 'text-gray-400'
+                          }`} />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-sm font-medium ${isNotImpl ? 'text-red-700' : 'text-gray-900'}`}>
+                                {friendlyName}
+                              </span>
+                              {isNotImpl && (
+                                <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-xs font-medium rounded">
+                                  Sin implementar
+                                </span>
+                              )}
                             </div>
-                            {isUpdating ? (
-                              <RefreshCw className="h-4 w-4 text-gray-400 animate-spin" />
-                            ) : (
-                              <Switch
-                                checked={config.enabled}
-                                onChange={() => handleToggle(config.key, config.enabled)}
-                                disabled={!canUpdate}
-                              />
-                            )}
+                            <p className="text-xs text-gray-500">{config.description}</p>
+                          </div>
+                        </div>
+                        {isUpd ? (
+                          <RefreshCw className="h-4 w-4 text-gray-400 animate-spin" />
+                        ) : (
+                          <Switch
+                            checked={config.enabled}
+                            onChange={() => handleToggle(config.key, config.enabled)}
+                            disabled={!canUpdate}
+                          />
+                        )}
+                      </div>
+                    );
+                  };
+
+                  return (
+                    <div className="mt-6 space-y-5">
+                      {TEMPLATE_CATEGORIES.map(cat => {
+                        const catTemplates = cat.keys
+                          .map(k => templates.find(t => t.key === k))
+                          .filter(Boolean) as typeof templates;
+                        if (catTemplates.length === 0) return null;
+                        return (
+                          <div key={cat.label}>
+                            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                              <span>{cat.icon}</span>
+                              {cat.label}
+                            </h3>
+                            <div className="space-y-2">
+                              {catTemplates.map(renderTemplateRow)}
+                            </div>
                           </div>
                         );
                       })}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
                 </div>
               </div>
             )}
