@@ -22,8 +22,6 @@ import {
   ChevronDown,
   ChevronUp,
   Zap,
-  Bug,
-  PhoneCall,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { authFetch as apiAuthFetch } from '../services/api';
@@ -116,10 +114,7 @@ const SERVICE_ICONS: Record<string, typeof Database> = {
   TiendaNube: ShoppingCart,
   Botmaker: MessageSquare,
   'Claude Vision': Eye,
-  'Claude Vision (OCR)': Eye,
   'Supabase Storage': Cloud,
-  Sentry: Bug,
-  'Waspy API': PhoneCall,
 };
 
 function formatUptime(seconds: number): string {

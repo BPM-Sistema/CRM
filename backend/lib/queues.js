@@ -33,7 +33,7 @@ const defaultJobOptions = {
   removeOnFail: { count: 5000 }
 };
 
-const QUEUE_NAMES = ['ocr', 'whatsapp', 'sync-orders', 'labels', 'reconciliation', 'meta-events', 'ai-generate', 'ai-send-reply'];
+const QUEUE_NAMES = ['whatsapp', 'meta-events', 'ai-generate', 'ai-send-reply'];
 
 // Custom job options per queue (falls back to defaultJobOptions)
 const queueJobOptions = {
@@ -102,11 +102,7 @@ async function getQueueStats() {
 
 module.exports = {
   queues,
-  ocrQueue: queues['ocr'],
   whatsappQueue: queues['whatsapp'],
-  syncOrdersQueue: queues['sync-orders'],
-  labelsQueue: queues['labels'],
-  reconciliationQueue: queues['reconciliation'],
   metaEventsQueue: queues['meta-events'],
   aiGenerateQueue: queues['ai-generate'],
   aiSendReplyQueue: queues['ai-send-reply'],
