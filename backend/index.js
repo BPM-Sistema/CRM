@@ -3142,8 +3142,10 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     /* ===============================
        1️⃣c TRY TO ENQUEUE OCR JOB
     ================================ */
-    const { ocrQueue } = require('./lib/queues');
-    if (ocrQueue) {
+    // OCR queue desactivada - Claude Vision procesa sincrónicamente (~5s)
+    // El worker de Google Vision ya no se usa para comprobantes
+    const ocrQueueDisabled = true;
+    if (!ocrQueueDisabled) {
       // Sanitizar nombre de archivo para la ruta de Supabase
       const sanitizedFn = file.originalname
         .normalize('NFD')
