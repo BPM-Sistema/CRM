@@ -252,69 +252,87 @@ async function syncSingleCustomer(tnCustomerId) {
 }
 
 /**
- * Fetch order count and last order date for customers from TN orders API
- * This fills in the orders_count that TN customers API doesn't provide
- * @returns {Promise<Object>} { updated, errors }
+ * Fetch ALL orders from TN and calculate orders_count per customer
+ * TN's customer_id filter on /orders doesn't work reliably
+ * @param {Function} onProgress - Callback for progress updates
+ * @returns {Promise<Object>} { updated, totalOrders }
  */
-async function syncOrdersCountFromTN() {
-  console.log('[CustomerSync] Syncing orders_count from TN orders API...');
+async function syncOrdersCountFromTN(onProgress = null) {
+  console.log('[CustomerSync] Fetching all orders from TN to calculate orders_count...');
 
-  // Get customers with total_spent > 0 but orders_count = 0 (missing data)
-  const { rows: customers } = await pool.query(`
-    SELECT id, tn_customer_id, name
-    FROM customers
-    WHERE tn_customer_id IS NOT NULL
-      AND COALESCE(total_spent, 0) > 0
-      AND COALESCE(orders_count, 0) = 0
-    LIMIT 500
-  `);
+  // Fetch all orders with pagination
+  const customerOrders = new Map(); // tn_customer_id -> { count, lastOrderAt }
+  let page = 1;
+  let totalOrders = 0;
 
-  console.log(`[CustomerSync] Found ${customers.length} customers needing orders sync`);
-
-  let updated = 0;
-  let errors = 0;
-
-  for (const customer of customers) {
+  while (true) {
     try {
-      // Fetch orders for this customer from TN
-      const url = `${TN_API_BASE}/orders?customer_id=${customer.tn_customer_id}&per_page=200`;
+      const url = `${TN_API_BASE}/orders?per_page=200&page=${page}`;
       const response = await axios.get(url, { headers: TN_HEADERS });
       const orders = response.data;
 
-      if (orders && orders.length > 0) {
-        // Count paid orders
-        const paidOrders = orders.filter(o =>
-          o.payment_status === 'paid' || o.payment_status === 'partially_paid'
-        );
-        const ordersCount = paidOrders.length;
+      if (!orders || orders.length === 0) break;
 
-        // Get last order date
-        const lastOrder = orders.sort((a, b) =>
-          new Date(b.created_at) - new Date(a.created_at)
-        )[0];
-        const lastOrderAt = lastOrder?.created_at || null;
+      for (const order of orders) {
+        const customerId = order.customer?.id;
+        if (!customerId) continue;
 
-        // Update customer
-        await pool.query(`
-          UPDATE customers
-          SET orders_count = $1, last_order_at = $2, updated_at = NOW()
-          WHERE id = $3
-        `, [ordersCount, lastOrderAt, customer.id]);
+        // Solo contar órdenes pagadas
+        if (order.payment_status !== 'paid' && order.payment_status !== 'partially_paid') continue;
 
-        updated++;
-        console.log(`[CustomerSync] ${customer.name}: ${ordersCount} orders`);
+        const existing = customerOrders.get(customerId) || { count: 0, lastOrderAt: null };
+        existing.count++;
+
+        const orderDate = order.created_at;
+        if (!existing.lastOrderAt || new Date(orderDate) > new Date(existing.lastOrderAt)) {
+          existing.lastOrderAt = orderDate;
+        }
+
+        customerOrders.set(customerId, existing);
       }
 
-      // Rate limit - TN allows 2 req/sec
-      await new Promise(r => setTimeout(r, 600));
+      totalOrders += orders.length;
+      console.log(`[CustomerSync] Page ${page}: ${orders.length} orders (total: ${totalOrders}, unique customers: ${customerOrders.size})`);
+
+      if (onProgress) {
+        onProgress({ page, totalOrders, uniqueCustomers: customerOrders.size });
+      }
+
+      if (orders.length < 200) break;
+
+      page++;
+      await new Promise(r => setTimeout(r, 500)); // Rate limit
     } catch (err) {
-      console.error(`[CustomerSync] Error syncing orders for ${customer.name}:`, err.message);
-      errors++;
+      console.error(`[CustomerSync] Error fetching orders page ${page}:`, err.message);
+      if (err.response?.status === 504 || err.response?.status === 429) {
+        // Timeout o rate limit - esperar y reintentar
+        await new Promise(r => setTimeout(r, 5000));
+        continue;
+      }
+      break;
     }
   }
 
-  console.log(`[CustomerSync] Orders sync complete. Updated: ${updated}, Errors: ${errors}`);
-  return { updated, errors, remaining: customers.length - updated - errors };
+  console.log(`[CustomerSync] Fetched ${totalOrders} orders for ${customerOrders.size} customers`);
+
+  // Now update customers table in batch
+  let updated = 0;
+  for (const [tnCustomerId, data] of customerOrders) {
+    try {
+      const result = await pool.query(`
+        UPDATE customers
+        SET orders_count = $1, last_order_at = $2, updated_at = NOW()
+        WHERE tn_customer_id = $3 AND (orders_count IS NULL OR orders_count != $1)
+      `, [data.count, data.lastOrderAt, tnCustomerId]);
+
+      if (result.rowCount > 0) updated++;
+    } catch (err) {
+      // Ignore individual errors
+    }
+  }
+
+  console.log(`[CustomerSync] Updated ${updated} customers with orders_count`);
+  return { updated, totalOrders, uniqueCustomers: customerOrders.size };
 }
 
 module.exports = {
