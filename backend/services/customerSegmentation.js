@@ -6,79 +6,96 @@
 const pool = require('../db');
 
 /**
- * Reglas de segmentación RFM
+ * Reglas de segmentación RFM - EXACTAS de Tiendanube
  * Orden importa: se evalúan de arriba a abajo, la primera que matchea gana
  */
 const SEGMENT_RULES = [
+  // === COMPRAS RECIENTES (< 45 días) ===
   {
     segment: 'campeones',
     label: 'Campeones',
-    description: 'Compradores frecuentes y recientes',
+    description: '6+ compras, última < 45 días',
     rules: {
-      orders_count_min: 5,
-      days_since_last_order_max: 30
+      orders_count_min: 6,
+      days_since_last_order_max: 45
     }
   },
   {
     segment: 'leales',
     label: 'Leales',
-    description: 'Compradores regulares',
+    description: '3-5 compras, última < 45 días',
     rules: {
       orders_count_min: 3,
+      orders_count_max: 5,
+      days_since_last_order_max: 45
+    }
+  },
+  {
+    segment: 'recientes',
+    label: 'Recientes',
+    description: '1-2 compras, última < 45 días',
+    rules: {
+      orders_count_min: 1,
+      orders_count_max: 2,
+      days_since_last_order_max: 45
+    }
+  },
+  // === COMPRAS MEDIAS (45-90 días) ===
+  {
+    segment: 'alto_potencial',
+    label: 'Alto Potencial',
+    description: '5+ compras, última 45-90 días',
+    rules: {
+      orders_count_min: 5,
+      days_since_last_order_min: 46,
       days_since_last_order_max: 90
     }
   },
   {
-    segment: 'potenciales',
-    label: 'Potenciales',
-    description: 'Segunda compra reciente',
+    segment: 'necesitan_incentivo',
+    label: 'Necesitan Incentivo',
+    description: '1-4 compras, última 45-90 días',
     rules: {
-      orders_count_min: 2,
+      orders_count_min: 1,
       orders_count_max: 4,
-      days_since_last_order_max: 60
-    }
-  },
-  {
-    segment: 'nuevos',
-    label: 'Nuevos',
-    description: 'Primera compra muy reciente',
-    rules: {
-      orders_count_min: 1,
-      orders_count_max: 1,
-      days_since_last_order_max: 30
-    }
-  },
-  {
-    segment: 'prometedores',
-    label: 'Prometedores',
-    description: 'Primera compra, pero hace un tiempo',
-    rules: {
-      orders_count_min: 1,
-      orders_count_max: 1,
-      days_since_last_order_min: 31,
+      days_since_last_order_min: 46,
       days_since_last_order_max: 90
     }
   },
+  // === COMPRAS ANTIGUAS (90-180 días) ===
   {
-    segment: 'en_riesgo',
-    label: 'En Riesgo',
-    description: 'Compradores que se están alejando',
+    segment: 'no_pueden_perder',
+    label: 'No Se Pueden Perder',
+    description: '5+ compras, última 90-180 días',
     rules: {
-      orders_count_min: 2,
+      orders_count_min: 5,
       days_since_last_order_min: 91,
       days_since_last_order_max: 180
     }
   },
   {
-    segment: 'hibernando',
-    label: 'Hibernando',
-    description: 'Sin compras en mucho tiempo',
+    segment: 'en_riesgo',
+    label: 'En Riesgo',
+    description: '1-4 compras, última 90-180 días',
+    rules: {
+      orders_count_min: 1,
+      orders_count_max: 4,
+      days_since_last_order_min: 91,
+      days_since_last_order_max: 180
+    }
+  },
+  // === MUY ANTIGUAS (180-365 días) ===
+  {
+    segment: 'por_perder',
+    label: 'Por Perder',
+    description: '1+ compras, última 180-365 días',
     rules: {
       orders_count_min: 1,
       days_since_last_order_min: 181,
       days_since_last_order_max: 365
     }
   },
+  // === PERDIDOS (> 365 días) ===
   {
     segment: 'perdidos',
     label: 'Perdidos',
@@ -88,6 +105,7 @@ const SEGMENT_RULES = [
       days_since_last_order_min: 366
     }
   },
+  // === SIN COMPRAS ===
   {
     segment: 'sin_compras',
     label: 'Sin Compras',
@@ -100,23 +118,39 @@ const SEGMENT_RULES = [
 
 /**
  * Determina el segmento de un cliente basándose en sus métricas
- * @param {Object} customer - { orders_count, last_order_at, total_spent }
+ * Reglas exactas de Tiendanube
+ * @param {Object} customer - { orders_count, last_order_at, tn_updated_at }
  * @returns {string} Nombre del segmento
  */
 function determineSegment(customer) {
-  // Usar orders_count si existe, sino inferir de total_spent (datos de TN)
-  const ordersCount = customer.orders_count > 0
-    ? customer.orders_count
-    : (parseFloat(customer.total_spent) > 0 ? 1 : 0);  // Si gastó algo, al menos 1 orden
-  const lastOrderAt = customer.last_order_at || customer.tn_updated_at; // Fallback a última actualización TN
+  // Usar orders_count directo de TN (ya viene sincronizado correctamente)
+  const ordersCount = parseInt(customer.orders_count) || 0;
 
-  let daysSinceLastOrder = null;
-  if (lastOrderAt) {
-    daysSinceLastOrder = Math.floor((Date.now() - new Date(lastOrderAt).getTime()) / (1000 * 60 * 60 * 24));
+  // Sin compras = 0 órdenes
+  if (ordersCount === 0) {
+    return 'sin_compras';
   }
 
+  // Calcular días desde última orden
+  // Usar last_order_at si existe, sino tn_updated_at como proxy
+  const lastOrderAt = customer.last_order_at || customer.tn_updated_at;
+
+  if (!lastOrderAt) {
+    // Tiene órdenes pero no fecha - tratamos como perdido (muy viejo)
+    return 'perdidos';
+  }
+
+  const daysSinceLastOrder = Math.floor(
+    (Date.now() - new Date(lastOrderAt).getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  // Aplicar reglas de TN en orden
   for (const rule of SEGMENT_RULES) {
     const r = rule.rules;
+
+    // Si es sin_compras, ya lo manejamos arriba
+    if (rule.segment === 'sin_compras') continue;
+
     let matches = true;
 
     // orders_count checks
@@ -127,25 +161,12 @@ function determineSegment(customer) {
       matches = false;
     }
 
-    // days_since_last_order checks (solo si hay última orden)
-    if (daysSinceLastOrder !== null) {
-      if (r.days_since_last_order_min !== undefined && daysSinceLastOrder < r.days_since_last_order_min) {
-        matches = false;
-      }
-      if (r.days_since_last_order_max !== undefined && daysSinceLastOrder > r.days_since_last_order_max) {
-        matches = false;
-      }
-    } else {
-      // Si no hay última orden pero la regla requiere una, no matchea
-      if (r.days_since_last_order_min !== undefined || r.days_since_last_order_max !== undefined) {
-        if (ordersCount > 0) {
-          // Tiene órdenes pero no fecha? Raro, pero tratamos como muy viejo
-          // Solo matchea si la regla NO tiene límite max
-          if (r.days_since_last_order_max !== undefined) {
-            matches = false;
-          }
-        }
-      }
+    // days_since_last_order checks
+    if (r.days_since_last_order_min !== undefined && daysSinceLastOrder < r.days_since_last_order_min) {
+      matches = false;
+    }
+    if (r.days_since_last_order_max !== undefined && daysSinceLastOrder > r.days_since_last_order_max) {
+      matches = false;
     }
 
     if (matches) {
@@ -153,77 +174,61 @@ function determineSegment(customer) {
     }
   }
 
+  // Si no matchea ninguna regla (edge case)
   return 'sin_clasificar';
 }
 
 /**
- * Recalcula segmentos para todos los clientes (versión optimizada con SQL)
+ * Recalcula segmentos para todos los clientes
+ * Usa la función determineSegment() para consistencia con segmentación individual
  * @returns {Promise<Object>} { updated, bySegment }
  */
 async function segmentAllCustomers() {
   console.log('[CustomerSegmentation] Calculando segmentos para todos los clientes...');
 
-  // Una sola query UPDATE con CASE WHEN - mucho más rápido
-  const result = await pool.query(`
-    UPDATE customers
-    SET
-      segment = CASE
-        -- Primero determinamos si tiene compras (orders_count > 0 O total_spent > 0)
-        WHEN (orders_count > 0 OR COALESCE(total_spent, 0) > 0) THEN
-          CASE
-            -- Calcular días desde última orden (usar last_order_at o tn_updated_at)
-            WHEN COALESCE(last_order_at, tn_updated_at) IS NOT NULL THEN
-              CASE
-                -- Campeones: 5+ órdenes Y última < 30 días
-                WHEN orders_count >= 5
-                  AND EXTRACT(EPOCH FROM (NOW() - COALESCE(last_order_at, tn_updated_at))) / 86400 <= 30
-                  THEN 'campeones'
-                -- Leales: 3+ órdenes Y última < 90 días
-                WHEN orders_count >= 3
-                  AND EXTRACT(EPOCH FROM (NOW() - COALESCE(last_order_at, tn_updated_at))) / 86400 <= 90
-                  THEN 'leales'
-                -- Potenciales: 2-4 órdenes Y última < 60 días
-                WHEN orders_count >= 2 AND orders_count <= 4
-                  AND EXTRACT(EPOCH FROM (NOW() - COALESCE(last_order_at, tn_updated_at))) / 86400 <= 60
-                  THEN 'potenciales'
-                -- Nuevos: 1 orden Y última < 30 días (o total_spent > 0 sin orders_count)
-                WHEN (orders_count = 1 OR (orders_count = 0 AND COALESCE(total_spent, 0) > 0))
-                  AND EXTRACT(EPOCH FROM (NOW() - COALESCE(last_order_at, tn_updated_at))) / 86400 <= 30
-                  THEN 'nuevos'
-                -- Prometedores: 1 orden Y última 31-90 días
-                WHEN (orders_count = 1 OR (orders_count = 0 AND COALESCE(total_spent, 0) > 0))
-                  AND EXTRACT(EPOCH FROM (NOW() - COALESCE(last_order_at, tn_updated_at))) / 86400 BETWEEN 31 AND 90
-                  THEN 'prometedores'
-                -- En riesgo: 2+ órdenes Y última 91-180 días
-                WHEN orders_count >= 2
-                  AND EXTRACT(EPOCH FROM (NOW() - COALESCE(last_order_at, tn_updated_at))) / 86400 BETWEEN 91 AND 180
-                  THEN 'en_riesgo'
-                -- Hibernando: cualquier orden Y última 181-365 días
-                WHEN EXTRACT(EPOCH FROM (NOW() - COALESCE(last_order_at, tn_updated_at))) / 86400 BETWEEN 181 AND 365
-                  THEN 'hibernando'
-                -- Perdidos: cualquier orden Y última > 365 días
-                WHEN EXTRACT(EPOCH FROM (NOW() - COALESCE(last_order_at, tn_updated_at))) / 86400 > 365
-                  THEN 'perdidos'
-                ELSE 'sin_clasificar'
-              END
-            ELSE 'sin_clasificar'
-          END
-        ELSE 'sin_compras'
-      END,
-      segment_updated_at = NOW()
+  // Obtener todos los clientes con sus métricas
+  const { rows: customers } = await pool.query(`
+    SELECT id, orders_count, last_order_at, total_spent, tn_updated_at
+    FROM customers
   `);
 
-  console.log('[CustomerSegmentation] Segmentación completada, filas actualizadas:', result.rowCount);
+  console.log(`[CustomerSegmentation] Procesando ${customers.length} clientes...`);
 
-  // Obtener conteo por segmento
-  const { rows } = await pool.query(`
-    SELECT segment, COUNT(*) as count FROM customers GROUP BY segment
-  `);
+  // Calcular segmento para cada uno usando la lógica JS (consistente)
+  const updates = customers.map(c => ({
+    id: c.id,
+    segment: determineSegment(c)
+  }));
 
+  // Agrupar por segmento para UPDATE batch
   const bySegment = {};
-  rows.forEach(r => { bySegment[r.segment] = parseInt(r.count); });
+  for (const u of updates) {
+    if (!bySegment[u.segment]) bySegment[u.segment] = [];
+    bySegment[u.segment].push(u.id);
+  }
 
-  return { updated: result.rowCount, bySegment };
+  // Ejecutar UPDATEs por segmento (máximo 9 queries vs miles)
+  let totalUpdated = 0;
+  for (const [segment, ids] of Object.entries(bySegment)) {
+    if (ids.length === 0) continue;
+    const result = await pool.query(`
+      UPDATE customers
+      SET segment = $1, segment_updated_at = NOW()
+      WHERE id = ANY($2)
+    `, [segment, ids]);
+    totalUpdated += result.rowCount;
+    console.log(`[CustomerSegmentation] ${segment}: ${result.rowCount} clientes`);
+  }
+
+  console.log('[CustomerSegmentation] Segmentación completada, total actualizado:', totalUpdated);
+
+  // Conteo final
+  const counts = {};
+  for (const [segment, ids] of Object.entries(bySegment)) {
+    counts[segment] = ids.length;
+  }
+
+  return { updated: totalUpdated, bySegment: counts };
 }
 
 /**
