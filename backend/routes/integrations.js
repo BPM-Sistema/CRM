@@ -83,11 +83,19 @@ async function checkAllServices() {
       if (!res.data) throw new Error('Respuesta inválida');
     }),
 
-    // 5. Google Cloud Vision (OCR)
-    checkService('Google Vision (OCR)', async () => {
-      const credentials = process.env.GOOGLE_CLOUD_CREDENTIALS || process.env.GOOGLE_APPLICATION_CREDENTIALS;
-      if (!credentials) throw new Error('Credenciales no configuradas');
-      // Just verify credentials exist - actual API call would cost money
+    // 5. Claude Vision (OCR) - Anthropic API
+    checkService('Claude Vision (OCR)', async () => {
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) throw new Error('API key no configurada');
+
+      const res = await axios.get('https://api.anthropic.com/v1/models', {
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        timeout: 5000
+      });
+      if (!res.data) throw new Error('Respuesta inválida');
     }),
 
     // 6. Sentry

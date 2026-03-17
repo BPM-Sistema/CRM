@@ -69,11 +69,9 @@ router.get('/overview', requirePermission('integrations.view'), async (req, res)
             timeout: 5000
           });
         }),
-        checkServiceQuick('Google Vision', async () => {
-          const creds = process.env.GOOGLE_CLOUD_CREDENTIALS ||
-            process.env.GOOGLE_APPLICATION_CREDENTIALS ||
-            process.env.GOOGLE_CREDENTIALS_JSON;
-          if (!creds) throw new Error('Not configured');
+        checkServiceQuick('Claude Vision', async () => {
+          const apiKey = process.env.ANTHROPIC_API_KEY;
+          if (!apiKey) throw new Error('API key not configured');
         }),
         checkServiceQuick('Supabase Storage', async () => {
           const { error } = await supabase.storage.from('comprobantes').list('', { limit: 1 });

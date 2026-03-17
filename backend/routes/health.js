@@ -112,12 +112,10 @@ router.get('/deep', authenticate, requirePermission('integrations.view'), async 
         if (!r.data) throw new Error('Invalid response');
       }),
 
-      // 6. Google Vision
-      checkServiceWithTimeout('Google Vision', async () => {
-        const credentials = process.env.GOOGLE_CLOUD_CREDENTIALS ||
-          process.env.GOOGLE_APPLICATION_CREDENTIALS ||
-          process.env.GOOGLE_CREDENTIALS_JSON;
-        if (!credentials) throw new Error('Credentials not configured');
+      // 6. Claude Vision (Anthropic)
+      checkServiceWithTimeout('Claude Vision', async () => {
+        const apiKey = process.env.ANTHROPIC_API_KEY;
+        if (!apiKey) throw new Error('API key not configured');
       })
     ]);
 
