@@ -11,7 +11,9 @@
     "dev": "nodemon index.js",
     "test": "jest --runInBand --detectOpenHandles --forceExit",
     "test:ci": "jest --runInBand --detectOpenHandles --forceExit --ci",
-    "build": "npm test"
+    "build": "npm test",
+    "workers": "node workers/index.js",
+    "workers:dev": "nodemon workers/index.js"
   },
   "keywords": [],
   "author": "Netu",

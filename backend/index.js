@@ -1220,6 +1220,25 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNu
   }
 }
 
+/**
+ * Queue a WhatsApp message via BullMQ if available, otherwise send directly.
+ */
+async function queueWhatsApp({ telefono, plantilla, variables, orderNumber }) {
+  const { whatsappQueue } = require('./lib/queues');
+  if (whatsappQueue) {
+    await whatsappQueue.add('send-whatsapp', {
+      telefono, plantilla, variables, orderNumber,
+      requestId: crypto.randomUUID()
+    }, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 10000 }
+    });
+    return;
+  }
+  // Fallback to direct send
+  return enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNumber });
+}
+
 
 
 
@@ -2069,7 +2088,7 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
 
       // Enviar comprobante_confirmado siempre al confirmar
       console.log(`📱 [${requestId}] Enviando WhatsApp comprobante_confirmado a ${customerPhone}`);
-      enviarWhatsAppPlantilla({
+      queueWhatsApp({
         telefono: customerPhone,
         plantilla: 'comprobante_confirmado',
         variables: { '1': customerName, '2': String(comprobante.monto), '3': comprobante.order_number },
@@ -2086,7 +2105,7 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
 
         if (parseInt(countRes.rows[0].count) === 1) {
           console.log(`📱 [${requestId}] Enviando WhatsApp datos__envio a ${customerPhone}`);
-          enviarWhatsAppPlantilla({
+          queueWhatsApp({
             telefono: customerPhone,
             plantilla: 'datos__envio',
             variables: { '1': customerName, '2': comprobante.order_number }
@@ -2172,7 +2191,7 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
 
     // WhatsApp al cliente - comprobante_rechazado
     if (comprobante.customer_phone) {
-      enviarWhatsAppPlantilla({
+      queueWhatsApp({
         telefono: comprobante.customer_phone,
         plantilla: 'comprobante_rechazado',
         variables: {
@@ -3102,7 +3121,7 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
 
       if (esEnvioNube && pedido.customer_phone && pedido.tn_order_id && pedido.tn_order_token) {
         const trackingParam = `${pedido.tn_order_id}/${pedido.tn_order_token}`;
-        enviarWhatsAppPlantilla({
+        queueWhatsApp({
           telefono: pedido.customer_phone,
           plantilla: 'enviado_env_nube',
           variables: {
@@ -3117,7 +3136,7 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
         console.log(`⚠️ No se envió WhatsApp enviado_env_nube: faltan datos (phone: ${!!pedido.customer_phone}, order_id: ${!!pedido.tn_order_id}, token: ${!!pedido.tn_order_token})`);
       } else if (!esEnvioNube && pedido.customer_phone) {
         // Envío por transporte (no Envío Nube) — controlado por toggle
-        enviarWhatsAppPlantilla({
+        queueWhatsApp({
           telefono: pedido.customer_phone,
           plantilla: 'enviado_transporte',
           variables: {
@@ -3132,7 +3151,7 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
 
     // WhatsApp automático cuando se marca como "cancelado"
     if (estado_pedido === 'cancelado' && pedido.customer_phone) {
-      enviarWhatsAppPlantilla({
+      queueWhatsApp({
         telefono: pedido.customer_phone,
         plantilla: 'pedido_cancelado',
         variables: {
@@ -3371,7 +3390,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
         );
         const clienteCancel = clienteCancelRes.rows[0];
         if (clienteCancel?.customer_phone) {
-          enviarWhatsAppPlantilla({
+          queueWhatsApp({
             telefono: clienteCancel.customer_phone,
             plantilla: 'pedido_cancelado',
             variables: {
@@ -3511,7 +3530,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
     }
 
     // 6️⃣ Botmaker - enviarWhatsAppPlantilla maneja testing filter, sufijo y tracking
-    await enviarWhatsAppPlantilla({
+    await queueWhatsApp({
       telefono,
       plantilla: 'pedido_creado',
       variables: {
@@ -3717,6 +3736,58 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     );
 
     /* ===============================
+       1️⃣c TRY TO ENQUEUE OCR JOB
+    ================================ */
+    const { ocrQueue } = require('./lib/queues');
+    if (ocrQueue) {
+      // Sanitizar nombre de archivo para la ruta de Supabase
+      const sanitizedFn = file.originalname
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^\w.-]/g, '_')
+        .replace(/_+/g, '_');
+      const supabasePath = `pendientes/${Date.now()}-${sanitizedFn}`;
+      const { data: publicUrlData } = supabase.storage
+        .from('comprobantes')
+        .getPublicUrl(supabasePath);
+      const fileUrl = publicUrlData.publicUrl;
+
+      const insertRes = await pool.query(
+        `INSERT INTO comprobantes (order_number, file_url, estado, monto_tiendanube)
+         VALUES ($1, $2, 'procesando_ocr', $3)
+         RETURNING id`,
+        [orderNumber, fileUrl, montoTiendanube]
+      );
+      const comprobanteId = insertRes.rows[0].id;
+
+      await ocrQueue.add('process-ocr', {
+        filePath: file.path,
+        orderNumber,
+        montoTiendanube,
+        currency,
+        customerName,
+        customerPhone: telefono,
+        comprobanteId,
+        supabasePath,
+        fileUrl,
+        requestId: req.requestId || crypto.randomUUID()
+      }, {
+        jobId: `ocr-${comprobanteId}`,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 }
+      });
+
+      return res.status(202).json({
+        ok: true,
+        queued: true,
+        comprobante_id: comprobanteId,
+        message: 'Comprobante recibido, procesando OCR...'
+      });
+    }
+
+    // Fallback: existing synchronous OCR processing continues below
+
+    /* ===============================
        2️⃣ ANÁLISIS CON CLAUDE VISION
     ================================ */
     const datosClaudeRaw = await analizarComprobante(file.path);
@@ -3887,10 +3958,11 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
       };
 
       console.log('plantilla final:', plantilla, 'variables:', variables);
-      enviarWhatsAppPlantilla({
+      queueWhatsApp({
         telefono,
         plantilla,
-        variables
+        variables,
+        orderNumber
       }).catch(err =>
         console.error('⚠️ Error WhatsApp cliente:', err.message)
       );

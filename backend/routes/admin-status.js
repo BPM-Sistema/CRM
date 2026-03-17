@@ -395,4 +395,21 @@ router.post('/retry-failed/:queueName', requirePermission('integrations.update')
   }
 });
 
+// ─── POST /admin/status/reconcile ────────────────────────
+
+router.post('/reconcile', requirePermission('integrations.update'), async (req, res) => {
+  try {
+    const { runReconciliation } = require('../workers/reconciliation.worker');
+    const results = await runReconciliation();
+    res.json({
+      ok: true,
+      ...results,
+      message: `Reconciliación completada. ${results.issues.length} problemas encontrados.`
+    });
+  } catch (error) {
+    console.error('Reconciliation error:', error.message);
+    res.status(500).json({ error: 'Error ejecutando reconciliación' });
+  }
+});
+
 module.exports = router;

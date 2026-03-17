@@ -1,0 +1,43 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-lint-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: node -e "const vm = require('vm'); const fs = require('fs'); new vm.Script(fs.readFileSync('index.js','utf8')); console.log('Syntax OK')"
+      - run: npm test -- --passWithNoFailures
+        env:
+          NODE_ENV: test
+          JWT_SECRET: test-secret-key-ci
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: financial-crm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: financial-crm/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build
