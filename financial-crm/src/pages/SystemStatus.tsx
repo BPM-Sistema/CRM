@@ -232,10 +232,12 @@ export default function SystemStatus() {
   const handleDismissIncidents = async () => {
     setDismissing(true);
     try {
-      await authPost(`${API_BASE_URL}/admin/status/dismiss-incidents`);
+      const result = await authPost(`${API_BASE_URL}/admin/status/dismiss-incidents`);
+      console.log('Dismiss result:', result);
       await loadAll();
     } catch (err) {
       console.error('Error dismissing:', err);
+      setError(err instanceof Error ? err.message : 'Error limpiando incidentes');
     } finally {
       setDismissing(false);
     }
