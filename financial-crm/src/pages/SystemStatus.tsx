@@ -236,11 +236,11 @@ export default function SystemStatus() {
     setError(null);
     try {
       const [overviewData, incidentsData, queuesData] = await Promise.all([
-        authFetch(`${API_BASE_URL}/admin/status/overview`),
+        authFetch(`${API_BASE_URL}/admin/status/overview`).catch(() => null),
         authFetch(`${API_BASE_URL}/admin/status/incidents`).catch(() => ({ incidents: [] })),
         authFetch(`${API_BASE_URL}/admin/status/queues`).catch(() => ({ queues: {} })),
       ]);
-      setOverview(overviewData);
+      if (overviewData) setOverview(overviewData);
       setIncidents(incidentsData.incidents || []);
       setQueueDetails(queuesData.queues || {});
       setLastRefresh(new Date());
