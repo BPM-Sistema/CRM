@@ -50,14 +50,23 @@ async function start() {
 
   // Crear conexion dedicada para BullMQ (requiere maxRetriesPerRequest: null)
   const Redis = require('ioredis');
-  const connection = new Redis({
-    host: process.env.REDIS_HOST,
-    port: Number(process.env.REDIS_PORT) || 6379,
-    password: process.env.REDIS_PASSWORD || undefined,
+  const bullmqOptions = {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
     lazyConnect: false
-  });
+  };
+
+  let connection;
+  if (process.env.REDIS_URL) {
+    connection = new Redis(process.env.REDIS_URL, bullmqOptions);
+  } else {
+    connection = new Redis({
+      host: process.env.REDIS_HOST,
+      port: Number(process.env.REDIS_PORT) || 6379,
+      password: process.env.REDIS_PASSWORD || undefined,
+      ...bullmqOptions
+    });
+  }
 
   // Iniciar workers
   const ocrWorker = createOcrWorker(connection);

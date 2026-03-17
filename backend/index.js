@@ -4767,8 +4767,14 @@ function getSyncStatus() {
 // ═══════════════════════════════════════════════════════════════
 
 // Ejecutar sincronización desde Cloud Scheduler (cron)
+// Protegido por secret obligatorio — rechaza si no está configurado
 app.post('/sync/cron', async (req, res) => {
   const secret = req.headers['x-cron-secret'];
+
+  if (!process.env.CRON_SECRET) {
+    console.error('❌ CRON_SECRET no configurado — endpoint cron bloqueado');
+    return res.status(500).json({ error: 'Cron secret not configured' });
+  }
 
   if (!secret || secret !== process.env.CRON_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -5768,10 +5774,36 @@ app.post('/orders/envio-nube-labels/preview', authenticate, async (req, res) => 
 // Sentry error handler - DEBE ir después de todas las rutas
 Sentry.setupExpressErrorHandler(app);
 
-// Fallback error handler
+// Global error handler — catch-all para errores no manejados en controladores
 app.use((err, req, res, next) => {
-  console.error('❌ Express error:', err.message);
-  res.status(500).json({ error: 'Error interno del servidor' });
+  const requestId = req.requestId || 'unknown';
+  const status = err.status || err.statusCode || 500;
+
+  // Log estructurado con contexto
+  console.error(JSON.stringify({
+    level: 'error',
+    msg: 'Unhandled Express error',
+    requestId,
+    method: req.method,
+    url: req.originalUrl,
+    userId: req.user?.id,
+    error: err.message,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  }));
+
+  // Reportar a Sentry con contexto
+  Sentry.withScope((scope) => {
+    scope.setTag('requestId', requestId);
+    scope.setUser({ id: req.user?.id });
+    Sentry.captureException(err);
+  });
+
+  // No exponer detalles internos en producción
+  if (res.headersSent) return next(err);
+  res.status(status).json({
+    error: status >= 500 ? 'Error interno del servidor' : err.message,
+    requestId
+  });
 });
 
 // Capturar errores no manejados globalmente

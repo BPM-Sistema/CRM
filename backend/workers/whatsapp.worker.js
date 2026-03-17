@@ -12,28 +12,7 @@ const axios = require('axios');
 const pool = require('../db');
 const { workerLogger: log } = require('../lib/logger');
 const { whatsapp: waConfig, isEnabled: isIntegrationEnabled } = require('../services/integrationConfig');
-
-// Plantillas que NO llevan sufijo de financiera
-const PLANTILLAS_SIN_SUFIJO = [
-  'datos__envio',
-  'comprobante_rechazado',
-  'comprobante_confirmado',
-  'enviado_env_nube',
-  'enviado_transporte',
-  'pedido_cancelado'
-];
-
-// Mapeo de plantilla base -> key en integration_config
-const PLANTILLA_CONFIG_KEY = {
-  'pedido_creado': 'whatsapp_tpl_pedido_creado',
-  'comprobante_confirmado': 'whatsapp_tpl_comprobante_confirmado',
-  'comprobante_rechazado': 'whatsapp_tpl_comprobante_rechazado',
-  'datos__envio': 'whatsapp_tpl_datos_envio',
-  'enviado_env_nube': 'whatsapp_tpl_enviado_env_nube',
-  'pedido_cancelado': 'whatsapp_tpl_pedido_cancelado',
-  'partial_paid': 'whatsapp_tpl_partial_paid',
-  'enviado_transporte': 'whatsapp_tpl_enviado_transporte'
-};
+const { PLANTILLAS_SIN_SUFIJO, PLANTILLA_CONFIG_KEY } = require('../lib/whatsapp-helpers');
 
 /**
  * Procesador principal del job WhatsApp
