@@ -3212,7 +3212,7 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     }
     console.log('🧠 Claude Vision OK | monto:', datosClaude.monto, '| banco:', datosClaude.banco);
 
-    const textoOcr = datosClaude.textoOcr;
+    const textoOcr = datosClaude.textoOcr || '';
     const cuentaDestino = datosClaude.cuenta;
 
     /* ===============================
