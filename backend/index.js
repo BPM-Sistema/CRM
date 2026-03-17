@@ -1976,6 +1976,10 @@ app.post('/orders/:orderNumber/resync', authenticate, requirePermission('orders.
     if (!resyncEnabled) {
       return res.status(503).json({ error: 'Resync manual está deshabilitado temporalmente' });
     }
+    const singleEnabled = await isIntegrationEnabled('tiendanube_resync_single', { context: 'resync-single' });
+    if (!singleEnabled) {
+      return res.status(503).json({ error: 'Resync individual está deshabilitado' });
+    }
 
     // 1. Buscar tn_order_id en nuestra DB
     const orderRes = await pool.query(
@@ -2086,6 +2090,10 @@ app.post('/admin/resync-inconsistent-orders', authenticate, requirePermission('u
     const resyncEnabled = await tnConfig.isResyncManualEnabled();
     if (!resyncEnabled) {
       return res.status(503).json({ error: 'Resync manual está deshabilitado temporalmente' });
+    }
+    const inconsistentEnabled = await isIntegrationEnabled('tiendanube_resync_inconsistent', { context: 'resync-inconsistent' });
+    if (!inconsistentEnabled) {
+      return res.status(503).json({ error: 'Resync de inconsistencias está deshabilitado' });
     }
 
     const storeId = process.env.TIENDANUBE_STORE_ID;
@@ -2238,6 +2246,10 @@ app.post('/admin/resync-all-orders', authenticate, requirePermission('users.view
     const resyncEnabled = await tnConfig.isResyncManualEnabled();
     if (!resyncEnabled) {
       return res.status(503).json({ error: 'Resync manual está deshabilitado temporalmente' });
+    }
+    const bulkEnabled = await isIntegrationEnabled('tiendanube_resync_bulk', { context: 'resync-bulk' });
+    if (!bulkEnabled) {
+      return res.status(503).json({ error: 'Resync masivo está deshabilitado' });
     }
 
     const storeId = process.env.TIENDANUBE_STORE_ID;
@@ -2748,6 +2760,11 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
     // 📛 order/cancelled - Marcar pedido como cancelado
     if (event === 'order/cancelled') {
+      const cancelEnabled = await isIntegrationEnabled('tiendanube_webhook_order_cancelled', { context: 'webhook:order/cancelled' });
+      if (!cancelEnabled) {
+        log.info({ event, orderId }, 'Webhook order/cancelled disabled by sub-toggle');
+        return;
+      }
       // Buscar el número de pedido desde TiendaNube
       const pedido = await obtenerPedidoPorId(store_id, orderId);
       const orderNumber = pedido?.number ? String(pedido.number) : null;
@@ -2795,6 +2812,14 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
     // Solo procesar order/created y order/updated
     if (event !== 'order/created' && event !== 'order/updated') return;
+
+    // Check sub-toggle por evento
+    const eventSubKey = event === 'order/created' ? 'tiendanube_webhook_order_created' : 'tiendanube_webhook_order_updated';
+    const eventEnabled = await isIntegrationEnabled(eventSubKey, { context: `webhook:${event}` });
+    if (!eventEnabled) {
+      log.info({ event, orderId }, `Webhook ${event} disabled by sub-toggle`);
+      return;
+    }
 
     // 3️⃣ Buscar pedido en Tiendanube
     const pedido = await obtenerPedidoPorId(store_id, orderId);

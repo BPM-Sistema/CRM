@@ -46,6 +46,12 @@ const KEY_ICONS: Record<string, typeof Settings> = {
   tiendanube_resync_manual: RotateCcw,
   tiendanube_sync_cancelled: XCircle,
   tiendanube_mark_paid: CreditCard,
+  tiendanube_webhook_order_created: Zap,
+  tiendanube_webhook_order_updated: Zap,
+  tiendanube_webhook_order_cancelled: Zap,
+  tiendanube_resync_single: RotateCcw,
+  tiendanube_resync_inconsistent: RotateCcw,
+  tiendanube_resync_bulk: RotateCcw,
   whatsapp_testing_mode: MessageSquare,
   whatsapp_tpl_pedido_creado: Send,
   whatsapp_tpl_comprobante_confirmado: Send,
@@ -68,6 +74,12 @@ const KEY_NAMES: Record<string, string> = {
   tiendanube_resync_manual: 'Resync Manual',
   tiendanube_sync_cancelled: 'Sync Cancelados',
   tiendanube_mark_paid: 'Marcar Pagado en TN',
+  tiendanube_webhook_order_created: 'Pedido Creado',
+  tiendanube_webhook_order_updated: 'Pedido Modificado',
+  tiendanube_webhook_order_cancelled: 'Pedido Cancelado',
+  tiendanube_resync_single: 'Individual',
+  tiendanube_resync_inconsistent: 'Inconsistencias',
+  tiendanube_resync_bulk: 'Masivo',
   whatsapp_testing_mode: 'Modo Testing',
   whatsapp_tpl_pedido_creado: 'Pedido Creado',
   whatsapp_tpl_comprobante_confirmado: 'Comprobante Confirmado',
@@ -269,6 +281,12 @@ export function IntegrationSettings() {
           <>
             {/* Tiendanube configs by category */}
             {(() => {
+              // Sub-opciones: key padre -> keys hijos
+              const SUB_OPTIONS: Record<string, string[]> = {
+                'tiendanube_webhooks_enabled': ['tiendanube_webhook_order_created', 'tiendanube_webhook_order_updated', 'tiendanube_webhook_order_cancelled'],
+                'tiendanube_resync_manual': ['tiendanube_resync_single', 'tiendanube_resync_inconsistent', 'tiendanube_resync_bulk'],
+              };
+
               const TN_CATEGORIES: { label: string; icon: string; keys: string[] }[] = [
                 { label: 'General', icon: '⚙️', keys: ['tiendanube_master_enabled'] },
                 { label: 'Sincronización', icon: '🔄', keys: ['tiendanube_sync_orders', 'tiendanube_sync_cancelled', 'tiendanube_sync_images'] },
@@ -282,55 +300,87 @@ export function IntegrationSettings() {
                 const friendlyName = KEY_NAMES[config.key] || config.key;
                 const tooltip = KEY_TOOLTIPS[config.key];
                 const isUpdating = updating === config.key;
+                const subKeys = SUB_OPTIONS[config.key];
+                const subItems = subKeys
+                  ? subKeys.map(k => tiendanubeConfigs.find(c => c.key === k)).filter(Boolean) as typeof tiendanubeConfigs
+                  : [];
 
                 return (
-                  <div
-                    key={config.key}
-                    className="flex items-center justify-between px-4 py-3 rounded-lg border border-gray-100 bg-white transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`p-2 rounded-lg ${
-                          config.enabled
-                            ? 'bg-green-100 text-green-600'
-                            : 'bg-gray-100 text-gray-400'
-                        }`}
-                      >
-                        <Icon className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-medium text-gray-900">{friendlyName}</h3>
-                          {tooltip && (
-                            <div className="relative group">
-                              <Info className="h-4 w-4 text-gray-400 cursor-help hover:text-gray-600 transition-colors" />
-                              <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50 pointer-events-none">
-                                <div className="bg-gray-800 text-white text-sm rounded-lg py-3 px-4 w-72 shadow-xl leading-relaxed">
-                                  {tooltip}
-                                  <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-transparent border-t-gray-800" />
+                  <div key={config.key}>
+                    <div className="flex items-center justify-between px-4 py-3 rounded-lg border border-gray-100 bg-white transition-all">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`p-2 rounded-lg ${
+                            config.enabled
+                              ? 'bg-green-100 text-green-600'
+                              : 'bg-gray-100 text-gray-400'
+                          }`}
+                        >
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-medium text-gray-900">{friendlyName}</h3>
+                            {tooltip && (
+                              <div className="relative group">
+                                <Info className="h-4 w-4 text-gray-400 cursor-help hover:text-gray-600 transition-colors" />
+                                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50 pointer-events-none">
+                                  <div className="bg-gray-800 text-white text-sm rounded-lg py-3 px-4 w-72 shadow-xl leading-relaxed">
+                                    {tooltip}
+                                    <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-transparent border-t-gray-800" />
+                                  </div>
                                 </div>
                               </div>
-                            </div>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-500 mt-0.5">{config.description}</p>
+                          {config.updated_at && (
+                            <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {new Date(config.updated_at).toLocaleString('es-AR')}
+                              {config.updated_by_email && ` - ${config.updated_by_email}`}
+                            </p>
                           )}
                         </div>
-                        <p className="text-sm text-gray-500 mt-0.5">{config.description}</p>
-                        {config.updated_at && (
-                          <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {new Date(config.updated_at).toLocaleString('es-AR')}
-                            {config.updated_by_email && ` - ${config.updated_by_email}`}
-                          </p>
-                        )}
                       </div>
+                      {isUpdating ? (
+                        <RefreshCw className="h-5 w-5 text-gray-400 animate-spin" />
+                      ) : (
+                        <Switch
+                          checked={config.enabled}
+                          onChange={() => handleToggle(config.key, config.enabled)}
+                          disabled={!canUpdate}
+                        />
+                      )}
                     </div>
-                    {isUpdating ? (
-                      <RefreshCw className="h-5 w-5 text-gray-400 animate-spin" />
-                    ) : (
-                      <Switch
-                        checked={config.enabled}
-                        onChange={() => handleToggle(config.key, config.enabled)}
-                        disabled={!canUpdate}
-                      />
+                    {/* Sub-opciones */}
+                    {subItems.length > 0 && config.enabled && (
+                      <div className="ml-8 mt-1 space-y-1">
+                        {subItems.map(sub => {
+                          const subName = KEY_NAMES[sub.key] || sub.key;
+                          const subUpdating = updating === sub.key;
+                          return (
+                            <div
+                              key={sub.key}
+                              className="flex items-center justify-between px-4 py-2 rounded-lg border border-gray-50 bg-gray-50 transition-all"
+                            >
+                              <div>
+                                <span className="text-sm font-medium text-gray-700">{subName}</span>
+                                <p className="text-xs text-gray-400">{sub.description}</p>
+                              </div>
+                              {subUpdating ? (
+                                <RefreshCw className="h-4 w-4 text-gray-400 animate-spin" />
+                              ) : (
+                                <Switch
+                                  checked={sub.enabled}
+                                  onChange={() => handleToggle(sub.key, sub.enabled)}
+                                  disabled={!canUpdate}
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
                 );
