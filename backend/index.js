@@ -4212,7 +4212,7 @@ app.post('/sync/image-sync-trigger', authenticate, requirePermission('activity.v
 ===================================================== */
 
 // Estado del sync de clientes
-app.get('/sync/customers/status', authenticate, requirePermission('activity.view'), async (req, res) => {
+app.get('/sync/customers/status', authenticate, requirePermission('customers.view'), async (req, res) => {
   try {
     const lastSync = await customerSync.getLastSyncTimestamp();
     const countResult = await pool.query(`
@@ -4238,7 +4238,7 @@ app.get('/sync/customers/status', authenticate, requirePermission('activity.view
 });
 
 // Full sync de clientes (manual)
-app.post('/sync/customers/full', authenticate, requirePermission('users.view'), async (req, res) => {
+app.post('/sync/customers/full', authenticate, requirePermission('customers.sync'), async (req, res) => {
   try {
     console.log(`🔄 [CustomerSync] Full sync iniciado por ${req.user.username}`);
 
@@ -4259,7 +4259,7 @@ app.post('/sync/customers/full', authenticate, requirePermission('users.view'), 
 });
 
 // Incremental sync de clientes
-app.post('/sync/customers/incremental', authenticate, requirePermission('users.view'), async (req, res) => {
+app.post('/sync/customers/incremental', authenticate, requirePermission('customers.sync'), async (req, res) => {
   try {
     console.log(`🔄 [CustomerSync] Incremental sync iniciado por ${req.user.username}`);
 
@@ -4280,7 +4280,7 @@ app.post('/sync/customers/incremental', authenticate, requirePermission('users.v
 });
 
 // Sync de un cliente específico
-app.post('/sync/customers/:tnCustomerId', authenticate, requirePermission('users.view'), async (req, res) => {
+app.post('/sync/customers/:tnCustomerId', authenticate, requirePermission('customers.sync'), async (req, res) => {
   try {
     const { tnCustomerId } = req.params;
     const result = await customerSync.syncSingleCustomer(parseInt(tnCustomerId));
@@ -4301,7 +4301,7 @@ app.post('/sync/customers/:tnCustomerId', authenticate, requirePermission('users
 ===================================================== */
 
 // Recalcular métricas de todos los clientes
-app.post('/customers/metrics/recalculate', authenticate, requirePermission('users.view'), async (req, res) => {
+app.post('/customers/metrics/recalculate', authenticate, requirePermission('customers.segment'), async (req, res) => {
   try {
     console.log(`📊 [CustomerMetrics] Recálculo iniciado por ${req.user.username}`);
     const result = await customerMetrics.recalculateAllMetrics();
@@ -4313,7 +4313,7 @@ app.post('/customers/metrics/recalculate', authenticate, requirePermission('user
 });
 
 // Obtener métricas globales
-app.get('/customers/metrics', authenticate, requirePermission('orders.view'), async (req, res) => {
+app.get('/customers/metrics', authenticate, requirePermission('customers.view'), async (req, res) => {
   try {
     const metrics = await customerMetrics.getGlobalMetrics();
     res.json({ ok: true, metrics });
@@ -4324,7 +4324,7 @@ app.get('/customers/metrics', authenticate, requirePermission('orders.view'), as
 });
 
 // Recalcular segmentos de todos los clientes
-app.post('/customers/segments/recalculate', authenticate, requirePermission('users.view'), async (req, res) => {
+app.post('/customers/segments/recalculate', authenticate, requirePermission('customers.segment'), async (req, res) => {
   try {
     console.log(`🏷️ [CustomerSegmentation] Recálculo iniciado por ${req.user.username}`);
     const result = await customerSegmentation.segmentAllCustomers();
@@ -4336,7 +4336,7 @@ app.post('/customers/segments/recalculate', authenticate, requirePermission('use
 });
 
 // Obtener conteo por segmento
-app.get('/customers/segments', authenticate, requirePermission('orders.view'), async (req, res) => {
+app.get('/customers/segments', authenticate, requirePermission('customers.view'), async (req, res) => {
   try {
     const counts = await customerSegmentation.getSegmentCounts();
     const definitions = customerSegmentation.getSegmentDefinitions();
@@ -4348,7 +4348,7 @@ app.get('/customers/segments', authenticate, requirePermission('orders.view'), a
 });
 
 // Obtener clientes de un segmento específico
-app.get('/customers/segments/:segment', authenticate, requirePermission('orders.view'), async (req, res) => {
+app.get('/customers/segments/:segment', authenticate, requirePermission('customers.view'), async (req, res) => {
   try {
     const { segment } = req.params;
     const page = parseInt(req.query.page) || 1;
@@ -4363,7 +4363,7 @@ app.get('/customers/segments/:segment', authenticate, requirePermission('orders.
 });
 
 // Listar todos los clientes con filtros
-app.get('/customers', authenticate, requirePermission('orders.view'), async (req, res) => {
+app.get('/customers', authenticate, requirePermission('customers.view'), async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
