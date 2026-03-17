@@ -15,7 +15,33 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 export async function fetchAiBotDashboard(): Promise<AiBotDashboard> {
   const res = await authFetch(`${API_BASE_URL}/ai-bot/dashboard`);
   if (!res.ok) throw new Error('Error al obtener dashboard del AI Bot');
-  return res.json();
+  const raw = await res.json();
+
+  // Transform backend shape → frontend shape
+  return {
+    config: {
+      enabled: raw.config?.global_enabled === true || raw.config?.global_enabled === 'true',
+      mode: (raw.config?.mode || 'off').replace(/"/g, '') as AiBotDashboard['config']['mode'],
+    },
+    stats_24h: {
+      events: parseInt(raw.events_24h?.total) || 0,
+      replies: parseInt(raw.replies_24h?.sent) || 0,
+      skipped: parseInt(raw.events_24h?.total) - parseInt(raw.events_24h?.processed) - parseInt(raw.events_24h?.failed) || 0,
+      failures: parseInt(raw.events_24h?.failed) || 0,
+    },
+    stats_7d: {
+      events: parseInt(raw.events_7d?.total) || 0,
+      replies: parseInt(raw.replies_24h?.total) || 0,
+      skipped: parseInt(raw.events_7d?.total) - parseInt(raw.events_7d?.processed) - parseInt(raw.events_7d?.failed) || 0,
+      failures: parseInt(raw.events_7d?.failed) || 0,
+    },
+    channels: raw.config?.channels || { instagram_comment: false, facebook_comment: false, messenger: false },
+    queue_stats: {
+      meta_events: raw.queue?.waiting || 0,
+      ai_generate: raw.queue?.active || 0,
+      ai_send_reply: raw.queue?.failed || 0,
+    },
+  };
 }
 
 // ── Config ──────────────────────────────────────────────────────────────────
@@ -47,14 +73,19 @@ export interface EventFilters {
   to?: string;
 }
 
-export async function fetchAiBotEvents(params: EventFilters = {}): Promise<{ data: AiBotEvent[]; total: number }> {
+export async function fetchAiBotEvents(params: EventFilters = {}): Promise<{ data: AiBotEvent[]; total: number; pagination: { page: number; totalPages: number } }> {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
     if (v !== undefined && v !== null && v !== '') query.append(k, String(v));
   });
   const res = await authFetch(`${API_BASE_URL}/ai-bot/events?${query.toString()}`);
   if (!res.ok) throw new Error('Error al obtener eventos del AI Bot');
-  return res.json();
+  const raw = await res.json();
+  return {
+    data: raw.events || [],
+    total: raw.pagination?.total || 0,
+    pagination: raw.pagination || { page: 1, totalPages: 1 },
+  };
 }
 
 export async function fetchAiBotEvent(id: number): Promise<AiBotEvent> {
