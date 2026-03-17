@@ -188,6 +188,7 @@ export default function SystemStatus() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [dismissing, setDismissing] = useState(false);
   const [showIncidents, setShowIncidents] = useState(true);
   const [showQueues, setShowQueues] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -230,6 +231,18 @@ export default function SystemStatus() {
       console.error('Error retrying:', err);
     } finally {
       setRetrying(null);
+    }
+  };
+
+  const handleDismissIncidents = async () => {
+    setDismissing(true);
+    try {
+      await authPost(`${API_BASE_URL}/admin/status/dismiss-incidents`);
+      await loadAll();
+    } catch (err) {
+      console.error('Error dismissing:', err);
+    } finally {
+      setDismissing(false);
     }
   };
 
@@ -533,7 +546,19 @@ export default function SystemStatus() {
                 </span>
               )}
             </div>
-            {showIncidents ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+            <div className="flex items-center gap-2">
+              {incidents.length > 0 && canUpdate && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDismissIncidents(); }}
+                  disabled={dismissing}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors disabled:opacity-50"
+                >
+                  <XOctagon size={12} className={dismissing ? 'animate-spin' : ''} />
+                  {dismissing ? 'Limpiando...' : 'Limpiar'}
+                </button>
+              )}
+              {showIncidents ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+            </div>
           </button>
 
           {showIncidents && (

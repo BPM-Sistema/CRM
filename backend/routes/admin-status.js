@@ -411,4 +411,29 @@ router.post('/reconcile', requirePermission('integrations.update'), async (req, 
   }
 });
 
+// ─── POST /admin/status/dismiss-incidents ────────────────
+
+router.post('/dismiss-incidents', requirePermission('integrations.update'), async (req, res) => {
+  try {
+    // Marcar comprobantes stuck como "revisados" cambiando a rechazado
+    // o simplemente los ignoramos filtrando por fecha más reciente
+    const result = await pool.query(`
+      UPDATE comprobantes
+      SET estado = 'rechazado'
+      WHERE estado = 'a_confirmar'
+        AND created_at < NOW() - INTERVAL '7 days'
+      RETURNING id
+    `);
+
+    res.json({
+      ok: true,
+      dismissed: result.rowCount,
+      message: `${result.rowCount} comprobantes antiguos marcados como rechazados`
+    });
+  } catch (error) {
+    console.error('[AdminStatus] dismiss-incidents error:', error.message);
+    res.status(500).json({ error: 'Error limpiando incidentes' });
+  }
+});
+
 module.exports = router;

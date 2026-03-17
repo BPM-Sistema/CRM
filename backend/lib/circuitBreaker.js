@@ -52,7 +52,7 @@ async function botmakerRequest(config) {
   return axios(config);
 }
 
-async function googleVisionRequest(config) {
+async function claudeVisionRequest(config) {
   return axios(config);
 }
 
@@ -63,7 +63,7 @@ async function supabaseStorageRequest(config) {
 // Pre-configured breakers connected to real axios calls
 const tiendanubeBreaker = createBreaker('tiendanube', tiendanubeRequest, { timeout: 20000 });
 const botmakerBreaker = createBreaker('botmaker', botmakerRequest, { timeout: 10000 });
-const googleVisionBreaker = createBreaker('googleVision', googleVisionRequest, { timeout: 30000 });
+const claudeVisionBreaker = createBreaker('claudeVision', claudeVisionRequest, { timeout: 30000 });
 const supabaseStorageBreaker = createBreaker('supabaseStorage', supabaseStorageRequest, { timeout: 15000 });
 
 /**
@@ -89,8 +89,8 @@ async function callBotmaker(config) {
  * @param {object} config - axios request config
  * @returns {Promise} axios response
  */
-async function callGoogleVision(config) {
-  return googleVisionBreaker.fire(config);
+async function callClaudeVision(config) {
+  return claudeVisionBreaker.fire(config);
 }
 
 /**
@@ -127,10 +127,10 @@ module.exports = {
   getBreakerStatus,
   tiendanubeBreaker,
   botmakerBreaker,
-  googleVisionBreaker,
+  claudeVisionBreaker,
   supabaseStorageBreaker,
   callTiendanube,
   callBotmaker,
-  callGoogleVision,
+  callClaudeVision,
   callSupabaseStorage
 };
