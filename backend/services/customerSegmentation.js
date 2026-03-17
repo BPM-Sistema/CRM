@@ -6,79 +6,96 @@
 const pool = require('../db');
 
 /**
- * Reglas de segmentación RFM
+ * Reglas de segmentación RFM - EXACTAS de Tiendanube
  * Orden importa: se evalúan de arriba a abajo, la primera que matchea gana
  */
 const SEGMENT_RULES = [
+  // === COMPRAS RECIENTES (< 45 días) ===
   {
     segment: 'campeones',
     label: 'Campeones',
-    description: 'Compradores frecuentes y recientes',
+    description: '6+ compras, última < 45 días',
     rules: {
-      orders_count_min: 5,
-      days_since_last_order_max: 30
+      orders_count_min: 6,
+      days_since_last_order_max: 45
     }
   },
   {
     segment: 'leales',
     label: 'Leales',
-    description: 'Compradores regulares',
+    description: '3-5 compras, última < 45 días',
     rules: {
       orders_count_min: 3,
+      orders_count_max: 5,
+      days_since_last_order_max: 45
+    }
+  },
+  {
+    segment: 'recientes',
+    label: 'Recientes',
+    description: '1-2 compras, última < 45 días',
+    rules: {
+      orders_count_min: 1,
+      orders_count_max: 2,
+      days_since_last_order_max: 45
+    }
+  },
+  // === COMPRAS MEDIAS (45-90 días) ===
+  {
+    segment: 'alto_potencial',
+    label: 'Alto Potencial',
+    description: '5+ compras, última 45-90 días',
+    rules: {
+      orders_count_min: 5,
+      days_since_last_order_min: 46,
       days_since_last_order_max: 90
     }
   },
   {
-    segment: 'potenciales',
-    label: 'Potenciales',
-    description: 'Segunda compra reciente',
+    segment: 'necesitan_incentivo',
+    label: 'Necesitan Incentivo',
+    description: '1-4 compras, última 45-90 días',
     rules: {
-      orders_count_min: 2,
+      orders_count_min: 1,
       orders_count_max: 4,
-      days_since_last_order_max: 60
-    }
-  },
-  {
-    segment: 'nuevos',
-    label: 'Nuevos',
-    description: 'Primera compra muy reciente',
-    rules: {
-      orders_count_min: 1,
-      orders_count_max: 1,
-      days_since_last_order_max: 30
-    }
-  },
-  {
-    segment: 'prometedores',
-    label: 'Prometedores',
-    description: 'Primera compra, pero hace un tiempo',
-    rules: {
-      orders_count_min: 1,
-      orders_count_max: 1,
-      days_since_last_order_min: 31,
+      days_since_last_order_min: 46,
       days_since_last_order_max: 90
     }
   },
+  // === COMPRAS ANTIGUAS (90-180 días) ===
   {
-    segment: 'en_riesgo',
-    label: 'En Riesgo',
-    description: 'Compradores que se están alejando',
+    segment: 'no_pueden_perder',
+    label: 'No Se Pueden Perder',
+    description: '5+ compras, última 90-180 días',
     rules: {
-      orders_count_min: 2,
+      orders_count_min: 5,
       days_since_last_order_min: 91,
       days_since_last_order_max: 180
     }
   },
   {
-    segment: 'hibernando',
-    label: 'Hibernando',
-    description: 'Sin compras en mucho tiempo',
+    segment: 'en_riesgo',
+    label: 'En Riesgo',
+    description: '1-4 compras, última 90-180 días',
+    rules: {
+      orders_count_min: 1,
+      orders_count_max: 4,
+      days_since_last_order_min: 91,
+      days_since_last_order_max: 180
+    }
+  },
+  // === MUY ANTIGUAS (180-365 días) ===
+  {
+    segment: 'por_perder',
+    label: 'Por Perder',
+    description: '1+ compras, última 180-365 días',
     rules: {
       orders_count_min: 1,
       days_since_last_order_min: 181,
       days_since_last_order_max: 365
     }
   },
+  // === PERDIDOS (> 365 días) ===
   {
     segment: 'perdidos',
     label: 'Perdidos',
@@ -88,6 +105,7 @@ const SEGMENT_RULES = [
       days_since_last_order_min: 366
     }
   },
+  // === SIN COMPRAS ===
   {
     segment: 'sin_compras',
     label: 'Sin Compras',
@@ -100,23 +118,39 @@ const SEGMENT_RULES = [
 
 /**
  * Determina el segmento de un cliente basándose en sus métricas
- * @param {Object} customer - { orders_count, last_order_at, total_spent }
+ * Reglas exactas de Tiendanube
+ * @param {Object} customer - { orders_count, last_order_at, tn_updated_at }
  * @returns {string} Nombre del segmento
  */
 function determineSegment(customer) {
-  // Usar orders_count si existe, sino inferir de total_spent (datos de TN)
-  const ordersCount = customer.orders_count > 0
-    ? customer.orders_count
-    : (parseFloat(customer.total_spent) > 0 ? 1 : 0);  // Si gastó algo, al menos 1 orden
-  const lastOrderAt = customer.last_order_at || customer.tn_updated_at; // Fallback a última actualización TN
+  // Usar orders_count directo de TN (ya viene sincronizado correctamente)
+  const ordersCount = parseInt(customer.orders_count) || 0;
 
-  let daysSinceLastOrder = null;
-  if (lastOrderAt) {
-    daysSinceLastOrder = Math.floor((Date.now() - new Date(lastOrderAt).getTime()) / (1000 * 60 * 60 * 24));
+  // Sin compras = 0 órdenes
+  if (ordersCount === 0) {
+    return 'sin_compras';
   }
 
+  // Calcular días desde última orden
+  // Usar last_order_at si existe, sino tn_updated_at como proxy
+  const lastOrderAt = customer.last_order_at || customer.tn_updated_at;
+
+  if (!lastOrderAt) {
+    // Tiene órdenes pero no fecha - tratamos como perdido (muy viejo)
+    return 'perdidos';
+  }
+
+  const daysSinceLastOrder = Math.floor(
+    (Date.now() - new Date(lastOrderAt).getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  // Aplicar reglas de TN en orden
   for (const rule of SEGMENT_RULES) {
     const r = rule.rules;
+
+    // Si es sin_compras, ya lo manejamos arriba
+    if (rule.segment === 'sin_compras') continue;
+
     let matches = true;
 
     // orders_count checks
@@ -127,25 +161,12 @@ function determineSegment(customer) {
       matches = false;
     }
 
-    // days_since_last_order checks (solo si hay última orden)
-    if (daysSinceLastOrder !== null) {
-      if (r.days_since_last_order_min !== undefined && daysSinceLastOrder < r.days_since_last_order_min) {
-        matches = false;
-      }
-      if (r.days_since_last_order_max !== undefined && daysSinceLastOrder > r.days_since_last_order_max) {
-        matches = false;
-      }
-    } else {
-      // Si no hay última orden pero la regla requiere una, no matchea
-      if (r.days_since_last_order_min !== undefined || r.days_since_last_order_max !== undefined) {
-        if (ordersCount > 0) {
-          // Tiene órdenes pero no fecha? Raro, pero tratamos como muy viejo
-          // Solo matchea si la regla NO tiene límite max
-          if (r.days_since_last_order_max !== undefined) {
-            matches = false;
-          }
-        }
-      }
+    // days_since_last_order checks
+    if (r.days_since_last_order_min !== undefined && daysSinceLastOrder < r.days_since_last_order_min) {
+      matches = false;
+    }
+    if (r.days_since_last_order_max !== undefined && daysSinceLastOrder > r.days_since_last_order_max) {
+      matches = false;
     }
 
     if (matches) {
@@ -153,6 +174,7 @@ function determineSegment(customer) {
     }
   }
 
+  // Si no matchea ninguna regla (edge case)
   return 'sin_clasificar';
 }
 

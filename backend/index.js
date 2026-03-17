@@ -4232,6 +4232,18 @@ app.post('/sync/customers/:tnCustomerId', authenticate, requirePermission('custo
   }
 });
 
+// Sync orders_count from TN orders API (llenar datos que customers API no provee)
+app.post('/sync/customers/orders-count', authenticate, requirePermission('customers.sync'), async (req, res) => {
+  try {
+    console.log(`📦 [CustomerSync] Sync orders_count iniciado por ${req.user.username}`);
+    const result = await customerSync.syncOrdersCountFromTN();
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    console.error('❌ /sync/customers/orders-count error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 /* =====================================================
    CUSTOMER METRICS & SEGMENTATION
 ===================================================== */

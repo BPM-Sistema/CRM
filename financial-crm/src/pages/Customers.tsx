@@ -9,8 +9,12 @@ import {
   Star,
   Sparkles,
   TrendingUp,
+  TrendingDown,
   AlertTriangle,
-  Moon,
+  AlertCircle,
+  Gift,
+  Crown,
+  Flame,
   UserX,
   UserMinus,
   ChevronLeft,
@@ -36,13 +40,14 @@ import {
 } from '../services/api';
 import { clsx } from 'clsx';
 
-// Configuración visual de segmentos
+// Configuración visual de segmentos - EXACTO de Tiendanube
 const SEGMENT_CONFIG: Record<string, {
   icon: React.ReactNode;
   color: string;
   bgColor: string;
   borderColor: string;
 }> = {
+  // Compras recientes (< 45 días)
   campeones: {
     icon: <Trophy size={20} />,
     color: 'text-amber-600',
@@ -55,42 +60,53 @@ const SEGMENT_CONFIG: Record<string, {
     bgColor: 'bg-rose-50',
     borderColor: 'border-rose-200',
   },
-  potenciales: {
-    icon: <TrendingUp size={20} />,
-    color: 'text-blue-600',
-    bgColor: 'bg-blue-50',
-    borderColor: 'border-blue-200',
-  },
-  nuevos: {
+  recientes: {
     icon: <Sparkles size={20} />,
     color: 'text-emerald-600',
     bgColor: 'bg-emerald-50',
     borderColor: 'border-emerald-200',
   },
-  prometedores: {
-    icon: <Star size={20} />,
+  // Compras medias (45-90 días)
+  alto_potencial: {
+    icon: <Crown size={20} />,
     color: 'text-violet-600',
     bgColor: 'bg-violet-50',
     borderColor: 'border-violet-200',
   },
-  en_riesgo: {
-    icon: <AlertTriangle size={20} />,
+  necesitan_incentivo: {
+    icon: <Gift size={20} />,
+    color: 'text-blue-600',
+    bgColor: 'bg-blue-50',
+    borderColor: 'border-blue-200',
+  },
+  // Compras antiguas (90-180 días)
+  no_pueden_perder: {
+    icon: <Flame size={20} />,
     color: 'text-orange-600',
     bgColor: 'bg-orange-50',
     borderColor: 'border-orange-200',
   },
-  hibernando: {
-    icon: <Moon size={20} />,
-    color: 'text-slate-600',
-    bgColor: 'bg-slate-50',
-    borderColor: 'border-slate-200',
+  en_riesgo: {
+    icon: <AlertTriangle size={20} />,
+    color: 'text-yellow-600',
+    bgColor: 'bg-yellow-50',
+    borderColor: 'border-yellow-200',
   },
-  perdidos: {
-    icon: <UserX size={20} />,
-    color: 'text-red-600',
+  // Muy antiguas (180-365 días)
+  por_perder: {
+    icon: <TrendingDown size={20} />,
+    color: 'text-red-500',
     bgColor: 'bg-red-50',
     borderColor: 'border-red-200',
   },
+  // Perdidos (> 365 días)
+  perdidos: {
+    icon: <UserX size={20} />,
+    color: 'text-red-700',
+    bgColor: 'bg-red-100',
+    borderColor: 'border-red-300',
+  },
+  // Sin compras
   sin_compras: {
     icon: <UserMinus size={20} />,
     color: 'text-neutral-500',
