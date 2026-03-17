@@ -4,122 +4,67 @@ import {
   RefreshCw,
   Search,
   Download,
-  Trophy,
-  Heart,
-  Sparkles,
-  TrendingDown,
-  AlertTriangle,
-  Gift,
-  Crown,
-  Flame,
-  UserX,
-  UserMinus,
   ChevronLeft,
   ChevronRight,
-  Clock,
-  DollarSign,
-  ShoppingBag,
-  Calendar,
+  ArrowRight,
+  Star,
+  Heart,
+  Zap,
+  Crown,
+  Gift,
+  Flame,
+  AlertTriangle,
+  TrendingDown,
 } from 'lucide-react';
 import { Header } from '../components/layout';
 import {
   fetchCustomerSyncStatus,
   fetchCustomerSegments,
   fetchCustomers,
-  fetchCustomerMetrics,
   startCustomerFullSync,
   syncCustomerOrdersCount,
-  recalculateCustomerMetrics,
   recalculateCustomerSegments,
   Customer,
-  SegmentDefinition,
   CustomerSyncStatus,
-  CustomerMetrics,
 } from '../services/api';
 import { clsx } from 'clsx';
 
-// Configuración visual de segmentos - EXACTO de Tiendanube
-const SEGMENT_CONFIG: Record<string, {
-  icon: React.ReactNode;
-  color: string;
-  bgColor: string;
-  borderColor: string;
-}> = {
-  // Compras recientes (< 45 días)
-  campeones: {
-    icon: <Trophy size={20} />,
-    color: 'text-amber-600',
-    bgColor: 'bg-amber-50',
-    borderColor: 'border-amber-200',
-  },
-  leales: {
-    icon: <Heart size={20} />,
-    color: 'text-rose-600',
-    bgColor: 'bg-rose-50',
-    borderColor: 'border-rose-200',
-  },
-  recientes: {
-    icon: <Sparkles size={20} />,
-    color: 'text-emerald-600',
-    bgColor: 'bg-emerald-50',
-    borderColor: 'border-emerald-200',
-  },
-  // Compras medias (45-90 días)
-  alto_potencial: {
-    icon: <Crown size={20} />,
-    color: 'text-violet-600',
-    bgColor: 'bg-violet-50',
-    borderColor: 'border-violet-200',
-  },
-  necesitan_incentivo: {
-    icon: <Gift size={20} />,
-    color: 'text-blue-600',
-    bgColor: 'bg-blue-50',
-    borderColor: 'border-blue-200',
-  },
-  // Compras antiguas (90-180 días)
-  no_pueden_perder: {
-    icon: <Flame size={20} />,
-    color: 'text-orange-600',
-    bgColor: 'bg-orange-50',
-    borderColor: 'border-orange-200',
-  },
-  en_riesgo: {
-    icon: <AlertTriangle size={20} />,
-    color: 'text-yellow-600',
-    bgColor: 'bg-yellow-50',
-    borderColor: 'border-yellow-200',
-  },
-  // Muy antiguas (180-365 días)
-  por_perder: {
-    icon: <TrendingDown size={20} />,
-    color: 'text-red-500',
-    bgColor: 'bg-red-50',
-    borderColor: 'border-red-200',
-  },
-  // Perdidos (> 365 días)
-  perdidos: {
-    icon: <UserX size={20} />,
-    color: 'text-red-700',
-    bgColor: 'bg-red-100',
-    borderColor: 'border-red-300',
-  },
-  // Sin compras
-  sin_compras: {
-    icon: <UserMinus size={20} />,
-    color: 'text-neutral-500',
-    bgColor: 'bg-neutral-50',
-    borderColor: 'border-neutral-200',
-  },
+// Labels y descripciones de segmentos
+const SEGMENT_LABELS: Record<string, string> = {
+  campeones: 'Campeones',
+  leales: 'Leales',
+  recientes: 'Recientes',
+  alto_potencial: 'Alto potencial',
+  necesitan_incentivo: 'Necesitan incentivo',
+  no_pueden_perder: 'No se pueden perder',
+  en_riesgo: 'En riesgo',
+  por_perder: 'Por perder',
+  perdidos: 'Perdidos',
+  sin_compras: 'Sin compras',
 };
 
-const getSegmentConfig = (segment: string) => {
-  return SEGMENT_CONFIG[segment] || {
-    icon: <Users size={20} />,
-    color: 'text-neutral-600',
-    bgColor: 'bg-neutral-50',
-    borderColor: 'border-neutral-200',
-  };
+const SEGMENT_DESCRIPTIONS: Record<string, string> = {
+  campeones: 'Clientes que han realizado 6 o más compras y la última fue dentro de los últimos 45 días.',
+  leales: 'Clientes que han realizado entre 3 y 5 compras y la última fue dentro de los últimos 45 días.',
+  recientes: 'Clientes que han realizado entre 1 y 2 compras y la última fue dentro de los últimos 45 días.',
+  alto_potencial: 'Clientes que han realizado 5 o más compras y la última fue dentro de los últimos 45 a 90 días.',
+  necesitan_incentivo: 'Clientes que han realizado entre 1 y 4 compras y la última fue dentro de los últimos 45 a 90 días.',
+  no_pueden_perder: 'Clientes que han realizado 5 o más compras y la última fue dentro de los últimos 90 a 180 días.',
+  en_riesgo: 'Clientes que han realizado entre 1 y 4 compras y la última fue dentro de los últimos 90 a 180 días.',
+  por_perder: 'Clientes que han realizado 1 o más compras y la última fue dentro de los últimos 180 a 365 días.',
+  perdidos: 'Clientes sin actividad en más de un año.',
+  sin_compras: 'Clientes registrados que nunca han comprado.',
+};
+
+const SEGMENT_ICONS: Record<string, React.ReactNode> = {
+  campeones: <Star size={16} />,
+  leales: <Heart size={16} />,
+  recientes: <Zap size={16} />,
+  alto_potencial: <Crown size={16} />,
+  necesitan_incentivo: <Gift size={16} />,
+  no_pueden_perder: <Flame size={16} />,
+  en_riesgo: <AlertTriangle size={16} />,
+  por_perder: <TrendingDown size={16} />,
 };
 
 function formatCurrency(amount: number | null): string {
@@ -146,98 +91,112 @@ function daysSince(dateStr: string | null): number | null {
   return Math.floor(diff / (1000 * 60 * 60 * 24));
 }
 
-// Componente de tarjeta de segmento
-function SegmentCard({
+// Celda de la matriz
+function MatrixCell({
   segment,
-  definition,
   count,
+  total,
+  colorClass,
   isSelected,
   onClick,
+  className = '',
 }: {
   segment: string;
-  definition: SegmentDefinition;
   count: number;
+  total: number;
+  colorClass: string;
   isSelected: boolean;
   onClick: () => void;
+  className?: string;
 }) {
-  const config = getSegmentConfig(segment);
+  const percentage = total > 0 ? ((count / total) * 100).toFixed(2) : '0';
 
   return (
     <button
       onClick={onClick}
       className={clsx(
-        'p-4 rounded-xl border-2 transition-all duration-200 text-left w-full',
-        'hover:shadow-md hover:scale-[1.02]',
-        isSelected
-          ? `${config.bgColor} ${config.borderColor} shadow-md`
-          : 'bg-white border-neutral-200 hover:border-neutral-300'
+        'p-4 rounded-xl border transition-all duration-200 text-left flex flex-col justify-center min-h-[100px]',
+        'hover:shadow-lg hover:scale-[1.01]',
+        colorClass,
+        isSelected && 'ring-2 ring-neutral-900 ring-offset-2',
+        className
       )}
     >
-      <div className="flex items-center gap-3 mb-2">
-        <div className={clsx('p-2 rounded-lg', config.bgColor, config.color)}>
-          {config.icon}
-        </div>
-        <div>
-          <h3 className="font-semibold text-neutral-900">{definition.label}</h3>
-          <p className="text-xs text-neutral-500">{definition.description}</p>
-        </div>
+      <div className="flex items-baseline gap-2 mb-2">
+        <span className="text-2xl font-bold">{percentage}%</span>
+        <span className="text-sm opacity-70 flex items-center gap-1">
+          <Users size={14} />
+          {count.toLocaleString('es-AR')}
+        </span>
       </div>
-      <div className={clsx('text-2xl font-bold', config.color)}>
-        {count.toLocaleString('es-AR')}
-      </div>
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/60 rounded-full text-xs font-medium w-fit">
+        <span className="w-1.5 h-1.5 rounded-full bg-current" />
+        {SEGMENT_LABELS[segment]}
+      </span>
     </button>
   );
 }
 
-// Componente de fila de cliente
+// Fila de segmento en la lista inferior
+function SegmentListRow({
+  segment,
+  count,
+  onClick,
+}: {
+  segment: string;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <div className="flex items-start justify-between py-4 border-b border-neutral-100 last:border-0">
+      <div className="flex items-start gap-3">
+        <div className="w-8 h-8 rounded-lg bg-neutral-100 flex items-center justify-center mt-0.5 text-neutral-500">
+          {SEGMENT_ICONS[segment] || <Users size={16} />}
+        </div>
+        <div>
+          <h4 className="font-semibold text-neutral-900">{SEGMENT_LABELS[segment]}</h4>
+          <p className="text-sm text-neutral-500">
+            {count.toLocaleString('es-AR')} compradores
+          </p>
+          <p className="text-sm text-neutral-400 mt-1">
+            {SEGMENT_DESCRIPTIONS[segment]}
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={onClick}
+        className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-900 transition-colors whitespace-nowrap mt-1"
+      >
+        Ir a la lista
+        <ArrowRight size={16} />
+      </button>
+    </div>
+  );
+}
+
+// Fila de cliente
 function CustomerRow({ customer }: { customer: Customer }) {
-  const segmentConfig = getSegmentConfig(customer.segment || '');
   const days = daysSince(customer.last_order_at);
 
   return (
     <tr className="hover:bg-neutral-50 transition-colors">
       <td className="px-4 py-3">
         <div>
-          <div className="font-medium text-neutral-900">
-            {customer.name || 'Sin nombre'}
-          </div>
+          <div className="font-medium text-neutral-900">{customer.name || 'Sin nombre'}</div>
           <div className="text-sm text-neutral-500">{customer.email || '-'}</div>
         </div>
       </td>
+      <td className="px-4 py-3 text-sm text-neutral-600">{customer.phone || '-'}</td>
+      <td className="px-4 py-3 text-center font-semibold">{customer.orders_count}</td>
+      <td className="px-4 py-3 text-right font-medium">{formatCurrency(customer.total_spent)}</td>
       <td className="px-4 py-3">
-        <span className="text-sm text-neutral-600">{customer.phone || '-'}</span>
+        <div className="text-sm text-neutral-600">{formatDate(customer.last_order_at)}</div>
+        {days !== null && <div className="text-xs text-neutral-400">hace {days} días</div>}
       </td>
-      <td className="px-4 py-3 text-center">
-        <span className="font-semibold text-neutral-900">{customer.orders_count}</span>
-      </td>
-      <td className="px-4 py-3 text-right">
-        <span className="font-medium text-neutral-900">
-          {formatCurrency(customer.total_spent)}
+      <td className="px-4 py-3">
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-neutral-100 text-neutral-700">
+          {SEGMENT_LABELS[customer.segment || ''] || customer.segment}
         </span>
-      </td>
-      <td className="px-4 py-3">
-        <div className="text-sm">
-          <div className="text-neutral-600">{formatDate(customer.last_order_at)}</div>
-          {days !== null && (
-            <div className="text-xs text-neutral-400">hace {days} días</div>
-          )}
-        </div>
-      </td>
-      <td className="px-4 py-3">
-        {customer.segment && (
-          <span
-            className={clsx(
-              'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
-              segmentConfig.bgColor,
-              segmentConfig.color
-            )}
-          >
-            {segmentConfig.icon}
-            {SEGMENT_CONFIG[customer.segment]
-              ? customer.segment.replace('_', ' ')
-              : customer.segment}
-          </span>
-        )}
       </td>
     </tr>
   );
@@ -247,11 +206,7 @@ export default function Customers() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<CustomerSyncStatus | null>(null);
-  const [segments, setSegments] = useState<{
-    counts: Record<string, number>;
-    definitions: SegmentDefinition[];
-  } | null>(null);
-  const [metrics, setMetrics] = useState<CustomerMetrics | null>(null);
+  const [segments, setSegments] = useState<{ counts: Record<string, number> } | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [totalCustomers, setTotalCustomers] = useState(0);
   const [page, setPage] = useState(1);
@@ -261,14 +216,12 @@ export default function Customers() {
 
   const loadData = useCallback(async () => {
     try {
-      const [statusData, segmentsData, metricsData] = await Promise.all([
+      const [statusData, segmentsData] = await Promise.all([
         fetchCustomerSyncStatus(),
         fetchCustomerSegments(),
-        fetchCustomerMetrics(),
       ]);
       setSyncStatus(statusData);
       setSegments(segmentsData);
-      setMetrics(metricsData);
     } catch (error) {
       console.error('Error loading data:', error);
     }
@@ -287,31 +240,18 @@ export default function Customers() {
     }
   }, [page, selectedSegment, search]);
 
+  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { loadCustomers(); }, [loadCustomers]);
   useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  useEffect(() => {
-    loadCustomers();
-  }, [loadCustomers]);
-
-  // Debounce search
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setSearch(searchInput);
-      setPage(1);
-    }, 300);
+    const timer = setTimeout(() => { setSearch(searchInput); setPage(1); }, 300);
     return () => clearTimeout(timer);
   }, [searchInput]);
 
   const handleSync = async () => {
     setSyncing(true);
     try {
-      // 1. Sync clientes desde TN
       await startCustomerFullSync();
-      // 2. Sync orders_count (obtiene compras reales) - esto toma tiempo
       await syncCustomerOrdersCount();
-      // 3. Recalcular segmentos
       await recalculateCustomerSegments();
       await loadData();
       await loadCustomers();
@@ -325,7 +265,6 @@ export default function Customers() {
   const handleRecalculate = async () => {
     setSyncing(true);
     try {
-      await recalculateCustomerMetrics();
       await recalculateCustomerSegments();
       await loadData();
       await loadCustomers();
@@ -337,21 +276,26 @@ export default function Customers() {
   };
 
   const handleSegmentClick = (segment: string) => {
-    if (selectedSegment === segment) {
-      setSelectedSegment(null);
-    } else {
-      setSelectedSegment(segment);
-    }
+    setSelectedSegment(selectedSegment === segment ? null : segment);
     setPage(1);
   };
 
   const totalPages = Math.ceil(totalCustomers / 25);
 
+  // Total de compradores (excluyendo sin_compras)
+  const totalBuyers = segments
+    ? Object.entries(segments.counts)
+        .filter(([seg]) => seg !== 'sin_compras' && seg !== 'null' && seg !== 'perdidos')
+        .reduce((sum, [, count]) => sum + count, 0)
+    : 0;
+
+  const getCount = (seg: string) => segments?.counts[seg] || 0;
+
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-neutral-50">
       <Header
         title="Clientes"
-        subtitle="Segmentación y análisis RFM"
+        subtitle="Ciclo de vida de compradores"
         actions={
           <div className="flex items-center gap-2">
             <button
@@ -374,198 +318,222 @@ export default function Customers() {
         }
       />
 
-      <div className="p-6 space-y-6">
-        {/* Métricas globales */}
-        {metrics && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white rounded-xl border border-neutral-200 p-4">
-              <div className="flex items-center gap-2 text-neutral-500 mb-1">
-                <Users size={16} />
-                <span className="text-sm">Total Clientes</span>
-              </div>
-              <div className="text-2xl font-bold text-neutral-900">
-                {metrics.total_customers?.toLocaleString('es-AR') || 0}
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border border-neutral-200 p-4">
-              <div className="flex items-center gap-2 text-neutral-500 mb-1">
-                <ShoppingBag size={16} />
-                <span className="text-sm">Prom. Compras</span>
-              </div>
-              <div className="text-2xl font-bold text-neutral-900">
-                {Number(metrics.avg_orders_per_customer || 0).toFixed(1)}
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border border-neutral-200 p-4">
-              <div className="flex items-center gap-2 text-neutral-500 mb-1">
-                <DollarSign size={16} />
-                <span className="text-sm">Ticket Promedio</span>
-              </div>
-              <div className="text-2xl font-bold text-neutral-900">
-                {formatCurrency(metrics.avg_total_spent || 0)}
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border border-neutral-200 p-4">
-              <div className="flex items-center gap-2 text-neutral-500 mb-1">
-                <Calendar size={16} />
-                <span className="text-sm">Días sin comprar</span>
-              </div>
-              <div className="text-2xl font-bold text-neutral-900">
-                {Math.round(metrics.avg_days_since_last_order || 0)}
-              </div>
-            </div>
-          </div>
-        )}
+      <div className="p-6 space-y-8">
+        {/* Título */}
+        <div>
+          <h2 className="text-xl font-semibold text-neutral-900">Ciclo de vida de compradores</h2>
+          <p className="text-sm text-neutral-500 mt-1">
+            Segmenta a tus clientes según su frecuencia y cantidad de compras.
+          </p>
+        </div>
 
-        {/* Estado del sync */}
-        {syncStatus && (
-          <div className="bg-neutral-50 rounded-xl border border-neutral-200 p-4 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 text-sm text-neutral-600">
-                <Clock size={16} />
-                <span>
-                  Último sync:{' '}
-                  {syncStatus.lastSync
-                    ? new Date(syncStatus.lastSync).toLocaleString('es-AR')
-                    : 'Nunca'}
-                </span>
-              </div>
-              <div className="h-4 w-px bg-neutral-300" />
-              <div className="text-sm text-neutral-600">
-                <span className="font-medium">{syncStatus.synced}</span> sincronizados
-              </div>
-              <div className="h-4 w-px bg-neutral-300" />
-              <div className="text-sm text-neutral-600">
-                <span className="font-medium">{syncStatus.segmented}</span> segmentados
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Grid de segmentos */}
+        {/* Matriz de segmentos estilo TN */}
         {segments && (
-          <div>
-            <h2 className="text-lg font-semibold text-neutral-900 mb-4">Segmentos</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              {segments.definitions.map((def) => (
-                <SegmentCard
-                  key={def.segment}
-                  segment={def.segment}
-                  definition={def}
-                  count={segments.counts[def.segment] || 0}
-                  isSelected={selectedSegment === def.segment}
-                  onClick={() => handleSegmentClick(def.segment)}
+          <div className="relative">
+            {/* Eje Y */}
+            <div className="absolute -left-1 top-1/2 -translate-y-1/2 -rotate-90 text-[10px] text-neutral-400 whitespace-nowrap tracking-wide">
+              ↑ Cantidad de compras
+            </div>
+
+            {/* Grid */}
+            <div className="ml-8">
+              <div className="grid grid-cols-[1fr_1fr_1fr_1.2fr] gap-3">
+                {/* Fila 1: Alta frecuencia */}
+                <MatrixCell
+                  segment="campeones"
+                  count={getCount('campeones')}
+                  total={totalBuyers}
+                  colorClass="bg-green-100 border-green-200 text-green-800"
+                  isSelected={selectedSegment === 'campeones'}
+                  onClick={() => handleSegmentClick('campeones')}
                 />
-              ))}
+                <MatrixCell
+                  segment="alto_potencial"
+                  count={getCount('alto_potencial')}
+                  total={totalBuyers}
+                  colorClass="bg-yellow-100 border-yellow-200 text-yellow-800"
+                  isSelected={selectedSegment === 'alto_potencial'}
+                  onClick={() => handleSegmentClick('alto_potencial')}
+                />
+                <MatrixCell
+                  segment="no_pueden_perder"
+                  count={getCount('no_pueden_perder')}
+                  total={totalBuyers}
+                  colorClass="bg-orange-100 border-orange-200 text-orange-800"
+                  isSelected={selectedSegment === 'no_pueden_perder'}
+                  onClick={() => handleSegmentClick('no_pueden_perder')}
+                />
+                <MatrixCell
+                  segment="por_perder"
+                  count={getCount('por_perder')}
+                  total={totalBuyers}
+                  colorClass="bg-red-200 border-red-300 text-red-800 row-span-3"
+                  isSelected={selectedSegment === 'por_perder'}
+                  onClick={() => handleSegmentClick('por_perder')}
+                  className="row-span-3"
+                />
+
+                {/* Fila 2: Media frecuencia */}
+                <MatrixCell
+                  segment="leales"
+                  count={getCount('leales')}
+                  total={totalBuyers}
+                  colorClass="bg-green-100 border-green-200 text-green-800"
+                  isSelected={selectedSegment === 'leales'}
+                  onClick={() => handleSegmentClick('leales')}
+                />
+                <MatrixCell
+                  segment="necesitan_incentivo"
+                  count={getCount('necesitan_incentivo')}
+                  total={totalBuyers}
+                  colorClass="bg-yellow-100 border-yellow-200 text-yellow-800 row-span-2"
+                  isSelected={selectedSegment === 'necesitan_incentivo'}
+                  onClick={() => handleSegmentClick('necesitan_incentivo')}
+                  className="row-span-2"
+                />
+                <MatrixCell
+                  segment="en_riesgo"
+                  count={getCount('en_riesgo')}
+                  total={totalBuyers}
+                  colorClass="bg-orange-100 border-orange-200 text-orange-800 row-span-2"
+                  isSelected={selectedSegment === 'en_riesgo'}
+                  onClick={() => handleSegmentClick('en_riesgo')}
+                  className="row-span-2"
+                />
+
+                {/* Fila 3: Baja frecuencia */}
+                <MatrixCell
+                  segment="recientes"
+                  count={getCount('recientes')}
+                  total={totalBuyers}
+                  colorClass="bg-green-100 border-green-200 text-green-800"
+                  isSelected={selectedSegment === 'recientes'}
+                  onClick={() => handleSegmentClick('recientes')}
+                />
+              </div>
+
+              {/* Eje X */}
+              <div className="flex justify-between mt-3 text-[10px] text-neutral-400 px-1">
+                <span>Compras recientes</span>
+                <span className="flex items-center gap-1">Compras antiguas <ArrowRight size={10} /></span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Lista de segmentos con descripciones */}
+        {segments && (
+          <div className="bg-white rounded-xl border border-neutral-200 p-6">
+            {['campeones', 'leales', 'recientes', 'alto_potencial', 'necesitan_incentivo', 'no_pueden_perder', 'en_riesgo', 'por_perder'].map((segment) => (
+              <SegmentListRow
+                key={segment}
+                segment={segment}
+                count={getCount(segment)}
+                onClick={() => handleSegmentClick(segment)}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Sin compras */}
+        {segments && getCount('sin_compras') > 0 && (
+          <div className="bg-neutral-100 rounded-xl border border-neutral-200 p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Users size={20} className="text-neutral-400" />
+                <div>
+                  <span className="font-medium text-neutral-700">Sin compras</span>
+                  <span className="text-neutral-500 ml-2">
+                    {getCount('sin_compras').toLocaleString('es-AR')} contactos sin compras
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => handleSegmentClick('sin_compras')}
+                className={clsx(
+                  "text-sm text-neutral-500 hover:text-neutral-900",
+                  selectedSegment === 'sin_compras' && 'font-semibold text-neutral-900'
+                )}
+              >
+                Ver lista →
+              </button>
             </div>
           </div>
         )}
 
         {/* Tabla de clientes */}
-        <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
-          <div className="p-4 border-b border-neutral-200 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-neutral-900">
-              {selectedSegment
-                ? `Clientes: ${selectedSegment.replace('_', ' ')}`
-                : 'Todos los clientes'}
-              <span className="ml-2 text-sm font-normal text-neutral-500">
-                ({totalCustomers.toLocaleString('es-AR')})
-              </span>
-            </h2>
-            <div className="flex items-center gap-3">
-              {selectedSegment && (
-                <button
-                  onClick={() => setSelectedSegment(null)}
-                  className="text-sm text-neutral-500 hover:text-neutral-700"
-                >
-                  Limpiar filtro
-                </button>
-              )}
-              <div className="relative">
-                <Search
-                  size={16}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
-                />
-                <input
-                  type="text"
-                  placeholder="Buscar cliente..."
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  className="pl-9 pr-4 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent w-64"
-                />
+        {(selectedSegment || search) && (
+          <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
+            <div className="p-4 border-b border-neutral-200 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-neutral-900">
+                {selectedSegment ? SEGMENT_LABELS[selectedSegment] : 'Resultados'}
+                <span className="ml-2 text-sm font-normal text-neutral-500">
+                  ({totalCustomers.toLocaleString('es-AR')})
+                </span>
+              </h2>
+              <div className="flex items-center gap-3">
+                {selectedSegment && (
+                  <button onClick={() => setSelectedSegment(null)} className="text-sm text-neutral-500 hover:text-neutral-700">
+                    Limpiar
+                  </button>
+                )}
+                <div className="relative">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar..."
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    className="pl-9 pr-4 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 w-56"
+                  />
+                </div>
               </div>
             </div>
-          </div>
 
-          {loading ? (
-            <div className="p-12 text-center">
-              <RefreshCw size={32} className="mx-auto animate-spin text-neutral-400" />
-            </div>
-          ) : customers.length === 0 ? (
-            <div className="p-12 text-center text-neutral-500">
-              No se encontraron clientes
-            </div>
-          ) : (
-            <>
-              <div className="overflow-x-auto">
+            {loading ? (
+              <div className="p-12 text-center">
+                <RefreshCw size={32} className="mx-auto animate-spin text-neutral-400" />
+              </div>
+            ) : customers.length === 0 ? (
+              <div className="p-12 text-center text-neutral-500">No se encontraron clientes</div>
+            ) : (
+              <>
                 <table className="w-full">
                   <thead className="bg-neutral-50 border-b border-neutral-200">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-                        Cliente
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-                        Teléfono
-                      </th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-                        Compras
-                      </th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-                        Total Gastado
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-                        Última Compra
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-                        Segmento
-                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500 uppercase">Cliente</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500 uppercase">Teléfono</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-neutral-500 uppercase">Compras</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-neutral-500 uppercase">Total</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500 uppercase">Última</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500 uppercase">Segmento</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-100">
-                    {customers.map((customer) => (
-                      <CustomerRow key={customer.id} customer={customer} />
-                    ))}
+                    {customers.map((c) => <CustomerRow key={c.id} customer={c} />)}
                   </tbody>
                 </table>
-              </div>
 
-              {/* Paginación */}
-              {totalPages > 1 && (
-                <div className="px-4 py-3 border-t border-neutral-200 flex items-center justify-between">
-                  <div className="text-sm text-neutral-500">
-                    Página {page} de {totalPages}
+                {totalPages > 1 && (
+                  <div className="px-4 py-3 border-t border-neutral-200 flex items-center justify-between">
+                    <span className="text-sm text-neutral-500">Página {page} de {totalPages}</span>
+                    <div className="flex gap-2">
+                      <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="p-2 rounded-lg hover:bg-neutral-100 disabled:opacity-50"><ChevronLeft size={20} /></button>
+                      <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="p-2 rounded-lg hover:bg-neutral-100 disabled:opacity-50"><ChevronRight size={20} /></button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={page === 1}
-                      className="p-2 rounded-lg hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <ChevronLeft size={20} />
-                    </button>
-                    <button
-                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={page === totalPages}
-                      className="p-2 rounded-lg hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <ChevronRight size={20} />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Sync status */}
+        {syncStatus && (
+          <div className="text-xs text-neutral-400 text-center">
+            Último sync: {syncStatus.lastSync ? new Date(syncStatus.lastSync).toLocaleString('es-AR') : 'Nunca'}
+          </div>
+        )}
       </div>
     </div>
   );
