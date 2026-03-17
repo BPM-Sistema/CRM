@@ -27,7 +27,7 @@ import {
   PhoneCall,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchIntegrationHealth, ServiceHealth } from '../services/api';
+import { authFetch as apiAuthFetch, fetchIntegrationHealth, ServiceHealth } from '../services/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -100,26 +100,13 @@ interface OverviewData {
 // ─── Helpers ────────────────────────────────────────────
 
 async function authFetch(url: string) {
-  const token = localStorage.getItem('token');
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
+  const res = await apiAuthFetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 async function authPost(url: string) {
-  const token = localStorage.getItem('token');
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
+  const res = await apiAuthFetch(url, { method: 'POST' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
