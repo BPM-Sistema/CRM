@@ -379,7 +379,7 @@ export default function Customers() {
                 <span className="text-sm">Prom. Compras</span>
               </div>
               <div className="text-2xl font-bold text-neutral-900">
-                {(metrics.avg_orders_per_customer || 0).toFixed(1)}
+                {Number(metrics.avg_orders_per_customer || 0).toFixed(1)}
               </div>
             </div>
             <div className="bg-white rounded-xl border border-neutral-200 p-4">
