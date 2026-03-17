@@ -61,6 +61,26 @@ async function start() {
   log.info('WhatsApp worker iniciado');
 
   log.info({ workerCount: workers.length }, 'Todos los workers iniciados');
+
+  // Health check HTTP server (requerido por Cloud Run)
+  const http = require('http');
+  const PORT = process.env.PORT || 8080;
+  const healthServer = http.createServer((req, res) => {
+    if (req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        status: 'ok',
+        workers: workers.length,
+        uptime: process.uptime()
+      }));
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+  healthServer.listen(PORT, () => {
+    log.info({ port: PORT }, 'Worker health server listening');
+  });
 }
 
 // Graceful shutdown

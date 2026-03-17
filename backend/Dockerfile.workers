@@ -1,0 +1,21 @@
+# Dockerfile para Workers (Cloud Run)
+FROM node:18-slim
+
+RUN apt-get update && apt-get install -y \
+    libvips-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+
+RUN mkdir -p /app/uploads /tmp
+
+# Workers no necesitan puerto HTTP, pero Cloud Run requiere uno
+# Usamos un health check simple
+ENV PORT=8080
+
+CMD ["node", "workers/index.js"]

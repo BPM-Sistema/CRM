@@ -22,8 +22,10 @@ import {
   ChevronDown,
   ChevronUp,
   Zap,
+  Radio,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { fetchIntegrationHealth, ServiceHealth } from '../services/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -199,8 +201,31 @@ export default function SystemStatus() {
   const [showQueues, setShowQueues] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
+  // Connection health (from /integrations/health)
+  const [healthServices, setHealthServices] = useState<ServiceHealth[]>([]);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [healthStatus, setHealthStatus] = useState<'healthy' | 'degraded' | null>(null);
+  const [, setHealthTimestamp] = useState<string | null>(null);
+  const [healthLatency, setHealthLatency] = useState<number | null>(null);
+
   const canView = hasPermission('integrations.view');
   const canUpdate = hasPermission('integrations.update');
+
+  const loadHealth = useCallback(async () => {
+    setHealthLoading(true);
+    try {
+      const data = await fetchIntegrationHealth();
+      setHealthServices(data.services);
+      setHealthStatus(data.status);
+      setHealthTimestamp(data.timestamp);
+      setHealthLatency(data.totalLatency);
+    } catch (err) {
+      console.error('Error loading health:', err);
+      setHealthStatus('degraded');
+    } finally {
+      setHealthLoading(false);
+    }
+  }, []);
 
   const loadAll = useCallback(async () => {
     setError(null);
@@ -224,9 +249,10 @@ export default function SystemStatus() {
   useEffect(() => {
     if (!canView) return;
     loadAll();
-    const interval = setInterval(loadAll, 30000);
+    loadHealth();
+    const interval = setInterval(() => { loadAll(); loadHealth(); }, 30000);
     return () => clearInterval(interval);
-  }, [canView, loadAll]);
+  }, [canView, loadAll, loadHealth]);
 
   const handleRetry = async (queueName: string) => {
     setRetrying(queueName);
@@ -315,6 +341,88 @@ export default function SystemStatus() {
             })}
           </div>
         )}
+
+        {/* Connection Health Panel (detailed) */}
+        <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 bg-neutral-50 border-b border-neutral-200">
+            <div className="flex items-center gap-2">
+              <Radio size={18} className="text-neutral-600" />
+              <h3 className="font-semibold text-neutral-900">Estado de Conexiones</h3>
+              {healthStatus && (
+                <span
+                  className={`ml-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                    healthStatus === 'healthy'
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-amber-100 text-amber-700'
+                  }`}
+                >
+                  {healthStatus === 'healthy' ? 'Todo OK' : 'Degradado'}
+                </span>
+              )}
+              {healthLatency !== null && healthStatus === 'healthy' && (
+                <span className="text-xs text-neutral-400 ml-1">
+                  ({healthLatency}ms total)
+                </span>
+              )}
+            </div>
+            <button
+              onClick={loadHealth}
+              disabled={healthLoading}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors"
+            >
+              <Wifi size={14} className={healthLoading ? 'animate-pulse' : ''} />
+              Verificar
+            </button>
+          </div>
+
+          {healthLoading && healthServices.length === 0 ? (
+            <div className="p-5 flex justify-center">
+              <RefreshCw size={18} className="text-neutral-400 animate-spin" />
+            </div>
+          ) : healthServices.length === 0 ? (
+            <div className="p-5 text-center text-neutral-500 text-sm">
+              Click en "Verificar" para comprobar todas las conexiones
+            </div>
+          ) : (
+            <div className="divide-y divide-neutral-100">
+              {healthServices.map((service) => (
+                <div
+                  key={service.name}
+                  className="flex items-center justify-between px-5 py-3"
+                >
+                  <div className="flex items-center gap-3">
+                    {service.status === 'ok' ? (
+                      <CheckCircle2 size={18} className="text-green-500" />
+                    ) : (
+                      <XOctagon size={18} className="text-red-500" />
+                    )}
+                    <span className="text-sm font-medium text-neutral-900">
+                      {service.name}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {service.status === 'ok' ? (
+                      <span className="text-sm text-neutral-500">{service.latency}ms</span>
+                    ) : (
+                      <span className="text-sm text-red-600 max-w-[250px] truncate" title={service.error}>
+                        {service.error}
+                      </span>
+                    )}
+                    <span
+                      className={`px-2 py-0.5 rounded text-xs font-medium ${
+                        service.status === 'ok'
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-red-100 text-red-700'
+                      }`}
+                    >
+                      {service.status === 'ok' ? 'OK' : 'ERROR'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* System Info + Circuit Breakers Row */}
         {overview && (
