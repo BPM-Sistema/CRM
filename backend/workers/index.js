@@ -48,8 +48,16 @@ async function start() {
 
   log.info('Redis conectado');
 
-  // Conexion compartida para BullMQ (usa la misma instancia de ioredis)
-  const connection = redis;
+  // Crear conexion dedicada para BullMQ (requiere maxRetriesPerRequest: null)
+  const Redis = require('ioredis');
+  const connection = new Redis({
+    host: process.env.REDIS_HOST,
+    port: Number(process.env.REDIS_PORT) || 6379,
+    password: process.env.REDIS_PASSWORD || undefined,
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+    lazyConnect: false
+  });
 
   // Iniciar workers
   const ocrWorker = createOcrWorker(connection);
