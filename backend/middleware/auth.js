@@ -31,9 +31,11 @@ async function authenticate(req, res, next) {
     const authHeader = req.headers.authorization;
     let token = null;
 
-    // Obtener token del header Authorization (único método aceptado)
+    // Obtener token del header Authorization o query param (para descargas en navegador)
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.split(' ')[1];
+    } else if (req.query.token) {
+      token = req.query.token;
     }
 
     if (!token) {
