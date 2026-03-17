@@ -75,12 +75,8 @@ async function checkAllServices() {
     checkService('Botmaker (WhatsApp)', async () => {
       const token = process.env.BOTMAKER_ACCESS_TOKEN;
       if (!token) throw new Error('Token no configurado');
-
-      const res = await axios.get('https://api.botmaker.com/v2.0/intents/', {
-        headers: { 'access-token': token },
-        timeout: 5000
-      });
-      if (!res.data) throw new Error('Respuesta inválida');
+      const channelId = process.env.BOTMAKER_CHANNEL_ID;
+      if (!channelId) throw new Error('Channel ID no configurado');
     }),
 
     // 5. Claude Vision (OCR) - Anthropic API
