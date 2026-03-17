@@ -107,12 +107,6 @@ async function authFetch(url: string) {
       'Content-Type': 'application/json',
     },
   });
-  if (res.status === 401) {
-    // Token expirado - recargar para forzar re-login
-    localStorage.removeItem('token');
-    window.location.reload();
-    throw new Error('Sesión expirada');
-  }
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
