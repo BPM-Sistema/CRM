@@ -421,7 +421,7 @@ router.post('/dismiss-incidents', requirePermission('integrations.update'), asyn
       UPDATE comprobantes
       SET estado = 'rechazado'
       WHERE estado = 'a_confirmar'
-        AND created_at < NOW() - INTERVAL '7 days'
+        AND created_at < NOW() - INTERVAL '2 hours'
       RETURNING id
     `);
 
