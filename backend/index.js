@@ -3156,11 +3156,13 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
         .getPublicUrl(supabasePath);
       const fileUrl = publicUrlData.publicUrl;
 
+      // hash_ocr placeholder: se actualiza después del OCR en el worker
+      const placeholderHash = crypto.createHash('sha256').update(`pending-${orderNumber}-${Date.now()}`).digest('hex');
       const insertRes = await pool.query(
-        `INSERT INTO comprobantes (order_number, file_url, estado, monto_tiendanube)
-         VALUES ($1, $2, 'procesando_ocr', $3)
+        `INSERT INTO comprobantes (order_number, file_url, estado, monto_tiendanube, hash_ocr)
+         VALUES ($1, $2, 'procesando_ocr', $3, $4)
          RETURNING id`,
-        [orderNumber, fileUrl, montoTiendanube]
+        [orderNumber, fileUrl, montoTiendanube, placeholderHash]
       );
       const comprobanteId = insertRes.rows[0].id;
 
