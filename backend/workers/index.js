@@ -1,0 +1,112 @@
+/**
+ * Worker Entry Point
+ *
+ * Inicia todos los workers de BullMQ como un proceso separado.
+ * Ejecutar: node workers/index.js
+ */
+
+require('dotenv').config();
+
+const { logger, workerLogger: log } = require('../lib/logger');
+const { redis } = require('../lib/redis');
+const { createOcrWorker } = require('./ocr.worker');
+const { createWhatsAppWorker } = require('./whatsapp.worker');
+
+const pkg = require('../package.json');
+
+// Workers activos (para graceful shutdown)
+const workers = [];
+
+async function start() {
+  log.info({
+    app: pkg.name,
+    version: pkg.version,
+    nodeVersion: process.version,
+    pid: process.pid
+  }, 'Iniciando workers');
+
+  // Verificar conexion Redis
+  if (!redis) {
+    log.fatal('Redis no esta configurado. Los workers requieren Redis. Abortando.');
+    process.exit(1);
+  }
+
+  // Esperar a que Redis este listo
+  await new Promise((resolve, reject) => {
+    if (redis.status === 'ready') {
+      resolve();
+      return;
+    }
+    redis.once('ready', resolve);
+    redis.once('error', (err) => {
+      log.fatal({ err: err.message }, 'Error conectando a Redis');
+      reject(err);
+    });
+    // Timeout de conexion
+    setTimeout(() => reject(new Error('Redis connection timeout (30s)')), 30000);
+  });
+
+  log.info('Redis conectado');
+
+  // Conexion compartida para BullMQ (usa la misma instancia de ioredis)
+  const connection = redis;
+
+  // Iniciar workers
+  const ocrWorker = createOcrWorker(connection);
+  workers.push(ocrWorker);
+  log.info('OCR worker iniciado');
+
+  const whatsappWorker = createWhatsAppWorker(connection);
+  workers.push(whatsappWorker);
+  log.info('WhatsApp worker iniciado');
+
+  log.info({ workerCount: workers.length }, 'Todos los workers iniciados');
+}
+
+// Graceful shutdown
+async function shutdown(signal) {
+  log.info({ signal }, 'Senal recibida, cerrando workers...');
+
+  const closePromises = workers.map(async (worker) => {
+    try {
+      await worker.close();
+    } catch (err) {
+      log.error({ err: err.message }, 'Error cerrando worker');
+    }
+  });
+
+  await Promise.allSettled(closePromises);
+  log.info('Todos los workers cerrados');
+
+  // Cerrar Redis
+  try {
+    if (redis) {
+      await redis.quit();
+      log.info('Redis desconectado');
+    }
+  } catch (err) {
+    log.error({ err: err.message }, 'Error cerrando Redis');
+  }
+
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+// Capturar errores no manejados
+process.on('unhandledRejection', (err) => {
+  log.fatal({ err: err?.message, stack: err?.stack }, 'Unhandled rejection en worker process');
+  process.exit(1);
+});
+
+process.on('uncaughtException', (err) => {
+  log.fatal({ err: err.message, stack: err.stack }, 'Uncaught exception en worker process');
+  process.exit(1);
+});
+
+// Iniciar
+start().catch((err) => {
+  log.fatal({ err: err.message }, 'Error fatal iniciando workers');
+  process.exit(1);
+});

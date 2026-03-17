@@ -24,20 +24,16 @@ if (!JWT_SECRET) {
 
 /**
  * Middleware para verificar autenticación
- * Extrae el token JWT del header Authorization o query param (para downloads)
+ * Extrae el token JWT del header Authorization
  */
 async function authenticate(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
     let token = null;
 
-    // Primero intentar obtener token del header Authorization
+    // Obtener token del header Authorization (único método aceptado)
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.split(' ')[1];
-    }
-    // Fallback: token en query param (para descargas directas de PDFs)
-    else if (req.query.token) {
-      token = req.query.token;
     }
 
     if (!token) {

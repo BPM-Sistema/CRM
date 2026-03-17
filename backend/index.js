@@ -100,6 +100,17 @@ app.use((req, res, next) => {
   next();
 });
 
+// Security headers
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
+
+// Structured logging middleware (request IDs + duration)
+const { requestLogger } = require('./lib/logger');
+app.use(requestLogger);
+
 // Redirecciones del dominio viejo (api.petlovearg.com) al nuevo
 app.get('/envio', (req, res) => {
   // Si viene del dominio viejo, redirigir al nuevo
@@ -140,6 +151,22 @@ async function logEvento({ comprobanteId, orderNumber, accion, origen, userId, u
     console.log(`   ✅ Log insertado con ID: ${result.rows[0].id}`);
   } catch (err) {
     console.error('❌ Error guardando log:', err.message);
+  }
+}
+
+/* =====================================================
+   UTIL — SIGNED ACTION TOKENS (para links /confirmar /rechazar)
+===================================================== */
+function generateSignedAction(comprobanteId, action) {
+  return jwt.sign({ comprobanteId, action }, JWT_SECRET, { expiresIn: '15m' });
+}
+
+function verifySignedAction(token, expectedId, expectedAction) {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    return decoded.comprobanteId === expectedId && decoded.action === expectedAction;
+  } catch {
+    return false;
   }
 }
 
@@ -1936,10 +1963,6 @@ app.get('/comprobantes/:id', authenticate, requirePermission('receipts.view'), a
 /* =====================================================
    POST — CONFIRMAR COMPROBANTE (API JSON)
 ===================================================== */
-// Cache para prevenir requests duplicados (key: comprobante_id, value: timestamp)
-const confirmRequestCache = new Map();
-const DUPLICATE_THRESHOLD_MS = 5000; // 5 segundos
-
 app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipts.confirm'), async (req, res) => {
   const { id } = req.params;
   const requestTime = Date.now();
@@ -1947,40 +1970,45 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
 
   console.log(`🔔 [${requestId}] Iniciando confirmación de comprobante ${id}`);
 
-  // Verificar si hay un request reciente para el mismo comprobante
-  const lastRequest = confirmRequestCache.get(id);
-  if (lastRequest && (requestTime - lastRequest) < DUPLICATE_THRESHOLD_MS) {
-    console.log(`⚠️ [${requestId}] Request duplicado detectado (${requestTime - lastRequest}ms desde último)`);
-    return res.status(429).json({ error: 'Request duplicado, espere unos segundos' });
-  }
-  confirmRequestCache.set(id, requestTime);
-
+  const client = await pool.connect();
   try {
-    // 1️⃣ Buscar comprobante
-    const compRes = await pool.query(
-      `SELECT id, order_number, monto, estado FROM comprobantes WHERE id = $1`,
+    await client.query('BEGIN');
+
+    // 1️⃣ Buscar comprobante con row lock
+    const compRes = await client.query(
+      `SELECT id, order_number, monto, estado FROM comprobantes WHERE id = $1 FOR UPDATE`,
       [id]
     );
 
     if (compRes.rowCount === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Comprobante no encontrado' });
     }
 
     const comprobante = compRes.rows[0];
 
     if (comprobante.estado !== 'pendiente' && comprobante.estado !== 'a_confirmar') {
+      await client.query('ROLLBACK');
       console.log(`⚠️ [${requestId}] Comprobante ya procesado (estado: ${comprobante.estado})`);
       return res.status(400).json({ error: 'Este comprobante ya fue procesado' });
     }
 
     // 2️⃣ Confirmar comprobante
-    await pool.query(`UPDATE comprobantes SET estado = 'confirmado' WHERE id = $1`, [id]);
+    await client.query(`UPDATE comprobantes SET estado = 'confirmado' WHERE id = $1`, [id]);
 
-    // 3️⃣ Recalcular total pagado (comprobantes + efectivo)
-    const totalPagado = await calcularTotalPagado(comprobante.order_number);
+    // 3️⃣ Recalcular total pagado (comprobantes + efectivo) using client
+    const compSumRes = await client.query(
+      `SELECT COALESCE(SUM(monto), 0) AS total FROM comprobantes WHERE order_number = $1 AND estado = 'confirmado'`,
+      [comprobante.order_number]
+    );
+    const efectivoSumRes = await client.query(
+      `SELECT COALESCE(SUM(monto), 0) AS total FROM pagos_efectivo WHERE order_number = $1`,
+      [comprobante.order_number]
+    );
+    const totalPagado = Number(compSumRes.rows[0].total) + Number(efectivoSumRes.rows[0].total);
 
     // 4️⃣ Obtener monto, estado actual y datos de cliente del pedido
-    const orderRes = await pool.query(
+    const orderRes = await client.query(
       `SELECT monto_tiendanube, estado_pedido, customer_name, customer_phone, shipping_type, tn_order_id FROM orders_validated WHERE order_number = $1`,
       [comprobante.order_number]
     );
@@ -2002,14 +2030,16 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
     const nuevoEstadoPedido = calcularEstadoPedido(estadoPago, estadoPedidoActual);
 
     // 7️⃣ Actualizar orden
-    await pool.query(
+    await client.query(
       `UPDATE orders_validated
        SET total_pagado = $1, saldo = $2, estado_pago = $3, estado_pedido = $4
        WHERE order_number = $5`,
       [totalPagado, saldo, estadoPago, nuevoEstadoPedido, comprobante.order_number]
     );
 
-    // 7.5️⃣ Sincronizar con Tiendanube si está completamente pagado
+    await client.query('COMMIT');
+
+    // 7.5️⃣ Sincronizar con Tiendanube si está completamente pagado (after commit)
     if (estadoPago === 'confirmado_total' && orderData.tn_order_id) {
       marcarPagadoEnTiendanube(orderData.tn_order_id, comprobante.order_number);
       // No await - no bloqueamos la respuesta
@@ -2076,8 +2106,11 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
     });
 
   } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error(`❌ [${requestId}] /comprobantes/:id/confirmar error:`, error.message);
     res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -2085,9 +2118,6 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
 /* =====================================================
    POST — RECHAZAR COMPROBANTE (API JSON)
 ===================================================== */
-// Cache para prevenir requests duplicados
-const rejectRequestCache = new Map();
-
 app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts.reject'), async (req, res) => {
   const { id } = req.params;
   const { motivo } = req.body;
@@ -2096,40 +2126,40 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
 
   console.log(`🔔 [${requestId}] Iniciando rechazo de comprobante ${id}`);
 
-  // Verificar si hay un request reciente para el mismo comprobante
-  const lastRequest = rejectRequestCache.get(id);
-  if (lastRequest && (requestTime - lastRequest) < DUPLICATE_THRESHOLD_MS) {
-    console.log(`⚠️ [${requestId}] Request duplicado detectado (${requestTime - lastRequest}ms desde último)`);
-    return res.status(429).json({ error: 'Request duplicado, espere unos segundos' });
-  }
-  rejectRequestCache.set(id, requestTime);
-
+  const client = await pool.connect();
   try {
-    // Query optimizada: trae comprobante + datos del cliente en una sola consulta
-    const compRes = await pool.query(
+    await client.query('BEGIN');
+
+    // Query optimizada con row lock: trae comprobante + datos del cliente
+    const compRes = await client.query(
       `SELECT c.id, c.order_number, c.estado, c.monto,
               ov.customer_name, ov.customer_phone
        FROM comprobantes c
        LEFT JOIN orders_validated ov ON c.order_number = ov.order_number
-       WHERE c.id = $1`,
+       WHERE c.id = $1
+       FOR UPDATE OF c`,
       [id]
     );
 
     if (compRes.rowCount === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Comprobante no encontrado' });
     }
 
     const comprobante = compRes.rows[0];
 
     if (comprobante.estado !== 'pendiente' && comprobante.estado !== 'a_confirmar') {
+      await client.query('ROLLBACK');
       console.log(`⚠️ [${requestId}] Comprobante ya procesado (estado: ${comprobante.estado})`);
       return res.status(400).json({ error: 'Este comprobante ya fue procesado' });
     }
 
     // Rechazar comprobante (guardar fecha de procesamiento en confirmed_at)
-    await pool.query(`UPDATE comprobantes SET estado = 'rechazado', confirmed_at = NOW(), confirmed_by = $2 WHERE id = $1`, [id, req.user?.id]);
+    await client.query(`UPDATE comprobantes SET estado = 'rechazado', confirmed_at = NOW(), confirmed_by = $2 WHERE id = $1`, [id, req.user?.id]);
 
-    // Log
+    await client.query('COMMIT');
+
+    // Log (after commit)
     console.log(`📝 [${requestId}] Insertando log de rechazo`);
     await logEvento({
       comprobanteId: id,
@@ -2164,8 +2194,11 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
     });
 
   } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error(`❌ [${requestId}] /comprobantes/:id/rechazar error:`, error.message);
     res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -3167,8 +3200,12 @@ app.post('/webhook/botmaker-status', async (req, res) => {
     const authToken = req.headers['auth-bm-token'];
     const expectedToken = process.env.BOTMAKER_WEBHOOK_SECRET;
 
-    // Validar token si está configurado
-    if (expectedToken && authToken !== expectedToken) {
+    // Validar token - requerido siempre
+    if (!expectedToken) {
+      console.error('❌ Botmaker webhook: BOTMAKER_WEBHOOK_SECRET not configured');
+      return res.status(500).json({ error: 'Webhook secret not configured' });
+    }
+    if (authToken !== expectedToken) {
       console.error('❌ Botmaker webhook: token inválido');
       return res.status(401).send('Invalid token');
     }
@@ -4000,15 +4037,19 @@ app.get('/revisar/:id', async (req, res) => {
 
             ${
               (comprobante.estado === 'pendiente' || comprobante.estado === 'a_confirmar')
-                ? `
-                  <a class="btn confirmar" href="/confirmar/${comprobante.id}">
+                ? (() => {
+                    const confirmToken = generateSignedAction(comprobante.id, 'confirmar');
+                    const rejectToken = generateSignedAction(comprobante.id, 'rechazar');
+                    return `
+                  <a class="btn confirmar" href="/confirmar/${comprobante.id}?token=${confirmToken}">
                     ✅ Confirmar
                   </a>
 
-                  <a class="btn rechazar" href="/rechazar/${comprobante.id}">
+                  <a class="btn rechazar" href="/rechazar/${comprobante.id}?token=${rejectToken}">
                     ❌ Rechazar
                   </a>
-                `
+                `;
+                  })()
                 : `<p>Este comprobante ya fue procesado.</p>`
             }
           </div>
@@ -4024,39 +4065,56 @@ app.get('/revisar/:id', async (req, res) => {
 
 app.get('/confirmar/:id', async (req, res) => {
   const { id } = req.params;
+  const { token } = req.query;
 
+  // Verify signed token
+  if (!token || !verifySignedAction(token, id, 'confirmar')) {
+    return res.status(403).send('<h2>Link invalido o expirado</h2><p>Solicita un nuevo link de revision.</p>');
+  }
+
+  const client = await pool.connect();
   try {
-    // 1️⃣ Buscar comprobante
-    const compRes = await pool.query(
+    await client.query('BEGIN');
+
+    // 1️⃣ Buscar comprobante con row lock
+    const compRes = await client.query(
       `SELECT id, order_number, monto, estado
        FROM comprobantes
-       WHERE id = $1`,
+       WHERE id = $1 FOR UPDATE`,
       [id]
     );
 
     if (compRes.rowCount === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).send('Comprobante no encontrado');
     }
 
     const comprobante = compRes.rows[0];
 
     if (comprobante.estado !== 'pendiente' && comprobante.estado !== 'a_confirmar') {
+      await client.query('ROLLBACK');
       return res.send('Este comprobante ya fue procesado.');
     }
 
     // 2️⃣ Confirmar comprobante
-    await pool.query(
-      `UPDATE comprobantes
-       SET estado = 'confirmado'
-       WHERE id = $1`,
+    await client.query(
+      `UPDATE comprobantes SET estado = 'confirmado' WHERE id = $1`,
       [id]
     );
 
-    // 3️⃣ Recalcular total pagado (comprobantes + efectivo)
-    const totalPagado = await calcularTotalPagado(comprobante.order_number);
+    // 3️⃣ Recalcular total pagado using client
+    const compSumRes = await client.query(
+      `SELECT COALESCE(SUM(monto), 0) AS total FROM comprobantes WHERE order_number = $1 AND estado = 'confirmado'`,
+      [comprobante.order_number]
+    );
+    const efectivoSumRes = await client.query(
+      `SELECT COALESCE(SUM(monto), 0) AS total FROM pagos_efectivo WHERE order_number = $1`,
+      [comprobante.order_number]
+    );
+    const totalPagado = Number(compSumRes.rows[0].total) + Number(efectivoSumRes.rows[0].total);
 
     // 4️⃣ Obtener monto y estado actual del pedido
-    const orderRes = await pool.query(
+    const orderRes = await client.query(
       `SELECT monto_tiendanube, estado_pedido FROM orders_validated WHERE order_number = $1`,
       [comprobante.order_number]
     );
@@ -4077,15 +4135,17 @@ app.get('/confirmar/:id', async (req, res) => {
     const nuevoEstadoPedido = calcularEstadoPedido(estadoPago, estadoPedidoActual);
 
     // 7️⃣ Actualizar orden
-    await pool.query(
+    await client.query(
       `UPDATE orders_validated
        SET total_pagado = $1, saldo = $2, estado_pago = $3, estado_pedido = $4
        WHERE order_number = $5`,
       [totalPagado, saldo, estadoPago, nuevoEstadoPedido, comprobante.order_number]
     );
 
+    await client.query('COMMIT');
+
     return res.send(`
-      <h2>✅ Comprobante confirmado</h2>
+      <h2>Comprobante confirmado</h2>
       <p>Pedido: ${comprobante.order_number}</p>
       <p>Total pagado: $${totalPagado}</p>
       <p>Estado pago: ${estadoPago}</p>
@@ -4093,8 +4153,11 @@ app.get('/confirmar/:id', async (req, res) => {
     `);
 
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error(err);
     res.status(500).send('Error al confirmar comprobante');
+  } finally {
+    client.release();
   }
 });
 
@@ -4102,49 +4165,59 @@ app.get('/confirmar/:id', async (req, res) => {
 
 app.get('/rechazar/:id', async (req, res) => {
   const { id } = req.params;
+  const { token } = req.query;
 
+  // Verify signed token
+  if (!token || !verifySignedAction(token, id, 'rechazar')) {
+    return res.status(403).send('<h2>Link invalido o expirado</h2><p>Solicita un nuevo link de revision.</p>');
+  }
+
+  const client = await pool.connect();
   try {
-    const compRes = await pool.query(
+    await client.query('BEGIN');
+
+    const compRes = await client.query(
       `SELECT id, order_number, estado
        FROM comprobantes
-       WHERE id = $1`,
+       WHERE id = $1 FOR UPDATE`,
       [id]
     );
 
     if (compRes.rowCount === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).send('Comprobante no encontrado');
     }
 
     if (compRes.rows[0].estado !== 'pendiente' && compRes.rows[0].estado !== 'a_confirmar') {
+      await client.query('ROLLBACK');
       return res.send('Este comprobante ya fue procesado.');
     }
 
     // Rechazar comprobante
-    await pool.query(
-      `UPDATE comprobantes
-       SET estado = 'rechazado'
-       WHERE id = $1`,
+    await client.query(
+      `UPDATE comprobantes SET estado = 'rechazado' WHERE id = $1`,
       [id]
     );
 
     // El estado de la orden pasa a rechazado
-    await pool.query(
-      `
-      UPDATE orders_validated
-      SET estado_pago = 'rechazado'
-      WHERE order_number = $1
-      `,
+    await client.query(
+      `UPDATE orders_validated SET estado_pago = 'rechazado' WHERE order_number = $1`,
       [compRes.rows[0].order_number]
     );
 
+    await client.query('COMMIT');
+
     return res.send(`
-      <h2>❌ Comprobante rechazado</h2>
+      <h2>Comprobante rechazado</h2>
       <p>ID: ${id}</p>
     `);
 
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error(err);
     res.status(500).send('Error al rechazar comprobante');
+  } finally {
+    client.release();
   }
 });
 
@@ -4241,35 +4314,40 @@ async function marcarPagadoEnTiendanube(tnOrderId, orderNumber) {
    PAGO EN EFECTIVO
 ===================================================== */
 app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_payment'), async (req, res) => {
+  const { orderNumber, monto, registradoPor, notas } = req.body;
+
+  // Validaciones (before acquiring connection)
+  if (!orderNumber || !monto) {
+    return res.status(400).json({ error: 'Faltan datos: orderNumber y monto son requeridos' });
+  }
+
+  const montoNumerico = Math.round(Number(monto));
+  if (isNaN(montoNumerico) || montoNumerico <= 0) {
+    return res.status(400).json({ error: 'Monto inválido' });
+  }
+
+  console.log('💵 Registrando pago en efectivo');
+  console.log('Pedido:', orderNumber);
+  console.log('Monto:', montoNumerico);
+  console.log('Registrado por:', registradoPor || 'sistema');
+
+  const client = await pool.connect();
   try {
-    const { orderNumber, monto, registradoPor, notas } = req.body;
-
-    // Validaciones
-    if (!orderNumber || !monto) {
-      return res.status(400).json({ error: 'Faltan datos: orderNumber y monto son requeridos' });
-    }
-
-    const montoNumerico = Math.round(Number(monto));
-    if (isNaN(montoNumerico) || montoNumerico <= 0) {
-      return res.status(400).json({ error: 'Monto inválido' });
-    }
-
-    console.log('💵 Registrando pago en efectivo');
-    console.log('Pedido:', orderNumber);
-    console.log('Monto:', montoNumerico);
-    console.log('Registrado por:', registradoPor || 'sistema');
+    await client.query('BEGIN');
 
     /* ===============================
-       1️⃣ VERIFICAR QUE EXISTE EL PEDIDO
+       1️⃣ VERIFICAR QUE EXISTE EL PEDIDO (con lock)
     ================================ */
-    const orderRes = await pool.query(
+    const orderRes = await client.query(
       `SELECT order_number, monto_tiendanube, estado_pedido, tn_order_id
        FROM orders_validated
-       WHERE order_number = $1`,
+       WHERE order_number = $1
+       FOR UPDATE`,
       [orderNumber]
     );
 
     if (orderRes.rowCount === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Pedido no encontrado' });
     }
 
@@ -4280,7 +4358,7 @@ app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_p
     /* ===============================
        2️⃣ INSERTAR EN PAGOS_EFECTIVO
     ================================ */
-    const insert = await pool.query(
+    const insert = await client.query(
       `INSERT INTO pagos_efectivo (order_number, monto, registrado_por, notas)
        VALUES ($1, $2, $3, $4)
        RETURNING id`,
@@ -4291,9 +4369,17 @@ app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_p
     console.log('🧾 Pago en efectivo registrado ID:', pagoId);
 
     /* ===============================
-       3️⃣ RECALCULAR TOTAL PAGADO (comprobantes + efectivo)
+       3️⃣ RECALCULAR TOTAL PAGADO (comprobantes + efectivo) using client
     ================================ */
-    const totalPagado = await calcularTotalPagado(orderNumber);
+    const compSumRes = await client.query(
+      `SELECT COALESCE(SUM(monto), 0) AS total FROM comprobantes WHERE order_number = $1 AND estado = 'confirmado'`,
+      [orderNumber]
+    );
+    const efectivoSumRes = await client.query(
+      `SELECT COALESCE(SUM(monto), 0) AS total FROM pagos_efectivo WHERE order_number = $1`,
+      [orderNumber]
+    );
+    const totalPagado = Number(compSumRes.rows[0].total) + Number(efectivoSumRes.rows[0].total);
     const saldo = montoTiendanube - totalPagado;
 
     /* ===============================
@@ -4318,19 +4404,21 @@ app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_p
     /* ===============================
        6️⃣ ACTUALIZAR ORDEN
     ================================ */
-    await pool.query(
+    await client.query(
       `UPDATE orders_validated
        SET total_pagado = $1, saldo = $2, estado_pago = $3, estado_pedido = $4
        WHERE order_number = $5`,
       [totalPagado, saldo, estadoPago, nuevoEstadoPedido, orderNumber]
     );
 
-    // 6.5️⃣ Sincronizar con Tiendanube si está completamente pagado
+    await client.query('COMMIT');
+
+    // 6.5️⃣ Sincronizar con Tiendanube si está completamente pagado (after commit)
     if (estadoPago === 'confirmado_total' && tnOrderId) {
       marcarPagadoEnTiendanube(tnOrderId, orderNumber);
     }
 
-    // Log de actividad
+    // Log de actividad (after commit)
     await logEvento({
       orderNumber,
       accion: 'pago_efectivo_registrado',
@@ -4362,8 +4450,11 @@ app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_p
     });
 
   } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error('❌ /pago-efectivo error:', error.message);
     res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -4433,6 +4524,9 @@ const financierasRoutes = require('./routes/financieras');
 const remitosRoutes = require('./routes/remitos');
 const waspyRoutes = require('./routes/waspy');
 const integrationsRoutes = require('./routes/integrations');
+const healthRoutes = require('./routes/health');
+const adminStatusRoutes = require('./routes/admin-status');
+const { serverAdapter: bullBoardAdapter, bullBoardAuth } = require('./routes/bull-board');
 
 app.use('/auth', authRoutes);
 app.use('/users', usersRoutes);
@@ -4441,6 +4535,9 @@ app.use('/financieras', financierasRoutes);
 app.use('/remitos', remitosRoutes);
 app.use('/waspy', waspyRoutes);
 app.use('/integrations', integrationsRoutes);
+app.use('/health', healthRoutes);
+app.use('/admin/status', adminStatusRoutes);
+app.use('/admin/queues', bullBoardAuth, bullBoardAdapter.getRouter());
 
 /* =====================================================
    SYNC QUEUE - Endpoints y Scheduler
@@ -5626,8 +5723,9 @@ process.on('uncaughtException', (error) => {
    SERVER
 ===================================================== */
 // Solo iniciar servidor si no estamos en modo test
+let server = null;
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
+  server = app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     if (process.env.SENTRY_DSN) {
       console.log('✅ Sentry error monitoring enabled');
@@ -5637,6 +5735,43 @@ if (process.env.NODE_ENV !== 'test') {
     startSyncScheduler();
   });
 }
+
+/* =====================================================
+   GRACEFUL SHUTDOWN
+===================================================== */
+function gracefulShutdown(signal) {
+  console.log(`\n${signal} received. Shutting down gracefully...`);
+
+  // Stop accepting new connections
+  if (server) {
+    server.close(() => {
+      console.log('HTTP server closed');
+    });
+  }
+
+  // Clear schedulers
+  if (syncInterval) clearInterval(syncInterval);
+
+  // Release sync lock if held
+  releaseSyncLock().catch(() => {});
+
+  // Close DB pool
+  pool.end().then(() => {
+    console.log('DB pool closed');
+    process.exit(0);
+  }).catch(() => {
+    process.exit(1);
+  });
+
+  // Force exit after 30s
+  setTimeout(() => {
+    console.error('Forced exit after timeout');
+    process.exit(1);
+  }, 30000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Exportar app para tests
 module.exports = { app };
