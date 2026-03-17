@@ -186,6 +186,7 @@ const REMITO_PROMPT = `Analizá este documento de transporte/remito y devolvé �
 REGLAS:
 - Extraé SOLO lo que ves en la imagen. No inventes datos.
 - Si ves BLANQUERIAXMAYOR o BLANQUERIA MAYOR en el documento, eso es el REMITENTE (quien envía). Todo lo demás es el DESTINATARIO (quien recibe).
+- IGNACIO PAZOS es el empleado de la agencia que firma los remitos. NO es el destinatario ni el remitente. Ignoralo.
 - Si hay un número escrito a mano (generalmente arriba a la derecha), es el número de pedido.
 - Si la imagen NO es un remito de transporte, respondé con {"es_remito": false}.`;
 
