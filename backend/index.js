@@ -35,7 +35,7 @@ const { analizarComprobante, convertirAFormatoLegacy } = require('./services/cla
 const { authenticate, requirePermission, JWT_SECRET } = require('./middleware/auth');
 const helmet = require('helmet');
 const jwt = require('jsonwebtoken');
-const { uploadLimiter, validationLimiter, shippingFormLimiter } = require('./middleware/rateLimit');
+const { uploadLimiter, validationLimiter, shippingFormLimiter, leadsLimiter } = require('./middleware/rateLimit');
 const { verifyCronAuth } = require('./middleware/cronAuth');
 const crypto = require('crypto');
 const sharp = require('sharp');
@@ -49,6 +49,9 @@ const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crear
 const { enviarWhatsAppPlantilla, PLANTILLAS_SIN_SUFIJO, PLANTILLA_CONFIG_KEY } = require('./lib/whatsapp-helpers');
 const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, normalizePhoneForComparison } = require('./lib/payment-helpers');
 const { watermarkReceipt, detectarMontoDesdeOCR, validarComprobante, normalizeText, extractDestinationAccount, isValidDestination, detectarFinancieraDesdeOCR } = require('./lib/comprobante-helpers');
+const customerSync = require('./services/customerSync');
+const customerMetrics = require('./services/customerMetrics');
+const customerSegmentation = require('./services/customerSegmentation');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -80,6 +83,8 @@ const allowedOrigins = process.env.FRONTEND_URL
       process.env.FRONTEND_URL,
       process.env.FRONTEND_URL.replace('https://', 'https://www.'),
       process.env.FRONTEND_URL.replace('https://www.', 'https://'),
+      'https://blanqueriaxmayorista.com',
+      'https://www.blanqueriaxmayorista.com',
       'http://localhost:5173',
       'http://localhost:3001'
     ]
@@ -131,6 +136,11 @@ app.get('/', (req, res, next) => {
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Ruta explícita para el form de leads (iframe)
+app.get('/leads', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'leads.html'));
+});
 
 async function logEvento({ comprobanteId, orderNumber, accion, origen, userId, username }) {
   // DEBUG: Stack trace para encontrar duplicados
@@ -4197,6 +4207,215 @@ app.post('/sync/image-sync-trigger', authenticate, requirePermission('activity.v
   res.json({ ok: true, message: 'Sync iniciado' });
 });
 
+/* =====================================================
+   CUSTOMER SYNC (Tiendanube → customers table)
+===================================================== */
+
+// Estado del sync de clientes
+app.get('/sync/customers/status', authenticate, requirePermission('activity.view'), async (req, res) => {
+  try {
+    const lastSync = await customerSync.getLastSyncTimestamp();
+    const countResult = await pool.query(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(CASE WHEN tn_customer_id IS NOT NULL THEN 1 END) as synced,
+        COUNT(CASE WHEN segment IS NOT NULL THEN 1 END) as segmented
+      FROM customers
+    `);
+    const stats = countResult.rows[0];
+
+    res.json({
+      ok: true,
+      lastSync,
+      total: parseInt(stats.total),
+      synced: parseInt(stats.synced),
+      segmented: parseInt(stats.segmented)
+    });
+  } catch (error) {
+    console.error('❌ /sync/customers/status error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Full sync de clientes (manual)
+app.post('/sync/customers/full', authenticate, requirePermission('users.view'), async (req, res) => {
+  try {
+    console.log(`🔄 [CustomerSync] Full sync iniciado por ${req.user.username}`);
+
+    // Ejecutar en background
+    customerSync.fullSync()
+      .then(result => {
+        console.log(`✅ [CustomerSync] Full sync completado:`, result);
+      })
+      .catch(err => {
+        console.error(`❌ [CustomerSync] Error en full sync:`, err.message);
+      });
+
+    res.json({ ok: true, message: 'Full sync iniciado en background' });
+  } catch (error) {
+    console.error('❌ /sync/customers/full error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Incremental sync de clientes
+app.post('/sync/customers/incremental', authenticate, requirePermission('users.view'), async (req, res) => {
+  try {
+    console.log(`🔄 [CustomerSync] Incremental sync iniciado por ${req.user.username}`);
+
+    // Ejecutar en background
+    customerSync.incrementalSync()
+      .then(result => {
+        console.log(`✅ [CustomerSync] Incremental sync completado:`, result);
+      })
+      .catch(err => {
+        console.error(`❌ [CustomerSync] Error en incremental sync:`, err.message);
+      });
+
+    res.json({ ok: true, message: 'Incremental sync iniciado en background' });
+  } catch (error) {
+    console.error('❌ /sync/customers/incremental error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Sync de un cliente específico
+app.post('/sync/customers/:tnCustomerId', authenticate, requirePermission('users.view'), async (req, res) => {
+  try {
+    const { tnCustomerId } = req.params;
+    const result = await customerSync.syncSingleCustomer(parseInt(tnCustomerId));
+
+    if (result.notFound) {
+      return res.status(404).json({ error: 'Cliente no encontrado en Tiendanube' });
+    }
+
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    console.error('❌ /sync/customers/:id error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/* =====================================================
+   CUSTOMER METRICS & SEGMENTATION
+===================================================== */
+
+// Recalcular métricas de todos los clientes
+app.post('/customers/metrics/recalculate', authenticate, requirePermission('users.view'), async (req, res) => {
+  try {
+    console.log(`📊 [CustomerMetrics] Recálculo iniciado por ${req.user.username}`);
+    const result = await customerMetrics.recalculateAllMetrics();
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    console.error('❌ /customers/metrics/recalculate error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Obtener métricas globales
+app.get('/customers/metrics', authenticate, requirePermission('orders.view'), async (req, res) => {
+  try {
+    const metrics = await customerMetrics.getGlobalMetrics();
+    res.json({ ok: true, metrics });
+  } catch (error) {
+    console.error('❌ /customers/metrics error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Recalcular segmentos de todos los clientes
+app.post('/customers/segments/recalculate', authenticate, requirePermission('users.view'), async (req, res) => {
+  try {
+    console.log(`🏷️ [CustomerSegmentation] Recálculo iniciado por ${req.user.username}`);
+    const result = await customerSegmentation.segmentAllCustomers();
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    console.error('❌ /customers/segments/recalculate error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Obtener conteo por segmento
+app.get('/customers/segments', authenticate, requirePermission('orders.view'), async (req, res) => {
+  try {
+    const counts = await customerSegmentation.getSegmentCounts();
+    const definitions = customerSegmentation.getSegmentDefinitions();
+    res.json({ ok: true, counts, definitions });
+  } catch (error) {
+    console.error('❌ /customers/segments error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Obtener clientes de un segmento específico
+app.get('/customers/segments/:segment', authenticate, requirePermission('orders.view'), async (req, res) => {
+  try {
+    const { segment } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+
+    const result = await customerSegmentation.getCustomersBySegment(segment, { page, limit });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    console.error('❌ /customers/segments/:segment error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Listar todos los clientes con filtros
+app.get('/customers', authenticate, requirePermission('orders.view'), async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const offset = (page - 1) * limit;
+    const segment = req.query.segment || null;
+    const search = req.query.search || null;
+
+    let whereClause = 'WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+
+    if (segment) {
+      whereClause += ` AND segment = $${paramIndex}`;
+      params.push(segment);
+      paramIndex++;
+    }
+
+    if (search) {
+      whereClause += ` AND (name ILIKE $${paramIndex} OR email ILIKE $${paramIndex})`;
+      params.push(`%${search}%`);
+      paramIndex++;
+    }
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*) as total FROM customers ${whereClause}`,
+      params
+    );
+
+    const { rows } = await pool.query(`
+      SELECT
+        id, tn_customer_id, name, email, phone,
+        orders_count, total_spent, first_order_at, last_order_at, avg_order_value,
+        segment, segment_updated_at, created_at
+      FROM customers
+      ${whereClause}
+      ORDER BY total_spent DESC NULLS LAST
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+    `, [...params, limit, offset]);
+
+    res.json({
+      ok: true,
+      customers: rows,
+      total: parseInt(countResult.rows[0].total),
+      page,
+      limit
+    });
+  } catch (error) {
+    console.error('❌ /customers error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Scheduler: ejecutar sync cada 15 minutos
 const SYNC_INTERVAL = 15 * 60 * 1000; // 15 minutos
 let syncInterval = null;
@@ -5101,6 +5320,109 @@ app.post('/orders/envio-nube-labels/preview', authenticate, async (req, res) => 
 
   } catch (error) {
     console.error('❌ POST /orders/envio-nube-labels/preview error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/* =====================================================
+   WHATSAPP LEADS - Suscripción a promociones
+===================================================== */
+
+// Endpoint público para capturar leads desde Tiendanube
+app.post('/whatsapp-leads', leadsLimiter, async (req, res) => {
+  try {
+    const { nombre, telefono, consentimiento } = req.body;
+
+    // Validaciones - los 3 campos son obligatorios
+    if (!nombre || nombre.trim() === '') {
+      return res.status(400).json({ success: false, error: 'El nombre es obligatorio' });
+    }
+    if (!telefono || telefono.trim() === '') {
+      return res.status(400).json({ success: false, error: 'El teléfono es obligatorio' });
+    }
+    if (consentimiento !== true) {
+      return res.status(400).json({ success: false, error: 'Debes aceptar recibir mensajes' });
+    }
+
+    // Limpiar teléfono: solo dígitos, remover prefijo 54
+    let telefonoLimpio = telefono.replace(/\D/g, '');
+    if (telefonoLimpio.startsWith('54')) {
+      telefonoLimpio = telefonoLimpio.slice(2);
+    }
+
+    // Validar longitud (10-15 dígitos)
+    if (telefonoLimpio.length < 10 || telefonoLimpio.length > 15) {
+      return res.status(400).json({ success: false, error: 'El teléfono debe tener entre 10 y 15 dígitos' });
+    }
+
+    // Guardar
+    const result = await pool.query(`
+      INSERT INTO whatsapp_leads (nombre, telefono, consentimiento_form, origen, user_agent)
+      VALUES ($1, $2, true, $3, $4)
+      RETURNING id
+    `, [
+      nombre.trim(),
+      telefonoLimpio,
+      req.get('Referer') || 'direct',
+      req.get('User-Agent')
+    ]);
+
+    console.log(`✅ Lead guardado: ${result.rows[0].id} - Tel: ${telefonoLimpio}`);
+    res.status(201).json({ success: true, leadId: result.rows[0].id });
+
+  } catch (error) {
+    console.error('❌ Error guardando lead:', error.message);
+    res.status(500).json({ success: false, error: 'Error al procesar la solicitud' });
+  }
+});
+
+// Webhook para confirmación de consentimiento desde Botmaker (matchea por teléfono)
+app.post('/webhook/whatsapp-lead-confirm', async (req, res) => {
+  try {
+    const authToken = req.headers['auth-bm-token'];
+    const expectedToken = process.env.BOTMAKER_WEBHOOK_SECRET;
+
+    // Warning si no hay token configurado
+    if (!expectedToken) {
+      console.warn('⚠️ BOTMAKER_WEBHOOK_SECRET no configurado - webhook sin autenticación');
+    }
+
+    // Validar token si está configurado
+    if (expectedToken && authToken !== expectedToken) {
+      console.error('❌ Webhook lead-confirm: token inválido');
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    const { phone } = req.body;
+    if (!phone) {
+      return res.status(400).json({ error: 'phone required' });
+    }
+
+    // Normalizar teléfono: solo dígitos, remover prefijo 54
+    let telefonoNormalizado = phone.replace(/\D/g, '');
+    if (telefonoNormalizado.startsWith('54')) {
+      telefonoNormalizado = telefonoNormalizado.slice(2);
+    }
+
+    // Buscar lead más reciente con ese teléfono que no esté confirmado
+    const result = await pool.query(`
+      UPDATE whatsapp_leads
+      SET consentimiento_whatsapp = true, confirmado_at = NOW()
+      WHERE telefono = $1 AND consentimiento_whatsapp = false
+      RETURNING id
+    `, [telefonoNormalizado]);
+
+    if (result.rowCount === 0) {
+      // No es error, puede ser que ya esté confirmado o no exista
+      console.log(`ℹ️ No lead pendiente para teléfono: ${telefonoNormalizado}`);
+      return res.json({ success: true, message: 'No pending lead found' });
+    }
+
+    console.log(`✅ Lead confirmado por teléfono: ${telefonoNormalizado} (${result.rows[0].id})`);
+    res.json({ success: true, leadId: result.rows[0].id });
+
+  } catch (error) {
+    console.error('❌ Error confirmando lead:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
