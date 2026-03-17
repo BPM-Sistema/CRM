@@ -185,7 +185,7 @@ const REMITO_PROMPT = `Analizá este documento de transporte/remito y devolvé �
 
 REGLAS:
 - Extraé SOLO lo que ves en la imagen. No inventes datos.
-- El REMITENTE siempre es BLANQUERIAXMAYOR (o BLANQUERIA X MAYOR, BLANQUERIA MAYOR, PET LOVE). Todo lo que NO sea el remitente es el DESTINATARIO.
+- Si ves BLANQUERIAXMAYOR, BLANQUERIA MAYOR o PET LOVE en el documento, eso es el REMITENTE (quien envía). Todo lo demás es el DESTINATARIO (quien recibe).
 - Si hay un número escrito a mano (generalmente arriba a la derecha), es el número de pedido.
 - Si la imagen NO es un remito de transporte, respondé con {"es_remito": false}.`;
 
