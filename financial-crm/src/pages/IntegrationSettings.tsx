@@ -267,9 +267,17 @@ export function IntegrationSettings() {
           </div>
         ) : (
           <>
-            {/* Tiendanube configs */}
-            <div className="space-y-3">
-              {tiendanubeConfigs.map(config => {
+            {/* Tiendanube configs by category */}
+            {(() => {
+              const TN_CATEGORIES: { label: string; icon: string; keys: string[] }[] = [
+                { label: 'General', icon: '⚙️', keys: ['tiendanube_master_enabled'] },
+                { label: 'Sincronización', icon: '🔄', keys: ['tiendanube_sync_orders', 'tiendanube_sync_cancelled', 'tiendanube_sync_images'] },
+                { label: 'Acciones', icon: '▶️', keys: ['tiendanube_mark_paid', 'tiendanube_validate_orders', 'tiendanube_resync_manual'] },
+                { label: 'Envíos', icon: '📦', keys: ['tiendanube_fulfillment_labels'] },
+                { label: 'Conexión', icon: '🔌', keys: ['tiendanube_webhooks_enabled'] },
+              ];
+
+              const renderTnRow = (config: typeof tiendanubeConfigs[0]) => {
                 const Icon = KEY_ICONS[config.key] || Settings;
                 const friendlyName = KEY_NAMES[config.key] || config.key;
                 const tooltip = KEY_TOOLTIPS[config.key];
@@ -278,60 +286,78 @@ export function IntegrationSettings() {
                 return (
                   <div
                     key={config.key}
-                    className="bg-white rounded-lg border border-gray-200 p-4 transition-all"
+                    className="flex items-center justify-between px-4 py-3 rounded-lg border border-gray-100 bg-white transition-all"
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`p-2 rounded-lg ${
-                            config.enabled
-                              ? 'bg-green-100 text-green-600'
-                              : 'bg-gray-100 text-gray-400'
-                          }`}
-                        >
-                          <Icon className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-medium text-gray-900">{friendlyName}</h3>
-                            {tooltip && (
-                              <div className="relative group">
-                                <Info className="h-4 w-4 text-gray-400 cursor-help hover:text-gray-600 transition-colors" />
-                                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50 pointer-events-none">
-                                  <div className="bg-gray-800 text-white text-sm rounded-lg py-3 px-4 w-72 shadow-xl leading-relaxed">
-                                    {tooltip}
-                                    <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-transparent border-t-gray-800" />
-                                  </div>
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`p-2 rounded-lg ${
+                          config.enabled
+                            ? 'bg-green-100 text-green-600'
+                            : 'bg-gray-100 text-gray-400'
+                        }`}
+                      >
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-medium text-gray-900">{friendlyName}</h3>
+                          {tooltip && (
+                            <div className="relative group">
+                              <Info className="h-4 w-4 text-gray-400 cursor-help hover:text-gray-600 transition-colors" />
+                              <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-50 pointer-events-none">
+                                <div className="bg-gray-800 text-white text-sm rounded-lg py-3 px-4 w-72 shadow-xl leading-relaxed">
+                                  {tooltip}
+                                  <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-transparent border-t-gray-800" />
                                 </div>
                               </div>
-                            )}
-                          </div>
-                          <p className="text-sm text-gray-500 mt-0.5">{config.description}</p>
-                          {config.updated_at && (
-                            <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              {new Date(config.updated_at).toLocaleString('es-AR')}
-                              {config.updated_by_email && ` - ${config.updated_by_email}`}
-                            </p>
+                            </div>
                           )}
                         </div>
+                        <p className="text-sm text-gray-500 mt-0.5">{config.description}</p>
+                        {config.updated_at && (
+                          <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {new Date(config.updated_at).toLocaleString('es-AR')}
+                            {config.updated_by_email && ` - ${config.updated_by_email}`}
+                          </p>
+                        )}
                       </div>
-
-                      {/* Toggle */}
-                      {isUpdating ? (
-                        <RefreshCw className="h-5 w-5 text-gray-400 animate-spin" />
-                      ) : (
-                        <Switch
-                          checked={config.enabled}
-                          onChange={() => handleToggle(config.key, config.enabled)}
-                          disabled={!canUpdate}
-                        />
-                      )}
                     </div>
+                    {isUpdating ? (
+                      <RefreshCw className="h-5 w-5 text-gray-400 animate-spin" />
+                    ) : (
+                      <Switch
+                        checked={config.enabled}
+                        onChange={() => handleToggle(config.key, config.enabled)}
+                        disabled={!canUpdate}
+                      />
+                    )}
                   </div>
                 );
-              })}
-            </div>
+              };
+
+              return (
+                <div className="space-y-6">
+                  {TN_CATEGORIES.map(cat => {
+                    const items = cat.keys
+                      .map(k => tiendanubeConfigs.find(c => c.key === k))
+                      .filter(Boolean) as typeof tiendanubeConfigs;
+                    if (items.length === 0) return null;
+                    return (
+                      <div key={cat.label}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-base">{cat.icon}</span>
+                          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{cat.label}</h3>
+                        </div>
+                        <div className="space-y-2">
+                          {items.map(renderTnRow)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             {/* WhatsApp section */}
             {whatsappConfigs.length > 0 && (
