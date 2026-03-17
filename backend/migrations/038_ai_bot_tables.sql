@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS ai_bot_config (
   key VARCHAR(100) UNIQUE NOT NULL,
   value JSONB NOT NULL DEFAULT '{}',
   description TEXT,
-  updated_by INTEGER REFERENCES users(id),
+  updated_by UUID REFERENCES users(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS ai_bot_failures (
   context JSONB,
   resolved BOOLEAN DEFAULT FALSE,
   resolved_at TIMESTAMPTZ,
-  resolved_by INTEGER REFERENCES users(id),
+  resolved_by UUID REFERENCES users(id),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -141,10 +141,10 @@ ON CONFLICT (key) DO NOTHING;
 -- ============================================================
 -- RBAC Permissions for AI Bot
 -- ============================================================
-INSERT INTO permissions (key, name, description, category) VALUES
-  ('ai_bot.view', 'Ver Bot IA', 'Ver panel y estado del bot IA', 'Bot IA'),
-  ('ai_bot.config', 'Configurar Bot IA', 'Modificar configuración del bot IA', 'Bot IA'),
-  ('ai_bot.manage', 'Administrar Bot IA', 'Gestionar prompts, reglas y operación del bot IA', 'Bot IA')
+INSERT INTO permissions (key, module) VALUES
+  ('ai_bot.view', 'ai_bot'),
+  ('ai_bot.config', 'ai_bot'),
+  ('ai_bot.manage', 'ai_bot')
 ON CONFLICT (key) DO NOTHING;
 
 -- Grant to admin role
