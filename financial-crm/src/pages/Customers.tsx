@@ -329,14 +329,9 @@ export default function Customers() {
 
         {/* Matriz de segmentos estilo TN */}
         {segments && (
-          <div className="relative">
-            {/* Eje Y */}
-            <div className="absolute -left-1 top-1/2 -translate-y-1/2 -rotate-90 text-[10px] text-neutral-400 whitespace-nowrap tracking-wide">
-              ↑ Cantidad de compras
-            </div>
-
+          <div>
             {/* Grid */}
-            <div className="ml-8">
+            <div>
               <div className="grid grid-cols-[1fr_1fr_1fr_1.2fr] gap-3">
                 {/* Fila 1: Alta frecuencia */}
                 <MatrixCell
