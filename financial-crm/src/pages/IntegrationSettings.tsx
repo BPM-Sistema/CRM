@@ -20,10 +20,6 @@ import {
   RotateCcw,
   XCircle,
   CreditCard,
-  Activity,
-  CheckCircle2,
-  XOctagon,
-  Wifi,
   MessageSquare,
   Phone,
   Send,
@@ -33,10 +29,8 @@ import {
   updateIntegration,
   updateIntegrationMetadata,
   fetchIntegrationHistory,
-  fetchIntegrationHealth,
   IntegrationConfig,
   IntegrationConfigHistory,
-  ServiceHealth,
 } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Switch } from '../components/ui/Switch';
@@ -120,11 +114,6 @@ export function IntegrationSettings() {
   const [savingPhone, setSavingPhone] = useState(false);
   const [phoneSaved, setPhoneSaved] = useState(false);
 
-  // Health check state
-  const [healthServices, setHealthServices] = useState<ServiceHealth[]>([]);
-  const [healthLoading, setHealthLoading] = useState(false);
-  const [healthStatus, setHealthStatus] = useState<'healthy' | 'degraded' | null>(null);
-
   const canView = hasPermission('integrations.view');
   const canUpdate = hasPermission('integrations.update');
 
@@ -148,20 +137,6 @@ export function IntegrationSettings() {
     }
   }, []);
 
-  const loadHealth = useCallback(async () => {
-    setHealthLoading(true);
-    try {
-      const data = await fetchIntegrationHealth();
-      setHealthServices(data.services);
-      setHealthStatus(data.status);
-    } catch (err) {
-      console.error('Error loading health:', err);
-      setHealthStatus('degraded');
-    } finally {
-      setHealthLoading(false);
-    }
-  }, []);
-
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
@@ -177,9 +152,8 @@ export function IntegrationSettings() {
   useEffect(() => {
     if (canView) {
       loadData();
-      loadHealth();
     }
-  }, [canView, loadData, loadHealth]);
+  }, [canView, loadData]);
 
   useEffect(() => {
     if (showHistory && history.length === 0) {
@@ -281,83 +255,6 @@ export function IntegrationSettings() {
             <p className="text-red-700">{error}</p>
           </div>
         )}
-
-        {/* Health Status Panel */}
-        <div className="mb-6 bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
-            <div className="flex items-center gap-2">
-              <Activity className="h-5 w-5 text-gray-600" />
-              <h3 className="font-medium text-gray-900">Estado de Conexiones</h3>
-              {healthStatus && (
-                <span
-                  className={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium ${
-                    healthStatus === 'healthy'
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-amber-100 text-amber-700'
-                  }`}
-                >
-                  {healthStatus === 'healthy' ? 'Todo OK' : 'Degradado'}
-                </span>
-              )}
-            </div>
-            <button
-              onClick={loadHealth}
-              disabled={healthLoading}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
-            >
-              <Wifi className={`h-4 w-4 ${healthLoading ? 'animate-pulse' : ''}`} />
-              Verificar
-            </button>
-          </div>
-
-          {healthLoading && healthServices.length === 0 ? (
-            <div className="p-4 flex justify-center">
-              <RefreshCw className="h-5 w-5 text-gray-400 animate-spin" />
-            </div>
-          ) : healthServices.length === 0 ? (
-            <div className="p-4 text-center text-gray-500 text-sm">
-              Click en "Verificar" para comprobar las conexiones
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {healthServices.map((service) => (
-                <div
-                  key={service.name}
-                  className="flex items-center justify-between px-4 py-3"
-                >
-                  <div className="flex items-center gap-3">
-                    {service.status === 'ok' ? (
-                      <CheckCircle2 className="h-5 w-5 text-green-500" />
-                    ) : (
-                      <XOctagon className="h-5 w-5 text-red-500" />
-                    )}
-                    <span className="text-sm font-medium text-gray-900">
-                      {service.name}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {service.status === 'ok' ? (
-                      <span className="text-sm text-gray-500">{service.latency}ms</span>
-                    ) : (
-                      <span className="text-sm text-red-600 max-w-[200px] truncate" title={service.error}>
-                        {service.error}
-                      </span>
-                    )}
-                    <span
-                      className={`px-2 py-0.5 rounded text-xs font-medium ${
-                        service.status === 'ok'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}
-                    >
-                      {service.status === 'ok' ? 'OK' : 'ERROR'}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
 
         {/* Loading */}
         {loading ? (
