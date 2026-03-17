@@ -37,6 +37,7 @@ import { Switch } from '../components/ui/Switch';
 
 // Mapeo de iconos por key
 const KEY_ICONS: Record<string, typeof Settings> = {
+  tiendanube_master_enabled: Settings,
   tiendanube_webhooks_enabled: Zap,
   tiendanube_validate_orders: Shield,
   tiendanube_fulfillment_labels: Tags,
@@ -58,6 +59,7 @@ const KEY_ICONS: Record<string, typeof Settings> = {
 
 // Nombres amigables
 const KEY_NAMES: Record<string, string> = {
+  tiendanube_master_enabled: 'Switch Maestro',
   tiendanube_webhooks_enabled: 'Webhooks',
   tiendanube_validate_orders: 'Validar Pedidos',
   tiendanube_fulfillment_labels: 'Etiquetas Envio Nube',
@@ -79,6 +81,8 @@ const KEY_NAMES: Record<string, string> = {
 
 // Tooltips explicativos (no tecnicos)
 const KEY_TOOLTIPS: Record<string, string> = {
+  tiendanube_master_enabled:
+    'Switch maestro de Tiendanube. Si esta apagado, TODAS las integraciones con Tiendanube quedan desactivadas (webhooks, sync, etiquetas, todo).',
   tiendanube_webhooks_enabled:
     'Cuando alguien hace un pedido en la tienda, el sistema lo recibe automaticamente. Si esta apagado, los pedidos nuevos no van a aparecer.',
   tiendanube_validate_orders:

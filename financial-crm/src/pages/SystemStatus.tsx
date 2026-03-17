@@ -23,6 +23,8 @@ import {
   ChevronUp,
   Zap,
   Radio,
+  Bug,
+  PhoneCall,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchIntegrationHealth, ServiceHealth } from '../services/api';
@@ -129,6 +131,8 @@ const SERVICE_ICONS: Record<string, typeof Database> = {
   Botmaker: MessageSquare,
   'Google Vision': Eye,
   'Supabase Storage': Cloud,
+  Sentry: Bug,
+  'Waspy API': PhoneCall,
 };
 
 function formatUptime(seconds: number): string {

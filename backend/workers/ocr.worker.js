@@ -205,8 +205,7 @@ async function processOcrJob(job) {
       // 12. Encolar notificacion WhatsApp si hay saldo pendiente
       if (estadoCuenta === 'debe' && customerPhone) {
         try {
-          const { getQueue } = require('../lib/queues');
-          const whatsappQueue = getQueue('whatsapp');
+          const { whatsappQueue } = require('../lib/queues');
           if (whatsappQueue) {
             await whatsappQueue.add('send-notification', {
               telefono: customerPhone,
@@ -253,7 +252,7 @@ async function processOcrJob(job) {
  * Crea e inicia el OCR worker
  */
 function createOcrWorker(connection) {
-  const worker = new Worker('ocr-processing', processOcrJob, {
+  const worker = new Worker('ocr', processOcrJob, {
     connection,
     concurrency: 2,
     limiter: {
