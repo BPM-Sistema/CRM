@@ -79,6 +79,9 @@ const PERMISSION_LABELS: Record<string, string> = {
   'remitos.reprocess': 'Reprocesar OCR',
   'integrations.view': 'Ver integraciones',
   'integrations.update': 'Modificar integraciones',
+  'customers.view': 'Ver clientes',
+  'customers.sync': 'Sincronizar clientes',
+  'customers.segment': 'Gestionar segmentos',
 };
 
 const SECTIONS = [
@@ -119,6 +122,15 @@ const SECTIONS = [
     color: 'bg-orange-50 text-orange-600',
     subsections: [
       { title: 'Acciones', permissions: ['remitos.view', 'remitos.upload', 'remitos.confirm', 'remitos.reject', 'remitos.reprocess'] }
+    ]
+  },
+  {
+    id: 'customers',
+    title: 'Clientes',
+    icon: UserCheck,
+    color: 'bg-teal-50 text-teal-600',
+    subsections: [
+      { title: 'Gestión', permissions: ['customers.view', 'customers.sync', 'customers.segment'] }
     ]
   },
   {
