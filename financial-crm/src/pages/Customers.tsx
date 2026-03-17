@@ -28,6 +28,7 @@ import {
   fetchCustomers,
   fetchCustomerMetrics,
   startCustomerFullSync,
+  syncCustomerOrdersCount,
   recalculateCustomerMetrics,
   recalculateCustomerSegments,
   Customer,
@@ -306,17 +307,17 @@ export default function Customers() {
   const handleSync = async () => {
     setSyncing(true);
     try {
+      // 1. Sync clientes desde TN
       await startCustomerFullSync();
-      // Esperar un poco y luego recalcular
-      setTimeout(async () => {
-        await recalculateCustomerMetrics();
-        await recalculateCustomerSegments();
-        await loadData();
-        await loadCustomers();
-        setSyncing(false);
-      }, 3000);
+      // 2. Sync orders_count (obtiene compras reales) - esto toma tiempo
+      await syncCustomerOrdersCount();
+      // 3. Recalcular segmentos
+      await recalculateCustomerSegments();
+      await loadData();
+      await loadCustomers();
     } catch (error) {
       console.error('Error syncing:', error);
+    } finally {
       setSyncing(false);
     }
   };

@@ -1836,6 +1836,14 @@ export async function startCustomerIncrementalSync(): Promise<{ ok: boolean; mes
   return data;
 }
 
+// Sincronizar orders_count desde TN (obtiene compras reales de cada cliente)
+export async function syncCustomerOrdersCount(): Promise<{ ok: boolean; updated: number; totalOrders: number }> {
+  const response = await authFetch(`${API_BASE_URL}/sync/customers/orders-count`, { method: 'POST' });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al sincronizar compras');
+  return data;
+}
+
 // Recalcular métricas de clientes
 export async function recalculateCustomerMetrics(): Promise<{ ok: boolean; updated: number }> {
   const response = await authFetch(`${API_BASE_URL}/customers/metrics/recalculate`, { method: 'POST' });

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Suscripción WhatsApp</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: transparent; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; margin-bottom: 4px; font-size: 14px; color: #333; }
+    .form-group input[type="text"],
+    .form-group input[type="tel"] { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; }
+    .checkbox-group { margin-bottom: 20px; }
+    .checkbox-group label { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; color: #333; cursor: pointer; }
+    .checkbox-group input[type="checkbox"] { margin-top: 3px; width: 18px; height: 18px; min-width: 18px; }
+    #error { display: none; background: #fee; color: #c00; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
+    #submit { width: 100%; padding: 14px; background: #25D366; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; }
+    #submit:disabled { opacity: 0.7; cursor: not-allowed; }
+    #success { display: none; text-align: center; }
+    #success .icon { font-size: 48px; margin-bottom: 16px; }
+    #success h2 { color: #333; margin-bottom: 8px; }
+    #success p { color: #666; margin-bottom: 24px; font-size: 14px; }
+    .wa-btn { display: inline-block; padding: 14px 24px; background: #25D366; color: white; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 600; }
+    .small { color: #999; margin-top: 16px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div id="form-section">
+    <form id="leads-form">
+      <div class="form-group">
+        <label>Nombre *</label>
+        <input type="text" id="nombre" placeholder="Tu nombre" required>
+      </div>
+      <div class="form-group">
+        <label>Teléfono *</label>
+        <input type="tel" id="telefono" placeholder="Ej: 1123456789" required>
+      </div>
+      <div class="checkbox-group">
+        <label>
+          <input type="checkbox" id="consentimiento" required>
+          <span>Acepto recibir promociones y novedades por WhatsApp *</span>
+        </label>
+      </div>
+      <div id="error"></div>
+      <button type="submit" id="submit">Suscribirme</button>
+    </form>
+  </div>
+
+  <div id="success">
+    <div class="icon">✅</div>
+    <h2>¡Listo!</h2>
+    <p>Solo falta un paso: confirmá tu suscripción por WhatsApp</p>
+    <a class="wa-btn" href="https://wa.me/5491136914124?text=Hola!%20Quiero%20recibir%20promociones%20y%20novedades" target="_blank">Confirmar por WhatsApp</a>
+    <p class="small">Se abrirá WhatsApp con un mensaje listo para enviar</p>
+  </div>
+
+  <script>
+    var form = document.getElementById('leads-form');
+    var formSection = document.getElementById('form-section');
+    var successSection = document.getElementById('success');
+    var errorDiv = document.getElementById('error');
+    var submitBtn = document.getElementById('submit');
+
+    form.onsubmit = function(e) {
+      e.preventDefault();
+      errorDiv.style.display = 'none';
+
+      var nombre = document.getElementById('nombre').value.trim();
+      var telefono = document.getElementById('telefono').value.trim();
+      var check = document.getElementById('consentimiento').checked;
+
+      if (!nombre) { errorDiv.textContent = 'El nombre es obligatorio'; errorDiv.style.display = 'block'; return; }
+      if (!telefono) { errorDiv.textContent = 'El teléfono es obligatorio'; errorDiv.style.display = 'block'; return; }
+      if (!check) { errorDiv.textContent = 'Debes aceptar recibir mensajes'; errorDiv.style.display = 'block'; return; }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Enviando...';
+
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', 'https://api.bpmadministrador.com/whatsapp-leads', true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Suscribirme';
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              var data = JSON.parse(xhr.responseText);
+              if (data.success) {
+                formSection.style.display = 'none';
+                successSection.style.display = 'block';
+              } else {
+                errorDiv.textContent = data.error || 'Error. Intenta de nuevo.';
+                errorDiv.style.display = 'block';
+              }
+            } catch(err) {
+              errorDiv.textContent = 'Error procesando respuesta.';
+              errorDiv.style.display = 'block';
+            }
+          } else {
+            errorDiv.textContent = 'Error de conexión. Intenta de nuevo.';
+            errorDiv.style.display = 'block';
+          }
+        }
+      };
+      xhr.send(JSON.stringify({ nombre: nombre, telefono: telefono, consentimiento: true }));
+    };
+  </script>
+</body>
+</html>
