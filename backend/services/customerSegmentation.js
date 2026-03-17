@@ -100,12 +100,15 @@ const SEGMENT_RULES = [
 
 /**
  * Determina el segmento de un cliente basándose en sus métricas
- * @param {Object} customer - { orders_count, last_order_at }
+ * @param {Object} customer - { orders_count, last_order_at, total_spent }
  * @returns {string} Nombre del segmento
  */
 function determineSegment(customer) {
-  const ordersCount = customer.orders_count || 0;
-  const lastOrderAt = customer.last_order_at;
+  // Usar orders_count si existe, sino inferir de total_spent (datos de TN)
+  const ordersCount = customer.orders_count > 0
+    ? customer.orders_count
+    : (parseFloat(customer.total_spent) > 0 ? 1 : 0);  // Si gastó algo, al menos 1 orden
+  const lastOrderAt = customer.last_order_at || customer.tn_updated_at; // Fallback a última actualización TN
 
   let daysSinceLastOrder = null;
   if (lastOrderAt) {
@@ -162,7 +165,7 @@ async function segmentAllCustomers() {
 
   // Traer todos los clientes con sus métricas
   const { rows: customers } = await pool.query(`
-    SELECT id, orders_count, last_order_at
+    SELECT id, orders_count, last_order_at, total_spent, tn_updated_at
     FROM customers
   `);
 
@@ -194,7 +197,7 @@ async function segmentAllCustomers() {
  */
 async function segmentCustomer(customerId) {
   const { rows } = await pool.query(`
-    SELECT id, orders_count, last_order_at FROM customers WHERE id = $1
+    SELECT id, orders_count, last_order_at, total_spent, tn_updated_at FROM customers WHERE id = $1
   `, [customerId]);
 
   if (!rows[0]) return null;
