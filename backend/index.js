@@ -2567,6 +2567,26 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
         .catch(err => console.error('⚠️ Error WhatsApp pedido_cancelado:', err.message));
     }
 
+    // Sincronizar estado hacia Tiendanube (async, no bloquea respuesta)
+    if (pedido.tn_order_id) {
+      const ESTADO_TN_MAP: Record<string, { tnStatus: string; configKey: string; label: string }> = {
+        'armado':    { tnStatus: 'packed',    configKey: 'tiendanube_sync_estado_armado',    label: 'empaquetada' },
+        'enviado':   { tnStatus: 'fulfilled', configKey: 'tiendanube_sync_estado_enviado',   label: 'despachada' },
+        'cancelado': { tnStatus: 'cancelled', configKey: 'tiendanube_sync_estado_cancelado', label: 'cancelada' },
+      };
+
+      const syncConfig = ESTADO_TN_MAP[estado_pedido];
+      if (syncConfig) {
+        isIntegrationEnabled(syncConfig.configKey, { context: `sync-estado-${estado_pedido}` })
+          .then(enabled => {
+            if (enabled) {
+              sincronizarEstadoTiendanube(pedido.tn_order_id, orderNumber, syncConfig.tnStatus, syncConfig.label);
+            }
+          })
+          .catch(err => console.error(`⚠️ Error checking sync toggle for ${estado_pedido}:`, err.message));
+      }
+    }
+
     // Obtener pedido actualizado
     const updatedRes = await pool.query(
       `SELECT order_number, estado_pedido, estado_pago, printed_at, packed_at, shipped_at
@@ -3657,13 +3677,26 @@ app.get('/rechazar/:id', async (req, res) => {
    Sincroniza estado de pago cuando está completamente pagado
 ===================================================== */
 async function marcarPagadoEnTiendanube(tnOrderId, orderNumber) {
-  // Check de integración habilitada
+  // Check de integración habilitada (master + sub-toggle)
   const markPaidEnabled = await tnConfig.isMarkPaidEnabled();
   if (!markPaidEnabled) {
     console.log(`🚫 [Orden ${orderNumber}] Marcar pagado en TN deshabilitado`);
     return false;
   }
+  const subEnabled = await isIntegrationEnabled('tiendanube_sync_estado_pagado', { context: 'sync-estado-pagado' });
+  if (!subEnabled) {
+    console.log(`🚫 [Orden ${orderNumber}] Sub-toggle sync estado pagado deshabilitado`);
+    return false;
+  }
 
+  return sincronizarEstadoTiendanube(tnOrderId, orderNumber, 'paid', 'pagada');
+}
+
+/**
+ * Sincronizar un estado de pedido hacia Tiendanube
+ * Mapeo: pagado→paid, armado→packed, enviado→fulfilled, cancelado→cancelled
+ */
+async function sincronizarEstadoTiendanube(tnOrderId, orderNumber, tnStatus, labelEs) {
   const storeId = process.env.TIENDANUBE_STORE_ID;
   const token = process.env.TIENDANUBE_ACCESS_TOKEN;
 
@@ -3675,7 +3708,7 @@ async function marcarPagadoEnTiendanube(tnOrderId, orderNumber) {
   try {
     await axios.put(
       `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}`,
-      { status: 'paid' },
+      { status: tnStatus },
       {
         headers: {
           'Content-Type': 'application/json',
@@ -3684,10 +3717,10 @@ async function marcarPagadoEnTiendanube(tnOrderId, orderNumber) {
         }
       }
     );
-    console.log(`✅ [Orden ${orderNumber}] Marcada como pagada en Tiendanube (tn_order_id: ${tnOrderId})`);
+    console.log(`✅ [Orden ${orderNumber}] Marcada como ${labelEs} en Tiendanube (tn_order_id: ${tnOrderId})`);
     return true;
   } catch (err) {
-    console.error(`❌ [Orden ${orderNumber}] Error marcando pagado en Tiendanube: ${err.response?.status} ${JSON.stringify(err.response?.data || err.message)}`);
+    console.error(`❌ [Orden ${orderNumber}] Error marcando ${labelEs} en Tiendanube: ${err.response?.status} ${JSON.stringify(err.response?.data || err.message)}`);
     return false;
   }
 }

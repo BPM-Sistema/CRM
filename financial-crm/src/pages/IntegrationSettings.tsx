@@ -52,6 +52,10 @@ const KEY_ICONS: Record<string, typeof Settings> = {
   tiendanube_resync_single: RotateCcw,
   tiendanube_resync_inconsistent: RotateCcw,
   tiendanube_resync_bulk: RotateCcw,
+  tiendanube_sync_estado_pagado: CreditCard,
+  tiendanube_sync_estado_armado: CreditCard,
+  tiendanube_sync_estado_enviado: CreditCard,
+  tiendanube_sync_estado_cancelado: CreditCard,
   whatsapp_testing_mode: MessageSquare,
   whatsapp_tpl_pedido_creado: Send,
   whatsapp_tpl_comprobante_confirmado: Send,
@@ -73,13 +77,17 @@ const KEY_NAMES: Record<string, string> = {
   tiendanube_sync_images: 'Sync Imagenes',
   tiendanube_resync_manual: 'Resync Manual',
   tiendanube_sync_cancelled: 'Sync Cancelados',
-  tiendanube_mark_paid: 'Marcar Pagado en TN',
+  tiendanube_mark_paid: 'Sync Estados → TN',
   tiendanube_webhook_order_created: 'Pedido Creado',
   tiendanube_webhook_order_updated: 'Pedido Modificado',
   tiendanube_webhook_order_cancelled: 'Pedido Cancelado',
   tiendanube_resync_single: 'Individual',
   tiendanube_resync_inconsistent: 'Inconsistencias',
   tiendanube_resync_bulk: 'Masivo',
+  tiendanube_sync_estado_pagado: 'Pagado',
+  tiendanube_sync_estado_armado: 'Armado → Empaquetado',
+  tiendanube_sync_estado_enviado: 'Enviado → Despachado',
+  tiendanube_sync_estado_cancelado: 'Cancelado',
   whatsapp_testing_mode: 'Modo Testing',
   whatsapp_tpl_pedido_creado: 'Pedido Creado',
   whatsapp_tpl_comprobante_confirmado: 'Comprobante Confirmado',
@@ -110,7 +118,7 @@ const KEY_TOOLTIPS: Record<string, string> = {
   tiendanube_sync_cancelled:
     'Detecta pedidos que fueron cancelados en Tiendanube y actualiza su estado aca. Si esta apagado, pedidos cancelados pueden seguir apareciendo como activos.',
   tiendanube_mark_paid:
-    'Cuando un pedido se paga completamente, se marca como pagado en Tiendanube. Si esta apagado, Tiendanube no se entera de los pagos.',
+    'Sincroniza estados de pedido desde BPM hacia Tiendanube (pagado, armado, enviado, cancelado). Si esta apagado, Tiendanube no se entera de los cambios de estado.',
   whatsapp_testing_mode:
     'Cuando esta activado, TODOS los mensajes de WhatsApp se envian al numero de testing configurado en vez de al cliente real. Al desactivarlo, los mensajes van directo al cliente.',
 };
@@ -285,6 +293,7 @@ export function IntegrationSettings() {
               const SUB_OPTIONS: Record<string, string[]> = {
                 'tiendanube_webhooks_enabled': ['tiendanube_webhook_order_created', 'tiendanube_webhook_order_updated', 'tiendanube_webhook_order_cancelled'],
                 'tiendanube_resync_manual': ['tiendanube_resync_single', 'tiendanube_resync_inconsistent', 'tiendanube_resync_bulk'],
+                'tiendanube_mark_paid': ['tiendanube_sync_estado_pagado', 'tiendanube_sync_estado_armado', 'tiendanube_sync_estado_enviado', 'tiendanube_sync_estado_cancelado'],
               };
 
               const TN_CATEGORIES: { label: string; icon: string; keys: string[] }[] = [
