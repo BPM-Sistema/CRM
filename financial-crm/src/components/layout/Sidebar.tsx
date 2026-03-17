@@ -18,6 +18,7 @@ import {
   Settings,
   Monitor,
   UserCheck,
+  Bot,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -99,6 +100,7 @@ const adminItems = [
   { to: '/admin/image-sync', icon: <ImageIcon size={20} />, label: 'Sync Imagenes', permissions: ['activity.view'] },
   { to: '/admin/integrations', icon: <Settings size={20} />, label: 'Integraciones', permissions: ['integrations.view'] },
   { to: '/system-status', icon: <Monitor size={20} />, label: 'Estado Sistema', permissions: ['integrations.view'] },
+  { to: '/admin/ai-bot', icon: <Bot size={20} />, label: 'Bot IA', permissions: ['ai_bot.view'] },
 ];
 
 export function Sidebar() {

@@ -33,7 +33,29 @@ const defaultJobOptions = {
   removeOnFail: { count: 5000 }
 };
 
-const QUEUE_NAMES = ['ocr', 'whatsapp', 'sync-orders', 'labels', 'reconciliation'];
+const QUEUE_NAMES = ['ocr', 'whatsapp', 'sync-orders', 'labels', 'reconciliation', 'meta-events', 'ai-generate', 'ai-send-reply'];
+
+// Custom job options per queue (falls back to defaultJobOptions)
+const queueJobOptions = {
+  'meta-events': {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 3000 },
+    removeOnComplete: { count: 1000 },
+    removeOnFail: { count: 5000 }
+  },
+  'ai-generate': {
+    attempts: 2,
+    backoff: { type: 'exponential', delay: 5000 },
+    removeOnComplete: { count: 1000 },
+    removeOnFail: { count: 5000 }
+  },
+  'ai-send-reply': {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 5000 },
+    removeOnComplete: { count: 2000 },
+    removeOnFail: { count: 5000 }
+  }
+};
 
 const queues = {};
 
@@ -41,7 +63,7 @@ if (connection) {
   for (const name of QUEUE_NAMES) {
     queues[name] = new Queue(name, {
       connection,
-      defaultJobOptions
+      defaultJobOptions: queueJobOptions[name] || defaultJobOptions
     });
   }
   console.log(`[Queues] Initialized ${QUEUE_NAMES.length} queues: ${QUEUE_NAMES.join(', ')}`);
@@ -85,6 +107,9 @@ module.exports = {
   syncOrdersQueue: queues['sync-orders'],
   labelsQueue: queues['labels'],
   reconciliationQueue: queues['reconciliation'],
+  metaEventsQueue: queues['meta-events'],
+  aiGenerateQueue: queues['ai-generate'],
+  aiSendReplyQueue: queues['ai-send-reply'],
   getQueueStats,
   QUEUE_NAMES
 };

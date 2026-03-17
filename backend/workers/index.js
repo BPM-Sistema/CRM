@@ -11,6 +11,16 @@ const { logger, workerLogger: log } = require('../lib/logger');
 const { redis } = require('../lib/redis');
 const { createOcrWorker } = require('./ocr.worker');
 const { createWhatsAppWorker } = require('./whatsapp.worker');
+// AI Bot workers — loaded defensively so BPM workers always start even if bot code fails
+let createMetaEventsWorker, createAiGenerateWorker, createAiSendReplyWorker;
+try {
+  ({ createMetaEventsWorker, createAiGenerateWorker, createAiSendReplyWorker } = require('./ai-bot.worker'));
+} catch (err) {
+  log.error({ err: err.message }, 'Failed to load AI Bot workers — bot disabled, BPM workers unaffected');
+  createMetaEventsWorker = null;
+  createAiGenerateWorker = null;
+  createAiSendReplyWorker = null;
+}
 
 const pkg = require('../package.json');
 
@@ -76,6 +86,27 @@ async function start() {
   const whatsappWorker = createWhatsAppWorker(connection);
   workers.push(whatsappWorker);
   log.info('WhatsApp worker iniciado');
+
+  // AI Bot workers — isolated in try-catch so BPM workers survive if bot fails
+  try {
+    if (createMetaEventsWorker) {
+      const metaEventsWorker = createMetaEventsWorker(connection);
+      workers.push(metaEventsWorker);
+      log.info('Meta Events worker iniciado');
+    }
+    if (createAiGenerateWorker) {
+      const aiGenerateWorker = createAiGenerateWorker(connection);
+      workers.push(aiGenerateWorker);
+      log.info('AI Generate worker iniciado');
+    }
+    if (createAiSendReplyWorker) {
+      const aiSendReplyWorker = createAiSendReplyWorker(connection);
+      workers.push(aiSendReplyWorker);
+      log.info('AI Send Reply worker iniciado');
+    }
+  } catch (botErr) {
+    log.error({ err: botErr.message, stack: botErr.stack }, 'AI Bot workers failed to start — BPM workers unaffected');
+  }
 
   log.info({ workerCount: workers.length }, 'Todos los workers iniciados');
 

@@ -10,3 +10,7 @@ export { ShippingDocuments } from './ShippingDocuments';
 export { ComprobantesForm } from './ComprobantesForm';
 export { InboxPage } from './InboxPage';
 export { IntegrationSettings } from './IntegrationSettings';
+export { AiBotDashboard } from './AiBotDashboard';
+export { AiBotConfig } from './AiBotConfig';
+export { AiBotHistory } from './AiBotHistory';
+export { AiBotPromptEditor } from './AiBotPromptEditor';

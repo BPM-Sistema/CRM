@@ -3889,6 +3889,14 @@ const waspyRoutes = require('./routes/waspy');
 const integrationsRoutes = require('./routes/integrations');
 const healthRoutes = require('./routes/health');
 const adminStatusRoutes = require('./routes/admin-status');
+// AI Bot routes — loaded defensively to never crash BPM startup
+let aiBotRoutes;
+try {
+  aiBotRoutes = require('./routes/ai-bot');
+} catch (err) {
+  console.error('[AI Bot] Failed to load routes — bot disabled, BPM unaffected:', err.message);
+  aiBotRoutes = null;
+}
 const { serverAdapter: bullBoardAdapter, bullBoardAuth } = require('./routes/bull-board');
 
 app.use('/auth', authRoutes);
@@ -3900,6 +3908,7 @@ app.use('/waspy', waspyRoutes);
 app.use('/integrations', integrationsRoutes);
 app.use('/health', healthRoutes);
 app.use('/admin/status', adminStatusRoutes);
+if (aiBotRoutes) app.use('/ai-bot', aiBotRoutes);
 app.use('/admin/queues', bullBoardAuth, bullBoardAdapter.getRouter());
 
 /* =====================================================

@@ -9,6 +9,7 @@ import { InboxPage } from './pages/InboxPage';
 import WhatsAppSettings from './pages/WhatsAppSettings';
 import ImageSyncStatus from './pages/ImageSyncStatus';
 import SystemStatus from './pages/SystemStatus';
+import { AiBotDashboard, AiBotConfig, AiBotHistory, AiBotPromptEditor } from './pages';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginPage } from './pages/LoginPage';
 import { getDefaultRoute } from './utils/navigation';
@@ -50,6 +51,10 @@ function AppRoutes() {
             <Route path="/admin/whatsapp" element={<WhatsAppSettings />} />
             <Route path="/admin/image-sync" element={<ImageSyncStatus />} />
             <Route path="/admin/integrations" element={<IntegrationSettings />} />
+            <Route path="/admin/ai-bot" element={<AiBotDashboard />} />
+            <Route path="/admin/ai-bot/config" element={<AiBotConfig />} />
+            <Route path="/admin/ai-bot/history" element={<AiBotHistory />} />
+            <Route path="/admin/ai-bot/prompt" element={<AiBotPromptEditor />} />
             <Route path="/system-status" element={<SystemStatus />} />
             {/* Ruta catch-all: redirige a la primera sección permitida */}
             <Route path="*" element={<DefaultRedirect />} />

@@ -13,7 +13,9 @@
     "test:ci": "jest --runInBand --detectOpenHandles --forceExit --ci",
     "build": "npm test",
     "workers": "node workers/index.js",
-    "workers:dev": "nodemon workers/index.js"
+    "workers:dev": "nodemon workers/index.js",
+    "workers:ai-bot": "node workers/ai-bot-standalone.js",
+    "workers:ai-bot:dev": "nodemon workers/ai-bot-standalone.js"
   },
   "keywords": [],
   "author": "Netu",
