@@ -154,7 +154,105 @@ function convertirAFormatoLegacy(datos) {
   };
 }
 
+const REMITO_PROMPT = `Analizá este documento de transporte/remito y devolvé ÚNICAMENTE este JSON:
+
+{
+  "es_remito": true/false,
+  "empresa_transporte": "string (ej: VIA CARGO, ANDREANI, etc)",
+  "numero_remito": "string",
+  "numero_guia": "string",
+  "fecha": "DD/MM/YYYY",
+  "numero_pedido": "string (número escrito a mano si hay)",
+  "remitente": {
+    "nombre": "string",
+    "domicilio": "string",
+    "telefono": "string",
+    "localidad": "string",
+    "dni_cuit": "string"
+  },
+  "destinatario": {
+    "nombre": "string",
+    "domicilio": "string",
+    "telefono": "string",
+    "localidad": "string",
+    "dni_cuit": "string"
+  },
+  "peso_kg": number,
+  "total": number,
+  "reembolso": number o null,
+  "texto_completo": "todo el texto visible en la imagen"
+}
+
+REGLAS:
+- Extraé SOLO lo que ves en la imagen. No inventes datos.
+- Distinguí bien REMITENTE (quien envía) de DESTINATARIO (quien recibe).
+- Si hay un número escrito a mano (generalmente arriba a la derecha), es el número de pedido.
+- Si la imagen NO es un remito de transporte, respondé con {"es_remito": false}.`;
+
+/**
+ * Analiza una imagen de remito con Claude Vision
+ * @param {Buffer} imageBuffer - Buffer de la imagen
+ * @param {string} mimeType - Tipo MIME (image/jpeg, image/png, application/pdf)
+ * @returns {Object} Datos estructurados del remito
+ */
+async function analizarRemito(imageBuffer, mimeType) {
+  const base64Image = imageBuffer.toString('base64');
+
+  // Mapear mime type
+  const mediaType = mimeType === 'application/pdf' ? 'image/jpeg' : (mimeType || 'image/jpeg');
+
+  const startTime = Date.now();
+
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 1024,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: mediaType,
+              data: base64Image
+            }
+          },
+          {
+            type: 'text',
+            text: REMITO_PROMPT
+          }
+        ]
+      }
+    ]
+  });
+
+  const latency = Date.now() - startTime;
+  const textContent = response.content.find(c => c.type === 'text');
+
+  if (!textContent) {
+    throw new Error('Claude Vision no devolvió texto');
+  }
+
+  let datos;
+  try {
+    let jsonStr = textContent.text.trim();
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+    }
+    datos = JSON.parse(jsonStr);
+  } catch (e) {
+    console.error('❌ Claude Vision remito respuesta no parseable:', textContent.text);
+    throw new Error('Error parseando respuesta de Claude Vision para remito');
+  }
+
+  console.log(`🤖 Claude Vision Remito: ${latency}ms | empresa: ${datos.empresa_transporte} | destinatario: ${datos.destinatario?.nombre} | remito: ${datos.es_remito}`);
+
+  return datos;
+}
+
 module.exports = {
   analizarComprobante,
-  convertirAFormatoLegacy
+  convertirAFormatoLegacy,
+  analizarRemito
 };

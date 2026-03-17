@@ -1415,6 +1415,147 @@ async function processDocument(documentId, ocrText, textAnnotations = null) {
   }
 }
 
+/**
+ * Procesa un remito usando Claude Vision en lugar de Google Vision
+ * Claude analiza la imagen y extrae datos estructurados directamente
+ */
+async function processDocumentWithClaude(documentId, claudeData) {
+  console.log(`🔍 Procesando documento ${documentId} con datos de Claude Vision...`);
+
+  try {
+    const esViaCargo = claudeData.empresa_transporte &&
+      claudeData.empresa_transporte.toLowerCase().includes('cargo');
+
+    const remitoType = esViaCargo ? 'via_cargo' : 'otro_transporte';
+    console.log(`   📦 Tipo de remito: ${remitoType}`);
+
+    const extraction = {
+      name: claudeData.destinatario?.nombre || null,
+      address: claudeData.destinatario?.domicilio || null,
+      city: claudeData.destinatario?.localidad || null,
+      confidence: 0.95, // Claude Vision tiene alta confianza
+      log: ['Extracción por Claude Vision (sin bounding boxes)']
+    };
+
+    console.log(`   👤 Nombre detectado: ${extraction.name || '(ninguno)'}`);
+    console.log(`   📍 Dirección detectada: ${extraction.address || '(ninguna)'}`);
+    console.log(`   🏙️ Ciudad detectada: ${extraction.city || '(ninguna)'}`);
+
+    // Texto completo para guardar en DB
+    const ocrText = claudeData.texto_completo || JSON.stringify(claudeData);
+
+    let match = null;
+    let matchDetails = {};
+    let candidates = [];
+
+    if (extraction.name || extraction.address) {
+      if (esViaCargo) {
+        // Via Cargo: match estructural por nombre + dirección + ciudad
+        const matchResult = await findBestMatch(extraction.name, extraction.address, extraction.city);
+        match = matchResult.bestMatch;
+        candidates = matchResult.candidates;
+      } else {
+        // Otros: match por nombre en texto completo
+        const matchResult = await findMatchByNameInFullText(ocrText);
+        match = matchResult.bestMatch;
+        candidates = matchResult.candidates;
+      }
+    }
+
+    matchDetails = match ? {
+      ...match.details,
+      remito_type: remitoType,
+      extractionConfidence: extraction.confidence,
+      extractionLog: extraction.log,
+      matchSource: 'shipping_requests',
+      claude_vision: true,
+      candidates: candidates.map(c => ({
+        orderNumber: c.orderNumber,
+        customerName: c.customerName,
+        score: c.score,
+        createdAt: c.createdAt
+      }))
+    } : {
+      remito_type: remitoType,
+      extractionConfidence: extraction.confidence,
+      extractionLog: extraction.log,
+      noMatchReason: 'no_shipping_request_match',
+      claude_vision: true,
+      candidates: []
+    };
+
+    if (match) {
+      console.log(`   ✅ Match encontrado: #${match.orderNumber} (score: ${(match.score * 100).toFixed(1)}%)`);
+
+      await pool.query(`
+        UPDATE shipping_documents
+        SET
+          ocr_text = $1,
+          ocr_processed_at = NOW(),
+          detected_name = $2,
+          detected_address = $3,
+          detected_city = $4,
+          suggested_order_number = $5,
+          match_score = $6,
+          match_details = $7,
+          status = 'ready',
+          updated_at = NOW()
+        WHERE id = $8
+      `, [
+        ocrText,
+        extraction.name,
+        extraction.address,
+        extraction.city,
+        match.orderNumber,
+        match.score,
+        JSON.stringify(matchDetails),
+        documentId
+      ]);
+    } else {
+      console.log(`   ⚠️ No se encontró coincidencia`);
+
+      await pool.query(`
+        UPDATE shipping_documents
+        SET
+          ocr_text = $1,
+          ocr_processed_at = NOW(),
+          detected_name = $2,
+          detected_address = $3,
+          detected_city = $4,
+          suggested_order_number = NULL,
+          match_score = NULL,
+          match_details = $5,
+          status = 'ready',
+          updated_at = NOW()
+        WHERE id = $6
+      `, [
+        ocrText,
+        extraction.name,
+        extraction.address,
+        extraction.city,
+        JSON.stringify(matchDetails),
+        documentId
+      ]);
+    }
+
+    return { success: true, match, extraction };
+
+  } catch (error) {
+    console.error(`   ❌ Error procesando documento ${documentId}:`, error.message);
+
+    await pool.query(`
+      UPDATE shipping_documents
+      SET
+        status = 'error',
+        error_message = $1,
+        updated_at = NOW()
+      WHERE id = $2
+    `, [error.message, documentId]);
+
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
   levenshteinDistance,
   calculateSimilarity,
@@ -1427,5 +1568,6 @@ module.exports = {
   extractDestinationZone,
   separateByLayout,
   findBestMatch,
-  processDocument
+  processDocument,
+  processDocumentWithClaude
 };

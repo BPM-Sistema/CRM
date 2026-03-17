@@ -14,19 +14,16 @@ const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
 const { createClient } = require('@supabase/supabase-js');
-const vision = require('@google-cloud/vision');
 const pool = require('../db');
 const { authenticate, requirePermission } = require('../middleware/auth');
-const { processDocument } = require('../services/shippingDocuments');
+const { processDocumentWithClaude } = require('../services/shippingDocuments');
+const { analizarRemito } = require('../services/claudeVision');
 
 // Configurar Supabase
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-
-// Configurar Google Vision
-const visionClient = new vision.ImageAnnotatorClient();
 
 // Función para loguear eventos (misma estructura que index.js)
 async function logEvento({ orderNumber, accion, origen, userId, username }) {
@@ -156,57 +153,35 @@ router.post('/upload',
 );
 
 /**
- * Procesa OCR de forma asíncrona
+ * Procesa remito con Claude Vision de forma asíncrona
  */
 async function processOCRAsync(documentId, fileBuffer, mimeType) {
   try {
-    console.log(`🔄 Iniciando OCR para documento ${documentId}...`);
+    console.log(`🔄 Iniciando análisis Claude Vision para documento ${documentId}...`);
 
-    let ocrText = '';
-    let textAnnotations = null;
+    const claudeData = await analizarRemito(fileBuffer, mimeType);
 
-    if (mimeType === 'application/pdf') {
-      // Para PDFs, usar detectDocumentText con inputConfig
-      const [result] = await visionClient.documentTextDetection({
-        image: { content: fileBuffer.toString('base64') }
-      });
-      ocrText = result.fullTextAnnotation?.text || '';
-      // PDFs no tienen bounding boxes útiles para separación de columnas
-    } else {
-      // Para imágenes - capturar textAnnotations con bounding boxes
-      const [result] = await visionClient.textDetection({
-        image: { content: fileBuffer.toString('base64') }
-      });
-      ocrText = result.fullTextAnnotation?.text || '';
-      textAnnotations = result.textAnnotations || null;
-
-      if (textAnnotations) {
-        console.log(`📐 OCR devolvió ${textAnnotations.length} anotaciones con bounding boxes`);
-      }
-    }
-
-    if (!ocrText) {
-      console.log(`⚠️ No se detectó texto en documento ${documentId}`);
+    if (!claudeData.es_remito) {
+      console.log(`⚠️ Documento ${documentId} no es un remito`);
       await pool.query(`
         UPDATE shipping_documents
-        SET status = 'ready', ocr_processed_at = NOW(), updated_at = NOW()
-        WHERE id = $1
-      `, [documentId]);
+        SET status = 'ready', ocr_processed_at = NOW(),
+            ocr_text = $1, match_details = '{"noMatchReason": "not_a_remito"}',
+            updated_at = NOW()
+        WHERE id = $2
+      `, [claudeData.texto_completo || '', documentId]);
       return;
     }
 
-    console.log(`📝 OCR completado para documento ${documentId} (${ocrText.length} caracteres)`);
-
-    // Procesar y buscar coincidencias (pasar textAnnotations para separación por layout)
-    await processDocument(documentId, ocrText, textAnnotations);
+    await processDocumentWithClaude(documentId, claudeData);
 
   } catch (error) {
-    console.error(`❌ Error OCR documento ${documentId}:`, error.message);
+    console.error(`❌ Error Claude Vision documento ${documentId}:`, error.message);
     await pool.query(`
       UPDATE shipping_documents
       SET status = 'error', error_message = $1, updated_at = NOW()
       WHERE id = $2
-    `, [`OCR Error: ${error.message}`, documentId]);
+    `, [`Claude Vision Error: ${error.message}`, documentId]);
   }
 }
 

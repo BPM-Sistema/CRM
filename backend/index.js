@@ -51,17 +51,13 @@ const PORT = process.env.PORT || 3000;
 // Desactivar ETag globalmente para evitar respuestas 304
 app.set('etag', false);
 
-// Configurar Google Cloud Vision credentials para producción (Cloud Run)
+// Configurar Google Cloud credentials (aún usado por workers/ocr.worker.js)
 if (process.env.GOOGLE_CREDENTIALS_JSON) {
   const credentialsPath = '/tmp/google-credentials.json';
   fs.writeFileSync(credentialsPath, process.env.GOOGLE_CREDENTIALS_JSON);
   process.env.GOOGLE_APPLICATION_CREDENTIALS = credentialsPath;
   console.log('✅ Google credentials configuradas desde variable de entorno');
 }
-
-const vision = require('@google-cloud/vision');
-const { log } = require('console');
-const visionClient = new vision.ImageAnnotatorClient();
 
 app.use(express.json({
   verify: (req, res, buf) => {
