@@ -86,9 +86,9 @@ export function PaymentStatusBadge({ status, size = 'md', className }: PaymentSt
 
 // ============ ESTADO DEL PEDIDO ============
 const orderStatusVariants: Record<OrderStatus, BadgeVariant> = {
-  pendiente_pago: 'orange',
-  a_imprimir: 'orange',
-  hoja_impresa: 'orange',
+  pendiente_pago: 'default',
+  a_imprimir: 'default',
+  hoja_impresa: 'default',
   armado: 'cyan',
   retirado: 'success',
   en_calle: 'warning',
