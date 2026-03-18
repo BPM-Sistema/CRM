@@ -2978,16 +2978,10 @@ app.post('/webhook/tiendanube', async (req, res) => {
       if (syncPayment && cambioPayment) {
         setClauses.push(`tn_payment_status = $${paramIdx++}`);
         setParams.push(paymentStatusNuevo);
-
-        // Si TN marca como paid, actualizar estado_pago y total_pagado en BPM
-        if (paymentStatusNuevo === 'paid') {
-          setClauses.push(`total_pagado = monto_tiendanube`);
-          setClauses.push(`saldo = 0`);
-          setClauses.push(`estado_pago = 'confirmado_total'`);
-        } else if (paymentStatusNuevo === 'partially_paid') {
-          // No tocamos total_pagado porque no sabemos cuánto pagó parcialmente
-          setClauses.push(`estado_pago = 'confirmado_parcial'`);
-        } else if (paymentStatusNuevo === 'refunded') {
+        // No confiar en payment_status de TN para cambiar estado_pago/total_pagado
+        // La API de TN miente (dice paid cuando el panel muestra parcial)
+        // El recálculo real se hace abajo basado en total_pagado del BPM
+        if (paymentStatusNuevo === 'refunded') {
           setClauses.push(`estado_pago = 'reembolsado'`);
         } else if (paymentStatusNuevo === 'voided') {
           setClauses.push(`estado_pago = 'anulado'`);
@@ -3049,29 +3043,22 @@ app.post('/webhook/tiendanube', async (req, res) => {
         blocked: cambiosBloqueados.map(c => c.tipo),
       }, 'Order updated via webhook (selective sync)');
 
-      // Recalcular pago cuando cambia monto o payment_status
+      // Recalcular saldo cuando cambia monto o payment_status
+      // NOTA: NO confiar en payment_status='paid' de TN — la API miente cuando
+      // editás un pedido ya pagado (dice paid pero el panel muestra parcial).
+      // Siempre recalcular basado en total_pagado real del BPM.
       if ((cambioMonto && syncProducts) || (cambioPayment && syncPayment)) {
-        // Si TN dice paid, confiar en TN: total_pagado = monto, saldo = 0
-        // (TN no tiene partially_paid cuando editás un pedido ya pagado)
-        if (paymentStatusNuevo === 'paid') {
-          await pool.query(`
-            UPDATE orders_validated
-            SET total_pagado = monto_tiendanube, saldo = 0, estado_pago = 'confirmado_total'
-            WHERE order_number = $1
-          `, [String(pedido.number)]);
-        } else {
-          await pool.query(`
-            UPDATE orders_validated
-            SET
-              saldo = monto_tiendanube - total_pagado,
-              estado_pago = CASE
-                WHEN monto_tiendanube - total_pagado <= 0 THEN 'confirmado_total'
-                WHEN total_pagado > 0 THEN 'confirmado_parcial'
-                ELSE 'pendiente'
-              END
-            WHERE order_number = $1
-          `, [String(pedido.number)]);
-        }
+        await pool.query(`
+          UPDATE orders_validated
+          SET
+            saldo = monto_tiendanube - total_pagado,
+            estado_pago = CASE
+              WHEN monto_tiendanube - total_pagado <= 0 THEN 'confirmado_total'
+              WHEN total_pagado > 0 THEN 'confirmado_parcial'
+              ELSE 'pendiente'
+            END
+          WHERE order_number = $1
+        `, [String(pedido.number)]);
       }
 
       // Guardar en historial (log todos los cambios, incluso los bloqueados)
