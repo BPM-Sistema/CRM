@@ -54,8 +54,8 @@ router.get('/webhooks/meta', (req, res) => {
 
   const expectedToken = process.env.META_VERIFY_TOKEN;
   if (!expectedToken) {
-    log.error({ requestId }, 'META_VERIFY_TOKEN not configured');
-    return res.status(500).send('Server misconfigured');
+    log.warn({ requestId }, 'META_VERIFY_TOKEN not configured — webhook verification unavailable');
+    return res.status(503).send('Webhook verification not configured');
   }
 
   if (token !== expectedToken) {
@@ -99,7 +99,9 @@ router.post('/webhooks/meta', async (req, res) => {
 
     if (Array.isArray(entry.messaging)) {
       for (const msg of entry.messaging) {
-        const eventId = `${platform}_msg_${entryId}_${msg.timestamp || Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
+        // Dedup-safe ID: use Meta's message ID or sender+timestamp (no random component)
+        const msgId = msg.message?.mid || msg.delivery?.mid || `${msg.sender?.id}_${msg.timestamp}`;
+        const eventId = `${platform}_msg_${entryId}_${msgId}`;
         events.push({
           event_id: eventId,
           platform,
@@ -119,7 +121,9 @@ router.post('/webhooks/meta', async (req, res) => {
         const supportedFields = ['comments', 'mentions', 'feed', 'messages'];
         if (!supportedFields.includes(field)) continue;
 
-        const eventId = `${platform}_${field}_${entryId}_${entryTime || Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
+        // Dedup-safe ID: use Meta's value ID or entry+time+field (no random component)
+        const valueId = change.value?.id || change.value?.comment_id || `${entryId}_${entryTime}`;
+        const eventId = `${platform}_${field}_${valueId}`;
         events.push({
           event_id: eventId,
           platform,
@@ -373,7 +377,7 @@ router.put('/config/:key', requirePermission('ai_bot.config'), async (req, res) 
       `UPDATE ai_bot_config
        SET value = $1, updated_at = NOW(), updated_by = $2
        WHERE key = $3`,
-      [typeof value === 'string' ? value : JSON.stringify(value), req.user.id, key]
+      [JSON.stringify(value), req.user.id, key]
     );
 
     log.info({
@@ -954,7 +958,7 @@ router.put('/system-prompt', requirePermission('ai_bot.manage'), async (req, res
        VALUES ('system_prompt', $1, 'System prompt for Claude', $2, NOW())
        ON CONFLICT (key) DO UPDATE
        SET value = $1, updated_by = $2, updated_at = NOW()`,
-      [prompt, req.user.id]
+      [JSON.stringify(prompt), req.user.id]
     );
 
     log.info({
