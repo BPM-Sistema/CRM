@@ -97,12 +97,20 @@ app.use((req, res, next) => {
   next();
 });
 
-// Security headers
-app.use(helmet({
+// Security headers (con exclusión para rutas embebibles)
+const helmetMiddleware = helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' }
-}));
+});
+
+app.use((req, res, next) => {
+  // Excluir /leads de Helmet (necesita ser embebible en Tiendanube)
+  if (req.path === '/leads') {
+    return next();
+  }
+  return helmetMiddleware(req, res, next);
+});
 
 // Structured logging middleware (request IDs + duration)
 const { requestLogger } = require('./lib/logger');
@@ -129,8 +137,13 @@ app.get('/', (req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Ruta explícita para el form de leads (iframe)
+// Ruta explícita para el form de leads (embebible desde cualquier dominio)
+// Helmet está excluido para esta ruta (ver middleware arriba)
 app.get('/leads', (req, res) => {
+  // Forzar no-cache para evitar problemas con versiones anteriores
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.sendFile(path.join(__dirname, 'public', 'leads.html'));
 });
 
@@ -4421,11 +4434,23 @@ app.post('/sync/customers/:tnCustomerId', authenticate, requirePermission('custo
 });
 
 // Sync orders_count from TN orders API (llenar datos que customers API no provee)
+// ?method=byCustomer para usar la versión más robusta (consulta por cliente)
+// ?method=byPages para usar la versión tradicional (pagina todas las órdenes)
 app.post('/sync/customers/orders-count', authenticate, requirePermission('customers.sync'), async (req, res) => {
   try {
-    console.log(`📦 [CustomerSync] Sync orders_count iniciado por ${req.user.username}`);
-    const result = await customerSync.syncOrdersCountFromTN();
-    res.json({ ok: true, ...result });
+    const method = req.query.method || 'byCustomer'; // Default to more robust method
+    console.log(`📦 [CustomerSync] Sync orders_count iniciado por ${req.user.username} (method: ${method})`);
+
+    let result;
+    if (method === 'byCustomer') {
+      // Más robusto: consulta TN por cada cliente individualmente
+      result = await customerSync.syncOrdersCountByCustomer();
+    } else {
+      // Tradicional: pagina todas las órdenes (puede fallar con errores 502)
+      result = await customerSync.syncOrdersCountFromTN();
+    }
+
+    res.json({ ok: true, method, ...result });
   } catch (error) {
     console.error('❌ /sync/customers/orders-count error:', error.message);
     res.status(500).json({ error: error.message });
