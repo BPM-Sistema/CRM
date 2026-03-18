@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUrlFilters } from '../hooks';
-import { RefreshCw, AlertCircle, Eye, Printer, Calendar, Search, ChevronLeft, ChevronRight, CheckSquare, X, Truck, Tag } from 'lucide-react';
+import { RefreshCw, AlertCircle, Printer, Calendar, Search, ChevronLeft, ChevronRight, CheckSquare, X, Truck, Tag } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card, PaymentStatusBadge, OrderStatusBadge, Modal } from '../components/ui';
 import { AccessDenied } from '../components/AccessDenied';
@@ -727,13 +727,13 @@ export function RealOrders() {
                     </TableHead>
                   )}
                   <TableHead className="w-[90px]">Venta</TableHead>
-                  <TableHead className="w-[110px]">Fecha</TableHead>
-                  <TableHead className="min-w-[140px]">Cliente</TableHead>
-                  <TableHead className="text-right w-[120px]">Total</TableHead>
-                  <TableHead className="text-center w-[80px]">Productos</TableHead>
-                  <TableHead className="w-[180px]">Pago</TableHead>
-                  <TableHead className="w-[200px]">Envío</TableHead>
-                  <TableHead className="w-[40px]">{' '}</TableHead>
+                  <TableHead className="w-[110px]">Fecha ↓</TableHead>
+                  <TableHead className="min-w-[150px]">Cliente</TableHead>
+                  <TableHead className="text-right w-[130px]">Total</TableHead>
+                  <TableHead className="text-center w-[90px]">Productos</TableHead>
+                  <TableHead className="w-[200px]">Pago</TableHead>
+                  <TableHead className="w-[240px]">Envío</TableHead>
+                  <TableHead className="w-[36px]">{' '}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -748,7 +748,7 @@ export function RealOrders() {
                         navigate(`/orders/${order.order_number}`);
                       }
                     }}
-                    className={selectedOrderNumbers.has(order.order_number) ? 'bg-blue-50' : ''}
+                    className={selectedOrderNumbers.has(order.order_number) ? 'bg-blue-50' : 'even:bg-neutral-50/50'}
                   >
                     {selectionMode && (
                       <TableCell className="text-center">
@@ -763,21 +763,21 @@ export function RealOrders() {
                     )}
                     {/* Venta */}
                     <TableCell>
-                      <span className="text-sm font-medium text-blue-600 hover:text-blue-800">
+                      <span className="text-sm font-medium text-blue-600">
                         #{order.order_number}
                       </span>
                     </TableCell>
 
                     {/* Fecha */}
                     <TableCell>
-                      <span className="text-sm text-neutral-700">
+                      <span className="text-sm text-neutral-600">
                         {format(new Date(order.created_at), 'd MMM HH:mm', { locale: es })}
                       </span>
                     </TableCell>
 
                     {/* Cliente */}
                     <TableCell>
-                      <span className="text-sm text-blue-600 hover:text-blue-800 truncate max-w-[180px] block">
+                      <span className="text-sm text-blue-600 truncate max-w-[180px] block">
                         {order.customer_name || 'Sin nombre'}
                       </span>
                     </TableCell>
@@ -787,31 +787,42 @@ export function RealOrders() {
                       <span className="text-sm text-neutral-900">{formatCurrency(order.monto_tiendanube)}</span>
                     </TableCell>
 
-                    {/* Productos (comprobantes count) */}
+                    {/* Productos */}
                     <TableCell className="text-center">
                       <span className="text-sm text-blue-600">
-                        {order.comprobantes_count} comp.
+                        {order.productos_count || 0} unid. ∨
                       </span>
                     </TableCell>
 
                     {/* Pago */}
                     <TableCell>
-                      <div className="flex flex-col gap-0.5">
-                        <PaymentStatusBadge status={mapEstadoPago(order.estado_pago)} size="sm" />
-                        <span className="text-xs text-neutral-500 truncate max-w-[170px]">
-                          {order.shipping_type || '-'}
+                      <div className="flex flex-col gap-1">
+                        <div>
+                          <PaymentStatusBadge status={mapEstadoPago(order.estado_pago)} size="md" />
+                        </div>
+                        {order.estado_pedido === 'cancelado' && (
+                          <div>
+                            <OrderStatusBadge status="cancelado" size="md" />
+                          </div>
+                        )}
+                        <span className="text-xs text-neutral-400">
+                          Personalizado - A convenir
                         </span>
                       </div>
                     </TableCell>
 
                     {/* Envío */}
                     <TableCell>
-                      <div className="flex flex-col gap-0.5">
-                        <OrderStatusBadge status={mapEstadoPedido(order.estado_pedido)} size="sm" />
-                        <span className="text-xs text-neutral-500 truncate max-w-[190px]" title={order.shipping_type || ''}>
-                          {order.shipping_type || '-'}
-                        </span>
-                      </div>
+                      {order.estado_pedido !== 'cancelado' && (
+                        <div className="flex flex-col gap-1">
+                          <div>
+                            <OrderStatusBadge status={mapEstadoPedido(order.estado_pedido)} size="md" />
+                          </div>
+                          <span className="text-xs text-neutral-500 truncate max-w-[220px]" title={order.shipping_type || ''}>
+                            {order.shipping_type || '-'}
+                          </span>
+                        </div>
+                      )}
                     </TableCell>
 
                     {/* Menú */}
@@ -821,10 +832,14 @@ export function RealOrders() {
                           e.stopPropagation();
                           navigate(`/orders/${order.order_number}`);
                         }}
-                        className="p-1 text-neutral-400 hover:text-neutral-700 rounded transition-colors"
+                        className="p-1 text-neutral-400 hover:text-neutral-600 rounded transition-colors"
                         title="Ver detalle"
                       >
-                        <Eye size={16} />
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                          <circle cx="8" cy="3" r="1.5" />
+                          <circle cx="8" cy="8" r="1.5" />
+                          <circle cx="8" cy="13" r="1.5" />
+                        </svg>
                       </button>
                     </TableCell>
                   </TableRow>

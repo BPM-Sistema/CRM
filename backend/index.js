@@ -1185,6 +1185,7 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
         o.shipped_at,
         o.shipping_type,
         COUNT(c.id) as comprobantes_count,
+        (SELECT COALESCE(SUM(op.quantity), 0) FROM order_products op WHERE op.order_number = o.order_number)::int as productos_count,
         CASE
           WHEN LOWER(COALESCE(o.shipping_type, '')) LIKE '%expreso%' AND LOWER(COALESCE(o.shipping_type, '')) LIKE '%elec%' THEN true
           WHEN LOWER(COALESCE(o.shipping_type, '')) LIKE '%via cargo%' THEN true

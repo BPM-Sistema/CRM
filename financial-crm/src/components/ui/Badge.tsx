@@ -53,20 +53,20 @@ const paymentStatusVariants: Record<PaymentStatus, BadgeVariant> = {
 };
 
 const paymentStatusLabels: Record<PaymentStatus, string> = {
-  pendiente: 'Pendiente',
-  a_confirmar: 'A confirmar',
-  parcial: 'Parcial',
-  total: 'Total',
-  rechazado: 'Rechazado',
+  pendiente: '$ Pendiente',
+  a_confirmar: '$ A confirmar',
+  parcial: '$ Parcial',
+  total: '$ Recibido',
+  rechazado: '$ Rechazado',
 };
 
 // Etiquetas cortas para tamaño pequeño
 const paymentStatusLabelsShort: Record<PaymentStatus, string> = {
-  pendiente: 'Pend.',
-  a_confirmar: 'A conf.',
-  parcial: 'Parcial',
-  total: 'Total',
-  rechazado: 'Rech.',
+  pendiente: '$ Pendiente',
+  a_confirmar: '$ A confirmar',
+  parcial: '$ Parcial',
+  total: '$ Recibido',
+  rechazado: '$ Rechazado',
 };
 
 interface PaymentStatusBadgeProps {
@@ -97,26 +97,26 @@ const orderStatusVariants: Record<OrderStatus, BadgeVariant> = {
 };
 
 const orderStatusLabels: Record<OrderStatus, string> = {
-  pendiente_pago: 'Pendiente de pago',
-  a_imprimir: 'A imprimir',
-  hoja_impresa: 'Hoja impresa',
-  armado: 'Armado',
-  retirado: 'Retirado',
-  en_calle: 'En calle',
-  enviado: 'Enviado',
-  cancelado: 'Cancelado',
+  pendiente_pago: 'Por empaquetar',
+  a_imprimir: 'Por empaquetar',
+  hoja_impresa: 'Por empaquetar',
+  armado: 'Empaquetado',
+  retirado: 'Retirada',
+  en_calle: 'En camino',
+  enviado: 'Enviada',
+  cancelado: 'Cancelada',
 };
 
 // Etiquetas cortas para tamaño pequeño
 const orderStatusLabelsShort: Record<OrderStatus, string> = {
-  pendiente_pago: 'Pend. pago',
-  a_imprimir: 'A impr.',
-  hoja_impresa: 'Hoja impr.',
-  armado: 'Armado',
-  retirado: 'Retirado',
-  en_calle: 'En calle',
-  enviado: 'Enviado',
-  cancelado: 'Cancelado',
+  pendiente_pago: 'Por empaquetar',
+  a_imprimir: 'Por empaquetar',
+  hoja_impresa: 'Por empaquetar',
+  armado: 'Empaquetado',
+  retirado: 'Retirada',
+  en_calle: 'En camino',
+  enviado: 'Enviada',
+  cancelado: 'Cancelada',
 };
 
 interface OrderStatusBadgeProps {

@@ -78,6 +78,7 @@ export interface ApiOrder {
   packed_at: string | null;
   shipped_at: string | null;
   comprobantes_count: string;
+  productos_count: number;
   shipping_type: string | null;
   requires_shipping_form: boolean;
   has_shipping_data: boolean;
