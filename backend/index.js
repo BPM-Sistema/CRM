@@ -2785,12 +2785,16 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
 
     // WhatsApp automático cuando se marca como "cancelado"
     if (estado_pedido === 'cancelado' && pedido.customer_phone) {
+      const tnPath = pedido.tn_order_id && pedido.tn_order_token
+        ? `${pedido.tn_order_id}/${pedido.tn_order_token}`
+        : orderNumber;
       queueWhatsApp({
         telefono: pedido.customer_phone,
         plantilla: 'pedido_cancelado',
         variables: {
           '1': pedido.customer_name || 'Cliente',
-          '2': orderNumber
+          '2': orderNumber,
+          '3': tnPath
         },
         orderNumber
       }).then(() => console.log(`📨 WhatsApp pedido_cancelado enviado (Pedido #${orderNumber})`))
@@ -3038,17 +3042,21 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
         // WhatsApp al cliente - pedido_cancelado
         const clienteCancelRes = await pool.query(
-          `SELECT customer_name, customer_phone FROM orders_validated WHERE order_number = $1`,
+          `SELECT customer_name, customer_phone, tn_order_id, tn_order_token FROM orders_validated WHERE order_number = $1`,
           [orderNumber]
         );
         const clienteCancel = clienteCancelRes.rows[0];
         if (clienteCancel?.customer_phone) {
+          const tnPathCancel = clienteCancel.tn_order_id && clienteCancel.tn_order_token
+            ? `${clienteCancel.tn_order_id}/${clienteCancel.tn_order_token}`
+            : orderNumber;
           queueWhatsApp({
             telefono: clienteCancel.customer_phone,
             plantilla: 'pedido_cancelado',
             variables: {
               '1': clienteCancel.customer_name || 'Cliente',
-              '2': orderNumber
+              '2': orderNumber,
+              '3': tnPathCancel
             },
             orderNumber
           }).then(() => log.info({ orderNumber }, 'WhatsApp pedido_cancelado sent'))
