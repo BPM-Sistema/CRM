@@ -3287,20 +3287,42 @@ app.post('/webhook/tiendanube', async (req, res) => {
       return;
     }
 
-    // 6️⃣ Botmaker - enviarWhatsAppPlantilla maneja testing filter, sufijo y tracking
-    await queueWhatsApp({
-      telefono,
-      plantilla: 'pedido_creado',
-      variables: {
-        '1': pedido.customer?.name || 'Cliente',
-        '2': String(pedido.number)
-      },
-      orderNumber: pedido.number
-    });
+    // 6️⃣ Verificar si es cliente nuevo (primera compra = sin órdenes previas)
+    const customerEmail = pedido.customer?.email || pedido.contact_email;
+    const orderNumber = String(pedido.number);
 
-    log.info({ orderNumber: String(pedido.number) }, 'WhatsApp pedido_creado sent');
+    const previousOrdersResult = await pool.query(`
+      SELECT COUNT(*) as count
+      FROM orders_validated
+      WHERE (customer_phone = $1 OR ($2::text IS NOT NULL AND customer_email = $2::text))
+      AND order_number != $3
+    `, [telefono, customerEmail, orderNumber]);
 
-    // 7️⃣ Si requiere formulario de envío (Expreso a elección o Via Cargo)
+    const previousOrders = parseInt(previousOrdersResult.rows[0].count, 10);
+
+    if (previousOrders > 0) {
+      log.info({
+        orderNumber,
+        customerPhone: telefono,
+        totalOrders: previousOrders + 1,
+      }, '[WHATSAPP] Skip cliente existente - pedido_creado');
+      // No enviar WhatsApp a clientes que ya compraron antes
+    } else {
+      // 7️⃣ Botmaker - enviarWhatsAppPlantilla maneja testing filter, sufijo y tracking
+      await queueWhatsApp({
+        telefono,
+        plantilla: 'pedido_creado',
+        variables: {
+          '1': pedido.customer?.name || 'Cliente',
+          '2': orderNumber
+        },
+        orderNumber: pedido.number
+      });
+
+      log.info({ orderNumber }, '[WHATSAPP] Enviado a cliente nuevo - pedido_creado');
+    }
+
+    // 8️⃣ Si requiere formulario de envío (Expreso a elección o Via Cargo)
     const shippingOption = (typeof pedido.shipping_option === 'string'
       ? pedido.shipping_option
       : pedido.shipping_option?.name) || '';
