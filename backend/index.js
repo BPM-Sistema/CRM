@@ -640,8 +640,36 @@ async function guardarPedidoCompleto(pedido) {
 
 /**
  * Queue a WhatsApp message via BullMQ if available, otherwise send directly.
+ * FILTRO: Solo envía a clientes nuevos (sin compras previas)
  */
 async function queueWhatsApp({ telefono, plantilla, variables, orderNumber }) {
+  // Verificar si es cliente nuevo (sin órdenes previas)
+  try {
+    const previousOrdersResult = await pool.query(`
+      SELECT COUNT(*) as count
+      FROM orders_validated
+      WHERE customer_phone = $1
+      AND order_number != $2
+    `, [telefono, String(orderNumber || '')]);
+
+    const previousOrders = parseInt(previousOrdersResult.rows[0].count, 10);
+
+    if (previousOrders > 0) {
+      log.info({
+        orderNumber,
+        plantilla,
+        customerPhone: telefono,
+        totalOrders: previousOrders + 1,
+      }, '[WHATSAPP] Skip cliente existente');
+      return { skipped: true, reason: 'cliente_existente' };
+    }
+  } catch (err) {
+    log.error({ err: err.message, orderNumber, plantilla }, 'Error verificando cliente nuevo, enviando igual');
+    // Si falla la verificación, enviamos igual para no bloquear
+  }
+
+  log.info({ orderNumber, plantilla }, '[WHATSAPP] Enviando a cliente nuevo');
+
   const { whatsappQueue } = require('./lib/queues');
   if (whatsappQueue) {
     await whatsappQueue.add('send-whatsapp', {
@@ -3287,42 +3315,18 @@ app.post('/webhook/tiendanube', async (req, res) => {
       return;
     }
 
-    // 6️⃣ Verificar si es cliente nuevo (primera compra = sin órdenes previas)
-    const customerEmail = pedido.customer?.email || pedido.contact_email;
-    const orderNumber = String(pedido.number);
+    // 6️⃣ Botmaker - queueWhatsApp verifica cliente nuevo automáticamente
+    await queueWhatsApp({
+      telefono,
+      plantilla: 'pedido_creado',
+      variables: {
+        '1': pedido.customer?.name || 'Cliente',
+        '2': String(pedido.number)
+      },
+      orderNumber: pedido.number
+    });
 
-    const previousOrdersResult = await pool.query(`
-      SELECT COUNT(*) as count
-      FROM orders_validated
-      WHERE (customer_phone = $1 OR ($2::text IS NOT NULL AND customer_email = $2::text))
-      AND order_number != $3
-    `, [telefono, customerEmail, orderNumber]);
-
-    const previousOrders = parseInt(previousOrdersResult.rows[0].count, 10);
-
-    if (previousOrders > 0) {
-      log.info({
-        orderNumber,
-        customerPhone: telefono,
-        totalOrders: previousOrders + 1,
-      }, '[WHATSAPP] Skip cliente existente - pedido_creado');
-      // No enviar WhatsApp a clientes que ya compraron antes
-    } else {
-      // 7️⃣ Botmaker - enviarWhatsAppPlantilla maneja testing filter, sufijo y tracking
-      await queueWhatsApp({
-        telefono,
-        plantilla: 'pedido_creado',
-        variables: {
-          '1': pedido.customer?.name || 'Cliente',
-          '2': orderNumber
-        },
-        orderNumber: pedido.number
-      });
-
-      log.info({ orderNumber }, '[WHATSAPP] Enviado a cliente nuevo - pedido_creado');
-    }
-
-    // 8️⃣ Si requiere formulario de envío (Expreso a elección o Via Cargo)
+    // 7️⃣ Si requiere formulario de envío (Expreso a elección o Via Cargo)
     const shippingOption = (typeof pedido.shipping_option === 'string'
       ? pedido.shipping_option
       : pedido.shipping_option?.name) || '';
