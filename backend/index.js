@@ -568,9 +568,10 @@ async function guardarPedidoCompleto(pedido) {
       currency, customer_name, customer_email, customer_phone,
       shipping_type, shipping_tracking, shipping_address,
       note, owner_note, tn_payment_status, tn_shipping_status,
+      tn_paid_at, tn_total_paid, tn_gateway,
       estado_pedido, tn_created_at, updated_at
     )
-    VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'pendiente_pago', $19, NOW())
+    VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 'pendiente_pago', $22, NOW())
     ON CONFLICT (order_number) DO UPDATE SET
       tn_order_id = COALESCE(EXCLUDED.tn_order_id, orders_validated.tn_order_id),
       tn_order_token = COALESCE(EXCLUDED.tn_order_token, orders_validated.tn_order_token),
@@ -589,12 +590,15 @@ async function guardarPedidoCompleto(pedido) {
       owner_note = EXCLUDED.owner_note,
       tn_payment_status = EXCLUDED.tn_payment_status,
       tn_shipping_status = EXCLUDED.tn_shipping_status,
+      tn_paid_at = EXCLUDED.tn_paid_at,
+      tn_total_paid = EXCLUDED.tn_total_paid,
+      tn_gateway = EXCLUDED.tn_gateway,
       tn_created_at = COALESCE(orders_validated.tn_created_at, EXCLUDED.tn_created_at),
       updated_at = NOW()
   `, [
     orderNumber,
     pedido.id,
-    pedido.token || null,  // Token para tracking de TiendaNube
+    pedido.token || null,
     Math.round(Number(pedido.total)),
     Number(pedido.subtotal) || 0,
     Number(pedido.discount) || 0,
@@ -610,6 +614,9 @@ async function guardarPedidoCompleto(pedido) {
     pedido.owner_note || null,
     pedido.payment_status || null,
     pedido.shipping || null,  // El campo es "shipping", no "shipping_status"
+    pedido.paid_at || null,
+    Math.round(Number(pedido.total_paid || 0)),
+    pedido.gateway || pedido.gateway_name || null,
     pedido.created_at || null
   ]);
 
@@ -3083,7 +3090,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
       // Verificar si existe en nuestra DB
       const existente = await pool.query(
         `SELECT order_number, monto_tiendanube, total_pagado, estado_pago,
-                tn_payment_status, tn_shipping_status
+                tn_payment_status, tn_shipping_status, tn_paid_at, tn_total_paid, tn_gateway
          FROM orders_validated WHERE order_number = $1`,
         [String(pedido.number)]
       );
@@ -3127,8 +3134,19 @@ app.post('/webhook/tiendanube', async (req, res) => {
       );
       const dbExt = dbExtended.rows[0] || {};
 
+      // Datos de pago de TN (campos reales, no solo payment_status)
+      const tnTotalPaid = Math.round(Number(pedido.total_paid || 0));
+      const tnPaidAt = pedido.paid_at || null;
+      const tnGateway = pedido.gateway || pedido.gateway_name || null;
+      const dbPaidAt = db.tn_paid_at || null;
+      const dbTotalPaid = Number(db.tn_total_paid || 0);
+
       // Detectar qué cambió por categoría
-      const cambioPayment = paymentStatusAnterior !== paymentStatusNuevo;
+      // Para pago: detectar cambio en payment_status O en paid_at O en total_paid
+      const cambioPaymentStatus = paymentStatusAnterior !== paymentStatusNuevo;
+      const cambioPaidAt = String(dbPaidAt) !== String(tnPaidAt);
+      const cambioTotalPaid = dbTotalPaid !== tnTotalPaid;
+      const cambioPayment = cambioPaymentStatus || cambioPaidAt || cambioTotalPaid;
       const cambioShipping = shippingStatusAnterior !== shippingStatusNuevo;
       const cambioMonto = montoAnterior !== montoNuevo;
 
@@ -3197,13 +3215,36 @@ app.post('/webhook/tiendanube', async (req, res) => {
       if (syncPayment && cambioPayment) {
         setClauses.push(`tn_payment_status = $${paramIdx++}`);
         setParams.push(paymentStatusNuevo);
-        // No confiar en payment_status de TN para cambiar estado_pago/total_pagado
-        // La API de TN miente (dice paid cuando el panel muestra parcial)
-        // El recálculo real se hace abajo basado en total_pagado del BPM
+        setClauses.push(`tn_paid_at = $${paramIdx++}`);
+        setParams.push(tnPaidAt);
+        setClauses.push(`tn_total_paid = $${paramIdx++}`);
+        setParams.push(tnTotalPaid);
+        setClauses.push(`tn_gateway = $${paramIdx++}`);
+        setParams.push(tnGateway);
+
+        // Lógica de pago basada en datos reales de TN:
         if (paymentStatusNuevo === 'refunded') {
           setClauses.push(`estado_pago = 'reembolsado'`);
         } else if (paymentStatusNuevo === 'voided') {
           setClauses.push(`estado_pago = 'anulado'`);
+        } else if (paymentStatusNuevo === 'paid' || paymentStatusNuevo === 'partially_paid') {
+          // Determinar total_pagado real:
+          // - Si gateway=offline y total_paid > 0: usar total_paid de TN (dato real)
+          // - Si gateway=not-provided y payment_status=paid: pago manual, total = monto
+          // - Si partially_paid: usar total_paid de TN
+          if (paymentStatusNuevo === 'partially_paid' && tnTotalPaid > 0) {
+            setClauses.push(`total_pagado = $${paramIdx++}`);
+            setParams.push(tnTotalPaid);
+          } else if (paymentStatusNuevo === 'paid') {
+            if (tnGateway === 'offline' && tnTotalPaid > 0) {
+              // Gateway offline con monto real → usar total_paid
+              setClauses.push(`total_pagado = $${paramIdx++}`);
+              setParams.push(tnTotalPaid);
+            } else {
+              // Pago manual (not-provided) o total_paid=0 → asumir pagado total
+              setClauses.push(`total_pagado = monto_tiendanube`);
+            }
+          }
         }
       }
       if (syncShipping && cambioShipping) {
@@ -3262,16 +3303,14 @@ app.post('/webhook/tiendanube', async (req, res) => {
         blocked: cambiosBloqueados.map(c => c.tipo),
       }, 'Order updated via webhook (selective sync)');
 
-      // Recalcular saldo cuando cambia monto o payment_status
-      // NOTA: NO confiar en payment_status='paid' de TN — la API miente cuando
-      // editás un pedido ya pagado (dice paid pero el panel muestra parcial).
-      // Siempre recalcular basado en total_pagado real del BPM.
+      // Siempre recalcular saldo y estado_pago después de cualquier cambio de pago o monto
       if ((cambioMonto && syncProducts) || (cambioPayment && syncPayment)) {
         await pool.query(`
           UPDATE orders_validated
           SET
-            saldo = monto_tiendanube - total_pagado,
+            saldo = GREATEST(0, monto_tiendanube - total_pagado),
             estado_pago = CASE
+              WHEN estado_pago IN ('reembolsado', 'anulado') THEN estado_pago
               WHEN monto_tiendanube - total_pagado <= 0 THEN 'confirmado_total'
               WHEN total_pagado > 0 THEN 'confirmado_parcial'
               ELSE 'pendiente'
@@ -3291,6 +3330,16 @@ app.post('/webhook/tiendanube', async (req, res) => {
       // Log cambio de monto como evento separado (solo si realmente cambió)
       if (cambioMonto) {
         await logEvento({ orderNumber: orderNum, accion: mensaje.montoLine, origen: 'webhook_tiendanube' });
+      }
+
+      // Log cambio de pago
+      if (cambioPayment && syncPayment) {
+        const pagoMsg = paymentStatusNuevo === 'paid'
+          ? `Pago confirmado en TiendaNube (${tnGateway || 'manual'}${tnTotalPaid > 0 ? ', $' + tnTotalPaid.toLocaleString('es-AR') : ''})`
+          : paymentStatusNuevo === 'partially_paid'
+          ? `Pago parcial en TiendaNube ($${tnTotalPaid.toLocaleString('es-AR')})`
+          : `Estado de pago cambiado a: ${paymentStatusNuevo}`;
+        await logEvento({ orderNumber: orderNum, accion: pagoMsg, origen: 'webhook_tiendanube' });
       }
 
       return;
