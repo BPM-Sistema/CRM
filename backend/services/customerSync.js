@@ -264,6 +264,8 @@ async function syncOrdersCountFromTN(onProgress = null) {
   const customerOrders = new Map(); // tn_customer_id -> { count, lastOrderAt }
   let page = 1;
   let totalOrders = 0;
+  let retryCount = 0;
+  let skippedPages = [];
 
   while (true) {
     try {
@@ -272,6 +274,9 @@ async function syncOrdersCountFromTN(onProgress = null) {
       const orders = response.data;
 
       if (!orders || orders.length === 0) break;
+
+      // Reset retry count on success
+      retryCount = 0;
 
       for (const order of orders) {
         const customerId = order.customer?.id;
@@ -303,14 +308,43 @@ async function syncOrdersCountFromTN(onProgress = null) {
       page++;
       await new Promise(r => setTimeout(r, 500)); // Rate limit
     } catch (err) {
-      console.error(`[CustomerSync] Error fetching orders page ${page}:`, err.message);
-      if (err.response?.status === 504 || err.response?.status === 429) {
-        // Timeout o rate limit - esperar y reintentar
-        await new Promise(r => setTimeout(r, 5000));
+      const status = err.response?.status;
+      console.error(`[CustomerSync] Error page ${page}: ${status || err.message}`);
+
+      // Reintentar errores transitorios (502, 503, 504, 429, 500, timeout)
+      if (status === 502 || status === 503 || status === 504 || status === 429 || status === 500 || err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT') {
+        retryCount++;
+        if (retryCount <= 3) {
+          console.log(`[CustomerSync] Retrying page ${page} (attempt ${retryCount}/3)...`);
+          await new Promise(r => setTimeout(r, 5000 * retryCount));
+          continue;
+        }
+        // Si falla 3 veces, saltar la página y continuar (mejor perder 200 órdenes que todas)
+        console.warn(`[CustomerSync] Skipping page ${page} after ${retryCount} retries`);
+        skippedPages.push(page);
+        page++;
+        retryCount = 0;
+        await new Promise(r => setTimeout(r, 2000));
         continue;
       }
-      break;
+
+      // Error 422 significa que no hay más páginas
+      if (status === 422) {
+        console.log(`[CustomerSync] Reached end of pagination at page ${page}`);
+        break;
+      }
+
+      // Otros errores: loguear y continuar (no romper el sync)
+      console.warn(`[CustomerSync] Unexpected error on page ${page}, skipping...`);
+      skippedPages.push(page);
+      page++;
+      retryCount = 0;
+      continue;
     }
+  }
+
+  if (skippedPages.length > 0) {
+    console.warn(`[CustomerSync] Skipped ${skippedPages.length} pages: ${skippedPages.join(', ')}`);
   }
 
   console.log(`[CustomerSync] Fetched ${totalOrders} orders for ${customerOrders.size} customers`);
@@ -332,7 +366,105 @@ async function syncOrdersCountFromTN(onProgress = null) {
   }
 
   console.log(`[CustomerSync] Updated ${updated} customers with orders_count`);
-  return { updated, totalOrders, uniqueCustomers: customerOrders.size };
+  return { updated, totalOrders, uniqueCustomers: customerOrders.size, skippedPages: skippedPages.length };
+}
+
+/**
+ * Sync orders count by querying TN directly for each customer
+ * More reliable than paginating all orders - uses TN search API
+ * @param {Function} onProgress - Callback for progress updates
+ * @returns {Promise<Object>} { updated, total, errors }
+ */
+async function syncOrdersCountByCustomer(onProgress = null) {
+  console.log('[CustomerSync] Syncing orders count by customer (using TN search API)...');
+
+  // Get customers that likely have orders (total_spent > 0 or already have orders_count)
+  // This filters out the 15,000+ contacts without purchases
+  const customersResult = await pool.query(`
+    SELECT id, tn_customer_id, name, email
+    FROM customers
+    WHERE name IS NOT NULL AND name != ''
+      AND (total_spent > 0 OR orders_count > 0 OR tn_last_order_id IS NOT NULL)
+    ORDER BY total_spent DESC NULLS LAST
+  `);
+
+  const customers = customersResult.rows;
+  console.log(`[CustomerSync] Processing ${customers.length} customers...`);
+
+  let updated = 0;
+  let errors = 0;
+  let processed = 0;
+
+  for (const customer of customers) {
+    try {
+      // Search orders by customer name (TN search is more reliable)
+      const searchName = encodeURIComponent(customer.name);
+      const url = `${TN_API_BASE}/orders?q=${searchName}&per_page=200`;
+      const response = await axios.get(url, { headers: TN_HEADERS });
+
+      // Filter only orders from THIS customer (by tn_customer_id) that are paid
+      const orders = response.data.filter(o =>
+        o.customer?.id === parseInt(customer.tn_customer_id) &&
+        (o.payment_status === 'paid' || o.payment_status === 'partially_paid')
+      );
+
+      if (orders.length > 0) {
+        // Find most recent order
+        const lastOrder = orders.reduce((a, b) =>
+          new Date(a.created_at) > new Date(b.created_at) ? a : b
+        );
+
+        // Calculate total spent from orders
+        const totalSpent = orders.reduce((sum, o) => sum + parseFloat(o.total || 0), 0);
+
+        // Find first order
+        const firstOrder = orders.reduce((a, b) =>
+          new Date(a.created_at) < new Date(b.created_at) ? a : b
+        );
+
+        const result = await pool.query(`
+          UPDATE customers
+          SET
+            orders_count = $1,
+            last_order_at = $2,
+            first_order_at = $3,
+            total_spent = $4,
+            avg_order_value = $5,
+            updated_at = NOW()
+          WHERE id = $6 AND (orders_count IS NULL OR orders_count != $1)
+          RETURNING id
+        `, [
+          orders.length,
+          lastOrder.created_at,
+          firstOrder.created_at,
+          totalSpent,
+          totalSpent / orders.length,
+          customer.id
+        ]);
+
+        if (result.rowCount > 0) updated++;
+      }
+
+      processed++;
+
+      if (onProgress && processed % 50 === 0) {
+        onProgress({ processed, total: customers.length, updated, errors });
+        console.log(`[CustomerSync] Progress: ${processed}/${customers.length} (updated: ${updated})`);
+      }
+
+      // Rate limit - TN allows 2 req/sec
+      await new Promise(r => setTimeout(r, 500));
+
+    } catch (err) {
+      errors++;
+      console.error(`[CustomerSync] Error syncing customer ${customer.name}:`, err.message);
+      // Continue with next customer
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+
+  console.log(`[CustomerSync] Completed: ${updated} updated, ${errors} errors out of ${customers.length} customers`);
+  return { updated, total: customers.length, errors };
 }
 
 module.exports = {
@@ -342,5 +474,6 @@ module.exports = {
   fullSync,
   incrementalSync,
   syncSingleCustomer,
-  syncOrdersCountFromTN
+  syncOrdersCountFromTN,
+  syncOrdersCountByCustomer
 };
