@@ -2570,7 +2570,7 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
 
     // Sincronizar estado hacia Tiendanube (async, no bloquea respuesta)
     if (pedido.tn_order_id) {
-      const ESTADO_TN_MAP: Record<string, { tnStatus: string; configKey: string; label: string }> = {
+      const ESTADO_TN_MAP = {
         'armado':    { tnStatus: 'packed',    configKey: 'tiendanube_sync_estado_armado',    label: 'empaquetada' },
         'enviado':   { tnStatus: 'fulfilled', configKey: 'tiendanube_sync_estado_enviado',   label: 'despachada' },
         'cancelado': { tnStatus: 'cancelled', configKey: 'tiendanube_sync_estado_cancelado', label: 'cancelada' },
