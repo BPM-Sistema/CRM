@@ -737,7 +737,7 @@ export function RealOrders() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredOrders.map((order) => (
+                {filteredOrders.map((order, idx) => (
                   <TableRow
                     key={order.order_number}
                     isClickable={!selectionMode}
@@ -748,7 +748,7 @@ export function RealOrders() {
                         navigate(`/orders/${order.order_number}`);
                       }
                     }}
-                    className={selectedOrderNumbers.has(order.order_number) ? 'bg-blue-50' : ''}
+                    className={selectedOrderNumbers.has(order.order_number) ? 'bg-blue-50' : idx % 2 === 1 ? 'bg-neutral-50/70' : ''}
                   >
                     {selectionMode && (
                       <TableCell className="text-center">
