@@ -238,28 +238,6 @@ router.get('/incidents', requirePermission('integrations.view'), async (req, res
       // sync_queue table may not exist
     }
 
-    // 4. Comprobantes stuck in 'a_confirmar' for > 2 hours
-    try {
-      const stuckResult = await pool.query(`
-        SELECT id, monto, created_at FROM comprobantes
-        WHERE estado = 'a_confirmar'
-          AND created_at < NOW() - INTERVAL '2 hours'
-          AND created_at > NOW() - INTERVAL '7 days'
-        ORDER BY created_at DESC
-        LIMIT 20
-      `);
-      for (const row of stuckResult.rows) {
-        incidents.push({
-          type: 'stuck_comprobante',
-          severity: 'warning',
-          message: `Comprobante #${row.id} ($${row.monto}) pendiente hace más de 2 horas`,
-          timestamp: row.created_at
-        });
-      }
-    } catch {
-      // table may not exist or different schema
-    }
-
     // 5. Orders with unresolved inconsistencies
     try {
       const inconsResult = await pool.query(`
