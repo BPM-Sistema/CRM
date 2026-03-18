@@ -325,6 +325,12 @@ export function RealOrderDetail() {
                   <p className="text-lg font-semibold text-neutral-900 mt-1">
                     {formatCurrency(order.monto_tiendanube)}
                   </p>
+                  {order.monto_original && order.monto_original !== order.monto_tiendanube && (
+                    <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
+                      Editado (original: {formatCurrency(order.monto_original)})
+                    </p>
+                  )}
                 </div>
                 <div className="p-4 bg-neutral-50 rounded-xl">
                   <p className="text-xs text-neutral-500 uppercase tracking-wider">Pagado</p>

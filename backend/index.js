@@ -1823,7 +1823,8 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
         printed_at,
         packed_at,
         shipped_at,
-        shipping_type
+        shipping_type,
+        monto_original
       FROM orders_validated
       WHERE order_number = $1
     `, [orderNumber]);
@@ -3048,23 +3049,29 @@ app.post('/webhook/tiendanube', async (req, res) => {
         blocked: cambiosBloqueados.map(c => c.tipo),
       }, 'Order updated via webhook (selective sync)');
 
-      // Si cambió el monto y sync_products está habilitado, recalcular saldo
-      if (cambioMonto && syncProducts) {
-        await pool.query(`
-          UPDATE orders_validated
-          SET
-            saldo = monto_tiendanube - total_pagado,
-            estado_pago = CASE
-              WHEN estado_pago IN ('confirmado_total', 'confirmado_parcial', 'a_favor') THEN
-                CASE
-                  WHEN monto_tiendanube - total_pagado <= 0 THEN 'confirmado_total'
-                  WHEN total_pagado > 0 THEN 'confirmado_parcial'
-                  ELSE 'pendiente'
-                END
-              ELSE estado_pago
-            END
-          WHERE order_number = $1
-        `, [String(pedido.number)]);
+      // Recalcular pago cuando cambia monto o payment_status
+      if ((cambioMonto && syncProducts) || (cambioPayment && syncPayment)) {
+        // Si TN dice paid, confiar en TN: total_pagado = monto, saldo = 0
+        // (TN no tiene partially_paid cuando editás un pedido ya pagado)
+        if (paymentStatusNuevo === 'paid') {
+          await pool.query(`
+            UPDATE orders_validated
+            SET total_pagado = monto_tiendanube, saldo = 0, estado_pago = 'confirmado_total'
+            WHERE order_number = $1
+          `, [String(pedido.number)]);
+        } else {
+          await pool.query(`
+            UPDATE orders_validated
+            SET
+              saldo = monto_tiendanube - total_pagado,
+              estado_pago = CASE
+                WHEN monto_tiendanube - total_pagado <= 0 THEN 'confirmado_total'
+                WHEN total_pagado > 0 THEN 'confirmado_parcial'
+                ELSE 'pendiente'
+              END
+            WHERE order_number = $1
+          `, [String(pedido.number)]);
+        }
       }
 
       // Guardar en historial (log todos los cambios, incluso los bloqueados)
