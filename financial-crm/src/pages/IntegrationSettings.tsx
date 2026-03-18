@@ -384,29 +384,63 @@ export function IntegrationSettings() {
                         />
                       )}
                     </div>
-                    {/* Sub-opciones */}
+                    {/* Sub-opciones (nivel 2) */}
                     {subItems.length > 0 && config.enabled && (
                       <div className="ml-8 mt-1 space-y-1">
                         {subItems.map(sub => {
                           const subName = KEY_NAMES[sub.key] || sub.key;
                           const subUpdating = updating === sub.key;
+                          // Check for nested sub-sub-options (nivel 3)
+                          const subSubKeys = SUB_OPTIONS[sub.key];
+                          const subSubItems = subSubKeys
+                            ? subSubKeys.map(k => tiendanubeConfigs.find(c => c.key === k)).filter(Boolean) as typeof tiendanubeConfigs
+                            : [];
                           return (
-                            <div
-                              key={sub.key}
-                              className="flex items-center justify-between px-4 py-2 rounded-lg border border-gray-50 bg-gray-50 transition-all"
-                            >
-                              <div>
-                                <span className="text-sm font-medium text-gray-700">{subName}</span>
-                                <p className="text-xs text-gray-400">{sub.description}</p>
+                            <div key={sub.key}>
+                              <div className="flex items-center justify-between px-4 py-2 rounded-lg border border-gray-50 bg-gray-50 transition-all">
+                                <div>
+                                  <span className="text-sm font-medium text-gray-700">{subName}</span>
+                                  <p className="text-xs text-gray-400">{sub.description}</p>
+                                </div>
+                                {subUpdating ? (
+                                  <RefreshCw className="h-4 w-4 text-gray-400 animate-spin" />
+                                ) : (
+                                  <Switch
+                                    checked={sub.enabled}
+                                    onChange={() => handleToggle(sub.key, sub.enabled)}
+                                    disabled={!canUpdate}
+                                  />
+                                )}
                               </div>
-                              {subUpdating ? (
-                                <RefreshCw className="h-4 w-4 text-gray-400 animate-spin" />
-                              ) : (
-                                <Switch
-                                  checked={sub.enabled}
-                                  onChange={() => handleToggle(sub.key, sub.enabled)}
-                                  disabled={!canUpdate}
-                                />
+                              {/* Sub-sub-opciones (nivel 3) */}
+                              {subSubItems.length > 0 && sub.enabled && (
+                                <div className="ml-6 mt-1 space-y-1">
+                                  {subSubItems.map(subsub => {
+                                    const subsubName = KEY_NAMES[subsub.key] || subsub.key;
+                                    const SubIcon = KEY_ICONS[subsub.key] || Settings;
+                                    const subsubUpdating = updating === subsub.key;
+                                    return (
+                                      <div
+                                        key={subsub.key}
+                                        className="flex items-center justify-between px-3 py-1.5 rounded-lg border border-gray-100 bg-white transition-all"
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <SubIcon className="h-3.5 w-3.5 text-gray-400" />
+                                          <span className="text-sm text-gray-600">{subsubName}</span>
+                                        </div>
+                                        {subsubUpdating ? (
+                                          <RefreshCw className="h-3.5 w-3.5 text-gray-400 animate-spin" />
+                                        ) : (
+                                          <Switch
+                                            checked={subsub.enabled}
+                                            onChange={() => handleToggle(subsub.key, subsub.enabled)}
+                                            disabled={!canUpdate}
+                                          />
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               )}
                             </div>
                           );
