@@ -2976,6 +2976,20 @@ app.post('/webhook/tiendanube', async (req, res) => {
       if (syncPayment && cambioPayment) {
         setClauses.push(`tn_payment_status = $${paramIdx++}`);
         setParams.push(paymentStatusNuevo);
+
+        // Si TN marca como paid, actualizar estado_pago y total_pagado en BPM
+        if (paymentStatusNuevo === 'paid') {
+          setClauses.push(`total_pagado = monto_tiendanube`);
+          setClauses.push(`saldo = 0`);
+          setClauses.push(`estado_pago = 'confirmado_total'`);
+        } else if (paymentStatusNuevo === 'partially_paid') {
+          // No tocamos total_pagado porque no sabemos cuánto pagó parcialmente
+          setClauses.push(`estado_pago = 'confirmado_parcial'`);
+        } else if (paymentStatusNuevo === 'refunded') {
+          setClauses.push(`estado_pago = 'reembolsado'`);
+        } else if (paymentStatusNuevo === 'voided') {
+          setClauses.push(`estado_pago = 'anulado'`);
+        }
       }
       if (syncShipping && cambioShipping) {
         setClauses.push(`tn_shipping_status = $${paramIdx++}`);
