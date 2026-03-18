@@ -23,6 +23,11 @@ import {
   MessageSquare,
   Phone,
   Send,
+  Users,
+  MapPin,
+  FileText,
+  DollarSign,
+  Truck,
 } from 'lucide-react';
 import {
   fetchIntegrations,
@@ -52,6 +57,11 @@ const KEY_ICONS: Record<string, typeof Settings> = {
   tiendanube_webhook_sync_payment: CreditCard,
   tiendanube_webhook_sync_shipping: Send,
   tiendanube_webhook_sync_products: Zap,
+  tiendanube_webhook_sync_customer: Users,
+  tiendanube_webhook_sync_address: MapPin,
+  tiendanube_webhook_sync_notes: FileText,
+  tiendanube_webhook_sync_costs: DollarSign,
+  tiendanube_webhook_sync_tracking: Truck,
   tiendanube_resync_single: RotateCcw,
   tiendanube_resync_inconsistent: RotateCcw,
   tiendanube_resync_bulk: RotateCcw,
@@ -87,6 +97,11 @@ const KEY_NAMES: Record<string, string> = {
   tiendanube_webhook_sync_payment: 'Pagos',
   tiendanube_webhook_sync_shipping: 'Envíos',
   tiendanube_webhook_sync_products: 'Productos y Montos',
+  tiendanube_webhook_sync_customer: 'Datos del Cliente',
+  tiendanube_webhook_sync_address: 'Dirección de Envío',
+  tiendanube_webhook_sync_notes: 'Notas',
+  tiendanube_webhook_sync_costs: 'Descuentos y Costos',
+  tiendanube_webhook_sync_tracking: 'Nro. de Seguimiento',
   tiendanube_resync_single: 'Individual',
   tiendanube_resync_inconsistent: 'Inconsistencias',
   tiendanube_resync_bulk: 'Masivo',
@@ -298,7 +313,7 @@ export function IntegrationSettings() {
               // Sub-opciones: key padre -> keys hijos
               const SUB_OPTIONS: Record<string, string[]> = {
                 'tiendanube_webhooks_enabled': ['tiendanube_webhook_order_created', 'tiendanube_webhook_order_updated', 'tiendanube_webhook_order_cancelled'],
-                'tiendanube_webhook_order_updated': ['tiendanube_webhook_sync_payment', 'tiendanube_webhook_sync_shipping', 'tiendanube_webhook_sync_products'],
+                'tiendanube_webhook_order_updated': ['tiendanube_webhook_sync_payment', 'tiendanube_webhook_sync_shipping', 'tiendanube_webhook_sync_products', 'tiendanube_webhook_sync_customer', 'tiendanube_webhook_sync_address', 'tiendanube_webhook_sync_notes', 'tiendanube_webhook_sync_costs', 'tiendanube_webhook_sync_tracking'],
                 'tiendanube_resync_manual': ['tiendanube_resync_single', 'tiendanube_resync_inconsistent', 'tiendanube_resync_bulk'],
                 'tiendanube_mark_paid': ['tiendanube_sync_estado_pagado', 'tiendanube_sync_estado_armado', 'tiendanube_sync_estado_enviado', 'tiendanube_sync_estado_cancelado'],
               };

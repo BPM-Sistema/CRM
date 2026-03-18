@@ -2884,16 +2884,46 @@ app.post('/webhook/tiendanube', async (req, res) => {
       const shippingStatusAnterior = db.tn_shipping_status;
 
       // Granular toggles: qué tipos de cambios procesar
-      const [syncPayment, syncShipping, syncProducts] = await Promise.all([
+      const [syncPayment, syncShipping, syncProducts, syncCustomer, syncAddress, syncNotes, syncCosts, syncTracking] = await Promise.all([
         isIntegrationEnabled('tiendanube_webhook_sync_payment', { context: 'webhook:order/updated:payment' }),
         isIntegrationEnabled('tiendanube_webhook_sync_shipping', { context: 'webhook:order/updated:shipping' }),
         isIntegrationEnabled('tiendanube_webhook_sync_products', { context: 'webhook:order/updated:products' }),
+        isIntegrationEnabled('tiendanube_webhook_sync_customer', { context: 'webhook:order/updated:customer' }),
+        isIntegrationEnabled('tiendanube_webhook_sync_address', { context: 'webhook:order/updated:address' }),
+        isIntegrationEnabled('tiendanube_webhook_sync_notes', { context: 'webhook:order/updated:notes' }),
+        isIntegrationEnabled('tiendanube_webhook_sync_costs', { context: 'webhook:order/updated:costs' }),
+        isIntegrationEnabled('tiendanube_webhook_sync_tracking', { context: 'webhook:order/updated:tracking' }),
       ]);
 
-      // Detectar qué cambió
+      // Datos actuales extendidos para detectar cambios
+      const dbExtended = await pool.query(
+        `SELECT customer_name, customer_email, customer_phone,
+                shipping_address, note, owner_note, discount, shipping_cost,
+                shipping_tracking
+         FROM orders_validated WHERE order_number = $1`,
+        [String(pedido.number)]
+      );
+      const dbExt = dbExtended.rows[0] || {};
+
+      // Detectar qué cambió por categoría
       const cambioPayment = paymentStatusAnterior !== paymentStatusNuevo;
       const cambioShipping = shippingStatusAnterior !== shippingStatusNuevo;
       const cambioMonto = montoAnterior !== montoNuevo;
+
+      const customerNameNuevo = pedido.customer?.name || pedido.contact_name || null;
+      const customerEmailNuevo = pedido.customer?.email || pedido.contact_email || null;
+      const customerPhoneNuevo = pedido.contact_phone || pedido.customer?.phone || pedido.shipping_address?.phone || null;
+      const cambioCustomer = (dbExt.customer_name !== customerNameNuevo) ||
+                             (dbExt.customer_email !== customerEmailNuevo) ||
+                             (dbExt.customer_phone !== customerPhoneNuevo);
+
+      const addressNuevo = pedido.shipping_address ? JSON.stringify(pedido.shipping_address) : null;
+      const cambioAddress = JSON.stringify(dbExt.shipping_address) !== addressNuevo;
+
+      const cambioNotes = (dbExt.note !== (pedido.note || null)) || (dbExt.owner_note !== (pedido.owner_note || null));
+      const cambioCosts = (Number(dbExt.discount) !== (Number(pedido.discount) || 0)) ||
+                          (Number(dbExt.shipping_cost) !== (Number(pedido.shipping_cost_customer) || 0));
+      const cambioTracking = (dbExt.shipping_tracking || null) !== (pedido.shipping_tracking_number || null);
 
       // Obtener productos ANTES de actualizar
       const productosDB = await pool.query(
@@ -2910,35 +2940,88 @@ app.post('/webhook/tiendanube', async (req, res) => {
       const lineas = mensaje.split('\n');
       const hayProductosCambiados = lineas.length > 1;
 
-      // Filtrar por toggles: si el tipo de cambio está deshabilitado, no procesar
-      const skippedReasons = [];
-      if (cambioPayment && !syncPayment) skippedReasons.push('payment_disabled');
-      if (cambioShipping && !syncShipping) skippedReasons.push('shipping_disabled');
-      if ((cambioMonto || hayProductosCambiados) && !syncProducts) skippedReasons.push('products_disabled');
+      // Mapa de cambios vs toggles
+      const cambios = [
+        { tipo: 'payment', cambio: cambioPayment, habilitado: syncPayment },
+        { tipo: 'shipping', cambio: cambioShipping, habilitado: syncShipping },
+        { tipo: 'products', cambio: cambioMonto || hayProductosCambiados, habilitado: syncProducts },
+        { tipo: 'customer', cambio: cambioCustomer, habilitado: syncCustomer },
+        { tipo: 'address', cambio: cambioAddress, habilitado: syncAddress },
+        { tipo: 'notes', cambio: cambioNotes, habilitado: syncNotes },
+        { tipo: 'costs', cambio: cambioCosts, habilitado: syncCosts },
+        { tipo: 'tracking', cambio: cambioTracking, habilitado: syncTracking },
+      ];
 
-      // Si TODOS los cambios detectados están deshabilitados, skip
-      const hayCambios = cambioPayment || cambioShipping || cambioMonto || hayProductosCambiados;
-      if (!hayCambios) {
+      const cambiosDetectados = cambios.filter(c => c.cambio);
+      const cambiosPermitidos = cambiosDetectados.filter(c => c.habilitado);
+      const cambiosBloqueados = cambiosDetectados.filter(c => !c.habilitado);
+
+      if (cambiosDetectados.length === 0) {
         return; // Sin cambios relevantes
       }
 
-      const todosSkipped = (
-        (!cambioPayment || !syncPayment) &&
-        (!cambioShipping || !syncShipping) &&
-        ((!cambioMonto && !hayProductosCambiados) || !syncProducts)
-      );
-
-      if (todosSkipped && hayCambios) {
+      if (cambiosPermitidos.length === 0) {
         log.info({
           orderNumber: String(pedido.number),
-          skippedReasons,
-          cambioPayment, cambioShipping, cambioMonto, hayProductosCambiados
+          blocked: cambiosBloqueados.map(c => c.tipo),
         }, 'Order updated but all changes filtered by sub-toggles');
         return;
       }
 
-      // Actualizar DB (siempre guardar raw data, pero solo procesar lo habilitado)
-      await guardarPedidoCompleto(pedido);
+      // Construir UPDATE selectivo — solo actualizar los campos permitidos
+      const setClauses = ['updated_at = NOW()'];
+      const setParams = [];
+      let paramIdx = 2; // $1 = order_number
+
+      if (syncPayment && cambioPayment) {
+        setClauses.push(`tn_payment_status = $${paramIdx++}`);
+        setParams.push(paymentStatusNuevo);
+      }
+      if (syncShipping && cambioShipping) {
+        setClauses.push(`tn_shipping_status = $${paramIdx++}`);
+        setParams.push(shippingStatusNuevo);
+      }
+      if (syncProducts && (cambioMonto || hayProductosCambiados)) {
+        setClauses.push(`monto_tiendanube = $${paramIdx++}`);
+        setParams.push(montoNuevo);
+        setClauses.push(`subtotal = $${paramIdx++}`);
+        setParams.push(Number(pedido.subtotal) || 0);
+        // Also update products
+        await guardarProductos(String(pedido.number), pedido.products);
+      }
+      if (syncCustomer && cambioCustomer) {
+        if (customerNameNuevo) { setClauses.push(`customer_name = $${paramIdx++}`); setParams.push(customerNameNuevo); }
+        if (customerEmailNuevo) { setClauses.push(`customer_email = $${paramIdx++}`); setParams.push(customerEmailNuevo); }
+        if (customerPhoneNuevo) { setClauses.push(`customer_phone = $${paramIdx++}`); setParams.push(customerPhoneNuevo); }
+      }
+      if (syncAddress && cambioAddress) {
+        setClauses.push(`shipping_address = $${paramIdx++}`);
+        setParams.push(addressNuevo);
+      }
+      if (syncNotes && cambioNotes) {
+        setClauses.push(`note = $${paramIdx++}`);
+        setParams.push(pedido.note || null);
+        setClauses.push(`owner_note = $${paramIdx++}`);
+        setParams.push(pedido.owner_note || null);
+      }
+      if (syncCosts && cambioCosts) {
+        setClauses.push(`discount = $${paramIdx++}`);
+        setParams.push(Number(pedido.discount) || 0);
+        setClauses.push(`shipping_cost = $${paramIdx++}`);
+        setParams.push(Number(pedido.shipping_cost_customer) || 0);
+      }
+      if (syncTracking && cambioTracking) {
+        setClauses.push(`shipping_tracking = $${paramIdx++}`);
+        setParams.push(pedido.shipping_tracking_number || null);
+      }
+
+      // Ejecutar update selectivo
+      if (setClauses.length > 1) {
+        await pool.query(
+          `UPDATE orders_validated SET ${setClauses.join(', ')} WHERE order_number = $1`,
+          [String(pedido.number), ...setParams]
+        );
+      }
 
       // 🔍 Verificar consistencia con TiendaNube
       await verificarConsistencia(String(pedido.number), pedido);
@@ -2946,9 +3029,9 @@ app.post('/webhook/tiendanube', async (req, res) => {
       log.info({
         orderNumber: String(pedido.number),
         changes: mensaje,
-        syncPayment, syncShipping, syncProducts,
-        cambioPayment, cambioShipping, cambioMonto
-      }, 'Order updated via webhook');
+        synced: cambiosPermitidos.map(c => c.tipo),
+        blocked: cambiosBloqueados.map(c => c.tipo),
+      }, 'Order updated via webhook (selective sync)');
 
       // Si cambió el monto y sync_products está habilitado, recalcular saldo
       if (cambioMonto && syncProducts) {
@@ -2969,10 +3052,12 @@ app.post('/webhook/tiendanube', async (req, res) => {
         `, [String(pedido.number)]);
       }
 
-      // Guardar en historial
+      // Guardar en historial (log todos los cambios, incluso los bloqueados)
+      const cambioLog = cambiosPermitidos.map(c => c.tipo).join(', ');
+      const blockedLog = cambiosBloqueados.length > 0 ? ` [bloqueado: ${cambiosBloqueados.map(c => c.tipo).join(', ')}]` : '';
       await logEvento({
         orderNumber: String(pedido.number),
-        accion: mensaje,
+        accion: `${mensaje}${blockedLog}`,
         origen: 'webhook_tiendanube'
       });
 
