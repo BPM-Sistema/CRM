@@ -54,7 +54,7 @@ const paymentStatusVariants: Record<PaymentStatus, BadgeVariant> = {
 
 const paymentStatusLabels: Record<PaymentStatus, string> = {
   pendiente: '$ Pendiente',
-  a_confirmar: '$ A confirmar',
+  a_confirmar: 'A confirmar',
   parcial: '$ Parcial',
   total: '$ Recibido',
   rechazado: '$ Rechazado',
@@ -63,7 +63,7 @@ const paymentStatusLabels: Record<PaymentStatus, string> = {
 // Etiquetas cortas para tamaño pequeño
 const paymentStatusLabelsShort: Record<PaymentStatus, string> = {
   pendiente: '$ Pendiente',
-  a_confirmar: '$ A confirmar',
+  a_confirmar: 'A confirmar',
   parcial: '$ Parcial',
   total: '$ Recibido',
   rechazado: '$ Rechazado',
@@ -86,12 +86,12 @@ export function PaymentStatusBadge({ status, size = 'md', className }: PaymentSt
 
 // ============ ESTADO DEL PEDIDO ============
 const orderStatusVariants: Record<OrderStatus, BadgeVariant> = {
-  pendiente_pago: 'warning',
-  a_imprimir: 'info',
-  hoja_impresa: 'purple',
+  pendiente_pago: 'orange',
+  a_imprimir: 'orange',
+  hoja_impresa: 'orange',
   armado: 'cyan',
   retirado: 'success',
-  en_calle: 'orange',
+  en_calle: 'warning',
   enviado: 'success',
   cancelado: 'danger',
 };
