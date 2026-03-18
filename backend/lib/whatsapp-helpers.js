@@ -37,10 +37,15 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNu
   }
 
   // Filtro de testing desde integrationConfig (con cache)
+  // FAIL-SAFE: si no se puede leer config, bloquear envío para no enviar a cliente real
   const testingConfig = await waConfig.getTestingConfig();
 
-  if (testingConfig?.enabled) {
-    // Modo testing activo: redirigir al numero de testing
+  if (testingConfig === null) {
+    console.error('❌ WhatsApp bloqueado: no se pudo leer config de testing');
+    return { data: { skipped: true, reason: 'testing_config_unavailable' } };
+  }
+
+  if (testingConfig.enabled) {
     const testingPhone = testingConfig.testingPhone;
     if (!testingPhone) {
       console.log('📵 WhatsApp ignorado: modo testing activo pero sin número configurado');

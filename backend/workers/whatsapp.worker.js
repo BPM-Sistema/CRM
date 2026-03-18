@@ -41,9 +41,13 @@ async function processWhatsAppJob(job) {
     }
   }
 
-  // 2. Verificar modo testing
+  // 2. Verificar modo testing (fail-safe: si no se puede leer config, bloquear envío)
   const testingConfig = await waConfig.getTestingConfig();
-  if (testingConfig?.enabled) {
+  if (testingConfig === null) {
+    jobLog.error('No se pudo leer config de testing — bloqueando envio por seguridad');
+    throw new Error('Testing config unavailable — refusing to send to avoid leaking to real customer');
+  }
+  if (testingConfig.enabled) {
     const testingPhone = testingConfig.testingPhone;
     if (!testingPhone) {
       jobLog.info('Modo testing activo pero sin numero configurado');

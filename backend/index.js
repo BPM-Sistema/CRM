@@ -548,17 +548,18 @@ async function guardarPedidoCompleto(pedido) {
   // Upsert en orders_validated con todos los datos
   await pool.query(`
     INSERT INTO orders_validated (
-      order_number, tn_order_id, tn_order_token, monto_tiendanube, subtotal, discount, shipping_cost,
+      order_number, tn_order_id, tn_order_token, monto_tiendanube, monto_original, subtotal, discount, shipping_cost,
       currency, customer_name, customer_email, customer_phone,
       shipping_type, shipping_tracking, shipping_address,
       note, owner_note, tn_payment_status, tn_shipping_status,
       estado_pedido, tn_created_at, updated_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'pendiente_pago', $19, NOW())
+    VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'pendiente_pago', $19, NOW())
     ON CONFLICT (order_number) DO UPDATE SET
       tn_order_id = COALESCE(EXCLUDED.tn_order_id, orders_validated.tn_order_id),
       tn_order_token = COALESCE(EXCLUDED.tn_order_token, orders_validated.tn_order_token),
       monto_tiendanube = EXCLUDED.monto_tiendanube,
+      monto_original = COALESCE(orders_validated.monto_original, EXCLUDED.monto_original),
       subtotal = EXCLUDED.subtotal,
       discount = EXCLUDED.discount,
       shipping_cost = EXCLUDED.shipping_cost,
