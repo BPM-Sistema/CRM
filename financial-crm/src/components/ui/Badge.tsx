@@ -52,11 +52,11 @@ const paymentStatusVariants: Record<PaymentStatus, BadgeVariant> = {
 };
 
 const paymentStatusConfig: Record<PaymentStatus, { icon: string; label: string }> = {
-  pendiente: { icon: '$', label: 'Pendiente' },
+  pendiente: { icon: '', label: 'Pendiente' },
   a_confirmar: { icon: '', label: 'A confirmar' },
-  parcial: { icon: '$', label: 'Parcial' },
-  total: { icon: '$', label: 'Recibido' },
-  rechazado: { icon: '$', label: 'Rechazado' },
+  parcial: { icon: '', label: 'Parcial' },
+  total: { icon: '', label: 'Recibido' },
+  rechazado: { icon: '', label: 'Rechazado' },
 };
 
 interface PaymentStatusBadgeProps {
