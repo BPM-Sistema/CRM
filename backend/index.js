@@ -219,11 +219,14 @@ function buildOrderUpdateMessage(oldProducts, newProducts, montoNuevo) {
     }
   }
 
-  // Siempre agregar monto al final
+  // Retornar productos y monto POR SEPARADO para logs individuales
   const montoFormateado = montoNuevo.toLocaleString('es-AR');
-  lineas.push(`Nuevo monto: $${montoFormateado}`);
-
-  return lineas.join('\n');
+  return {
+    productChanges: lineas,
+    montoLine: `Monto actualizado: $${montoFormateado}`,
+    // Backwards compat: toString retorna todo junto
+    toString() { return [...lineas, this.montoLine].join('\n'); }
+  };
 }
 
 /* =====================================================
@@ -2939,8 +2942,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
         montoNuevo
       );
 
-      const lineas = mensaje.split('\n');
-      const hayProductosCambiados = lineas.length > 1;
+      const hayProductosCambiados = mensaje.productChanges.length > 0;
 
       // Mapa de cambios vs toggles
       const cambios = [
@@ -3038,7 +3040,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
       log.info({
         orderNumber: String(pedido.number),
-        changes: mensaje,
+        changes: mensaje.toString(),
         synced: cambiosPermitidos.map(c => c.tipo),
         blocked: cambiosBloqueados.map(c => c.tipo),
       }, 'Order updated via webhook (selective sync)');
@@ -3061,14 +3063,18 @@ app.post('/webhook/tiendanube', async (req, res) => {
         `, [String(pedido.number)]);
       }
 
-      // Guardar en historial (log todos los cambios, incluso los bloqueados)
-      const cambioLog = cambiosPermitidos.map(c => c.tipo).join(', ');
-      const blockedLog = cambiosBloqueados.length > 0 ? ` [bloqueado: ${cambiosBloqueados.map(c => c.tipo).join(', ')}]` : '';
-      await logEvento({
-        orderNumber: String(pedido.number),
-        accion: `${mensaje}${blockedLog}`,
-        origen: 'webhook_tiendanube'
-      });
+      // Guardar en historial — logs separados por tipo de cambio
+      const orderNum = String(pedido.number);
+
+      // Log cada cambio de producto individualmente
+      for (const productLine of mensaje.productChanges) {
+        await logEvento({ orderNumber: orderNum, accion: productLine, origen: 'webhook_tiendanube' });
+      }
+
+      // Log cambio de monto como evento separado (solo si realmente cambió)
+      if (cambioMonto) {
+        await logEvento({ orderNumber: orderNum, accion: mensaje.montoLine, origen: 'webhook_tiendanube' });
+      }
 
       return;
     }
