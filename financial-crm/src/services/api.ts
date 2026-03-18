@@ -1911,3 +1911,47 @@ export async function fetchCustomers(
   if (!response.ok) throw new Error(data.error || 'Error al obtener clientes');
   return data;
 }
+
+// ============================================
+// Auto-confirmar comprobantes desde JSON del banco
+// ============================================
+
+export interface AutoConfirmarMatch {
+  banco_id: string;
+  comprobante_id: number;
+  order_number: string;
+  monto: number;
+  nombre: string;
+}
+
+export interface AutoConfirmarUnmatched {
+  banco_id: string;
+  importe: number;
+  fecha: string;
+  nombre: string;
+}
+
+export interface AutoConfirmarResult {
+  ok: boolean;
+  summary: {
+    total_movimientos: number;
+    transferencias_entrantes: number;
+    matched: number;
+    unmatched: number;
+    errors: number;
+  };
+  matched: AutoConfirmarMatch[];
+  unmatched: AutoConfirmarUnmatched[];
+  errors: Array<{ banco_id: string; error: string }>;
+}
+
+export async function autoConfirmarBanco(movimientos: unknown[]): Promise<AutoConfirmarResult> {
+  const response = await authFetch(`${API_BASE_URL}/comprobantes/auto-confirmar-banco`, {
+    method: 'POST',
+    body: JSON.stringify({ movimientos }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al procesar conciliación');
+  return data;
+}

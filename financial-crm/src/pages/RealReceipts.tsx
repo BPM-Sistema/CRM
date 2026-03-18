@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUrlFilters } from '../hooks';
-import { RefreshCw, AlertCircle, Eye, Banknote, FileText, Download, Calendar, CheckSquare, Square, X, Search, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
+import { RefreshCw, AlertCircle, Eye, Banknote, FileText, Download, Calendar, CheckSquare, Square, X, Search, ChevronLeft, ChevronRight, Building2, Upload, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
 import { AccessDenied } from '../components/AccessDenied';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchComprobantes, fetchFinancieras, ApiComprobanteList, PaginationInfo, Financiera, ComprobantesFilters } from '../services/api';
+import { fetchComprobantes, fetchFinancieras, ApiComprobanteList, PaginationInfo, Financiera, ComprobantesFilters, autoConfirmarBanco, AutoConfirmarResult } from '../services/api';
 import { format } from 'date-fns';
 import { clsx } from 'clsx';
 import JSZip from 'jszip';
@@ -222,6 +222,42 @@ export function RealReceipts() {
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
+
+  // Conciliación bancaria
+  const [showBankPanel, setShowBankPanel] = useState(false);
+  const [bankProcessing, setBankProcessing] = useState(false);
+  const [bankResult, setBankResult] = useState<AutoConfirmarResult | null>(null);
+  const [bankDragging, setBankDragging] = useState(false);
+  const bankFileRef = useRef<HTMLInputElement>(null);
+
+  const handleBankFile = useCallback(async (file: File) => {
+    try {
+      const text = await file.text();
+      const movimientos = JSON.parse(text);
+      if (!Array.isArray(movimientos)) {
+        alert('El archivo no contiene un array de movimientos');
+        return;
+      }
+      const entrantes = movimientos.filter((m: { Tipo?: string; Importe?: string }) =>
+        m.Tipo === 'Transferencia entrante' && parseFloat(m.Importe || '0') > 0
+      );
+      if (entrantes.length === 0) {
+        alert('No se encontraron transferencias entrantes en el archivo');
+        return;
+      }
+      if (!confirm(`Se encontraron ${entrantes.length} transferencias entrantes. ¿Conciliar contra comprobantes pendientes?`)) return;
+
+      setBankProcessing(true);
+      const result = await autoConfirmarBanco(movimientos);
+      setBankResult(result);
+      loadComprobantes();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error procesando archivo');
+    } finally {
+      setBankProcessing(false);
+    }
+  }, []);
+
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
   const ITEMS_PER_PAGE = 48; // Divisible by 2,3,4,6 columns - avoids incomplete last row
@@ -471,6 +507,114 @@ export function RealReceipts() {
       />
 
       <div className="p-6 space-y-6">
+        {/* Conciliación Bancaria */}
+        {hasPermission('receipts.confirm') && (
+          <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
+            <button
+              onClick={() => { setShowBankPanel(!showBankPanel); setBankResult(null); }}
+              className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-neutral-50 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Banknote size={18} className="text-neutral-600" />
+                <span className="font-semibold text-neutral-900 text-sm">Conciliacion Bancaria</span>
+              </div>
+              <span className="text-xs text-neutral-400">{showBankPanel ? '▲' : '▼'}</span>
+            </button>
+
+            {showBankPanel && (
+              <div className="px-5 pb-4 space-y-3">
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setBankDragging(true); }}
+                  onDragLeave={() => setBankDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setBankDragging(false);
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) handleBankFile(file);
+                  }}
+                  onClick={() => bankFileRef.current?.click()}
+                  className={clsx(
+                    'border-2 border-dashed rounded-lg px-4 py-6 text-center cursor-pointer transition-all',
+                    bankDragging ? 'border-neutral-900 bg-neutral-100' : 'border-neutral-200 bg-neutral-50 hover:border-neutral-300'
+                  )}
+                >
+                  <input
+                    ref={bankFileRef}
+                    type="file"
+                    accept=".json"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleBankFile(file);
+                      e.target.value = '';
+                    }}
+                  />
+                  {bankProcessing ? (
+                    <div className="flex items-center justify-center gap-2 text-neutral-600">
+                      <RefreshCw size={18} className="animate-spin" />
+                      <span className="text-sm font-medium">Procesando conciliacion...</span>
+                    </div>
+                  ) : (
+                    <div className="text-neutral-500">
+                      <Upload size={24} className="mx-auto mb-2 text-neutral-400" />
+                      <p className="text-sm font-medium">{bankDragging ? 'Solta el archivo aca' : 'Arrastra el JSON del banco o hace click para seleccionar'}</p>
+                      <p className="text-xs mt-1">Archivo de movimientos bancarios (.json)</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Resultados */}
+                {bankResult && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-4 text-sm">
+                      <span className="flex items-center gap-1 text-green-700">
+                        <CheckCircle2 size={14} />
+                        {bankResult.summary.matched} confirmados
+                      </span>
+                      <span className="flex items-center gap-1 text-amber-700">
+                        <AlertTriangle size={14} />
+                        {bankResult.summary.unmatched} sin match
+                      </span>
+                      {bankResult.summary.errors > 0 && (
+                        <span className="flex items-center gap-1 text-red-700">
+                          <AlertCircle size={14} />
+                          {bankResult.summary.errors} errores
+                        </span>
+                      )}
+                    </div>
+
+                    {bankResult.matched.length > 0 && (
+                      <div className="bg-green-50 rounded-lg p-3">
+                        <p className="text-xs font-medium text-green-800 mb-1">Confirmados automaticamente:</p>
+                        <div className="space-y-1">
+                          {bankResult.matched.map((m) => (
+                            <p key={m.banco_id} className="text-xs text-green-700">
+                              Pedido #{m.order_number} — ${m.monto.toLocaleString('es-AR')} — {m.nombre}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {bankResult.unmatched.length > 0 && (
+                      <div className="bg-amber-50 rounded-lg p-3 max-h-40 overflow-y-auto">
+                        <p className="text-xs font-medium text-amber-800 mb-1">Sin coincidencia:</p>
+                        <div className="space-y-1">
+                          {bankResult.unmatched.map((u) => (
+                            <p key={u.banco_id} className="text-xs text-amber-700">
+                              ${u.importe.toLocaleString('es-AR')} — {u.fecha} — {u.nombre}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Búsqueda y Filtros */}
         <div className="space-y-4">
           {/* Barra de búsqueda */}

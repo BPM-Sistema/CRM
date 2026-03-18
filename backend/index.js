@@ -1558,6 +1558,182 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
 /* =====================================================
    POST — RECHAZAR COMPROBANTE (API JSON)
 ===================================================== */
+/* =====================================================
+   AUTO-CONFIRMAR COMPROBANTES DESDE JSON DEL BANCO
+   Matchea transferencias entrantes contra comprobantes pendientes
+   por monto exacto + misma fecha
+===================================================== */
+app.post('/comprobantes/auto-confirmar-banco', authenticate, requirePermission('receipts.confirm'), async (req, res) => {
+  try {
+    const { movimientos } = req.body;
+
+    if (!Array.isArray(movimientos) || movimientos.length === 0) {
+      return res.status(400).json({ error: 'Se requiere un array de movimientos' });
+    }
+
+    // Filtrar solo transferencias entrantes ejecutadas con importe positivo
+    const entrantes = movimientos.filter(m =>
+      m.Tipo === 'Transferencia entrante' &&
+      m.Estado === 'Ejecutado' &&
+      parseFloat(m.Importe) > 0
+    );
+
+    log.info({ total: movimientos.length, entrantes: entrantes.length }, 'Auto-confirmar banco: inicio');
+
+    const matched = [];
+    const unmatched = [];
+    const errors = [];
+
+    for (const mov of entrantes) {
+      const importe = Math.round(parseFloat(mov.Importe));
+      const fechaBanco = mov['Fecha/Hora'].split(' ')[0]; // "2026-03-17"
+      const nombreOrigen = (mov['Nombre Destino'] || '').trim();
+
+      try {
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+
+          // Buscar comprobante pendiente con monto exacto y misma fecha
+          const compRes = await client.query(
+            `SELECT id, order_number, monto, estado
+             FROM comprobantes
+             WHERE estado IN ('pendiente', 'a_confirmar')
+               AND monto = $1
+               AND created_at::date = $2::date
+             FOR UPDATE SKIP LOCKED
+             LIMIT 1`,
+            [importe, fechaBanco]
+          );
+
+          if (compRes.rowCount === 0) {
+            await client.query('ROLLBACK');
+            unmatched.push({
+              banco_id: mov.ID,
+              importe,
+              fecha: fechaBanco,
+              nombre: nombreOrigen
+            });
+            continue;
+          }
+
+          const comprobante = compRes.rows[0];
+
+          // Confirmar comprobante
+          await client.query(`UPDATE comprobantes SET estado = 'confirmado', confirmed_at = NOW() WHERE id = $1`, [comprobante.id]);
+
+          // Recalcular total pagado
+          const compSumRes = await client.query(
+            `SELECT COALESCE(SUM(monto), 0) AS total FROM comprobantes WHERE order_number = $1 AND estado = 'confirmado'`,
+            [comprobante.order_number]
+          );
+          const efectivoSumRes = await client.query(
+            `SELECT COALESCE(SUM(monto), 0) AS total FROM pagos_efectivo WHERE order_number = $1`,
+            [comprobante.order_number]
+          );
+          const totalPagado = Number(compSumRes.rows[0].total) + Number(efectivoSumRes.rows[0].total);
+
+          // Obtener datos del pedido
+          const orderRes = await client.query(
+            `SELECT monto_tiendanube, estado_pedido, customer_name, customer_phone, shipping_type, tn_order_id
+             FROM orders_validated WHERE order_number = $1`,
+            [comprobante.order_number]
+          );
+          const orderData = orderRes.rows[0];
+          const saldo = Number(orderData.monto_tiendanube) - totalPagado;
+
+          let estadoPago = 'pendiente';
+          if (saldo <= 0) estadoPago = 'confirmado_total';
+          else if (totalPagado > 0) estadoPago = 'confirmado_parcial';
+
+          const nuevoEstadoPedido = calcularEstadoPedido(estadoPago, orderData.estado_pedido);
+
+          // Actualizar orden
+          await client.query(
+            `UPDATE orders_validated SET total_pagado = $1, saldo = $2, estado_pago = $3, estado_pedido = $4 WHERE order_number = $5`,
+            [totalPagado, saldo, estadoPago, nuevoEstadoPedido, comprobante.order_number]
+          );
+
+          await client.query('COMMIT');
+
+          // Post-commit: TN sync, log, WhatsApp (fire and forget)
+          if (estadoPago === 'confirmado_total' && orderData.tn_order_id) {
+            marcarPagadoEnTiendanube(orderData.tn_order_id, comprobante.order_number);
+          }
+
+          logEvento({
+            comprobanteId: comprobante.id,
+            orderNumber: comprobante.order_number,
+            accion: 'comprobante_confirmado',
+            origen: 'auto_banco',
+            userId: req.user?.id,
+            username: req.user?.name
+          });
+
+          if (orderData.customer_phone) {
+            queueWhatsApp({
+              telefono: orderData.customer_phone,
+              plantilla: 'comprobante_confirmado',
+              variables: { '1': orderData.customer_name || 'Cliente', '2': String(comprobante.monto), '3': comprobante.order_number },
+              orderNumber: comprobante.order_number
+            }).catch(() => {});
+
+            if (requiresShippingForm(orderData.shipping_type)) {
+              const countRes = await pool.query(
+                `SELECT COUNT(*) as count FROM comprobantes WHERE order_number = $1 AND estado = 'confirmado'`,
+                [comprobante.order_number]
+              );
+              if (parseInt(countRes.rows[0].count) === 1) {
+                queueWhatsApp({
+                  telefono: orderData.customer_phone,
+                  plantilla: 'datos__envio',
+                  variables: { '1': orderData.customer_name || 'Cliente', '2': comprobante.order_number }
+                }).catch(() => {});
+              }
+            }
+          }
+
+          matched.push({
+            banco_id: mov.ID,
+            comprobante_id: comprobante.id,
+            order_number: comprobante.order_number,
+            monto: importe,
+            nombre: nombreOrigen
+          });
+
+        } catch (txErr) {
+          await client.query('ROLLBACK').catch(() => {});
+          errors.push({ banco_id: mov.ID, error: txErr.message });
+        } finally {
+          client.release();
+        }
+      } catch (connErr) {
+        errors.push({ banco_id: mov.ID, error: connErr.message });
+      }
+    }
+
+    log.info({ matched: matched.length, unmatched: unmatched.length, errors: errors.length }, 'Auto-confirmar banco: fin');
+
+    res.json({
+      ok: true,
+      summary: {
+        total_movimientos: movimientos.length,
+        transferencias_entrantes: entrantes.length,
+        matched: matched.length,
+        unmatched: unmatched.length,
+        errors: errors.length
+      },
+      matched,
+      unmatched,
+      errors
+    });
+
+  } catch (error) {
+    log.error({ err: error }, '/comprobantes/auto-confirmar-banco error');
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts.reject'), async (req, res) => {
   const { id } = req.params;
   const { motivo } = req.body;
