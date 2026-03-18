@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUrlFilters } from '../hooks';
-import { RefreshCw, AlertCircle, Eye, Receipt, RotateCcw, Printer, Calendar, Search, ChevronLeft, ChevronRight, CheckSquare, X, Truck, Tag } from 'lucide-react';
+import { RefreshCw, AlertCircle, Eye, Printer, Calendar, Search, ChevronLeft, ChevronRight, CheckSquare, X, Truck, Tag } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card, PaymentStatusBadge, OrderStatusBadge, Modal } from '../components/ui';
 import { AccessDenied } from '../components/AccessDenied';
@@ -726,15 +726,14 @@ export function RealOrders() {
                       />
                     </TableHead>
                   )}
-                  <TableHead className="w-[100px]">Pedido</TableHead>
+                  <TableHead className="w-[90px]">Venta</TableHead>
+                  <TableHead className="w-[110px]">Fecha</TableHead>
                   <TableHead className="min-w-[140px]">Cliente</TableHead>
-                  <TableHead className="text-right w-[90px]">Total</TableHead>
-                  <TableHead className="text-right w-[90px]">Pagado</TableHead>
-                  <TableHead className="text-center w-[85px]">Pago</TableHead>
-                  <TableHead className="text-center w-[95px]">Estado</TableHead>
-                  <TableHead className="text-center w-[45px]">Pagos</TableHead>
-                  <TableHead className="w-[80px]">Fecha</TableHead>
-                  <TableHead className="text-right w-[140px]">Acciones</TableHead>
+                  <TableHead className="text-right w-[120px]">Total</TableHead>
+                  <TableHead className="text-center w-[80px]">Productos</TableHead>
+                  <TableHead className="w-[180px]">Pago</TableHead>
+                  <TableHead className="w-[200px]">Envío</TableHead>
+                  <TableHead className="w-[40px]">{' '}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -762,73 +761,71 @@ export function RealOrders() {
                         />
                       </TableCell>
                     )}
+                    {/* Venta */}
                     <TableCell>
-                      <span className="font-mono text-xs font-medium text-neutral-900">
+                      <span className="text-sm font-medium text-blue-600 hover:text-blue-800">
                         #{order.order_number}
                       </span>
                     </TableCell>
+
+                    {/* Fecha */}
                     <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium text-sm text-neutral-900 truncate max-w-[160px]">
-                          {order.customer_name || 'Sin nombre'}
-                        </span>
-                        <span className="text-xs text-neutral-500 truncate max-w-[160px]">
-                          {order.customer_email || order.customer_phone || '-'}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className="font-mono text-xs">{formatCurrency(order.monto_tiendanube)}</span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className="font-mono text-xs">{formatCurrency(order.total_pagado)}</span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <PaymentStatusBadge status={mapEstadoPago(order.estado_pago)} size="sm" />
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <OrderStatusBadge status={mapEstadoPedido(order.estado_pedido)} size="sm" />
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <Receipt size={12} className="text-neutral-400" />
-                        <span className="text-xs font-medium text-neutral-600">
-                          {order.comprobantes_count}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-xs text-neutral-500">
-                        {format(new Date(order.created_at), 'dd/MM/yyyy HH:mm', { locale: es })}
+                      <span className="text-sm text-neutral-700">
+                        {format(new Date(order.created_at), 'd MMM HH:mm', { locale: es })}
                       </span>
                     </TableCell>
+
+                    {/* Cliente */}
+                    <TableCell>
+                      <span className="text-sm text-blue-600 hover:text-blue-800 truncate max-w-[180px] block">
+                        {order.customer_name || 'Sin nombre'}
+                      </span>
+                    </TableCell>
+
+                    {/* Total */}
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-0.5">
-                        {order.printed_at && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              console.log('Re-imprimiendo:', order.order_number);
-                              alert(`Re-imprimiendo pedido #${order.order_number}`);
-                            }}
-                            className="p-1.5 text-violet-600 hover:text-violet-700 hover:bg-violet-50 rounded-lg transition-colors"
-                            title="Re-imprimir"
-                          >
-                            <RotateCcw size={14} />
-                          </button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/orders/${order.order_number}`);
-                          }}
-                          leftIcon={<Eye size={14} />}
-                        >
-                          Ver
-                        </Button>
+                      <span className="text-sm text-neutral-900">{formatCurrency(order.monto_tiendanube)}</span>
+                    </TableCell>
+
+                    {/* Productos (comprobantes count) */}
+                    <TableCell className="text-center">
+                      <span className="text-sm text-blue-600">
+                        {order.comprobantes_count} comp.
+                      </span>
+                    </TableCell>
+
+                    {/* Pago */}
+                    <TableCell>
+                      <div className="flex flex-col gap-0.5">
+                        <PaymentStatusBadge status={mapEstadoPago(order.estado_pago)} size="sm" />
+                        <span className="text-xs text-neutral-500 truncate max-w-[170px]">
+                          {order.shipping_type || '-'}
+                        </span>
                       </div>
+                    </TableCell>
+
+                    {/* Envío */}
+                    <TableCell>
+                      <div className="flex flex-col gap-0.5">
+                        <OrderStatusBadge status={mapEstadoPedido(order.estado_pedido)} size="sm" />
+                        <span className="text-xs text-neutral-500 truncate max-w-[190px]" title={order.shipping_type || ''}>
+                          {order.shipping_type || '-'}
+                        </span>
+                      </div>
+                    </TableCell>
+
+                    {/* Menú */}
+                    <TableCell className="text-center">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/orders/${order.order_number}`);
+                        }}
+                        className="p-1 text-neutral-400 hover:text-neutral-700 rounded transition-colors"
+                        title="Ver detalle"
+                      >
+                        <Eye size={16} />
+                      </button>
                     </TableCell>
                   </TableRow>
                 ))}
