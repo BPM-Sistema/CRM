@@ -748,7 +748,7 @@ export function RealOrders() {
                         navigate(`/orders/${order.order_number}`);
                       }
                     }}
-                    className={selectedOrderNumbers.has(order.order_number) ? 'bg-blue-50' : 'even:bg-neutral-50/50'}
+                    className={selectedOrderNumbers.has(order.order_number) ? 'bg-blue-50' : ''}
                   >
                     {selectionMode && (
                       <TableCell className="text-center">

@@ -12,26 +12,26 @@ interface BadgeProps {
 }
 
 const variants: Record<BadgeVariant, string> = {
-  default: 'bg-neutral-100 text-neutral-700',
-  success: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20',
-  warning: 'bg-amber-50 text-amber-700 ring-1 ring-amber-600/20',
-  danger: 'bg-red-50 text-red-700 ring-1 ring-red-600/20',
-  info: 'bg-blue-50 text-blue-700 ring-1 ring-blue-600/20',
-  purple: 'bg-violet-50 text-violet-700 ring-1 ring-violet-600/20',
-  cyan: 'bg-cyan-50 text-cyan-700 ring-1 ring-cyan-600/20',
-  orange: 'bg-orange-50 text-orange-700 ring-1 ring-orange-600/20',
+  default: 'bg-white text-neutral-700 ring-1 ring-neutral-300',
+  success: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
+  warning: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
+  danger: 'bg-red-50 text-red-700 ring-1 ring-red-200',
+  info: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
+  purple: 'bg-violet-50 text-violet-700 ring-1 ring-violet-200',
+  cyan: 'bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200',
+  orange: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
 };
 
 const sizes: Record<BadgeSize, string> = {
-  sm: 'px-1.5 py-0.5 text-[10px]',
-  md: 'px-2 py-0.5 text-xs',
+  sm: 'px-2 py-0.5 text-[11px]',
+  md: 'px-2.5 py-1 text-xs',
 };
 
 export function Badge({ children, variant = 'default', size = 'md', className }: BadgeProps) {
   return (
     <span
       className={clsx(
-        'inline-flex items-center rounded-md font-medium whitespace-nowrap',
+        'inline-flex items-center rounded-full font-medium whitespace-nowrap',
         variants[variant],
         sizes[size],
         className
@@ -43,7 +43,6 @@ export function Badge({ children, variant = 'default', size = 'md', className }:
 }
 
 // ============ ESTADO DE PAGO ============
-// Pendiente → A confirmar → Parcial → Total → Rechazado
 const paymentStatusVariants: Record<PaymentStatus, BadgeVariant> = {
   pendiente: 'warning',
   a_confirmar: 'info',
@@ -52,21 +51,12 @@ const paymentStatusVariants: Record<PaymentStatus, BadgeVariant> = {
   rechazado: 'danger',
 };
 
-const paymentStatusLabels: Record<PaymentStatus, string> = {
-  pendiente: '$ Pendiente',
-  a_confirmar: 'A confirmar',
-  parcial: '$ Parcial',
-  total: '$ Recibido',
-  rechazado: '$ Rechazado',
-};
-
-// Etiquetas cortas para tamaño pequeño
-const paymentStatusLabelsShort: Record<PaymentStatus, string> = {
-  pendiente: '$ Pendiente',
-  a_confirmar: 'A confirmar',
-  parcial: '$ Parcial',
-  total: '$ Recibido',
-  rechazado: '$ Rechazado',
+const paymentStatusConfig: Record<PaymentStatus, { icon: string; label: string }> = {
+  pendiente: { icon: '$', label: 'Pendiente' },
+  a_confirmar: { icon: '', label: 'A confirmar' },
+  parcial: { icon: '$', label: 'Parcial' },
+  total: { icon: '$', label: 'Recibido' },
+  rechazado: { icon: '$', label: 'Rechazado' },
 };
 
 interface PaymentStatusBadgeProps {
@@ -76,10 +66,11 @@ interface PaymentStatusBadgeProps {
 }
 
 export function PaymentStatusBadge({ status, size = 'md', className }: PaymentStatusBadgeProps) {
-  const label = size === 'sm' ? paymentStatusLabelsShort[status] : paymentStatusLabels[status];
+  const config = paymentStatusConfig[status];
   return (
     <Badge variant={paymentStatusVariants[status]} size={size} className={className}>
-      {label}
+      {config.icon && <span className="mr-0.5 font-bold">{config.icon}</span>}
+      {config.label}
     </Badge>
   );
 }
@@ -90,33 +81,21 @@ const orderStatusVariants: Record<OrderStatus, BadgeVariant> = {
   a_imprimir: 'default',
   hoja_impresa: 'default',
   armado: 'cyan',
-  retirado: 'success',
+  retirado: 'default',
   en_calle: 'warning',
   enviado: 'success',
   cancelado: 'danger',
 };
 
-const orderStatusLabels: Record<OrderStatus, string> = {
-  pendiente_pago: 'Por empaquetar',
-  a_imprimir: 'Por empaquetar',
-  hoja_impresa: 'Por empaquetar',
-  armado: 'Empaquetado',
-  retirado: 'Retirada',
-  en_calle: 'En camino',
-  enviado: 'Enviada',
-  cancelado: 'Cancelada',
-};
-
-// Etiquetas cortas para tamaño pequeño
-const orderStatusLabelsShort: Record<OrderStatus, string> = {
-  pendiente_pago: 'Por empaquetar',
-  a_imprimir: 'Por empaquetar',
-  hoja_impresa: 'Por empaquetar',
-  armado: 'Empaquetado',
-  retirado: 'Retirada',
-  en_calle: 'En camino',
-  enviado: 'Enviada',
-  cancelado: 'Cancelada',
+const orderStatusConfig: Record<OrderStatus, { icon: string; label: string }> = {
+  pendiente_pago: { icon: '\u{1F4E6}', label: 'Por empaquetar' },
+  a_imprimir: { icon: '\u{1F4E6}', label: 'Por empaquetar' },
+  hoja_impresa: { icon: '\u{1F4E6}', label: 'Por empaquetar' },
+  armado: { icon: '\u{1F4E6}', label: 'Empaquetado' },
+  retirado: { icon: '\u{1F3E0}', label: 'Retirada' },
+  en_calle: { icon: '\u{1F69A}', label: 'En camino' },
+  enviado: { icon: '\u{1F4E8}', label: 'Enviada' },
+  cancelado: { icon: '\u{26D4}', label: 'Cancelada' },
 };
 
 interface OrderStatusBadgeProps {
@@ -126,10 +105,11 @@ interface OrderStatusBadgeProps {
 }
 
 export function OrderStatusBadge({ status, size = 'md', className }: OrderStatusBadgeProps) {
-  const label = size === 'sm' ? orderStatusLabelsShort[status] : orderStatusLabels[status];
+  const config = orderStatusConfig[status];
   return (
     <Badge variant={orderStatusVariants[status]} size={size} className={className}>
-      {label}
+      <span className="mr-1 text-[10px]">{config.icon}</span>
+      {config.label}
     </Badge>
   );
 }
