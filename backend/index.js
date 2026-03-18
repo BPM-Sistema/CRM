@@ -2876,12 +2876,24 @@ app.post('/webhook/tiendanube', async (req, res) => {
       // Valores nuevos de Tiendanube
       const montoNuevo = Math.round(Number(pedido.total));
       const paymentStatusNuevo = pedido.payment_status || null;
-      const shippingStatusNuevo = pedido.shipping || null; // El campo es "shipping", no "shipping_status"
+      const shippingStatusNuevo = pedido.shipping || null;
 
       // Valores actuales en DB
       const montoAnterior = Number(db.monto_tiendanube);
       const paymentStatusAnterior = db.tn_payment_status;
       const shippingStatusAnterior = db.tn_shipping_status;
+
+      // Granular toggles: qué tipos de cambios procesar
+      const [syncPayment, syncShipping, syncProducts] = await Promise.all([
+        isIntegrationEnabled('tiendanube_webhook_sync_payment', { context: 'webhook:order/updated:payment' }),
+        isIntegrationEnabled('tiendanube_webhook_sync_shipping', { context: 'webhook:order/updated:shipping' }),
+        isIntegrationEnabled('tiendanube_webhook_sync_products', { context: 'webhook:order/updated:products' }),
+      ]);
+
+      // Detectar qué cambió
+      const cambioPayment = paymentStatusAnterior !== paymentStatusNuevo;
+      const cambioShipping = shippingStatusAnterior !== shippingStatusNuevo;
+      const cambioMonto = montoAnterior !== montoNuevo;
 
       // Obtener productos ANTES de actualizar
       const productosDB = await pool.query(
@@ -2889,32 +2901,57 @@ app.post('/webhook/tiendanube', async (req, res) => {
         [String(pedido.number)]
       );
 
-      // Generar mensaje de cambios
       const mensaje = buildOrderUpdateMessage(
         productosDB.rows,
         pedido.products || [],
         montoNuevo
       );
 
-      // Actualizar DB
+      const lineas = mensaje.split('\n');
+      const hayProductosCambiados = lineas.length > 1;
+
+      // Filtrar por toggles: si el tipo de cambio está deshabilitado, no procesar
+      const skippedReasons = [];
+      if (cambioPayment && !syncPayment) skippedReasons.push('payment_disabled');
+      if (cambioShipping && !syncShipping) skippedReasons.push('shipping_disabled');
+      if ((cambioMonto || hayProductosCambiados) && !syncProducts) skippedReasons.push('products_disabled');
+
+      // Si TODOS los cambios detectados están deshabilitados, skip
+      const hayCambios = cambioPayment || cambioShipping || cambioMonto || hayProductosCambiados;
+      if (!hayCambios) {
+        return; // Sin cambios relevantes
+      }
+
+      const todosSkipped = (
+        (!cambioPayment || !syncPayment) &&
+        (!cambioShipping || !syncShipping) &&
+        ((!cambioMonto && !hayProductosCambiados) || !syncProducts)
+      );
+
+      if (todosSkipped && hayCambios) {
+        log.info({
+          orderNumber: String(pedido.number),
+          skippedReasons,
+          cambioPayment, cambioShipping, cambioMonto, hayProductosCambiados
+        }, 'Order updated but all changes filtered by sub-toggles');
+        return;
+      }
+
+      // Actualizar DB (siempre guardar raw data, pero solo procesar lo habilitado)
       await guardarPedidoCompleto(pedido);
 
       // 🔍 Verificar consistencia con TiendaNube
       await verificarConsistencia(String(pedido.number), pedido);
 
-      // Verificar si hubo cambios en productos (más de solo la línea del monto)
-      const lineas = mensaje.split('\n');
-      const hayProductosCambiados = lineas.length > 1;
-      const cambioMonto = montoAnterior !== montoNuevo;
+      log.info({
+        orderNumber: String(pedido.number),
+        changes: mensaje,
+        syncPayment, syncShipping, syncProducts,
+        cambioPayment, cambioShipping, cambioMonto
+      }, 'Order updated via webhook');
 
-      if (!hayProductosCambiados && !cambioMonto) {
-        return; // Sin cambios relevantes
-      }
-
-      log.info({ orderNumber: String(pedido.number), changes: mensaje }, 'Order updated via webhook');
-
-      // Si cambió el monto, recalcular saldo y estado_pago
-      if (cambioMonto) {
+      // Si cambió el monto y sync_products está habilitado, recalcular saldo
+      if (cambioMonto && syncProducts) {
         await pool.query(`
           UPDATE orders_validated
           SET
