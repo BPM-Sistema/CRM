@@ -440,8 +440,10 @@ export function RealReceiptDetail() {
                     )}
                     {comprobante.customer_phone && (
                       <a
-                        href={`tel:${comprobante.customer_phone}`}
-                        className="flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900"
+                        href={`https://wa.me/${comprobante.customer_phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola ${comprobante.customer_name || ''} te habla Sara de blanqueriaxmayor`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-sm text-green-600 hover:text-green-800"
                       >
                         <Phone size={14} />
                         {comprobante.customer_phone}
