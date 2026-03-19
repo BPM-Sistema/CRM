@@ -18,7 +18,7 @@ const {
   invalidateCache
 } = require('../services/integrationConfig');
 const pool = require('../db');
-const supabase = require('../supabase');
+const { healthCheck: storageHealthCheck } = require('../lib/storage');
 
 // ─── Health Check Helpers ────────────────────────────────
 
@@ -65,10 +65,9 @@ async function checkAllServices() {
       if (result.rows[0]?.ok !== 1) throw new Error('Query falló');
     }),
 
-    // 3. Supabase Storage
+    // 3. Storage (GCS or Supabase)
     checkService('Storage', async () => {
-      const { data, error } = await supabase.storage.from('comprobantes').list('', { limit: 1 });
-      if (error) throw error;
+      await storageHealthCheck();
     }),
 
     // 4. Botmaker (WhatsApp)

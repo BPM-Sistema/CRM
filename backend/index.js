@@ -28,7 +28,7 @@ const fs = require('fs');
 const axios = require('axios');
 const { callTiendanube, callBotmaker } = require('./lib/circuitBreaker');
 
-const supabase = require('./supabase');
+const { uploadFile: storageUploadFile, getPublicUrl: storageGetPublicUrl } = require('./lib/storage');
 const { calcularEstadoCuenta } = require('./utils/calcularEstadoCuenta');
 const pool = require('./db');
 const { hashText } = require('./hash');
@@ -3584,7 +3584,7 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     const montoDetectado = datosClaude.monto;
 
     /* ===============================
-       5️⃣ PREPARAR URL DE SUPABASE
+       5️⃣ PREPARAR URL DE STORAGE
     ================================ */
     // Sanitizar nombre de archivo (remover caracteres especiales y espacios)
     const sanitizedFilename = file.originalname
@@ -3592,11 +3592,8 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
       .replace(/[\u0300-\u036f]/g, '') // Remover acentos
       .replace(/[^\w.-]/g, '_') // Reemplazar caracteres especiales por _
       .replace(/_+/g, '_'); // Colapsar múltiples _
-    const supabasePath = `pendientes/${Date.now()}-${sanitizedFilename}`;
-    const { data: publicUrlData } = supabase.storage
-      .from('comprobantes')
-      .getPublicUrl(supabasePath);
-    const fileUrl = publicUrlData.publicUrl;
+    const storagePath = `pendientes/${Date.now()}-${sanitizedFilename}`;
+    const fileUrl = storageGetPublicUrl(storagePath);
 
     /* ===============================
        6️⃣ INSERTAR COMPROBANTE
@@ -3638,21 +3635,11 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     });
 
     /* ===============================
-       8️⃣ SUBIR ARCHIVO A SUPABASE
+       8️⃣ SUBIR ARCHIVO A STORAGE (GCS o Supabase)
     ================================ */
     const finalBuffer = await fs.promises.readFile(file.path);
 
-    const { error: uploadError } = await supabase.storage
-      .from('comprobantes')
-      .upload(supabasePath, finalBuffer, {
-        contentType: file.mimetype,
-        upsert: false
-      });
-
-    if (uploadError) {
-      console.error('❌ Supabase upload error:', uploadError);
-      throw new Error('Error subiendo archivo a storage');
-    }
+    await storageUploadFile(storagePath, finalBuffer, file.mimetype);
 
     console.log('☁️ Archivo subido:', fileUrl);
 
@@ -4414,6 +4401,32 @@ app.post('/sync/cron', verifyCronAuth, async (req, res) => {
     res.json({ ok: true, status: result.status, result: result.result });
   } catch (error) {
     log.error({ err: error }, 'Cron sync error');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Ejecutar cleanup desde Cloud Scheduler
+app.post('/cleanup/cron', verifyCronAuth, async (req, res) => {
+  log.info({ authMethod: req.cronAuth?.method }, 'Cron cleanup started');
+  try {
+    const { runCleanup } = require('./lib/cleanup');
+    const results = await runCleanup();
+    res.json({ ok: true, ...results });
+  } catch (error) {
+    log.error({ err: error }, 'Cron cleanup error');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Ejecutar reconciliación desde Cloud Scheduler
+app.post('/reconcile/cron', verifyCronAuth, async (req, res) => {
+  log.info({ authMethod: req.cronAuth?.method }, 'Cron reconciliation started');
+  try {
+    const { runReconciliation } = require('./workers/reconciliation.worker');
+    const results = await runReconciliation();
+    res.json({ ok: true, ...results });
+  } catch (error) {
+    log.error({ err: error }, 'Cron reconciliation error');
     res.status(500).json({ error: error.message });
   }
 });

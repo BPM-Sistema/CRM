@@ -13,18 +13,12 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
-const { createClient } = require('@supabase/supabase-js');
 const pool = require('../db');
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { processDocumentWithClaude } = require('../services/shippingDocuments');
 const { analizarRemito } = require('../services/claudeVision');
 const { enviarWhatsAppPlantilla } = require('../lib/whatsapp-helpers');
-
-// Configurar Supabase
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const { uploadFile } = require('../lib/storage');
 
 // Función para loguear eventos (misma estructura que index.js)
 async function logEvento({ orderNumber, accion, origen, userId, username }) {
@@ -75,7 +69,7 @@ router.post('/upload',
 
     for (const file of files) {
       try {
-        // 1. Subir a Supabase Storage
+        // 1. Subir a Storage (GCS o Supabase según configuración)
         const fileBuffer = fs.readFileSync(file.path);
         // Sanitizar nombre de archivo: remover caracteres especiales Unicode
         const safeName = file.originalname
@@ -84,20 +78,9 @@ router.post('/upload',
           .replace(/[^\w\s.-]/g, '')         // Solo alfanuméricos, espacios, puntos, guiones
           .replace(/\s+/g, '_');             // Espacios a guiones bajos
         const fileName = `${Date.now()}-${safeName}`;
-        const supabasePath = `remitos/${fileName}`;
+        const storagePath = `remitos/${fileName}`;
 
-        const { error: uploadError } = await supabase.storage
-          .from('comprobantes') // Usar bucket existente
-          .upload(supabasePath, fileBuffer, {
-            contentType: file.mimetype,
-            upsert: false
-          });
-
-        if (uploadError) {
-          throw new Error(`Error subiendo a storage: ${uploadError.message}`);
-        }
-
-        const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/comprobantes/${supabasePath}`;
+        const fileUrl = await uploadFile(storagePath, fileBuffer, file.mimetype);
 
         // 2. Crear registro en DB con estado 'processing'
         const insertRes = await pool.query(`

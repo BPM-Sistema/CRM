@@ -1,0 +1,63 @@
+# Cloud Build: Build all CRM service images
+#
+# This is OPTIONAL — all services can also deploy with:
+#   gcloud run deploy SERVICE --source . --project=tidal-cipher-486519-k0 --region=us-central1
+#
+# This file is useful for building all 3 images in parallel from CI/CD.
+#
+# Usage:
+#   gcloud builds submit --config=cloudbuild.yaml --project=tidal-cipher-486519-k0 .
+
+substitutions:
+  _VITE_API_URL: 'https://api.bpmadministrador.com'
+  _TAG: 'latest'
+
+steps:
+  # ── Build Backend API ──────────────────────────────────
+  - id: build-api
+    name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/petlove-backend:${_TAG}'
+      - '-f'
+      - 'backend/Dockerfile'
+      - 'backend'
+    waitFor: ['-']
+
+  # ── Build Workers ──────────────────────────────────────
+  - id: build-workers
+    name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/crm-workers:${_TAG}'
+      - '-f'
+      - 'backend/Dockerfile.workers'
+      - 'backend'
+    waitFor: ['-']
+
+  # ── Build Frontend Web ─────────────────────────────────
+  - id: build-web
+    name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/crm-web:${_TAG}'
+      - '--build-arg'
+      - 'VITE_API_URL=${_VITE_API_URL}'
+      - '-f'
+      - 'financial-crm/Dockerfile'
+      - 'financial-crm'
+    waitFor: ['-']
+
+images:
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/petlove-backend:${_TAG}'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/crm-workers:${_TAG}'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/crm-web:${_TAG}'
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: '1200s'

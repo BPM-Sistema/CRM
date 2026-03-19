@@ -39,7 +39,7 @@ async function checkServiceQuick(name, checkFn) {
 
 router.get('/overview', requirePermission('integrations.view'), async (req, res) => {
   try {
-    const supabase = require('../supabase');
+    const { healthCheck: storageHealthCheck } = require('../lib/storage');
 
     // Check all services in parallel
     const [services, queueStats, breakerStatus, poolStats] = await Promise.all([
@@ -73,9 +73,8 @@ router.get('/overview', requirePermission('integrations.view'), async (req, res)
           const apiKey = process.env.ANTHROPIC_API_KEY;
           if (!apiKey) throw new Error('API key not configured');
         }),
-        checkServiceQuick('Supabase Storage', async () => {
-          const { error } = await supabase.storage.from('comprobantes').list('', { limit: 1 });
-          if (error) throw error;
+        checkServiceQuick('Storage', async () => {
+          await storageHealthCheck();
         })
       ]),
       getQueueStats().catch(() => ({})),

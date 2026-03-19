@@ -61,7 +61,7 @@ router.get('/', (req, res) => {
 
 router.get('/deep', authenticate, requirePermission('integrations.view'), async (req, res) => {
   try {
-    const supabase = require('../supabase');
+    const { healthCheck: storageHealthCheck } = require('../lib/storage');
 
     const services = await Promise.all([
       // 1. Database
@@ -78,12 +78,9 @@ router.get('/deep', authenticate, requirePermission('integrations.view'), async 
         if (pong !== 'PONG') throw new Error(`Unexpected response: ${pong}`);
       }),
 
-      // 3. Supabase Storage
-      checkServiceWithTimeout('Supabase Storage', async () => {
-        const supabaseUrl = process.env.SUPABASE_URL;
-        if (!supabaseUrl) throw new Error('Supabase not configured');
-        const { error } = await supabase.storage.from('comprobantes').list('', { limit: 1 });
-        if (error) throw error;
+      // 3. Storage (GCS or Supabase)
+      checkServiceWithTimeout('Storage', async () => {
+        await storageHealthCheck();
       }),
 
       // 4. TiendaNube
