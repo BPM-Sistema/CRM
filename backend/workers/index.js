@@ -11,15 +11,17 @@ const { logger, workerLogger: log } = require('../lib/logger');
 const { redis } = require('../lib/redis');
 const { createWhatsAppWorker } = require('./whatsapp.worker');
 // AI Bot workers — loaded defensively so BPM workers always start even if bot code fails
-let createMetaEventsWorker, createAiGenerateWorker, createAiSendReplyWorker;
-try {
-  ({ createMetaEventsWorker, createAiGenerateWorker, createAiSendReplyWorker } = require('./ai-bot.worker'));
-} catch (err) {
-  log.error({ err: err.message }, 'Failed to load AI Bot workers — bot disabled, BPM workers unaffected');
-  createMetaEventsWorker = null;
-  createAiGenerateWorker = null;
-  createAiSendReplyWorker = null;
-}
+// AI Bot workers — PAUSADOS, descomentar cuando se active el bot en prod
+// let createMetaEventsWorker, createAiGenerateWorker, createAiSendReplyWorker;
+// try {
+//   ({ createMetaEventsWorker, createAiGenerateWorker, createAiSendReplyWorker } = require('./ai-bot.worker'));
+// } catch (err) {
+//   log.error({ err: err.message }, 'Failed to load AI Bot workers — bot disabled, BPM workers unaffected');
+//   createMetaEventsWorker = null;
+//   createAiGenerateWorker = null;
+//   createAiSendReplyWorker = null;
+// }
+const createMetaEventsWorker = null, createAiGenerateWorker = null, createAiSendReplyWorker = null;
 
 const pkg = require('../package.json');
 

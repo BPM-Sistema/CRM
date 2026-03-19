@@ -4371,14 +4371,15 @@ const integrationsRoutes = require('./routes/integrations');
 const healthRoutes = require('./routes/health');
 const adminStatusRoutes = require('./routes/admin-status');
 const systemAlertsRoutes = require('./routes/system-alerts');
-// AI Bot routes — loaded defensively to never crash BPM startup
-let aiBotRoutes;
-try {
-  aiBotRoutes = require('./routes/ai-bot');
-} catch (err) {
-  console.error('[AI Bot] Failed to load routes — bot disabled, BPM unaffected:', err.message);
-  aiBotRoutes = null;
-}
+// AI Bot routes — PAUSADO, descomentar cuando se active el bot en prod
+// let aiBotRoutes;
+// try {
+//   aiBotRoutes = require('./routes/ai-bot');
+// } catch (err) {
+//   console.error('[AI Bot] Failed to load routes — bot disabled, BPM unaffected:', err.message);
+//   aiBotRoutes = null;
+// }
+const aiBotRoutes = null;
 const { serverAdapter: bullBoardAdapter, bullBoardAuth } = require('./routes/bull-board');
 
 app.use('/auth', authRoutes);

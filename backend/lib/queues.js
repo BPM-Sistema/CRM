@@ -33,7 +33,9 @@ const defaultJobOptions = {
   removeOnFail: { count: 5000 }
 };
 
-const QUEUE_NAMES = ['whatsapp', 'meta-events', 'ai-generate', 'ai-send-reply'];
+// AI Bot queues pausadas — descomentar cuando se active el bot en prod
+// const AI_BOT_QUEUES = ['meta-events', 'ai-generate', 'ai-send-reply'];
+const QUEUE_NAMES = ['whatsapp'];
 
 // Custom job options per queue (falls back to defaultJobOptions)
 const queueJobOptions = {
@@ -103,9 +105,10 @@ async function getQueueStats() {
 module.exports = {
   queues,
   whatsappQueue: queues['whatsapp'],
-  metaEventsQueue: queues['meta-events'],
-  aiGenerateQueue: queues['ai-generate'],
-  aiSendReplyQueue: queues['ai-send-reply'],
+  // AI Bot queues pausadas — descomentar cuando se active el bot en prod
+  metaEventsQueue: null, // queues['meta-events'],
+  aiGenerateQueue: null, // queues['ai-generate'],
+  aiSendReplyQueue: null, // queues['ai-send-reply'],
   getQueueStats,
   QUEUE_NAMES
 };
