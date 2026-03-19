@@ -418,7 +418,7 @@ const EXCLUDE_HEADERS = [
 ];
 
 /**
- * Datos CONOCIDOS del remitente (Pet Love / origen) que SIEMPRE deben excluirse.
+ * Datos CONOCIDOS del remitente (BPM / Blanquería x Mayor / origen) que SIEMPRE deben excluirse.
  * Estos valores aparecen en todos los remitos como origen.
  */
 const KNOWN_SENDER_DATA = {
@@ -432,10 +432,15 @@ const KNOWN_SENDER_DATA = {
     'gaona n° 2376',
   ],
   names: [
-    'pet love',
-    'petlove',
-    'pet love arg',
-    'petlove arg',
+    'bpm',
+    'bpm administrador',
+    'blanqueria x mayor',
+    'blanqueriaxmayor',
+    'blanqueria por mayor',
+    'pet love',        // legacy — remitos impresos pueden traer este nombre
+    'petlove',         // legacy
+    'pet love arg',    // legacy
+    'petlove arg',     // legacy
     'nora luciana mansilla', // Titular/representante
     'mansilla nora',
   ],
@@ -450,7 +455,7 @@ const KNOWN_SENDER_DATA = {
 };
 
 /**
- * Verifica si un texto corresponde a datos CONOCIDOS del remitente (Pet Love)
+ * Verifica si un texto corresponde a datos CONOCIDOS del remitente (BPM / Blanquería x Mayor)
  * @returns {object|null} - { type: 'address'|'name'|'city', value } o null
  */
 function isKnownSenderData(text) {
@@ -506,7 +511,7 @@ function detectSectionHeader(line) {
  * Retorna las líneas que pertenecen a la sección destinatario
  *
  * IMPORTANTE: Excluye activamente líneas que contengan datos conocidos
- * del remitente (Pet Love / origen) para evitar contaminación.
+ * del remitente (BPM / Blanquería x Mayor / origen) para evitar contaminación.
  */
 function extractDestinationZone(ocrText) {
   if (!ocrText) return { lines: [], confidence: 0, log: [], extractedCity: null };
@@ -1109,7 +1114,7 @@ function extractCity(ocrText) {
  * Busca el pedido que mejor coincide con los datos extraídos
  *
  * IMPORTANTE: El matching usa EXCLUSIVAMENTE datos de shipping_requests
- * (formulario petlovearg.com/envio), NO datos de Tiendanube.
+ * (formulario bpmadministrador.com/envio), NO datos de Tiendanube.
  *
  * Si un pedido no tiene registro en shipping_requests, NO se sugiere match.
  * Esto es intencional: los remitos solo aplican a pedidos con transporte.

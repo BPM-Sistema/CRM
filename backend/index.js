@@ -119,24 +119,6 @@ const { requestLogger } = require('./lib/logger');
 const { apiLogger: log } = require('./lib/logger');
 app.use(requestLogger);
 
-// Redirecciones del dominio viejo (api.petlovearg.com) al nuevo
-app.get('/envio', (req, res) => {
-  // Si viene del dominio viejo, redirigir al nuevo
-  if (req.hostname.includes('petlovearg')) {
-    return res.redirect(301, 'https://www.bpmadministrador.com/envio');
-  }
-  // Si es el dominio nuevo, servir el archivo estático
-  res.sendFile(path.join(__dirname, 'public', 'envio.html'));
-});
-
-app.get('/', (req, res, next) => {
-  // Si viene del dominio viejo, redirigir al nuevo
-  if (req.hostname.includes('petlovearg')) {
-    return res.redirect(301, 'https://www.bpmadministrador.com/comprobantes');
-  }
-  next();
-});
-
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Ruta explícita para el form de leads (embebible desde cualquier dominio)
