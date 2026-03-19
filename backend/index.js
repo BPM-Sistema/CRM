@@ -49,6 +49,7 @@ const { verificarConsistencia, getInconsistencias } = require('./utils/orderVeri
 const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crearNotificacion } = require('./utils/notifications');
 const { enviarWhatsAppPlantilla, PLANTILLAS_SIN_SUFIJO, PLANTILLA_CONFIG_KEY } = require('./lib/whatsapp-helpers');
 const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, normalizePhoneForComparison } = require('./lib/payment-helpers');
+const { recalcularPagos } = require('./lib/recalcularPagos');
 const { watermarkReceipt, isValidDestination, detectarFinancieraDesdeOCR } = require('./lib/comprobante-helpers');
 const customerSync = require('./services/customerSync');
 const customerMetrics = require('./services/customerMetrics');
@@ -1503,18 +1504,12 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
     // 2️⃣ Confirmar comprobante
     await client.query(`UPDATE comprobantes SET estado = 'confirmado' WHERE id = $1`, [id]);
 
-    // 3️⃣ Recalcular total pagado (comprobantes + efectivo) using client
-    const compSumRes = await client.query(
-      `SELECT COALESCE(SUM(monto), 0) AS total FROM comprobantes WHERE order_number = $1 AND estado = 'confirmado'`,
-      [comprobante.order_number]
-    );
-    const efectivoSumRes = await client.query(
-      `SELECT COALESCE(SUM(monto), 0) AS total FROM pagos_efectivo WHERE order_number = $1`,
-      [comprobante.order_number]
-    );
-    const totalPagado = Number(compSumRes.rows[0].total) + Number(efectivoSumRes.rows[0].total);
+    // 3️⃣ Recalcular pagos (centralizado: pago_online_tn + comprobantes + efectivo)
+    const pagoResult = await recalcularPagos(client, comprobante.order_number);
+    const { totalPagado, saldo, estadoPago } = pagoResult;
+    const nuevoEstadoPedido = pagoResult.estadoPedido;
 
-    // 4️⃣ Obtener monto, estado actual y datos de cliente del pedido
+    // 4️⃣ Obtener datos de cliente del pedido
     const orderRes = await client.query(
       `SELECT monto_tiendanube, estado_pedido, customer_name, customer_phone, shipping_type, tn_order_id FROM orders_validated WHERE order_number = $1`,
       [comprobante.order_number]
@@ -1522,27 +1517,6 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
 
     const orderData = orderRes.rows[0];
     const montoPedido = Number(orderData.monto_tiendanube);
-    const estadoPedidoActual = orderData.estado_pedido;
-    const saldo = montoPedido - totalPagado;
-
-    // 5️⃣ Definir estado_pago
-    let estadoPago = 'pendiente';
-    if (saldo <= 0) {
-      estadoPago = 'confirmado_total';
-    } else if (totalPagado > 0) {
-      estadoPago = 'confirmado_parcial';
-    }
-
-    // 6️⃣ Calcular nuevo estado_pedido (lógica centralizada)
-    const nuevoEstadoPedido = calcularEstadoPedido(estadoPago, estadoPedidoActual);
-
-    // 7️⃣ Actualizar orden
-    await client.query(
-      `UPDATE orders_validated
-       SET total_pagado = $1, saldo = $2, estado_pago = $3, estado_pedido = $4
-       WHERE order_number = $5`,
-      [totalPagado, saldo, estadoPago, nuevoEstadoPedido, comprobante.order_number]
-    );
 
     await client.query('COMMIT');
 
@@ -1689,37 +1663,18 @@ app.post('/comprobantes/auto-confirmar-banco', authenticate, requirePermission('
           // Confirmar comprobante
           await client.query(`UPDATE comprobantes SET estado = 'confirmado', confirmed_at = NOW() WHERE id = $1`, [comprobante.id]);
 
-          // Recalcular total pagado
-          const compSumRes = await client.query(
-            `SELECT COALESCE(SUM(monto), 0) AS total FROM comprobantes WHERE order_number = $1 AND estado = 'confirmado'`,
-            [comprobante.order_number]
-          );
-          const efectivoSumRes = await client.query(
-            `SELECT COALESCE(SUM(monto), 0) AS total FROM pagos_efectivo WHERE order_number = $1`,
-            [comprobante.order_number]
-          );
-          const totalPagado = Number(compSumRes.rows[0].total) + Number(efectivoSumRes.rows[0].total);
+          // Recalcular pagos (centralizado: pago_online_tn + comprobantes + efectivo)
+          const pagoResult = await recalcularPagos(client, comprobante.order_number);
+          const { totalPagado, saldo, estadoPago } = pagoResult;
+          const nuevoEstadoPedido = pagoResult.estadoPedido;
 
-          // Obtener datos del pedido
+          // Obtener datos del pedido para post-commit actions
           const orderRes = await client.query(
             `SELECT monto_tiendanube, estado_pedido, customer_name, customer_phone, shipping_type, tn_order_id
              FROM orders_validated WHERE order_number = $1`,
             [comprobante.order_number]
           );
           const orderData = orderRes.rows[0];
-          const saldo = Number(orderData.monto_tiendanube) - totalPagado;
-
-          let estadoPago = 'pendiente';
-          if (saldo <= 0) estadoPago = 'confirmado_total';
-          else if (totalPagado > 0) estadoPago = 'confirmado_parcial';
-
-          const nuevoEstadoPedido = calcularEstadoPedido(estadoPago, orderData.estado_pedido);
-
-          // Actualizar orden
-          await client.query(
-            `UPDATE orders_validated SET total_pagado = $1, saldo = $2, estado_pago = $3, estado_pedido = $4 WHERE order_number = $5`,
-            [totalPagado, saldo, estadoPago, nuevoEstadoPedido, comprobante.order_number]
-          );
 
           await client.query('COMMIT');
 
@@ -3257,29 +3212,24 @@ app.post('/webhook/tiendanube', async (req, res) => {
         setClauses.push(`tn_gateway = $${paramIdx++}`);
         setParams.push(tnGateway);
 
-        // Lógica de pago basada en datos reales de TN:
+        // Lógica de pago: escribir en pago_online_tn (NO en total_pagado)
+        // total_pagado se recalcula después con recalcularPagos()
         if (paymentStatusNuevo === 'refunded') {
           setClauses.push(`estado_pago = 'reembolsado'`);
+          setClauses.push(`pago_online_tn = 0`);
         } else if (paymentStatusNuevo === 'voided') {
           setClauses.push(`estado_pago = 'anulado'`);
+          setClauses.push(`pago_online_tn = 0`);
         } else if (paymentStatusNuevo === 'paid' || paymentStatusNuevo === 'partially_paid') {
-          // Determinar total_pagado real:
-          // - Si gateway=offline y total_paid > 0: usar total_paid de TN (dato real)
-          // - Si gateway=not-provided y payment_status=paid: pago manual, total = monto
-          // - Si partially_paid: usar total_paid de TN
+          // Determinar cuánto pagó el cliente vía gateway online
+          let pagoOnline = 0;
           if (paymentStatusNuevo === 'partially_paid' && tnTotalPaid > 0) {
-            setClauses.push(`total_pagado = $${paramIdx++}`);
-            setParams.push(tnTotalPaid);
+            pagoOnline = tnTotalPaid;
           } else if (paymentStatusNuevo === 'paid') {
-            if (tnGateway === 'offline' && tnTotalPaid > 0) {
-              // Gateway offline con monto real → usar total_paid
-              setClauses.push(`total_pagado = $${paramIdx++}`);
-              setParams.push(tnTotalPaid);
-            } else {
-              // Pago manual (not-provided) o total_paid=0 → asumir pagado total
-              setClauses.push(`total_pagado = monto_tiendanube`);
-            }
+            pagoOnline = tnTotalPaid > 0 ? tnTotalPaid : montoNuevo;
           }
+          setClauses.push(`pago_online_tn = $${paramIdx++}`);
+          setParams.push(pagoOnline);
         }
       }
       if (syncShipping && cambioShipping) {
@@ -3338,20 +3288,9 @@ app.post('/webhook/tiendanube', async (req, res) => {
         blocked: cambiosBloqueados.map(c => c.tipo),
       }, 'Order updated via webhook (selective sync)');
 
-      // Siempre recalcular saldo y estado_pago después de cualquier cambio de pago o monto
+      // Recalcular total_pagado = pago_online_tn + pagos_locales, saldo y estado
       if ((cambioMonto && syncProducts) || (cambioPayment && syncPayment)) {
-        await pool.query(`
-          UPDATE orders_validated
-          SET
-            saldo = GREATEST(0, monto_tiendanube - total_pagado),
-            estado_pago = CASE
-              WHEN estado_pago IN ('reembolsado', 'anulado') THEN estado_pago
-              WHEN monto_tiendanube - total_pagado <= 0 THEN 'confirmado_total'
-              WHEN total_pagado > 0 THEN 'confirmado_parcial'
-              ELSE 'pendiente'
-            END
-          WHERE order_number = $1
-        `, [String(pedido.number)]);
+        await recalcularPagos(pool, String(pedido.number));
       }
 
       // Guardar en historial — logs separados por tipo de cambio
@@ -3987,45 +3926,10 @@ app.get('/confirmar/:id', async (req, res) => {
       [id]
     );
 
-    // 3️⃣ Recalcular total pagado using client
-    const compSumRes = await client.query(
-      `SELECT COALESCE(SUM(monto), 0) AS total FROM comprobantes WHERE order_number = $1 AND estado = 'confirmado'`,
-      [comprobante.order_number]
-    );
-    const efectivoSumRes = await client.query(
-      `SELECT COALESCE(SUM(monto), 0) AS total FROM pagos_efectivo WHERE order_number = $1`,
-      [comprobante.order_number]
-    );
-    const totalPagado = Number(compSumRes.rows[0].total) + Number(efectivoSumRes.rows[0].total);
-
-    // 4️⃣ Obtener monto y estado actual del pedido
-    const orderRes = await client.query(
-      `SELECT monto_tiendanube, estado_pedido FROM orders_validated WHERE order_number = $1`,
-      [comprobante.order_number]
-    );
-
-    const montoPedido = Number(orderRes.rows[0].monto_tiendanube);
-    const estadoPedidoActual = orderRes.rows[0].estado_pedido;
-    const saldo = montoPedido - totalPagado;
-
-    // 5️⃣ Definir estado_pago correcto
-    let estadoPago = 'pendiente';
-    if (saldo <= 0) {
-      estadoPago = 'confirmado_total';
-    } else if (totalPagado > 0) {
-      estadoPago = 'confirmado_parcial';
-    }
-
-    // 6️⃣ Calcular nuevo estado_pedido (lógica centralizada)
-    const nuevoEstadoPedido = calcularEstadoPedido(estadoPago, estadoPedidoActual);
-
-    // 7️⃣ Actualizar orden
-    await client.query(
-      `UPDATE orders_validated
-       SET total_pagado = $1, saldo = $2, estado_pago = $3, estado_pedido = $4
-       WHERE order_number = $5`,
-      [totalPagado, saldo, estadoPago, nuevoEstadoPedido, comprobante.order_number]
-    );
+    // 3️⃣ Recalcular pagos (centralizado: pago_online_tn + comprobantes + efectivo)
+    const pagoResult = await recalcularPagos(client, comprobante.order_number);
+    const { totalPagado, saldo, estadoPago } = pagoResult;
+    const nuevoEstadoPedido = pagoResult.estadoPedido;
 
     await client.query('COMMIT');
 
@@ -4216,47 +4120,11 @@ app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_p
     log.info({ requestId: req.requestId, orderNumber, pagoId }, 'Cash payment record inserted');
 
     /* ===============================
-       3️⃣ RECALCULAR TOTAL PAGADO (comprobantes + efectivo) using client
+       3️⃣ RECALCULAR PAGOS (centralizado: pago_online_tn + comprobantes + efectivo)
     ================================ */
-    const compSumRes = await client.query(
-      `SELECT COALESCE(SUM(monto), 0) AS total FROM comprobantes WHERE order_number = $1 AND estado = 'confirmado'`,
-      [orderNumber]
-    );
-    const efectivoSumRes = await client.query(
-      `SELECT COALESCE(SUM(monto), 0) AS total FROM pagos_efectivo WHERE order_number = $1`,
-      [orderNumber]
-    );
-    const totalPagado = Number(compSumRes.rows[0].total) + Number(efectivoSumRes.rows[0].total);
-    const saldo = montoTiendanube - totalPagado;
-
-    /* ===============================
-       4️⃣ DETERMINAR ESTADO DE PAGO
-    ================================ */
-    let estadoPago = 'pendiente';
-    const TOLERANCIA = 1000;
-
-    if (Math.abs(saldo) <= TOLERANCIA) {
-      estadoPago = 'confirmado_total';
-    } else if (saldo > 0) {
-      estadoPago = 'confirmado_parcial';
-    } else {
-      estadoPago = 'a_favor';
-    }
-
-    /* ===============================
-       5️⃣ CALCULAR ESTADO PEDIDO (lógica centralizada)
-    ================================ */
-    const nuevoEstadoPedido = calcularEstadoPedido(estadoPago, estadoPedidoActual);
-
-    /* ===============================
-       6️⃣ ACTUALIZAR ORDEN
-    ================================ */
-    await client.query(
-      `UPDATE orders_validated
-       SET total_pagado = $1, saldo = $2, estado_pago = $3, estado_pedido = $4
-       WHERE order_number = $5`,
-      [totalPagado, saldo, estadoPago, nuevoEstadoPedido, orderNumber]
-    );
+    const pagoResult = await recalcularPagos(client, orderNumber);
+    const { totalPagado, saldo, estadoPago } = pagoResult;
+    const nuevoEstadoPedido = pagoResult.estadoPedido;
 
     await client.query('COMMIT');
 

@@ -5,13 +5,13 @@ async function runReconciliation() {
   const results = { checked: 0, issues: [] };
 
   // 1. Check payment consistency
-  // Find orders where total_pagado != SUM(confirmed comprobantes + pagos_efectivo)
+  // total_pagado should equal pago_online_tn + SUM(comprobantes confirmados) + SUM(pagos_efectivo)
   try {
     const inconsistent = await pool.query(`
       SELECT
         ov.order_number,
         ov.total_pagado as recorded_total,
-        COALESCE(comp.total, 0) + COALESCE(ef.total, 0) as calculated_total
+        ov.pago_online_tn + COALESCE(comp.total, 0) + COALESCE(ef.total, 0) as calculated_total
       FROM orders_validated ov
       LEFT JOIN (
         SELECT order_number, SUM(monto) as total
@@ -24,7 +24,8 @@ async function runReconciliation() {
         GROUP BY order_number
       ) ef ON ov.order_number = ef.order_number
       WHERE ov.total_pagado > 0
-        AND ABS(ov.total_pagado - (COALESCE(comp.total, 0) + COALESCE(ef.total, 0))) > 1
+        AND ov.estado_pedido != 'cancelado'
+        AND ABS(ov.total_pagado - (ov.pago_online_tn + COALESCE(comp.total, 0) + COALESCE(ef.total, 0))) > 1
       LIMIT 50
     `);
 
