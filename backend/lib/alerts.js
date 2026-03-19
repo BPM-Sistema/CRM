@@ -1,4 +1,5 @@
 const axios = require('axios');
+const pool = require('../db');
 
 const ALERT_WEBHOOK_URL = process.env.ALERT_WEBHOOK_URL; // Slack or Discord webhook
 
@@ -8,10 +9,25 @@ const ALERT_LEVELS = {
   CRITICAL: 'critical'
 };
 
-async function sendAlert({ level, title, message, details = {} }) {
+async function persistAlert({ level, title, message, category, service, details }) {
+  try {
+    await pool.query(`
+      INSERT INTO system_alerts (level, category, title, message, service, metadata)
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `, [level, category || 'system', title, message, service || null, JSON.stringify(details || {})]);
+  } catch (err) {
+    console.error('[Alert] Failed to persist:', err.message);
+  }
+}
+
+async function sendAlert({ level, title, message, category, service, details = {} }) {
   console.log(`[ALERT][${level}] ${title}: ${message}`);
 
-  if (!ALERT_WEBHOOK_URL) return; // No webhook configured, just log
+  // Persist internally ALWAYS
+  await persistAlert({ level, title, message, category, service, details });
+
+  // Also send to external webhook if configured
+  if (!ALERT_WEBHOOK_URL) return;
 
   const color = level === 'critical' ? '#FF0000' : level === 'warning' ? '#FFA500' : '#36a64f';
 
@@ -44,6 +60,8 @@ const alerts = {
       level: ALERT_LEVELS.WARNING,
       title: 'Queue Backlog',
       message: `Cola ${queueName} tiene ${count} jobs pendientes`,
+      category: 'queue',
+      service: queueName,
       details: { queue: queueName, pending: count }
     });
   },
@@ -53,6 +71,8 @@ const alerts = {
       level: ALERT_LEVELS.CRITICAL,
       title: 'Job Failed (DLQ)',
       message: `Job ${jobId} en cola ${queueName} falló definitivamente`,
+      category: 'queue',
+      service: queueName,
       details: { queue: queueName, jobId, error: error?.substring(0, 200) }
     });
   },
@@ -62,6 +82,8 @@ const alerts = {
       level: ALERT_LEVELS.CRITICAL,
       title: 'Circuit Breaker Open',
       message: `Circuit breaker para ${serviceName} se abrió. Servicio degradado.`,
+      category: 'circuit_breaker',
+      service: serviceName,
       details: { service: serviceName }
     });
   },
@@ -71,6 +93,8 @@ const alerts = {
       level: ALERT_LEVELS.CRITICAL,
       title: 'Integration Down',
       message: `${serviceName} no responde`,
+      category: 'integration',
+      service: serviceName,
       details: { service: serviceName, error: error?.substring(0, 200) }
     });
   },
@@ -80,6 +104,8 @@ const alerts = {
       level: ALERT_LEVELS.CRITICAL,
       title: 'Payment Inconsistency',
       message: `Pedido ${orderNumber} tiene inconsistencia de pago`,
+      category: 'payment',
+      service: null,
       details: { orderNumber, ...details }
     });
   },
@@ -89,6 +115,8 @@ const alerts = {
       level: ALERT_LEVELS.CRITICAL,
       title: 'DB Pool Exhausted',
       message: 'Pool de conexiones DB está saturado',
+      category: 'database',
+      service: 'postgresql',
       details: stats
     });
   },
@@ -98,6 +126,8 @@ const alerts = {
       level: ALERT_LEVELS.WARNING,
       title: 'Sync Failure',
       message: `Sincronización desde ${source} falló`,
+      category: 'sync',
+      service: source,
       details: { source, error: error?.substring(0, 200) }
     });
   }

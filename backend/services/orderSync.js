@@ -4,6 +4,7 @@
  */
 
 const axios = require('axios');
+const { callTiendanube } = require('../lib/circuitBreaker');
 const pool = require('../db');
 const {
   addToQueue,
@@ -25,16 +26,15 @@ const BOTMAKER_CHANNEL_ID = process.env.BOTMAKER_CHANNEL_ID;
  */
 async function fetchOrderFromTiendaNube(orderId) {
   try {
-    const response = await axios.get(
-      `https://api.tiendanube.com/v1/${TIENDANUBE_STORE_ID}/orders/${orderId}`,
-      {
-        headers: {
-          authentication: `bearer ${TIENDANUBE_ACCESS_TOKEN}`,
-          'User-Agent': 'bpm-validator'
-        },
-        timeout: 10000
-      }
-    );
+    const response = await callTiendanube({
+      method: 'get',
+      url: `https://api.tiendanube.com/v1/${TIENDANUBE_STORE_ID}/orders/${orderId}`,
+      headers: {
+        authentication: `bearer ${TIENDANUBE_ACCESS_TOKEN}`,
+        'User-Agent': 'bpm-validator'
+      },
+      timeout: 10000
+    });
     return response.data;
   } catch (error) {
     console.error(`❌ Error obteniendo pedido ${orderId}:`, error.message);
@@ -58,17 +58,16 @@ async function fetchRecentOrders(limit = 50, sinceId = null) {
       params.since_id = sinceId;
     }
 
-    const response = await axios.get(
-      `https://api.tiendanube.com/v1/${TIENDANUBE_STORE_ID}/orders`,
-      {
-        headers: {
-          authentication: `bearer ${TIENDANUBE_ACCESS_TOKEN}`,
-          'User-Agent': 'bpm-validator'
-        },
-        params,
-        timeout: 45000
-      }
-    );
+    const response = await callTiendanube({
+      method: 'get',
+      url: `https://api.tiendanube.com/v1/${TIENDANUBE_STORE_ID}/orders`,
+      headers: {
+        authentication: `bearer ${TIENDANUBE_ACCESS_TOKEN}`,
+        'User-Agent': 'bpm-validator'
+      },
+      params,
+      timeout: 45000
+    });
 
     // Validar que sea array (TN puede devolver objeto de error)
     return Array.isArray(response.data) ? response.data : [];
@@ -421,20 +420,19 @@ async function testTiendanubeOrdersEndpoint() {
       const startTime = Date.now();
 
       try {
-        const response = await axios.get(
-          `https://api.tiendanube.com/v1/${TIENDANUBE_STORE_ID}/orders`,
-          {
-            headers: {
-              authentication: `bearer ${TIENDANUBE_ACCESS_TOKEN}`,
-              'User-Agent': 'bpm-validator'
-            },
-            params: {
-              per_page: perPage,
-              created_at_min: createdAtMin
-            },
-            timeout: 45000
-          }
-        );
+        const response = await callTiendanube({
+          method: 'get',
+          url: `https://api.tiendanube.com/v1/${TIENDANUBE_STORE_ID}/orders`,
+          headers: {
+            authentication: `bearer ${TIENDANUBE_ACCESS_TOKEN}`,
+            'User-Agent': 'bpm-validator'
+          },
+          params: {
+            per_page: perPage,
+            created_at_min: createdAtMin
+          },
+          timeout: 45000
+        });
 
         const duration = Date.now() - startTime;
         const payloadSize = JSON.stringify(response.data).length;

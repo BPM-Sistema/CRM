@@ -1,46 +1,66 @@
 /**
  * Rate limiting middleware for security
+ * Uses Redis store when available, falls back to in-memory store
  */
 
 const rateLimit = require('express-rate-limit');
+const { RedisStore } = require('rate-limit-redis');
+const { getRedisClient } = require('../lib/redis');
 
 // Skip rate limiting in test environment
 const skipInTest = process.env.NODE_ENV === 'test';
+
+/**
+ * Create a RedisStore for rate limiting if Redis is available.
+ * Returns undefined (fallback to in-memory) if Redis is not connected.
+ */
+function createStore(prefix) {
+  const client = getRedisClient();
+  if (!client) return undefined;
+  return new RedisStore({
+    sendCommand: (...args) => client.call(...args),
+    prefix: `rl:${prefix}:`,
+  });
+}
 
 // Login: 5 attempts per 15 minutes per IP
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5,
+  store: createStore('login'),
   message: { error: 'Demasiados intentos de login. Intenta de nuevo en 15 minutos.' },
   standardHeaders: true,
   legacyHeaders: false,
   skip: () => skipInTest,
 });
 
-// Public upload: 20 uploads per hour per IP
+// Public upload: 200 uploads per hour per IP
 const uploadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 20,
+  max: 200,
+  store: createStore('upload'),
   message: { error: 'Demasiadas subidas. Intenta de nuevo más tarde.' },
   standardHeaders: true,
   legacyHeaders: false,
   skip: () => skipInTest,
 });
 
-// Order validation: 30 requests per hour per IP
+// Order validation: 100 requests per hour per IP
 const validationLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 30,
+  max: 100,
+  store: createStore('validation'),
   message: { error: 'Demasiadas consultas. Intenta de nuevo más tarde.' },
   standardHeaders: true,
   legacyHeaders: false,
   skip: () => skipInTest,
 });
 
-// Shipping form: 10 submissions per hour per IP
+// Shipping form: 50 submissions per hour per IP
 const shippingFormLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10,
+  max: 50,
+  store: createStore('shipping'),
   message: { error: 'Demasiados envíos. Intenta de nuevo más tarde.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -51,6 +71,7 @@ const shippingFormLimiter = rateLimit({
 const leadsLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 20,
+  store: createStore('leads'),
   message: { error: 'Demasiados envíos. Intenta de nuevo más tarde.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -61,6 +82,7 @@ const leadsLimiter = rateLimit({
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 100,
+  store: createStore('api'),
   message: { error: 'Demasiadas solicitudes. Intenta de nuevo en un momento.' },
   standardHeaders: true,
   legacyHeaders: false,

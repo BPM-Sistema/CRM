@@ -26,6 +26,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
+const { callTiendanube, callBotmaker } = require('./lib/circuitBreaker');
 
 const supabase = require('./supabase');
 const { calcularEstadoCuenta } = require('./utils/calcularEstadoCuenta');
@@ -257,16 +258,15 @@ async function obtenerEtiquetasEnvioNube(tnOrderId) {
 
   try {
     // 1. Obtener fulfillment orders del pedido
-    const response = await axios.get(
-      `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}/fulfillment-orders`,
-      {
-        headers: {
-          authentication: `bearer ${token}`,
-          'User-Agent': 'bpm-validator'
-        },
-        timeout: 15000
-      }
-    );
+    const response = await callTiendanube({
+      method: 'get',
+      url: `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}/fulfillment-orders`,
+      headers: {
+        authentication: `bearer ${token}`,
+        'User-Agent': 'bpm-validator'
+      },
+      timeout: 15000
+    });
 
     const fulfillmentOrders = response.data;
 
@@ -298,18 +298,17 @@ async function obtenerEtiquetasEnvioNube(tnOrderId) {
 
         try {
           // POST al endpoint correcto de creación de labels
-          const createRes = await axios.post(
-            `https://api.tiendanube.com/v1/${storeId}/fulfillment-orders/labels`,
-            [{ id: fo.id }],
-            {
-              headers: {
-                authentication: `bearer ${token}`,
-                'Content-Type': 'application/json',
-                'User-Agent': 'bpm-validator'
-              },
-              timeout: 30000
-            }
-          );
+          const createRes = await callTiendanube({
+            method: 'post',
+            url: `https://api.tiendanube.com/v1/${storeId}/fulfillment-orders/labels`,
+            data: [{ id: fo.id }],
+            headers: {
+              authentication: `bearer ${token}`,
+              'Content-Type': 'application/json',
+              'User-Agent': 'bpm-validator'
+            },
+            timeout: 30000
+          });
 
           console.log(`✅ Label solicitado:`, JSON.stringify(createRes.data));
 
@@ -318,13 +317,12 @@ async function obtenerEtiquetasEnvioNube(tnOrderId) {
           for (let attempt = 0; attempt < maxAttempts; attempt++) {
             await new Promise(resolve => setTimeout(resolve, 1000));
 
-            const checkRes = await axios.get(
-              `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}/fulfillment-orders`,
-              {
-                headers: { authentication: `bearer ${token}`, 'User-Agent': 'bpm-validator' },
-                timeout: 15000
-              }
-            );
+            const checkRes = await callTiendanube({
+              method: 'get',
+              url: `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}/fulfillment-orders`,
+              headers: { authentication: `bearer ${token}`, 'User-Agent': 'bpm-validator' },
+              timeout: 15000
+            });
 
             const updatedFO = checkRes.data.find(f => f.id === fo.id);
             readyLabel = updatedFO?.labels?.find(l => l.status === 'READY_TO_USE');
@@ -346,18 +344,17 @@ async function obtenerEtiquetasEnvioNube(tnOrderId) {
       if (readyLabel) {
         try {
           // POST al endpoint de download para obtener URL presignada
-          const downloadRes = await axios.post(
-            `https://api.tiendanube.com/v1/${storeId}/fulfillment-orders/${fo.id}/labels/${readyLabel.id}/download`,
-            {},
-            {
-              headers: {
-                authentication: `bearer ${token}`,
-                'Content-Type': 'application/json',
-                'User-Agent': 'bpm-validator'
-              },
-              timeout: 15000
-            }
-          );
+          const downloadRes = await callTiendanube({
+            method: 'post',
+            url: `https://api.tiendanube.com/v1/${storeId}/fulfillment-orders/${fo.id}/labels/${readyLabel.id}/download`,
+            data: {},
+            headers: {
+              authentication: `bearer ${token}`,
+              'Content-Type': 'application/json',
+              'User-Agent': 'bpm-validator'
+            },
+            timeout: 15000
+          });
 
           // La respuesta es un array con URLs presignadas
           const labelDoc = downloadRes.data.find(d => d.type === 'LABEL');
@@ -399,16 +396,15 @@ async function obtenerEtiquetasEnvioNube(tnOrderId) {
 ===================================================== */
 async function obtenerPedidoPorId(storeId, orderId) {
   try {
-    const response = await axios.get(
-      `https://api.tiendanube.com/v1/${storeId}/orders/${orderId}`,
-      {
-        headers: {
-          authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
-          'User-Agent': 'bpm-validator'
-        },
-        timeout: 10000 // 10 segundos timeout
-      }
-    );
+    const response = await callTiendanube({
+      method: 'get',
+      url: `https://api.tiendanube.com/v1/${storeId}/orders/${orderId}`,
+      headers: {
+        authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
+        'User-Agent': 'bpm-validator'
+      },
+      timeout: 10000
+    });
     return response.data;
   } catch (error) {
     console.error(`❌ Error obteniendo pedido ${orderId} de Tiendanube:`, error.message);
@@ -465,12 +461,29 @@ async function guardarProductos(orderNumber, products) {
     console.log(`🗑️ Eliminados ${idsToDelete.length} productos removidos del pedido #${orderNumber}`);
   }
 
-  // 4. UPSERT productos actuales
-  for (const p of products) {
+  // 4. UPSERT productos en batch
+  if (products.length > 0) {
     try {
+      const values = [];
+      const params = [];
+      products.forEach((p, i) => {
+        const offset = i * 8;
+        values.push(`($${offset+1}, $${offset+2}, $${offset+3}, $${offset+4}, $${offset+5}, $${offset+6}, $${offset+7}, $${offset+8})`);
+        params.push(
+          orderNumber,
+          p.product_id || null,
+          p.variant_id || null,
+          p.name,
+          p.variant_values ? p.variant_values.join(' / ') : null,
+          p.quantity,
+          Number(p.price),
+          p.sku || null
+        );
+      });
+
       await pool.query(`
         INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ${values.join(', ')}
         ON CONFLICT (order_number, product_id, variant_id_safe)
         DO UPDATE SET
           name = EXCLUDED.name,
@@ -478,22 +491,41 @@ async function guardarProductos(orderNumber, products) {
           quantity = EXCLUDED.quantity,
           price = EXCLUDED.price,
           sku = EXCLUDED.sku
-      `, [
-        orderNumber,
-        p.product_id || null,
-        p.variant_id || null,
-        p.name,
-        p.variant_values ? p.variant_values.join(' / ') : null,
-        p.quantity,
-        Number(p.price),
-        p.sku || null
-      ]);
-      result.saved++;
-    } catch (err) {
-      const errorMsg = `${err.message} | Producto: ${p.name} (${p.product_id})`;
-      result.errors.push(errorMsg);
-      console.error(`❌ Error INSERT producto en #${orderNumber}:`, err.message);
-      console.error('   Producto:', JSON.stringify(p));
+      `, params);
+      result.saved = products.length;
+    } catch (batchErr) {
+      console.warn(`⚠️ Batch insert falló para #${orderNumber}, fallback a individual:`, batchErr.message);
+      // Fallback: insert individual
+      for (const p of products) {
+        try {
+          await pool.query(`
+            INSERT INTO order_products (order_number, product_id, variant_id, name, variant, quantity, price, sku)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (order_number, product_id, variant_id_safe)
+            DO UPDATE SET
+              name = EXCLUDED.name,
+              variant = EXCLUDED.variant,
+              quantity = EXCLUDED.quantity,
+              price = EXCLUDED.price,
+              sku = EXCLUDED.sku
+          `, [
+            orderNumber,
+            p.product_id || null,
+            p.variant_id || null,
+            p.name,
+            p.variant_values ? p.variant_values.join(' / ') : null,
+            p.quantity,
+            Number(p.price),
+            p.sku || null
+          ]);
+          result.saved++;
+        } catch (err) {
+          const errorMsg = `${err.message} | Producto: ${p.name} (${p.product_id})`;
+          result.errors.push(errorMsg);
+          console.error(`❌ Error INSERT producto en #${orderNumber}:`, err.message);
+          console.error('   Producto:', JSON.stringify(p));
+        }
+      }
     }
   }
 
@@ -2226,17 +2258,16 @@ app.post('/orders/:orderNumber/resync', authenticate, requirePermission('orders.
     // 2. Si no tenemos tn_order_id, buscar en TiendaNube por número
     if (!tnOrderId) {
       const storeId = process.env.TIENDANUBE_STORE_ID;
-      const searchRes = await axios.get(
-        `https://api.tiendanube.com/v1/${storeId}/orders`,
-        {
-          headers: {
-            authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
-            'User-Agent': 'bpm-validator'
-          },
-          params: { q: orderNumber },
-          timeout: 10000
-        }
-      );
+      const searchRes = await callTiendanube({
+        method: 'get',
+        url: `https://api.tiendanube.com/v1/${storeId}/orders`,
+        headers: {
+          authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
+          'User-Agent': 'bpm-validator'
+        },
+        params: { q: orderNumber },
+        timeout: 10000
+      });
 
       const found = searchRes.data.find(o => String(o.number) === orderNumber);
       if (!found) {
@@ -2253,16 +2284,15 @@ app.post('/orders/:orderNumber/resync', authenticate, requirePermission('orders.
 
     // 3. Obtener pedido completo de TiendaNube
     const storeId = process.env.TIENDANUBE_STORE_ID;
-    const pedidoRes = await axios.get(
-      `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}`,
-      {
-        headers: {
-          authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
-          'User-Agent': 'bpm-validator'
-        },
-        timeout: 10000
-      }
-    );
+    const pedidoRes = await callTiendanube({
+      method: 'get',
+      url: `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}`,
+      headers: {
+        authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
+        'User-Agent': 'bpm-validator'
+      },
+      timeout: 10000
+    });
 
     const pedido = pedidoRes.data;
     const productosTN = pedido.products || [];
@@ -2356,16 +2386,15 @@ app.post('/admin/resync-inconsistent-orders', authenticate, requirePermission('u
 
     for (const { order_number, tn_order_id } of orders) {
       try {
-        const pedidoRes = await axios.get(
-          `https://api.tiendanube.com/v1/${storeId}/orders/${tn_order_id}`,
-          {
-            headers: {
-              authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
-              'User-Agent': 'bpm-validator'
-            },
-            timeout: 10000
-          }
-        );
+        const pedidoRes = await callTiendanube({
+          method: 'get',
+          url: `https://api.tiendanube.com/v1/${storeId}/orders/${tn_order_id}`,
+          headers: {
+            authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
+            'User-Agent': 'bpm-validator'
+          },
+          timeout: 10000
+        });
 
         const pedido = pedidoRes.data;
         await guardarProductos(order_number, pedido.products || []);
@@ -2512,16 +2541,15 @@ app.post('/admin/resync-all-orders', authenticate, requirePermission('users.view
 
       try {
         // Obtener pedido de TiendaNube
-        const pedidoRes = await axios.get(
-          `https://api.tiendanube.com/v1/${storeId}/orders/${tn_order_id}`,
-          {
-            headers: {
-              authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
-              'User-Agent': 'bpm-validator'
-            },
-            timeout: 10000
-          }
-        );
+        const pedidoRes = await callTiendanube({
+          method: 'get',
+          url: `https://api.tiendanube.com/v1/${storeId}/orders/${tn_order_id}`,
+          headers: {
+            authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
+            'User-Agent': 'bpm-validator'
+          },
+          timeout: 10000
+        });
 
         const pedido = pedidoRes.data;
 
@@ -2611,16 +2639,15 @@ app.post('/admin/sync-cancelled', authenticate, requirePermission('users.view'),
 
     for (const { order_number, tn_order_id } of ourOrders) {
       try {
-        const tnResponse = await axios.get(
-          `https://api.tiendanube.com/v1/${storeId}/orders/${tn_order_id}`,
-          {
-            headers: {
-              authentication: `bearer ${accessToken}`,
-              'User-Agent': 'bpm-validator'
-            },
-            timeout: 10000
-          }
-        );
+        const tnResponse = await callTiendanube({
+          method: 'get',
+          url: `https://api.tiendanube.com/v1/${storeId}/orders/${tn_order_id}`,
+          headers: {
+            authentication: `bearer ${accessToken}`,
+            'User-Agent': 'bpm-validator'
+          },
+          timeout: 10000
+        });
 
         if (tnResponse.data.status === 'cancelled') {
           toUpdate.push(order_number);
@@ -3435,18 +3462,17 @@ app.post('/validate-order', validationLimiter, async (req, res) => {
     const storeId = process.env.TIENDANUBE_STORE_ID;
     const accessToken = process.env.TIENDANUBE_ACCESS_TOKEN;
 
-    const tnResponse = await axios.get(
-      `https://api.tiendanube.com/v1/${storeId}/orders`,
-      {
-        headers: {
-          authentication: `bearer ${accessToken}`, // ⚠️ minúscula
-          'User-Agent': 'bpm-validator'
-        },
-        params: {
-          q: sanitized
-        }
+    const tnResponse = await callTiendanube({
+      method: 'get',
+      url: `https://api.tiendanube.com/v1/${storeId}/orders`,
+      headers: {
+        authentication: `bearer ${accessToken}`,
+        'User-Agent': 'bpm-validator'
+      },
+      params: {
+        q: sanitized
       }
-    );
+    });
 
     if (!tnResponse.data || tnResponse.data.length === 0) {
       return res.status(404).json({ error: 'Pedido no encontrado en Tiendanube' });
@@ -3531,16 +3557,15 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     /* ===============================
        1️⃣ OBTENER PEDIDO DESDE TIENDANUBE
     ================================ */
-    const tnResponse = await axios.get(
-      `https://api.tiendanube.com/v1/${process.env.TIENDANUBE_STORE_ID}/orders`,
-      {
-        headers: {
-          authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
-          'User-Agent': 'bpm-validator'
-        },
-        params: { q: orderNumber }
-      }
-    );
+    const tnResponse = await callTiendanube({
+      method: 'get',
+      url: `https://api.tiendanube.com/v1/${process.env.TIENDANUBE_STORE_ID}/orders`,
+      headers: {
+        authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
+        'User-Agent': 'bpm-validator'
+      },
+      params: { q: orderNumber }
+    });
 
     if (!tnResponse.data || tnResponse.data.length === 0) {
       return res.status(404).json({ error: 'El número de pedido no existe. Verificá que esté bien escrito.' });
@@ -4116,17 +4141,16 @@ async function sincronizarEstadoTiendanube(tnOrderId, orderNumber, tnStatus, lab
   }
 
   try {
-    await axios.put(
-      `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}`,
-      { status: tnStatus },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authentication': `bearer ${token}`,
-          'User-Agent': 'BPM Administrador (netubpm@gmail.com)'
-        }
+    await callTiendanube({
+      method: 'put',
+      url: `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}`,
+      data: { status: tnStatus },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authentication': `bearer ${token}`,
+        'User-Agent': 'BPM Administrador (netubpm@gmail.com)'
       }
-    );
+    });
     console.log(`✅ [Orden ${orderNumber}] Marcada como ${labelEs} en Tiendanube (tn_order_id: ${tnOrderId})`);
     return true;
   } catch (err) {
@@ -4346,6 +4370,7 @@ const waspyRoutes = require('./routes/waspy');
 const integrationsRoutes = require('./routes/integrations');
 const healthRoutes = require('./routes/health');
 const adminStatusRoutes = require('./routes/admin-status');
+const systemAlertsRoutes = require('./routes/system-alerts');
 // AI Bot routes — loaded defensively to never crash BPM startup
 let aiBotRoutes;
 try {
@@ -4365,6 +4390,7 @@ app.use('/waspy', waspyRoutes);
 app.use('/integrations', integrationsRoutes);
 app.use('/health', healthRoutes);
 app.use('/admin/status', adminStatusRoutes);
+app.use('/system-alerts', systemAlertsRoutes);
 if (aiBotRoutes) app.use('/ai-bot', aiBotRoutes);
 app.use('/admin/queues', bullBoardAuth, bullBoardAdapter.getRouter());
 
@@ -4845,6 +4871,8 @@ app.get('/customers', authenticate, requirePermission('customers.view'), async (
 // Scheduler: ejecutar sync cada 15 minutos
 const SYNC_INTERVAL = 15 * 60 * 1000; // 15 minutos
 let syncInterval = null;
+let cleanupInterval = null;
+let reconciliationInterval = null;
 
 function startSyncScheduler() {
   if (syncInterval) return;
@@ -4873,6 +4901,22 @@ function startSyncScheduler() {
       startImageSyncScheduler(5 * 60 * 60 * 1000); // cada 5 horas
     }, 60000);
   }
+
+  // Cleanup: limpiar registros antiguos una vez al día
+  const { runCleanup } = require('./lib/cleanup');
+  const CLEANUP_INTERVAL = 24 * 60 * 60 * 1000; // 24 horas
+  // Primera ejecución después de 5 minutos
+  setTimeout(() => {
+    runCleanup().catch(err => {
+      console.error('[Cleanup] Error in initial cleanup:', err.message);
+    });
+  }, 5 * 60 * 1000);
+  // Luego cada 24 horas
+  cleanupInterval = setInterval(() => {
+    runCleanup().catch(err => {
+      console.error('[Cleanup] Error in scheduled cleanup:', err.message);
+    });
+  }, CLEANUP_INTERVAL);
 }
 
 /* =====================================================
@@ -5905,6 +5949,39 @@ process.on('uncaughtException', (error) => {
   setTimeout(() => process.exit(1), 2000);
 });
 
+// Reconciliation scheduler: cada 30 minutos
+function startReconciliationScheduler() {
+  if (reconciliationInterval) return;
+
+  // Primera ejecucion despues de 2 minutos
+  setTimeout(async () => {
+    try {
+      const { runReconciliation } = require('./workers/reconciliation.worker');
+      const results = await runReconciliation();
+      if (results.issues.length > 0) {
+        console.log(`[Reconciliation] ${results.issues.length} issues found`);
+      }
+    } catch (err) {
+      console.error('[Reconciliation] Error:', err.message);
+    }
+  }, 2 * 60 * 1000);
+
+  // Luego cada 30 minutos
+  reconciliationInterval = setInterval(async () => {
+    try {
+      const { runReconciliation } = require('./workers/reconciliation.worker');
+      const results = await runReconciliation();
+      if (results.issues.length > 0) {
+        console.log(`[Reconciliation] ${results.issues.length} issues found`);
+      }
+    } catch (err) {
+      console.error('[Reconciliation] Error:', err.message);
+    }
+  }, 30 * 60 * 1000);
+
+  console.log('[Reconciliation] Scheduler started (every 30 min, first run in 2 min)');
+}
+
 /* =====================================================
    SERVER
 ===================================================== */
@@ -5919,6 +5996,7 @@ if (process.env.NODE_ENV !== 'test') {
 
     // Iniciar scheduler de sincronización
     startSyncScheduler();
+    startReconciliationScheduler();
   });
 }
 
@@ -5937,6 +6015,8 @@ function gracefulShutdown(signal) {
 
   // Clear schedulers
   if (syncInterval) clearInterval(syncInterval);
+  if (cleanupInterval) clearInterval(cleanupInterval);
+  if (reconciliationInterval) clearInterval(reconciliationInterval);
 
   // Release sync lock if held
   releaseSyncLock().catch(() => {});

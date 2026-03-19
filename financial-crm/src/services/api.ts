@@ -1955,3 +1955,71 @@ export async function autoConfirmarBanco(movimientos: unknown[]): Promise<AutoCo
   if (!response.ok) throw new Error(data.error || 'Error al procesar conciliación');
   return data;
 }
+
+// =====================================================
+// System Alerts
+// =====================================================
+
+export interface SystemAlert {
+  id: number;
+  level: 'info' | 'warning' | 'critical';
+  category: string;
+  title: string;
+  message: string;
+  service: string | null;
+  metadata: Record<string, any>;
+  status: 'open' | 'acknowledged' | 'resolved';
+  acknowledged_by_name: string | null;
+  resolved_by_name: string | null;
+  created_at: string;
+}
+
+export interface AlertSummary {
+  open_count: number;
+  critical_open: number;
+  warning_open: number;
+  acknowledged_count: number;
+  last_24h: number;
+}
+
+export async function fetchSystemAlerts(params?: { status?: string; level?: string; limit?: number }): Promise<{ total: number; alerts: SystemAlert[] }> {
+  const query = new URLSearchParams();
+  if (params?.status) query.set('status', params.status);
+  if (params?.level) query.set('level', params.level);
+  if (params?.limit) query.set('limit', String(params.limit));
+  const response = await authFetch(`${API_BASE_URL}/system-alerts?${query.toString()}`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al obtener alertas');
+  return data;
+}
+
+export async function fetchAlertSummary(): Promise<AlertSummary> {
+  const response = await authFetch(`${API_BASE_URL}/system-alerts/summary`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al obtener resumen de alertas');
+  return data;
+}
+
+export async function acknowledgeAlert(id: number): Promise<void> {
+  const response = await authFetch(`${API_BASE_URL}/system-alerts/${id}/acknowledge`, { method: 'PATCH' });
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Error al reconocer alerta');
+  }
+}
+
+export async function resolveAlert(id: number): Promise<void> {
+  const response = await authFetch(`${API_BASE_URL}/system-alerts/${id}/resolve`, { method: 'PATCH' });
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Error al resolver alerta');
+  }
+}
+
+export async function resolveAllAlerts(): Promise<void> {
+  const response = await authFetch(`${API_BASE_URL}/system-alerts/resolve-all`, { method: 'POST' });
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Error al resolver alertas');
+  }
+}

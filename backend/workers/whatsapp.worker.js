@@ -9,6 +9,7 @@
 
 const { Worker } = require('bullmq');
 const axios = require('axios');
+const { callBotmaker } = require('../lib/circuitBreaker');
 const pool = require('../db');
 const { workerLogger: log } = require('../lib/logger');
 const { whatsapp: waConfig, isEnabled: isIntegrationEnabled } = require('../services/integrationConfig');
@@ -81,9 +82,10 @@ async function processWhatsAppJob(job) {
   // 4. Enviar via Botmaker API
   const contactIdClean = telefono.replace('+', '');
 
-  const response = await axios.post(
-    'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
-    {
+  const response = await callBotmaker({
+    method: 'post',
+    url: 'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
+    data: {
       chat: {
         channelId: process.env.BOTMAKER_CHANNEL_ID,
         contactId: contactIdClean
@@ -91,14 +93,12 @@ async function processWhatsAppJob(job) {
       intentIdOrName: plantillaFinal,
       variables
     },
-    {
-      headers: {
-        'access-token': process.env.BOTMAKER_ACCESS_TOKEN,
-        'Content-Type': 'application/json'
-      },
-      timeout: 15000
-    }
-  );
+    headers: {
+      'access-token': process.env.BOTMAKER_ACCESS_TOKEN,
+      'Content-Type': 'application/json'
+    },
+    timeout: 15000
+  });
 
   // 5. Guardar en whatsapp_messages para tracking
   const botmakerRequestId = response.data?.requestId || requestId;

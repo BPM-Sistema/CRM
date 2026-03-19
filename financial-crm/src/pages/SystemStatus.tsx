@@ -22,9 +22,20 @@ import {
   ChevronDown,
   ChevronUp,
   Zap,
+  Bell,
+  Shield,
+  CheckCheck,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { authFetch as apiAuthFetch } from '../services/api';
+import {
+  authFetch as apiAuthFetch,
+  fetchSystemAlerts,
+  fetchAlertSummary,
+  acknowledgeAlert,
+  resolveAlert,
+  resolveAllAlerts,
+} from '../services/api';
+import type { SystemAlert, AlertSummary } from '../services/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -186,10 +197,30 @@ export default function SystemStatus() {
   const [dismissing, setDismissing] = useState(false);
   const [showIncidents, setShowIncidents] = useState(true);
   const [showQueues, setShowQueues] = useState(true);
+  const [showAlerts, setShowAlerts] = useState(true);
+  const [alerts, setAlerts] = useState<SystemAlert[]>([]);
+  const [alertSummary, setAlertSummary] = useState<AlertSummary | null>(null);
+  const [alertFilter, setAlertFilter] = useState<'open' | 'acknowledged' | 'all'>('open');
+  const [alertActionLoading, setAlertActionLoading] = useState<number | null>(null);
+  const [resolvingAll, setResolvingAll] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
   const canView = hasPermission('integrations.view');
   const canUpdate = hasPermission('integrations.update');
+
+  const loadAlerts = useCallback(async (statusFilter?: string) => {
+    try {
+      const filterStatus = statusFilter || (alertFilter === 'all' ? undefined : alertFilter);
+      const [alertsData, summaryData] = await Promise.all([
+        fetchSystemAlerts({ status: filterStatus, limit: 50 }).catch(() => ({ total: 0, alerts: [] })),
+        fetchAlertSummary().catch(() => null),
+      ]);
+      setAlerts(alertsData.alerts || []);
+      if (summaryData) setAlertSummary(summaryData);
+    } catch {
+      // silently fail - alerts are secondary
+    }
+  }, [alertFilter]);
 
   const loadAll = useCallback(async () => {
     setError(null);
@@ -208,7 +239,8 @@ export default function SystemStatus() {
     } finally {
       setLoading(false);
     }
-  }, []);
+    await loadAlerts();
+  }, [loadAlerts]);
 
   useEffect(() => {
     if (!canView) return;
@@ -241,6 +273,48 @@ export default function SystemStatus() {
     } finally {
       setDismissing(false);
     }
+  };
+
+  const handleAcknowledgeAlert = async (id: number) => {
+    setAlertActionLoading(id);
+    try {
+      await acknowledgeAlert(id);
+      await loadAlerts();
+    } catch (err) {
+      console.error('Error acknowledging alert:', err);
+    } finally {
+      setAlertActionLoading(null);
+    }
+  };
+
+  const handleResolveAlert = async (id: number) => {
+    setAlertActionLoading(id);
+    try {
+      await resolveAlert(id);
+      await loadAlerts();
+    } catch (err) {
+      console.error('Error resolving alert:', err);
+    } finally {
+      setAlertActionLoading(null);
+    }
+  };
+
+  const handleResolveAllAlerts = async () => {
+    setResolvingAll(true);
+    try {
+      await resolveAllAlerts();
+      await loadAlerts();
+    } catch (err) {
+      console.error('Error resolving all alerts:', err);
+    } finally {
+      setResolvingAll(false);
+    }
+  };
+
+  const handleAlertFilterChange = async (filter: 'open' | 'acknowledged' | 'all') => {
+    setAlertFilter(filter);
+    const filterStatus = filter === 'all' ? undefined : filter;
+    await loadAlerts(filterStatus);
   };
 
   if (!canView) {
@@ -601,6 +675,181 @@ export default function SystemStatus() {
                           </div>
                           <p className="text-sm text-neutral-800 break-words">{inc.message}</p>
                         </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* System Alerts */}
+        <div className="bg-white rounded-xl border border-neutral-200">
+          <button
+            onClick={() => setShowAlerts(!showAlerts)}
+            className="w-full flex items-center justify-between p-5 text-left"
+          >
+            <div className="flex items-center gap-2">
+              <Bell size={18} className="text-neutral-600" />
+              <h3 className="font-semibold text-neutral-900">Alertas del Sistema</h3>
+              {alertSummary && alertSummary.open_count > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                  {alertSummary.open_count} abiertas
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {showAlerts ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+            </div>
+          </button>
+
+          {showAlerts && (
+            <div className="px-5 pb-5">
+              {/* Alert Summary */}
+              {alertSummary && (
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                  <div className="bg-red-50 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-red-700">{alertSummary.critical_open}</p>
+                    <p className="text-xs text-red-600">Criticas</p>
+                  </div>
+                  <div className="bg-yellow-50 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-yellow-700">{alertSummary.warning_open}</p>
+                    <p className="text-xs text-yellow-600">Warnings</p>
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-blue-700">{alertSummary.open_count}</p>
+                    <p className="text-xs text-blue-600">Abiertas</p>
+                  </div>
+                  <div className="bg-neutral-50 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-neutral-700">{alertSummary.acknowledged_count}</p>
+                    <p className="text-xs text-neutral-600">Reconocidas</p>
+                  </div>
+                  <div className="bg-neutral-50 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-neutral-700">{alertSummary.last_24h}</p>
+                    <p className="text-xs text-neutral-600">Ultimas 24h</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Filter + Resolve All */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-1 bg-neutral-100 rounded-lg p-0.5">
+                  {(['open', 'acknowledged', 'all'] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => handleAlertFilterChange(f)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                        alertFilter === f
+                          ? 'bg-white text-neutral-900 shadow-sm'
+                          : 'text-neutral-500 hover:text-neutral-700'
+                      }`}
+                    >
+                      {f === 'open' ? 'Abiertas' : f === 'acknowledged' ? 'Reconocidas' : 'Todas'}
+                    </button>
+                  ))}
+                </div>
+                {alerts.length > 0 && canUpdate && (
+                  <button
+                    onClick={handleResolveAllAlerts}
+                    disabled={resolvingAll}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors disabled:opacity-50"
+                  >
+                    <CheckCheck size={14} className={resolvingAll ? 'animate-spin' : ''} />
+                    {resolvingAll ? 'Resolviendo...' : 'Resolver todas'}
+                  </button>
+                )}
+              </div>
+
+              {/* Alert List */}
+              {alerts.length === 0 ? (
+                <div className="flex items-center gap-2 text-sm text-neutral-500 py-4">
+                  <CheckCircle2 size={16} className="text-green-500" />
+                  Sin alertas {alertFilter === 'open' ? 'abiertas' : alertFilter === 'acknowledged' ? 'reconocidas' : ''}
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {alerts.map((alert) => {
+                    const levelColors = {
+                      critical: 'bg-red-50 border-red-100',
+                      warning: 'bg-yellow-50 border-yellow-100',
+                      info: 'bg-blue-50 border-blue-100',
+                    };
+                    const levelIconColors = {
+                      critical: 'text-red-500',
+                      warning: 'text-yellow-500',
+                      info: 'text-blue-500',
+                    };
+                    const levelBadgeColors = {
+                      critical: 'bg-red-100 text-red-800',
+                      warning: 'bg-yellow-100 text-yellow-800',
+                      info: 'bg-blue-100 text-blue-800',
+                    };
+                    const statusBadgeColors = {
+                      open: 'bg-red-100 text-red-700',
+                      acknowledged: 'bg-yellow-100 text-yellow-700',
+                      resolved: 'bg-green-100 text-green-700',
+                    };
+                    const LevelIcon = alert.level === 'critical' ? XOctagon : alert.level === 'warning' ? AlertTriangle : AlertCircle;
+
+                    return (
+                      <div key={alert.id} className={`flex items-start gap-3 p-3 rounded-lg border ${levelColors[alert.level]}`}>
+                        <LevelIcon size={16} className={`${levelIconColors[alert.level]} shrink-0 mt-0.5`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                            <span className={`px-1.5 py-0.5 rounded text-xs font-medium uppercase ${levelBadgeColors[alert.level]}`}>
+                              {alert.level}
+                            </span>
+                            <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${statusBadgeColors[alert.status]}`}>
+                              {alert.status === 'open' ? 'abierta' : alert.status === 'acknowledged' ? 'reconocida' : 'resuelta'}
+                            </span>
+                            {alert.service && (
+                              <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-600">
+                                {alert.service}
+                              </span>
+                            )}
+                            <span className="px-1.5 py-0.5 rounded text-xs bg-neutral-100 text-neutral-500">
+                              {alert.category}
+                            </span>
+                            <span className="text-xs text-neutral-400">
+                              {formatTimeAgo(alert.created_at)}
+                            </span>
+                          </div>
+                          <p className="text-sm font-medium text-neutral-900">{alert.title}</p>
+                          <p className="text-sm text-neutral-700 mt-0.5">{alert.message}</p>
+                          {alert.acknowledged_by_name && (
+                            <p className="text-xs text-neutral-400 mt-1">
+                              Reconocida por {alert.acknowledged_by_name}
+                            </p>
+                          )}
+                          {alert.resolved_by_name && (
+                            <p className="text-xs text-neutral-400 mt-0.5">
+                              Resuelta por {alert.resolved_by_name}
+                            </p>
+                          )}
+                        </div>
+                        {canUpdate && alert.status !== 'resolved' && (
+                          <div className="flex flex-col gap-1 shrink-0">
+                            {alert.status === 'open' && (
+                              <button
+                                onClick={() => handleAcknowledgeAlert(alert.id)}
+                                disabled={alertActionLoading === alert.id}
+                                className="flex items-center gap-1 px-2 py-1 text-xs bg-yellow-50 text-yellow-700 rounded-md hover:bg-yellow-100 disabled:opacity-50 border border-yellow-200"
+                              >
+                                <Eye size={12} />
+                                Reconocer
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleResolveAlert(alert.id)}
+                              disabled={alertActionLoading === alert.id}
+                              className="flex items-center gap-1 px-2 py-1 text-xs bg-green-50 text-green-700 rounded-md hover:bg-green-100 disabled:opacity-50 border border-green-200"
+                            >
+                              <Shield size={12} />
+                              Resolver
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

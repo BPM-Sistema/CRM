@@ -6,6 +6,7 @@
  */
 
 const axios = require('axios');
+const { callBotmaker } = require('./circuitBreaker');
 const pool = require('../db');
 const { whatsapp: waConfig, isEnabled: isIntegrationEnabled } = require('../services/integrationConfig');
 const { apiLogger: log } = require('./logger');
@@ -89,9 +90,10 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNu
   const contactIdClean = telefono.replace('+', '');
 
   try {
-    const response = await axios.post(
-      'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
-      {
+    const response = await callBotmaker({
+      method: 'post',
+      url: 'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
+      data: {
         chat: {
           channelId: process.env.BOTMAKER_CHANNEL_ID,
           contactId: contactIdClean
@@ -99,13 +101,11 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNu
         intentIdOrName: plantillaFinal,
         variables
       },
-      {
-        headers: {
-          'access-token': process.env.BOTMAKER_ACCESS_TOKEN,
-          'Content-Type': 'application/json'
-        }
+      headers: {
+        'access-token': process.env.BOTMAKER_ACCESS_TOKEN,
+        'Content-Type': 'application/json'
       }
-    );
+    });
 
     // Guardar en tracking si tenemos requestId
     const requestId = response.data?.requestId;
