@@ -13,7 +13,7 @@ const poolConfig = {
   min: 5,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
-  statement_timeout: '30s'
+  statement_timeout: '60s'
 };
 
 if (isCloudSQL) {
