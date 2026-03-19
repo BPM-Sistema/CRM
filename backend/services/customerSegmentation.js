@@ -320,11 +320,11 @@ function getSegmentDefinitions() {
 
 // ==========================================
 // Segmentación por percentiles (Top Gastadores / Top Compradores)
+// Usa SQL window functions para eficiencia con grandes datasets
 // ==========================================
 
 /**
- * Rangos de percentiles para segmentación
- * Los clientes se clasifican según su posición en el ranking
+ * Definición de segmentos por percentil
  */
 const PERCENTILE_SEGMENTS = [
   { segment: 'campeones', label: 'Campeones', min: 95, max: 100, description: 'Top 5%' },
@@ -338,97 +338,167 @@ const PERCENTILE_SEGMENTS = [
 ];
 
 /**
- * Determina el segmento de un cliente basándose en su percentil
- * @param {number} percentile - Percentil del cliente (0-100)
- * @returns {string} Nombre del segmento
+ * Obtiene conteos de segmentos usando SQL PERCENT_RANK (eficiente)
+ * @param {string} orderByColumn - 'total_spent' o 'orders_count'
+ * @returns {Promise<Object>} { counts, total }
  */
-function getSegmentByPercentile(percentile) {
-  for (const seg of PERCENTILE_SEGMENTS) {
-    if (percentile >= seg.min && percentile < seg.max) {
-      return seg.segment;
-    }
+async function getSegmentCountsByPercentile(orderByColumn) {
+  // Usar PERCENT_RANK en SQL para calcular percentiles eficientemente
+  const { rows } = await pool.query(`
+    WITH ranked AS (
+      SELECT
+        PERCENT_RANK() OVER (ORDER BY ${orderByColumn} ASC) * 100 as percentile
+      FROM customers
+      WHERE orders_count > 0
+    )
+    SELECT
+      CASE
+        WHEN percentile >= 95 THEN 'campeones'
+        WHEN percentile >= 85 THEN 'leales'
+        WHEN percentile >= 70 THEN 'alto_potencial'
+        WHEN percentile >= 50 THEN 'necesitan_incentivo'
+        WHEN percentile >= 35 THEN 'no_pueden_perder'
+        WHEN percentile >= 20 THEN 'en_riesgo'
+        WHEN percentile >= 5 THEN 'por_perder'
+        ELSE 'perdidos'
+      END as segment,
+      COUNT(*) as count
+    FROM ranked
+    GROUP BY 1
+    ORDER BY count DESC
+  `);
+
+  const counts = {};
+  let total = 0;
+  for (const row of rows) {
+    counts[row.segment] = parseInt(row.count);
+    total += parseInt(row.count);
   }
-  // Top 100% = campeones
-  if (percentile >= 100) return 'campeones';
-  return 'perdidos';
+
+  return { counts, total };
 }
 
 /**
- * Calcula segmentos por total_spent (Top Gastadores)
- * @returns {Promise<Object>} { counts, customers }
+ * Obtiene clientes paginados con segmento calculado por percentil
+ * @param {string} orderByColumn - 'total_spent' o 'orders_count'
+ * @param {string|null} segment - Filtrar por segmento (opcional)
+ * @param {Object} options - { page, limit, search, sortBy, sortDir }
+ * @returns {Promise<Object>} { customers, total, page, limit }
+ */
+async function getCustomersByPercentile(orderByColumn, segment, options = {}) {
+  const { page = 1, limit = 50, search = null, sortBy, sortDir = 'desc' } = options;
+  const offset = (page - 1) * limit;
+
+  // Construir filtro de búsqueda
+  let searchFilter = '';
+  const params = [];
+  let paramIndex = 1;
+
+  if (search) {
+    searchFilter = `AND (name ILIKE $${paramIndex} OR email ILIKE $${paramIndex})`;
+    params.push(`%${search}%`);
+    paramIndex++;
+  }
+
+  // Construir filtro de segmento
+  let segmentFilter = '';
+  if (segment) {
+    const segmentCondition = getSegmentPercentileCondition(segment);
+    segmentFilter = `AND ${segmentCondition}`;
+  }
+
+  // Determinar ORDER BY final
+  const finalOrderBy = sortBy === 'total_spent' ? 'total_spent' :
+                       sortBy === 'orders_count' ? 'orders_count' :
+                       sortBy === 'last_order_at' ? 'last_order_at' :
+                       sortBy === 'name' ? 'name' :
+                       orderByColumn; // default: por la métrica del modo
+
+  const finalSortDir = sortDir === 'asc' ? 'ASC' : 'DESC';
+
+  // Query con window function para calcular percentil
+  const { rows: customers } = await pool.query(`
+    WITH ranked AS (
+      SELECT
+        id, tn_customer_id, name, email, phone,
+        orders_count, total_spent, first_order_at, last_order_at, avg_order_value,
+        segment as rfm_segment,
+        PERCENT_RANK() OVER (ORDER BY ${orderByColumn} ASC) * 100 as percentile
+      FROM customers
+      WHERE orders_count > 0
+    )
+    SELECT
+      *,
+      CASE
+        WHEN percentile >= 95 THEN 'campeones'
+        WHEN percentile >= 85 THEN 'leales'
+        WHEN percentile >= 70 THEN 'alto_potencial'
+        WHEN percentile >= 50 THEN 'necesitan_incentivo'
+        WHEN percentile >= 35 THEN 'no_pueden_perder'
+        WHEN percentile >= 20 THEN 'en_riesgo'
+        WHEN percentile >= 5 THEN 'por_perder'
+        ELSE 'perdidos'
+      END as segment
+    FROM ranked
+    WHERE 1=1 ${searchFilter} ${segmentFilter}
+    ORDER BY ${finalOrderBy} ${finalSortDir} NULLS LAST
+    LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+  `, [...params, limit, offset]);
+
+  // Contar total
+  const { rows: countRows } = await pool.query(`
+    WITH ranked AS (
+      SELECT
+        name, email,
+        PERCENT_RANK() OVER (ORDER BY ${orderByColumn} ASC) * 100 as percentile
+      FROM customers
+      WHERE orders_count > 0
+    )
+    SELECT COUNT(*) as total
+    FROM ranked
+    WHERE 1=1 ${searchFilter} ${segmentFilter}
+  `, params);
+
+  return {
+    customers: customers.map(c => ({
+      ...c,
+      percentile: Math.round(c.percentile * 100) / 100
+    })),
+    total: parseInt(countRows[0].total),
+    page,
+    limit
+  };
+}
+
+/**
+ * Helper: Genera condición SQL para filtrar por segmento basado en percentil
+ */
+function getSegmentPercentileCondition(segment) {
+  switch (segment) {
+    case 'campeones': return 'percentile >= 95';
+    case 'leales': return 'percentile >= 85 AND percentile < 95';
+    case 'alto_potencial': return 'percentile >= 70 AND percentile < 85';
+    case 'necesitan_incentivo': return 'percentile >= 50 AND percentile < 70';
+    case 'no_pueden_perder': return 'percentile >= 35 AND percentile < 50';
+    case 'en_riesgo': return 'percentile >= 20 AND percentile < 35';
+    case 'por_perder': return 'percentile >= 5 AND percentile < 20';
+    case 'perdidos': return 'percentile < 5';
+    default: return '1=1';
+  }
+}
+
+/**
+ * Calcula segmentos por total_spent (Top Gastadores) - SOLO CONTEOS
  */
 async function getSegmentsByTotalSpent() {
-  // Obtener clientes con compras, ordenados por total_spent DESC
-  const { rows: customers } = await pool.query(`
-    SELECT id, tn_customer_id, name, email, phone,
-           orders_count, total_spent, first_order_at, last_order_at,
-           avg_order_value, segment as rfm_segment
-    FROM customers
-    WHERE orders_count > 0 AND total_spent > 0
-    ORDER BY total_spent DESC
-  `);
-
-  const total = customers.length;
-  if (total === 0) {
-    return { counts: {}, customers: [] };
-  }
-
-  // Asignar segmento por percentil
-  const counts = {};
-  const customersWithSegment = customers.map((c, index) => {
-    // Posición 0 = top, posición total-1 = bottom
-    // Percentil = (total - position) / total * 100
-    const percentile = ((total - index) / total) * 100;
-    const segment = getSegmentByPercentile(percentile);
-
-    counts[segment] = (counts[segment] || 0) + 1;
-
-    return {
-      ...c,
-      segment,
-      percentile: Math.round(percentile * 100) / 100
-    };
-  });
-
-  return { counts, customers: customersWithSegment, total };
+  return getSegmentCountsByPercentile('total_spent');
 }
 
 /**
- * Calcula segmentos por orders_count (Top Compradores)
- * @returns {Promise<Object>} { counts, customers }
+ * Calcula segmentos por orders_count (Top Compradores) - SOLO CONTEOS
  */
 async function getSegmentsByOrdersCount() {
-  // Obtener clientes con compras, ordenados por orders_count DESC
-  const { rows: customers } = await pool.query(`
-    SELECT id, tn_customer_id, name, email, phone,
-           orders_count, total_spent, first_order_at, last_order_at,
-           avg_order_value, segment as rfm_segment
-    FROM customers
-    WHERE orders_count > 0
-    ORDER BY orders_count DESC, total_spent DESC
-  `);
-
-  const total = customers.length;
-  if (total === 0) {
-    return { counts: {}, customers: [] };
-  }
-
-  // Asignar segmento por percentil
-  const counts = {};
-  const customersWithSegment = customers.map((c, index) => {
-    const percentile = ((total - index) / total) * 100;
-    const segment = getSegmentByPercentile(percentile);
-
-    counts[segment] = (counts[segment] || 0) + 1;
-
-    return {
-      ...c,
-      segment,
-      percentile: Math.round(percentile * 100) / 100
-    };
-  });
-
-  return { counts, customers: customersWithSegment, total };
+  return getSegmentCountsByPercentile('orders_count');
 }
 
 /**
@@ -478,49 +548,32 @@ async function getCustomersBySegmentAndMode(segment, mode, options = {}) {
   const { page = 1, limit = 50, search = null, sortBy = 'total_spent', sortDir = 'desc' } = options;
 
   if (mode === 'lifecycle') {
-    // Usar la función existente para RFM
+    // Usar la función existente para RFM con soporte de búsqueda
+    if (!segment && !search) {
+      // Sin filtros, usar query directa
+      const offset = (page - 1) * limit;
+      const { rows: customers } = await pool.query(`
+        SELECT id, tn_customer_id, name, email, phone,
+               orders_count, total_spent, first_order_at, last_order_at,
+               avg_order_value, segment, segment_updated_at
+        FROM customers
+        WHERE orders_count > 0
+        ORDER BY ${sortBy === 'total_spent' ? 'total_spent' : sortBy === 'orders_count' ? 'orders_count' : 'total_spent'} ${sortDir === 'asc' ? 'ASC' : 'DESC'} NULLS LAST
+        LIMIT $1 OFFSET $2
+      `, [limit, offset]);
+
+      const { rows: countRows } = await pool.query(`
+        SELECT COUNT(*) as total FROM customers WHERE orders_count > 0
+      `);
+
+      return { customers, total: parseInt(countRows[0].total), page, limit };
+    }
     return getCustomersBySegment(segment, { page, limit });
   }
 
-  // Para percentile modes, calcular todo y filtrar
-  const result = mode === 'top_spenders'
-    ? await getSegmentsByTotalSpent()
-    : await getSegmentsByOrdersCount();
-
-  let filtered = segment
-    ? result.customers.filter(c => c.segment === segment)
-    : result.customers;
-
-  // Aplicar búsqueda si existe
-  if (search) {
-    const searchLower = search.toLowerCase();
-    filtered = filtered.filter(c =>
-      (c.name && c.name.toLowerCase().includes(searchLower)) ||
-      (c.email && c.email.toLowerCase().includes(searchLower))
-    );
-  }
-
-  // Ordenar
-  const sortMultiplier = sortDir === 'desc' ? -1 : 1;
-  filtered.sort((a, b) => {
-    const aVal = a[sortBy] ?? 0;
-    const bVal = b[sortBy] ?? 0;
-    if (typeof aVal === 'string') {
-      return sortMultiplier * aVal.localeCompare(bVal);
-    }
-    return sortMultiplier * (aVal - bVal);
-  });
-
-  const total = filtered.length;
-  const offset = (page - 1) * limit;
-  const paginated = filtered.slice(offset, offset + limit);
-
-  return {
-    customers: paginated,
-    total,
-    page,
-    limit
-  };
+  // Para percentile modes, usar la función SQL optimizada
+  const orderByColumn = mode === 'top_spenders' ? 'total_spent' : 'orders_count';
+  return getCustomersByPercentile(orderByColumn, segment, { page, limit, search, sortBy, sortDir });
 }
 
 module.exports = {

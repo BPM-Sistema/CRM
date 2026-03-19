@@ -65,6 +65,25 @@ function daysSince(dateStr: string | null): number | null {
   return Math.floor(diff / (1000 * 60 * 60 * 24));
 }
 
+// Skeleton para la celda (shimmer animation)
+function SkeletonCell({ colorClass, className = '' }: { colorClass: string; className?: string }) {
+  return (
+    <div
+      className={clsx(
+        'p-4 rounded-xl border text-left flex flex-col justify-center min-h-[100px] animate-pulse',
+        colorClass,
+        className
+      )}
+    >
+      <div className="flex items-baseline gap-2 mb-2">
+        <div className="h-8 w-16 bg-white/40 rounded" />
+        <div className="h-4 w-12 bg-white/30 rounded" />
+      </div>
+      <div className="h-6 w-24 bg-white/40 rounded-full" />
+    </div>
+  );
+}
+
 // Celda de la matriz
 function MatrixCell({
   segment,
@@ -74,6 +93,7 @@ function MatrixCell({
   isSelected,
   onClick,
   className = '',
+  isLoading = false,
 }: {
   segment: string;
   count: number;
@@ -82,21 +102,27 @@ function MatrixCell({
   isSelected: boolean;
   onClick: () => void;
   className?: string;
+  isLoading?: boolean;
 }) {
   const percentage = total > 0 ? ((count / total) * 100).toFixed(2) : '0';
+
+  if (isLoading) {
+    return <SkeletonCell colorClass={colorClass} className={className} />;
+  }
 
   return (
     <button
       onClick={onClick}
       className={clsx(
-        'p-4 rounded-xl border transition-all duration-200 text-left flex flex-col justify-center min-h-[100px]',
+        'p-4 rounded-xl border text-left flex flex-col justify-center min-h-[100px]',
         'hover:shadow-lg hover:scale-[1.01]',
+        'transition-all duration-300 ease-out',
         colorClass,
         isSelected && 'ring-2 ring-neutral-900 ring-offset-2',
         className
       )}
     >
-      <div className="flex items-baseline gap-2 mb-2">
+      <div className="flex items-baseline gap-2 mb-2 transition-opacity duration-300">
         <span className="text-2xl font-bold">{percentage}%</span>
         <span className="text-sm opacity-70 flex items-center gap-1">
           <Users size={14} />
@@ -161,6 +187,7 @@ export default function Customers() {
   const [sortBy, setSortBy] = useState<string>('total_spent');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [mode, setMode] = useState<SegmentMode>('lifecycle');
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -172,6 +199,8 @@ export default function Customers() {
       setSegments(segmentsData);
     } catch (error) {
       console.error('Error loading data:', error);
+    } finally {
+      setIsTransitioning(false);
     }
   }, [mode]);
 
@@ -230,6 +259,7 @@ export default function Customers() {
 
   const handleModeChange = (newMode: SegmentMode) => {
     if (newMode !== mode) {
+      setIsTransitioning(true);
       setMode(newMode);
       setSelectedSegment(null);
       setPage(1);
@@ -318,6 +348,7 @@ export default function Customers() {
                   colorClass="bg-green-100 border-green-200 text-green-800"
                   isSelected={selectedSegment === 'campeones'}
                   onClick={() => handleSegmentClick('campeones')}
+                  isLoading={isTransitioning}
                 />
                 <MatrixCell
                   segment="alto_potencial"
@@ -326,6 +357,7 @@ export default function Customers() {
                   colorClass="bg-yellow-100 border-yellow-200 text-yellow-800"
                   isSelected={selectedSegment === 'alto_potencial'}
                   onClick={() => handleSegmentClick('alto_potencial')}
+                  isLoading={isTransitioning}
                 />
                 <MatrixCell
                   segment="no_pueden_perder"
@@ -334,6 +366,7 @@ export default function Customers() {
                   colorClass="bg-orange-100 border-orange-200 text-orange-800"
                   isSelected={selectedSegment === 'no_pueden_perder'}
                   onClick={() => handleSegmentClick('no_pueden_perder')}
+                  isLoading={isTransitioning}
                 />
                 <MatrixCell
                   segment="por_perder"
@@ -343,6 +376,7 @@ export default function Customers() {
                   isSelected={selectedSegment === 'por_perder'}
                   onClick={() => handleSegmentClick('por_perder')}
                   className="row-span-3"
+                  isLoading={isTransitioning}
                 />
 
                 {/* Fila 2: Media frecuencia */}
@@ -353,6 +387,7 @@ export default function Customers() {
                   colorClass="bg-green-100 border-green-200 text-green-800"
                   isSelected={selectedSegment === 'leales'}
                   onClick={() => handleSegmentClick('leales')}
+                  isLoading={isTransitioning}
                 />
                 <MatrixCell
                   segment="necesitan_incentivo"
@@ -362,6 +397,7 @@ export default function Customers() {
                   isSelected={selectedSegment === 'necesitan_incentivo'}
                   onClick={() => handleSegmentClick('necesitan_incentivo')}
                   className="row-span-2"
+                  isLoading={isTransitioning}
                 />
                 <MatrixCell
                   segment="en_riesgo"
@@ -371,6 +407,7 @@ export default function Customers() {
                   isSelected={selectedSegment === 'en_riesgo'}
                   onClick={() => handleSegmentClick('en_riesgo')}
                   className="row-span-2"
+                  isLoading={isTransitioning}
                 />
 
                 {/* Fila 3: Baja frecuencia */}
@@ -381,6 +418,7 @@ export default function Customers() {
                   colorClass="bg-green-100 border-green-200 text-green-800"
                   isSelected={selectedSegment === 'recientes'}
                   onClick={() => handleSegmentClick('recientes')}
+                  isLoading={isTransitioning}
                 />
               </div>
 
