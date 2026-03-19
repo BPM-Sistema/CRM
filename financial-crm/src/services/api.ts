@@ -1870,15 +1870,19 @@ export async function fetchCustomerMetrics(): Promise<CustomerMetrics> {
   return data.metrics;
 }
 
+// Tipo de modo de segmentación
+export type SegmentMode = 'lifecycle' | 'top_spenders' | 'top_buyers';
+
 // Obtener conteo por segmento
-export async function fetchCustomerSegments(): Promise<{
+export async function fetchCustomerSegments(mode: SegmentMode = 'lifecycle'): Promise<{
   counts: Record<string, number>;
   definitions: SegmentDefinition[];
+  mode: SegmentMode;
 }> {
-  const response = await authFetch(`${API_BASE_URL}/customers/segments`);
+  const response = await authFetch(`${API_BASE_URL}/customers/segments?mode=${mode}`);
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Error al obtener segmentos');
-  return { counts: data.counts, definitions: data.definitions };
+  return { counts: data.counts, definitions: data.definitions, mode: data.mode };
 }
 
 // Obtener clientes de un segmento
@@ -1900,11 +1904,16 @@ export async function fetchCustomers(
   page: number = 1,
   limit: number = 50,
   segment?: string,
-  search?: string
+  search?: string,
+  sort?: string,
+  dir?: 'asc' | 'desc',
+  mode: SegmentMode = 'lifecycle'
 ): Promise<{ customers: Customer[]; total: number; page: number; limit: number }> {
-  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  const params = new URLSearchParams({ page: String(page), limit: String(limit), mode });
   if (segment) params.append('segment', segment);
   if (search) params.append('search', search);
+  if (sort) params.append('sortBy', sort);
+  if (dir) params.append('sortDir', dir);
 
   const response = await authFetch(`${API_BASE_URL}/customers?${params.toString()}`);
   const data = await response.json();

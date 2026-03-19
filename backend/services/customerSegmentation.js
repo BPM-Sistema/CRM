@@ -318,12 +318,222 @@ function getSegmentDefinitions() {
   }));
 }
 
+// ==========================================
+// Segmentación por percentiles (Top Gastadores / Top Compradores)
+// ==========================================
+
+/**
+ * Rangos de percentiles para segmentación
+ * Los clientes se clasifican según su posición en el ranking
+ */
+const PERCENTILE_SEGMENTS = [
+  { segment: 'campeones', label: 'Campeones', min: 95, max: 100, description: 'Top 5%' },
+  { segment: 'leales', label: 'Leales', min: 85, max: 95, description: 'Top 5-15%' },
+  { segment: 'alto_potencial', label: 'Alto potencial', min: 70, max: 85, description: 'Top 15-30%' },
+  { segment: 'necesitan_incentivo', label: 'Necesitan incentivo', min: 50, max: 70, description: 'Top 30-50%' },
+  { segment: 'no_pueden_perder', label: 'No se pueden perder', min: 35, max: 50, description: 'Top 50-65%' },
+  { segment: 'en_riesgo', label: 'En riesgo', min: 20, max: 35, description: 'Top 65-80%' },
+  { segment: 'por_perder', label: 'Por perder', min: 5, max: 20, description: 'Top 80-95%' },
+  { segment: 'perdidos', label: 'Perdidos', min: 0, max: 5, description: 'Bottom 5%' },
+];
+
+/**
+ * Determina el segmento de un cliente basándose en su percentil
+ * @param {number} percentile - Percentil del cliente (0-100)
+ * @returns {string} Nombre del segmento
+ */
+function getSegmentByPercentile(percentile) {
+  for (const seg of PERCENTILE_SEGMENTS) {
+    if (percentile >= seg.min && percentile < seg.max) {
+      return seg.segment;
+    }
+  }
+  // Top 100% = campeones
+  if (percentile >= 100) return 'campeones';
+  return 'perdidos';
+}
+
+/**
+ * Calcula segmentos por total_spent (Top Gastadores)
+ * @returns {Promise<Object>} { counts, customers }
+ */
+async function getSegmentsByTotalSpent() {
+  // Obtener clientes con compras, ordenados por total_spent DESC
+  const { rows: customers } = await pool.query(`
+    SELECT id, tn_customer_id, name, email, phone,
+           orders_count, total_spent, first_order_at, last_order_at,
+           avg_order_value, segment as rfm_segment
+    FROM customers
+    WHERE orders_count > 0 AND total_spent > 0
+    ORDER BY total_spent DESC
+  `);
+
+  const total = customers.length;
+  if (total === 0) {
+    return { counts: {}, customers: [] };
+  }
+
+  // Asignar segmento por percentil
+  const counts = {};
+  const customersWithSegment = customers.map((c, index) => {
+    // Posición 0 = top, posición total-1 = bottom
+    // Percentil = (total - position) / total * 100
+    const percentile = ((total - index) / total) * 100;
+    const segment = getSegmentByPercentile(percentile);
+
+    counts[segment] = (counts[segment] || 0) + 1;
+
+    return {
+      ...c,
+      segment,
+      percentile: Math.round(percentile * 100) / 100
+    };
+  });
+
+  return { counts, customers: customersWithSegment, total };
+}
+
+/**
+ * Calcula segmentos por orders_count (Top Compradores)
+ * @returns {Promise<Object>} { counts, customers }
+ */
+async function getSegmentsByOrdersCount() {
+  // Obtener clientes con compras, ordenados por orders_count DESC
+  const { rows: customers } = await pool.query(`
+    SELECT id, tn_customer_id, name, email, phone,
+           orders_count, total_spent, first_order_at, last_order_at,
+           avg_order_value, segment as rfm_segment
+    FROM customers
+    WHERE orders_count > 0
+    ORDER BY orders_count DESC, total_spent DESC
+  `);
+
+  const total = customers.length;
+  if (total === 0) {
+    return { counts: {}, customers: [] };
+  }
+
+  // Asignar segmento por percentil
+  const counts = {};
+  const customersWithSegment = customers.map((c, index) => {
+    const percentile = ((total - index) / total) * 100;
+    const segment = getSegmentByPercentile(percentile);
+
+    counts[segment] = (counts[segment] || 0) + 1;
+
+    return {
+      ...c,
+      segment,
+      percentile: Math.round(percentile * 100) / 100
+    };
+  });
+
+  return { counts, customers: customersWithSegment, total };
+}
+
+/**
+ * Obtener conteos y definiciones por modo
+ * @param {string} mode - 'lifecycle' | 'top_spenders' | 'top_buyers'
+ * @returns {Promise<Object>} { counts, definitions }
+ */
+async function getSegmentCountsByMode(mode) {
+  if (mode === 'top_spenders') {
+    const result = await getSegmentsByTotalSpent();
+    return {
+      counts: result.counts,
+      definitions: PERCENTILE_SEGMENTS.map(s => ({
+        segment: s.segment,
+        label: s.label,
+        description: s.description
+      }))
+    };
+  }
+
+  if (mode === 'top_buyers') {
+    const result = await getSegmentsByOrdersCount();
+    return {
+      counts: result.counts,
+      definitions: PERCENTILE_SEGMENTS.map(s => ({
+        segment: s.segment,
+        label: s.label,
+        description: s.description
+      }))
+    };
+  }
+
+  // Default: lifecycle (RFM)
+  const counts = await getSegmentCounts();
+  const definitions = getSegmentDefinitions();
+  return { counts, definitions };
+}
+
+/**
+ * Obtener clientes por segmento y modo
+ * @param {string} segment - Nombre del segmento
+ * @param {string} mode - 'lifecycle' | 'top_spenders' | 'top_buyers'
+ * @param {Object} options - { page, limit, search, sortBy, sortDir }
+ * @returns {Promise<Object>} { customers, total, page, limit }
+ */
+async function getCustomersBySegmentAndMode(segment, mode, options = {}) {
+  const { page = 1, limit = 50, search = null, sortBy = 'total_spent', sortDir = 'desc' } = options;
+
+  if (mode === 'lifecycle') {
+    // Usar la función existente para RFM
+    return getCustomersBySegment(segment, { page, limit });
+  }
+
+  // Para percentile modes, calcular todo y filtrar
+  const result = mode === 'top_spenders'
+    ? await getSegmentsByTotalSpent()
+    : await getSegmentsByOrdersCount();
+
+  let filtered = segment
+    ? result.customers.filter(c => c.segment === segment)
+    : result.customers;
+
+  // Aplicar búsqueda si existe
+  if (search) {
+    const searchLower = search.toLowerCase();
+    filtered = filtered.filter(c =>
+      (c.name && c.name.toLowerCase().includes(searchLower)) ||
+      (c.email && c.email.toLowerCase().includes(searchLower))
+    );
+  }
+
+  // Ordenar
+  const sortMultiplier = sortDir === 'desc' ? -1 : 1;
+  filtered.sort((a, b) => {
+    const aVal = a[sortBy] ?? 0;
+    const bVal = b[sortBy] ?? 0;
+    if (typeof aVal === 'string') {
+      return sortMultiplier * aVal.localeCompare(bVal);
+    }
+    return sortMultiplier * (aVal - bVal);
+  });
+
+  const total = filtered.length;
+  const offset = (page - 1) * limit;
+  const paginated = filtered.slice(offset, offset + limit);
+
+  return {
+    customers: paginated,
+    total,
+    page,
+    limit
+  };
+}
+
 module.exports = {
   SEGMENT_RULES,
+  PERCENTILE_SEGMENTS,
   determineSegment,
   segmentAllCustomers,
   segmentCustomer,
   getSegmentCounts,
   getCustomersBySegment,
-  getSegmentDefinitions
+  getSegmentDefinitions,
+  getSegmentCountsByMode,
+  getCustomersBySegmentAndMode,
+  getSegmentsByTotalSpent,
+  getSegmentsByOrdersCount
 };

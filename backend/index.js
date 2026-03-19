@@ -4641,9 +4641,10 @@ app.post('/customers/segments/recalculate', authenticate, requirePermission('cus
 // Obtener conteo por segmento
 app.get('/customers/segments', authenticate, requirePermission('customers.view'), async (req, res) => {
   try {
-    const counts = await customerSegmentation.getSegmentCounts();
-    const definitions = customerSegmentation.getSegmentDefinitions();
-    res.json({ ok: true, counts, definitions });
+    // mode: 'lifecycle' (default, RFM), 'top_spenders', 'top_buyers'
+    const mode = req.query.mode || 'lifecycle';
+    const { counts, definitions } = await customerSegmentation.getSegmentCountsByMode(mode);
+    res.json({ ok: true, counts, definitions, mode });
   } catch (error) {
     console.error('❌ /customers/segments error:', error.message);
     res.status(500).json({ error: error.message });
@@ -4656,9 +4657,15 @@ app.get('/customers/segments/:segment', authenticate, requirePermission('custome
     const { segment } = req.params;
     const page = parseInt(req.query.page) || 1;
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const mode = req.query.mode || 'lifecycle';
+    const search = req.query.search || null;
+    const sortBy = req.query.sortBy || 'total_spent';
+    const sortDir = req.query.sortDir || 'desc';
 
-    const result = await customerSegmentation.getCustomersBySegment(segment, { page, limit });
-    res.json({ ok: true, ...result });
+    const result = await customerSegmentation.getCustomersBySegmentAndMode(
+      segment, mode, { page, limit, search, sortBy, sortDir }
+    );
+    res.json({ ok: true, ...result, mode });
   } catch (error) {
     console.error('❌ /customers/segments/:segment error:', error.message);
     res.status(500).json({ error: error.message });
@@ -4673,7 +4680,19 @@ app.get('/customers', authenticate, requirePermission('customers.view'), async (
     const offset = (page - 1) * limit;
     const segment = req.query.segment || null;
     const search = req.query.search || null;
+    const mode = req.query.mode || 'lifecycle';
+    const sortBy = req.query.sortBy || 'total_spent';
+    const sortDir = req.query.sortDir || 'desc';
 
+    // Para modos de percentil, usar función especial
+    if (mode !== 'lifecycle') {
+      const result = await customerSegmentation.getCustomersBySegmentAndMode(
+        segment, mode, { page, limit, search, sortBy, sortDir }
+      );
+      return res.json({ ok: true, ...result, mode });
+    }
+
+    // Modo lifecycle: usar query SQL directa
     let whereClause = 'WHERE 1=1';
     const params = [];
     let paramIndex = 1;
@@ -4695,6 +4714,12 @@ app.get('/customers', authenticate, requirePermission('customers.view'), async (
       params
     );
 
+    // Construir ORDER BY dinámico
+    const validSortFields = ['total_spent', 'orders_count', 'last_order_at', 'name', 'created_at'];
+    const sortField = validSortFields.includes(sortBy) ? sortBy : 'total_spent';
+    const sortDirection = sortDir === 'asc' ? 'ASC' : 'DESC';
+    const nullsPosition = sortDirection === 'DESC' ? 'NULLS LAST' : 'NULLS FIRST';
+
     const { rows } = await pool.query(`
       SELECT
         id, tn_customer_id, name, email, phone,
@@ -4702,7 +4727,7 @@ app.get('/customers', authenticate, requirePermission('customers.view'), async (
         segment, segment_updated_at, created_at
       FROM customers
       ${whereClause}
-      ORDER BY total_spent DESC NULLS LAST
+      ORDER BY ${sortField} ${sortDirection} ${nullsPosition}
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `, [...params, limit, offset]);
 
@@ -4711,7 +4736,8 @@ app.get('/customers', authenticate, requirePermission('customers.view'), async (
       customers: rows,
       total: parseInt(countResult.rows[0].total),
       page,
-      limit
+      limit,
+      mode
     });
   } catch (error) {
     console.error('❌ /customers error:', error.message);

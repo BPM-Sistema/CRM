@@ -7,6 +7,10 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowRight,
+  ArrowUpDown,
+  TrendingUp,
+  ShoppingCart,
+  Activity,
 } from 'lucide-react';
 import { Header } from '../components/layout';
 import {
@@ -18,6 +22,7 @@ import {
   recalculateCustomerSegments,
   Customer,
   CustomerSyncStatus,
+  SegmentMode,
 } from '../services/api';
 import { clsx } from 'clsx';
 
@@ -135,6 +140,13 @@ function CustomerRow({ customer }: { customer: Customer }) {
   );
 }
 
+// Configuración de modos de segmentación
+const SEGMENT_MODES: { id: SegmentMode; label: string; icon: React.ReactNode; description: string }[] = [
+  { id: 'lifecycle', label: 'Ciclo de vida', icon: <Activity size={16} />, description: 'Basado en recencia y frecuencia' },
+  { id: 'top_spenders', label: 'Top gastadores', icon: <TrendingUp size={16} />, description: 'Basado en monto total gastado' },
+  { id: 'top_buyers', label: 'Top compradores', icon: <ShoppingCart size={16} />, description: 'Basado en cantidad de compras' },
+];
+
 export default function Customers() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -146,24 +158,27 @@ export default function Customers() {
   const [selectedSegment, setSelectedSegment] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
+  const [sortBy, setSortBy] = useState<string>('total_spent');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [mode, setMode] = useState<SegmentMode>('lifecycle');
 
   const loadData = useCallback(async () => {
     try {
       const [statusData, segmentsData] = await Promise.all([
         fetchCustomerSyncStatus(),
-        fetchCustomerSegments(),
+        fetchCustomerSegments(mode),
       ]);
       setSyncStatus(statusData);
       setSegments(segmentsData);
     } catch (error) {
       console.error('Error loading data:', error);
     }
-  }, []);
+  }, [mode]);
 
   const loadCustomers = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchCustomers(page, 25, selectedSegment || undefined, search || undefined);
+      const data = await fetchCustomers(page, 25, selectedSegment || undefined, search || undefined, sortBy, sortDir, mode);
       setCustomers(data.customers);
       setTotalCustomers(data.total);
     } catch (error) {
@@ -171,7 +186,7 @@ export default function Customers() {
     } finally {
       setLoading(false);
     }
-  }, [page, selectedSegment, search]);
+  }, [page, selectedSegment, search, sortBy, sortDir, mode]);
 
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { loadCustomers(); }, [loadCustomers]);
@@ -213,6 +228,14 @@ export default function Customers() {
     setPage(1);
   };
 
+  const handleModeChange = (newMode: SegmentMode) => {
+    if (newMode !== mode) {
+      setMode(newMode);
+      setSelectedSegment(null);
+      setPage(1);
+    }
+  };
+
   const totalPages = Math.ceil(totalCustomers / 25);
 
   // Total de compradores (excluyendo sin_compras)
@@ -228,7 +251,7 @@ export default function Customers() {
     <div className="min-h-screen bg-neutral-50">
       <Header
         title="Clientes"
-        subtitle="Ciclo de vida de compradores"
+        subtitle="Segmentación de clientes"
         actions={
           <div className="flex items-center gap-2">
             <button
@@ -252,11 +275,32 @@ export default function Customers() {
       />
 
       <div className="p-6 space-y-8">
-        {/* Título */}
+        {/* Tabs de modo */}
+        <div className="flex items-center gap-1 p-1 bg-neutral-100 rounded-lg w-fit">
+          {SEGMENT_MODES.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => handleModeChange(m.id)}
+              className={clsx(
+                'flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all',
+                mode === m.id
+                  ? 'bg-white text-neutral-900 shadow-sm'
+                  : 'text-neutral-600 hover:text-neutral-900'
+              )}
+            >
+              {m.icon}
+              {m.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Título dinámico según modo */}
         <div>
-          <h2 className="text-xl font-semibold text-neutral-900">Ciclo de vida de compradores</h2>
+          <h2 className="text-xl font-semibold text-neutral-900">
+            {SEGMENT_MODES.find(m => m.id === mode)?.label || 'Ciclo de vida de compradores'}
+          </h2>
           <p className="text-sm text-neutral-500 mt-1">
-            Segmenta a tus clientes según su frecuencia y cantidad de compras.
+            {SEGMENT_MODES.find(m => m.id === mode)?.description || 'Segmenta a tus clientes según su frecuencia y cantidad de compras.'}
           </p>
         </div>
 
@@ -391,6 +435,28 @@ export default function Customers() {
                     Limpiar
                   </button>
                 )}
+                <div className="flex items-center gap-2">
+                  <ArrowUpDown size={16} className="text-neutral-400" />
+                  <select
+                    value={`${sortBy}-${sortDir}`}
+                    onChange={(e) => {
+                      const [field, dir] = e.target.value.split('-');
+                      setSortBy(field);
+                      setSortDir(dir as 'asc' | 'desc');
+                      setPage(1);
+                    }}
+                    className="px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 bg-white"
+                  >
+                    <option value="total_spent-desc">Mayor monto</option>
+                    <option value="total_spent-asc">Menor monto</option>
+                    <option value="orders_count-desc">Más compras</option>
+                    <option value="orders_count-asc">Menos compras</option>
+                    <option value="last_order_at-desc">Compra reciente</option>
+                    <option value="last_order_at-asc">Compra antigua</option>
+                    <option value="name-asc">Nombre A-Z</option>
+                    <option value="name-desc">Nombre Z-A</option>
+                  </select>
+                </div>
                 <div className="relative">
                   <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
                   <input
