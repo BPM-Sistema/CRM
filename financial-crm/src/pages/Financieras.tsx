@@ -18,12 +18,14 @@ import {
 } from 'lucide-react';
 import {
   fetchFinancieras,
+  fetchPlantillaTipos,
   createFinanciera,
   updateFinanciera,
   deleteFinanciera,
   toggleFinancieraActiva,
   setFinancieraDefault,
   Financiera,
+  PlantillaTipo,
 } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -45,11 +47,12 @@ export function Financieras() {
     alias: '',
     porcentaje: '',
     palabras_clave: [] as string[],
-    plantilla_sufijo: '',
+    plantilla_mappings: {} as Record<number, string>, // tipoId -> nombreBotmaker
   });
   const [newTag, setNewTag] = useState('');
   const [formError, setFormError] = useState('');
   const [formLoading, setFormLoading] = useState(false);
+  const [plantillaTipos, setPlantillaTipos] = useState<PlantillaTipo[]>([]);
 
   const canCreate = hasPermission('financieras.create');
   const canUpdate = hasPermission('financieras.update');
@@ -60,8 +63,12 @@ export function Financieras() {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchFinancieras();
-      setFinancieras(data);
+      const [financierasData, tiposData] = await Promise.all([
+        fetchFinancieras(),
+        fetchPlantillaTipos()
+      ]);
+      setFinancieras(financierasData);
+      setPlantillaTipos(tiposData.filter(t => t.requiere_variante));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar datos');
     } finally {
@@ -84,7 +91,7 @@ export function Financieras() {
       alias: '',
       porcentaje: '',
       palabras_clave: [],
-      plantilla_sufijo: '',
+      plantilla_mappings: {},
     });
     setNewTag('');
     setFormError('');
@@ -94,6 +101,17 @@ export function Financieras() {
   const openEditModal = (financiera: Financiera) => {
     setModalMode('edit');
     setEditingFinanciera(financiera);
+
+    // Convert mappings array to object
+    const mappingsObj: Record<number, string> = {};
+    if (financiera.plantilla_mappings) {
+      for (const m of financiera.plantilla_mappings) {
+        if (m.nombre_botmaker) {
+          mappingsObj[m.tipo_id] = m.nombre_botmaker;
+        }
+      }
+    }
+
     setFormData({
       nombre: financiera.nombre,
       titular_principal: financiera.titular_principal || '',
@@ -102,7 +120,7 @@ export function Financieras() {
       alias: financiera.alias || '',
       porcentaje: financiera.porcentaje?.toString() || '',
       palabras_clave: financiera.palabras_clave || [],
-      plantilla_sufijo: financiera.plantilla_sufijo || '',
+      plantilla_mappings: mappingsObj,
     });
     setNewTag('');
     setFormError('');
@@ -140,6 +158,14 @@ export function Financieras() {
     setFormLoading(true);
 
     try {
+      // Convert mappings object to array format expected by API
+      const mappingsArray = Object.entries(formData.plantilla_mappings)
+        .filter(([_, value]) => value && value.trim() !== '')
+        .map(([tipoId, nombreBotmaker]) => ({
+          tipoId: parseInt(tipoId, 10),
+          nombreBotmaker: nombreBotmaker.trim(),
+        }));
+
       const payload = {
         nombre: formData.nombre,
         titular_principal: formData.titular_principal || undefined,
@@ -148,7 +174,7 @@ export function Financieras() {
         alias: formData.alias || undefined,
         porcentaje: formData.porcentaje ? parseFloat(formData.porcentaje) : undefined,
         palabras_clave: formData.palabras_clave,
-        plantilla_sufijo: formData.plantilla_sufijo || undefined,
+        plantilla_mappings: mappingsArray,
       };
 
       if (modalMode === 'create') {
@@ -534,21 +560,42 @@ export function Financieras() {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1.5">
-                  Sufijo de Plantilla WhatsApp
-                </label>
-                <input
-                  type="text"
-                  value={formData.plantilla_sufijo}
-                  onChange={(e) => setFormData(prev => ({ ...prev, plantilla_sufijo: e.target.value }))}
-                  className="w-full px-4 py-2.5 border border-neutral-200 rounded-lg focus:ring-2 focus:ring-neutral-900 focus:border-transparent outline-none"
-                  placeholder="ej: wanda_v2, kiesel_v2"
-                />
-                <p className="mt-1 text-xs text-neutral-500">
-                  Se agrega al nombre de la plantilla: pedido_creado → pedido_creado_[sufijo]
-                </p>
-              </div>
+              {/* Template Mappings Section */}
+              {plantillaTipos.length > 0 && (
+                <div className="border-t border-neutral-200 pt-4 mt-4">
+                  <h3 className="text-sm font-semibold text-neutral-800 mb-3">
+                    Plantillas WhatsApp
+                  </h3>
+                  <p className="text-xs text-neutral-500 mb-3">
+                    Nombre exacto de cada plantilla en Botmaker. Dejar vacío para usar la plantilla por defecto.
+                  </p>
+                  <div className="space-y-3">
+                    {plantillaTipos.map(tipo => (
+                      <div key={tipo.id}>
+                        <label className="block text-sm font-medium text-neutral-700 mb-1">
+                          {tipo.nombre}
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.plantilla_mappings[tipo.id] || ''}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            plantilla_mappings: {
+                              ...prev.plantilla_mappings,
+                              [tipo.id]: e.target.value
+                            }
+                          }))}
+                          className="w-full px-4 py-2 border border-neutral-200 rounded-lg focus:ring-2 focus:ring-neutral-900 focus:border-transparent outline-none text-sm"
+                          placeholder={`Default: ${tipo.plantilla_default}`}
+                        />
+                        {tipo.descripcion && (
+                          <p className="mt-0.5 text-xs text-neutral-400">{tipo.descripcion}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-1.5">

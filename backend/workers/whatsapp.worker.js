@@ -13,7 +13,8 @@ const { callBotmaker } = require('../lib/circuitBreaker');
 const pool = require('../db');
 const { workerLogger: log } = require('../lib/logger');
 const { whatsapp: waConfig, isEnabled: isIntegrationEnabled } = require('../services/integrationConfig');
-const { PLANTILLAS_SIN_SUFIJO, PLANTILLA_CONFIG_KEY } = require('../lib/whatsapp-helpers');
+const { PLANTILLA_CONFIG_KEY } = require('../lib/whatsapp-helpers');
+const { getPlantillaFinal } = require('../lib/plantilla-resolver');
 
 /**
  * Procesador principal del job WhatsApp
@@ -58,24 +59,9 @@ async function processWhatsAppJob(job) {
     telefono = testingPhone;
   }
 
-  // 3. Determinar sufijo de financiera (desde DB, no hardcodeado)
-  let plantillaFinal = plantilla;
-  if (!PLANTILLAS_SIN_SUFIJO.includes(plantilla)) {
-    try {
-      const finResult = await pool.query(
-        `SELECT nombre, plantilla_sufijo FROM financieras WHERE is_default = true LIMIT 1`
-      );
-      if (finResult.rows.length > 0) {
-        const { nombre, plantilla_sufijo } = finResult.rows[0];
-        if (plantilla_sufijo) {
-          plantillaFinal = `${plantilla}_${plantilla_sufijo}`;
-        }
-        jobLog.debug({ financiera: nombre, plantillaFinal }, 'Sufijo financiera aplicado');
-      }
-    } catch (err) {
-      jobLog.error({ err: err.message }, 'Error obteniendo financiera default');
-    }
-  }
+  // 3. Resolve template using catalog-based system (no hardcoded logic)
+  const plantillaFinal = await getPlantillaFinal(plantilla);
+  jobLog.debug({ plantillaFinal }, 'Template resolved');
 
   // 4. Enviar via Botmaker API
   const contactIdClean = telefono.replace('+', '');

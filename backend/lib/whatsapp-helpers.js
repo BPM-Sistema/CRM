@@ -3,6 +3,9 @@
  *
  * Funciones para envio de mensajes WhatsApp via Botmaker.
  * Extraidas de index.js para uso compartido.
+ *
+ * Template resolution uses the catalog-based system (plantilla_tipos + financiera_plantillas).
+ * NO hardcoded suffixes. NO dynamic string construction.
  */
 
 const axios = require('axios');
@@ -10,19 +13,9 @@ const { callBotmaker } = require('./circuitBreaker');
 const pool = require('../db');
 const { whatsapp: waConfig, isEnabled: isIntegrationEnabled } = require('../services/integrationConfig');
 const { apiLogger: log } = require('./logger');
+const { getPlantillaFinal } = require('./plantilla-resolver');
 
-// Plantillas que NO llevan sufijo de financiera (son universales)
-// Estas plantillas no mencionan datos de transferencia, por eso son iguales para todas las financieras
-const PLANTILLAS_SIN_SUFIJO = [
-  'datos__envio',
-  'comprobante_rechazado',
-  'comprobante_confirmado',
-  'enviado_env_nube',
-  'enviado_transporte',
-  'pedido_cancelado'
-];
-
-// Mapeo de plantilla base -> key en integration_config
+// Mapeo de plantilla base -> key en integration_config (for toggle checks)
 const PLANTILLA_CONFIG_KEY = {
   'pedido_creado': 'whatsapp_tpl_pedido_creado',
   'comprobante_confirmado': 'whatsapp_tpl_comprobante_confirmado',
@@ -64,34 +57,9 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNu
     telefono = testingPhone;
   }
 
-  // Determinar nombre final de plantilla
-  let plantillaFinal = plantilla;
-
-  // Agregar sufijo de financiera si:
-  // 1. La plantilla lo requiere (no está en PLANTILLAS_SIN_SUFIJO)
-  // 2. La financiera default tiene un sufijo configurado (plantilla_sufijo)
-  if (!PLANTILLAS_SIN_SUFIJO.includes(plantilla)) {
-    try {
-      const finResult = await pool.query(`
-        SELECT nombre, plantilla_sufijo
-        FROM financieras
-        WHERE is_default = true
-        LIMIT 1
-      `);
-
-      if (finResult.rows.length > 0) {
-        const { nombre, plantilla_sufijo } = finResult.rows[0];
-        if (plantilla_sufijo) {
-          plantillaFinal = `${plantilla}_${plantilla_sufijo}`;
-        }
-        console.log(`🏦 Financiera default: ${nombre} → plantilla: ${plantillaFinal}`);
-      }
-    } catch (err) {
-      console.error('⚠️ Error obteniendo financiera default:', err.message);
-    }
-  } else {
-    console.log(`📋 Plantilla sin sufijo: ${plantilla}`);
-  }
+  // Resolve template name using catalog-based system
+  // No hardcoded logic - uses explicit mappings from database
+  const plantillaFinal = await getPlantillaFinal(plantilla);
 
   console.log('📤 Enviando WhatsApp a:', telefono, 'plantilla:', plantillaFinal);
 
@@ -139,6 +107,5 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNu
 
 module.exports = {
   enviarWhatsAppPlantilla,
-  PLANTILLAS_SIN_SUFIJO,
   PLANTILLA_CONFIG_KEY,
 };

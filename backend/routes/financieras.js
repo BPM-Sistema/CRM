@@ -1,10 +1,13 @@
 /**
  * Rutas de gestión de financieras
+ *
+ * Includes template mapping management (catalog-based system)
  */
 
 const express = require('express');
 const pool = require('../db');
 const { authenticate, requirePermission } = require('../middleware/auth');
+const { getMappingsForFinanciera, saveMappings, clearCache } = require('../lib/plantilla-resolver');
 
 const router = express.Router();
 
@@ -13,7 +16,7 @@ router.use(authenticate);
 
 /**
  * GET /financieras
- * Listar todas las financieras
+ * Listar todas las financieras (with their template mappings)
  */
 router.get('/', requirePermission('financieras.view'), async (req, res) => {
   try {
@@ -29,15 +32,23 @@ router.get('/', requirePermission('financieras.view'), async (req, res) => {
         cbu,
         porcentaje,
         alias,
-        is_default,
-        plantilla_sufijo
+        is_default
       FROM financieras
       ORDER BY is_default DESC, id ASC
     `);
 
+    // Get mappings for each financiera
+    const financieras = await Promise.all(result.rows.map(async (f) => {
+      const mappings = await getMappingsForFinanciera(f.id);
+      return {
+        ...f,
+        plantilla_mappings: mappings
+      };
+    }));
+
     res.json({
       ok: true,
-      financieras: result.rows
+      financieras
     });
 
   } catch (error) {
@@ -47,8 +58,32 @@ router.get('/', requirePermission('financieras.view'), async (req, res) => {
 });
 
 /**
+ * GET /financieras/plantilla-tipos
+ * Obtener los tipos de plantilla disponibles (catalog)
+ * MUST be before /:id to avoid matching 'plantilla-tipos' as id
+ */
+router.get('/plantilla-tipos', requirePermission('financieras.view'), async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, key, nombre, descripcion, requiere_variante, plantilla_default
+      FROM plantilla_tipos
+      ORDER BY id
+    `);
+
+    res.json({
+      ok: true,
+      tipos: result.rows
+    });
+
+  } catch (error) {
+    console.error('Error en GET /financieras/plantilla-tipos:', error);
+    res.status(500).json({ error: 'Error al obtener tipos de plantilla' });
+  }
+});
+
+/**
  * GET /financieras/:id
- * Obtener una financiera
+ * Obtener una financiera (with template mappings)
  */
 router.get('/:id', requirePermission('financieras.view'), async (req, res) => {
   try {
@@ -66,8 +101,7 @@ router.get('/:id', requirePermission('financieras.view'), async (req, res) => {
         cbu,
         porcentaje,
         alias,
-        is_default,
-        plantilla_sufijo
+        is_default
       FROM financieras
       WHERE id = $1
     `, [id]);
@@ -76,9 +110,15 @@ router.get('/:id', requirePermission('financieras.view'), async (req, res) => {
       return res.status(404).json({ error: 'Financiera no encontrada' });
     }
 
+    // Get template mappings for this financiera
+    const mappings = await getMappingsForFinanciera(id);
+
     res.json({
       ok: true,
-      financiera: result.rows[0]
+      financiera: {
+        ...result.rows[0],
+        plantilla_mappings: mappings
+      }
     });
 
   } catch (error) {
@@ -89,11 +129,11 @@ router.get('/:id', requirePermission('financieras.view'), async (req, res) => {
 
 /**
  * POST /financieras
- * Crear una nueva financiera
+ * Crear una nueva financiera (with template mappings)
  */
 router.post('/', requirePermission('financieras.create'), async (req, res) => {
   try {
-    const { nombre, titular_principal, celular, palabras_clave, cbu, porcentaje, alias, plantilla_sufijo } = req.body;
+    const { nombre, titular_principal, celular, palabras_clave, cbu, porcentaje, alias, plantilla_mappings } = req.body;
 
     // Validaciones
     if (!nombre) {
@@ -113,9 +153,9 @@ router.post('/', requirePermission('financieras.create'), async (req, res) => {
       : null;
 
     const result = await pool.query(`
-      INSERT INTO financieras (nombre, titular_principal, celular, palabras_clave, activa, cbu, porcentaje, alias, is_default, plantilla_sufijo)
-      VALUES ($1, $2, $3, $4::jsonb, true, $5, $6, $7, $8, $9)
-      RETURNING id, nombre, titular_principal, celular, palabras_clave, activa, created_at, cbu, porcentaje, alias, is_default, plantilla_sufijo
+      INSERT INTO financieras (nombre, titular_principal, celular, palabras_clave, activa, cbu, porcentaje, alias, is_default)
+      VALUES ($1, $2, $3, $4::jsonb, true, $5, $6, $7, $8)
+      RETURNING id, nombre, titular_principal, celular, palabras_clave, activa, created_at, cbu, porcentaje, alias, is_default
     `, [
       nombre,
       titular_principal || null,
@@ -124,15 +164,27 @@ router.post('/', requirePermission('financieras.create'), async (req, res) => {
       cbu || null,
       porcentaje || null,
       alias || null,
-      isDefault,
-      plantilla_sufijo || null
+      isDefault
     ]);
+
+    const financiera = result.rows[0];
+
+    // Save template mappings if provided
+    if (plantilla_mappings && Array.isArray(plantilla_mappings)) {
+      await saveMappings(financiera.id, plantilla_mappings);
+    }
+
+    // Get the mappings back
+    const mappings = await getMappingsForFinanciera(financiera.id);
 
     console.log(`🏦 Financiera creada: ${nombre}${isDefault ? ' (default)' : ''}`);
 
     res.status(201).json({
       ok: true,
-      financiera: result.rows[0]
+      financiera: {
+        ...financiera,
+        plantilla_mappings: mappings
+      }
     });
 
   } catch (error) {
@@ -143,12 +195,12 @@ router.post('/', requirePermission('financieras.create'), async (req, res) => {
 
 /**
  * PUT /financieras/:id
- * Actualizar una financiera
+ * Actualizar una financiera (with template mappings)
  */
 router.put('/:id', requirePermission('financieras.update'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, titular_principal, celular, palabras_clave, cbu, porcentaje, alias, plantilla_sufijo } = req.body;
+    const { nombre, titular_principal, celular, palabras_clave, cbu, porcentaje, alias, plantilla_mappings } = req.body;
 
     // Verificar que existe
     const exists = await pool.query('SELECT id FROM financieras WHERE id = $1', [id]);
@@ -174,10 +226,9 @@ router.put('/:id', requirePermission('financieras.update'), async (req, res) => 
           palabras_clave = $4::jsonb,
           cbu = $5,
           porcentaje = $6,
-          alias = $7,
-          plantilla_sufijo = $8
-      WHERE id = $9
-      RETURNING id, nombre, titular_principal, celular, palabras_clave, activa, created_at, cbu, porcentaje, alias, is_default, plantilla_sufijo
+          alias = $7
+      WHERE id = $8
+      RETURNING id, nombre, titular_principal, celular, palabras_clave, activa, created_at, cbu, porcentaje, alias, is_default
     `, [
       nombre,
       titular_principal || null,
@@ -186,15 +237,25 @@ router.put('/:id', requirePermission('financieras.update'), async (req, res) => 
       cbu || null,
       porcentaje || null,
       alias || null,
-      plantilla_sufijo || null,
       id
     ]);
+
+    // Save template mappings if provided
+    if (plantilla_mappings && Array.isArray(plantilla_mappings)) {
+      await saveMappings(id, plantilla_mappings);
+    }
+
+    // Get the mappings back
+    const mappings = await getMappingsForFinanciera(id);
 
     console.log(`🏦 Financiera actualizada: ${nombre}`);
 
     res.json({
       ok: true,
-      financiera: result.rows[0]
+      financiera: {
+        ...result.rows[0],
+        plantilla_mappings: mappings
+      }
     });
 
   } catch (error) {
@@ -257,7 +318,7 @@ router.patch('/:id/activar', requirePermission('financieras.update'), async (req
       UPDATE financieras
       SET activa = $1
       WHERE id = $2
-      RETURNING id, nombre, titular_principal, celular, palabras_clave, activa, created_at, cbu, porcentaje, alias, is_default, plantilla_sufijo
+      RETURNING id, nombre, titular_principal, celular, palabras_clave, activa, created_at, cbu, porcentaje, alias, is_default
     `, [activa, id]);
 
     if (result.rowCount === 0) {
@@ -299,8 +360,11 @@ router.patch('/:id/default', requirePermission('financieras.set_default'), async
       UPDATE financieras
       SET is_default = true
       WHERE id = $1
-      RETURNING id, nombre, titular_principal, celular, palabras_clave, activa, created_at, cbu, porcentaje, alias, is_default, plantilla_sufijo
+      RETURNING id, nombre, titular_principal, celular, palabras_clave, activa, created_at, cbu, porcentaje, alias, is_default
     `, [id]);
+
+    // Clear template resolver cache since default changed
+    clearCache();
 
     console.log(`⭐ Financiera marcada como default: ${result.rows[0].nombre}`);
 

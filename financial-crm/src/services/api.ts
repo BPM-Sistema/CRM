@@ -1106,6 +1106,25 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
 // FINANCIERAS - Gestión de entidades financieras
 // ============================================
 
+export interface PlantillaTipo {
+  id: number;
+  key: string;
+  nombre: string;
+  descripcion: string | null;
+  requiere_variante: boolean;
+  plantilla_default: string;
+}
+
+export interface PlantillaMapping {
+  tipo_id: number;
+  tipo_key: string;
+  tipo_nombre: string;
+  tipo_descripcion: string | null;
+  requiere_variante: boolean;
+  plantilla_default: string;
+  nombre_botmaker: string | null;
+}
+
 export interface Financiera {
   id: number;
   nombre: string;
@@ -1118,7 +1137,7 @@ export interface Financiera {
   porcentaje: number | null;
   alias: string | null;
   is_default: boolean;
-  plantilla_sufijo: string | null;
+  plantilla_mappings?: PlantillaMapping[];
 }
 
 // Listar financieras
@@ -1132,6 +1151,19 @@ export async function fetchFinancieras(): Promise<Financiera[]> {
   }
 
   return data.financieras;
+}
+
+// Obtener tipos de plantilla (catalog)
+export async function fetchPlantillaTipos(): Promise<PlantillaTipo[]> {
+  const response = await authFetch(`${API_BASE_URL}/financieras/plantilla-tipos`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al obtener tipos de plantilla');
+  }
+
+  return data.tipos;
 }
 
 // Obtener una financiera
@@ -1156,6 +1188,7 @@ export async function createFinanciera(financieraData: {
   cbu?: string;
   porcentaje?: number;
   alias?: string;
+  plantilla_mappings?: { tipoId: number; nombreBotmaker: string }[];
 }): Promise<Financiera> {
   const response = await authFetch(`${API_BASE_URL}/financieras`, {
     method: 'POST',
@@ -1180,6 +1213,7 @@ export async function updateFinanciera(id: number, financieraData: {
   cbu?: string;
   porcentaje?: number;
   alias?: string;
+  plantilla_mappings?: { tipoId: number; nombreBotmaker: string }[];
 }): Promise<Financiera> {
   const response = await authFetch(`${API_BASE_URL}/financieras/${id}`, {
     method: 'PUT',
