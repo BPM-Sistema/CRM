@@ -2,25 +2,29 @@
  * Integration Config Service
  *
  * Servicio centralizado para gestionar feature flags de integraciones.
- * Implementa cache en memoria con TTL para evitar consultas excesivas a DB.
+ * Usa Redis como cache compartido entre todas las instancias de Cloud Run.
+ * Fallback a memoria local si Redis no está disponible.
  *
  * Características:
- * - Cache con TTL configurable (default 30s)
- * - Fallback seguro (enabled=true si falla lectura)
- * - Logging cuando se bloquea una operación
- * - Soporte para master switch (si master off, todo off)
+ * - Cache en Redis compartido (todas las instancias ven el mismo valor)
+ * - Fallback a memoria local si Redis falla
+ * - TTL configurable (default 60s)
+ * - Invalidación automática al actualizar config
  */
 
 const pool = require('../db');
+const { getRedisClient } = require('../lib/redis');
 
 // ─── Configuración ────────────────────────────────────────
 
-const CACHE_TTL_MS = 30 * 1000; // 30 segundos
+const CACHE_TTL_MS = 60 * 1000; // 60 segundos
+const REDIS_CACHE_KEY = 'integration_config:all';
+const REDIS_TTL_SECONDS = 60;
 
-// ─── Cache en memoria ─────────────────────────────────────
+// ─── Cache en memoria (fallback) ──────────────────────────
 
-let configCache = new Map();
-let cacheTimestamp = 0;
+let memoryCache = new Map();
+let memoryCacheTimestamp = 0;
 
 // ─── Funciones internas ───────────────────────────────────
 
@@ -34,41 +38,78 @@ async function loadConfigFromDB() {
       FROM integration_config
     `);
 
-    const newCache = new Map();
+    const configMap = {};
     for (const row of result.rows) {
-      newCache.set(row.key, {
+      configMap[row.key] = {
         enabled: row.enabled,
         description: row.description,
         category: row.category,
         metadata: row.metadata,
         updated_at: row.updated_at
-      });
+      };
     }
 
-    configCache = newCache;
-    cacheTimestamp = Date.now();
+    // Intentar guardar en Redis
+    const redis = getRedisClient();
+    if (redis) {
+      try {
+        await redis.setex(REDIS_CACHE_KEY, REDIS_TTL_SECONDS, JSON.stringify(configMap));
+        console.log('[IntegrationConfig] Cache guardado en Redis');
+      } catch (redisErr) {
+        console.warn('[IntegrationConfig] No se pudo guardar en Redis:', redisErr.message);
+      }
+    }
 
-    return true;
+    // También guardar en memoria como fallback
+    memoryCache = new Map(Object.entries(configMap));
+    memoryCacheTimestamp = Date.now();
+
+    return configMap;
   } catch (error) {
     console.error('⚠️ [IntegrationConfig] Error cargando config desde DB:', error.message);
-    return false;
+    return null;
   }
 }
 
 /**
- * Verificar si el cache está vigente
+ * Obtener config desde Redis o memoria
  */
-function isCacheValid() {
-  return configCache.size > 0 && (Date.now() - cacheTimestamp) < CACHE_TTL_MS;
+async function getConfigFromCache() {
+  // 1. Intentar Redis primero
+  const redis = getRedisClient();
+  if (redis) {
+    try {
+      const cached = await redis.get(REDIS_CACHE_KEY);
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    } catch (redisErr) {
+      console.warn('[IntegrationConfig] Error leyendo Redis:', redisErr.message);
+    }
+  }
+
+  // 2. Fallback a memoria local
+  if (memoryCache.size > 0 && (Date.now() - memoryCacheTimestamp) < CACHE_TTL_MS) {
+    return Object.fromEntries(memoryCache);
+  }
+
+  return null;
 }
 
 /**
  * Asegurar que el cache esté actualizado
+ * Retorna el objeto de config o null si falla
  */
 async function ensureCacheLoaded() {
-  if (!isCacheValid()) {
-    await loadConfigFromDB();
+  // Primero intentar cache
+  let config = await getConfigFromCache();
+  if (config) {
+    return config;
   }
+
+  // Si no hay cache, cargar desde DB
+  config = await loadConfigFromDB();
+  return config;
 }
 
 // ─── API Pública ──────────────────────────────────────────
@@ -86,10 +127,16 @@ async function isEnabled(key, options = {}) {
   const { logBlocked = true, context = '' } = options;
 
   try {
-    await ensureCacheLoaded();
+    const allConfig = await ensureCacheLoaded();
+
+    // Si no se pudo cargar nada, fallback a enabled
+    if (!allConfig) {
+      console.warn(`⚠️ [IntegrationConfig] No se pudo cargar config, usando fallback enabled=true`);
+      return true;
+    }
 
     // Buscar la config específica
-    const config = configCache.get(key);
+    const config = allConfig[key];
 
     // Si no existe, fallback a enabled (no romper producción)
     if (!config) {
@@ -157,6 +204,26 @@ async function getAllConfigs() {
 }
 
 /**
+ * Invalidar cache en Redis y memoria
+ */
+async function invalidateCacheInternal() {
+  // Invalidar Redis
+  const redis = getRedisClient();
+  if (redis) {
+    try {
+      await redis.del(REDIS_CACHE_KEY);
+      console.log('[IntegrationConfig] Cache Redis invalidado');
+    } catch (redisErr) {
+      console.warn('[IntegrationConfig] Error invalidando Redis:', redisErr.message);
+    }
+  }
+
+  // Invalidar memoria local
+  memoryCacheTimestamp = 0;
+  memoryCache.clear();
+}
+
+/**
  * Actualizar una configuración
  *
  * @param {string} key - Clave de la configuración
@@ -179,8 +246,8 @@ async function updateConfig(key, enabled, userId, reason = null) {
       throw new Error(`Configuración '${key}' no encontrada`);
     }
 
-    // Invalidar cache
-    cacheTimestamp = 0;
+    // Invalidar cache en Redis y memoria
+    await invalidateCacheInternal();
 
     // Log del cambio
     const action = enabled ? 'HABILITADO' : 'DESHABILITADO';
@@ -221,7 +288,9 @@ async function updateConfigMetadata(key, metadata, userId) {
       throw new Error(`Configuración '${key}' no encontrada`);
     }
 
-    cacheTimestamp = 0;
+    // Invalidar cache en Redis y memoria
+    await invalidateCacheInternal();
+
     console.log(`🔧 [IntegrationConfig] ${key} metadata actualizado por usuario ${userId}`);
     return result.rows[0];
   } catch (error) {
@@ -274,18 +343,37 @@ async function getConfigHistory(key = null, limit = 50) {
  * Forzar recarga del cache
  */
 async function invalidateCache() {
-  cacheTimestamp = 0;
-  await ensureCacheLoaded();
+  await invalidateCacheInternal();
+  await loadConfigFromDB();
 }
 
 /**
  * Obtener estado del cache (para debugging)
  */
-function getCacheStatus() {
+async function getCacheStatus() {
+  const redis = getRedisClient();
+  let redisStatus = 'disconnected';
+  let redisTTL = -1;
+
+  if (redis) {
+    try {
+      redisTTL = await redis.ttl(REDIS_CACHE_KEY);
+      redisStatus = redisTTL > 0 ? 'active' : 'expired';
+    } catch (e) {
+      redisStatus = 'error';
+    }
+  }
+
   return {
-    size: configCache.size,
-    age_ms: Date.now() - cacheTimestamp,
-    valid: isCacheValid(),
+    redis: {
+      status: redisStatus,
+      ttl_seconds: redisTTL
+    },
+    memory: {
+      size: memoryCache.size,
+      age_ms: Date.now() - memoryCacheTimestamp,
+      valid: memoryCache.size > 0 && (Date.now() - memoryCacheTimestamp) < CACHE_TTL_MS
+    },
     ttl_ms: CACHE_TTL_MS
   };
 }
@@ -295,8 +383,9 @@ function getCacheStatus() {
  */
 async function getConfigWithMetadata(key) {
   try {
-    await ensureCacheLoaded();
-    return configCache.get(key) || null;
+    const allConfig = await ensureCacheLoaded();
+    if (!allConfig) return null;
+    return allConfig[key] || null;
   } catch (error) {
     console.error(`⚠️ [IntegrationConfig] Error obteniendo config '${key}':`, error.message);
     return null;
