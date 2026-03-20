@@ -11,8 +11,16 @@ const pool = require('../db');
 const { whatsapp: waConfig, isEnabled: isIntegrationEnabled } = require('../services/integrationConfig');
 const { apiLogger: log } = require('./logger');
 
-// Plantillas que NO llevan sufijo de financiera
-const PLANTILLAS_SIN_SUFIJO = ['datos__envio', 'comprobante_rechazado', 'comprobante_confirmado', 'enviado_env_nube', 'enviado_transporte', 'pedido_cancelado'];
+// Plantillas que NO llevan sufijo de financiera (son universales)
+// Estas plantillas no mencionan datos de transferencia, por eso son iguales para todas las financieras
+const PLANTILLAS_SIN_SUFIJO = [
+  'datos__envio',
+  'comprobante_rechazado',
+  'comprobante_confirmado',
+  'enviado_env_nube',
+  'enviado_transporte',
+  'pedido_cancelado'
+];
 
 // Mapeo de plantilla base -> key en integration_config
 const PLANTILLA_CONFIG_KEY = {
@@ -59,24 +67,24 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNu
   // Determinar nombre final de plantilla
   let plantillaFinal = plantilla;
 
-  // Solo agregar sufijo de financiera si la plantilla lo requiere
+  // Agregar sufijo de financiera si:
+  // 1. La plantilla lo requiere (no está en PLANTILLAS_SIN_SUFIJO)
+  // 2. La financiera default tiene un sufijo configurado (plantilla_sufijo)
   if (!PLANTILLAS_SIN_SUFIJO.includes(plantilla)) {
     try {
       const finResult = await pool.query(`
-        SELECT nombre
+        SELECT nombre, plantilla_sufijo
         FROM financieras
         WHERE is_default = true
         LIMIT 1
       `);
 
       if (finResult.rows.length > 0) {
-        const nombreFinanciera = finResult.rows[0].nombre.toLowerCase();
-        if (nombreFinanciera.includes('wanda')) {
-          plantillaFinal = `${plantilla}_wanda_v2`;
-        } else if (nombreFinanciera.includes('kiesel')) {
-          plantillaFinal = `${plantilla}_kiesel_v2`;
+        const { nombre, plantilla_sufijo } = finResult.rows[0];
+        if (plantilla_sufijo) {
+          plantillaFinal = `${plantilla}_${plantilla_sufijo}`;
         }
-        console.log(`🏦 Financiera default: ${finResult.rows[0].nombre} → plantilla: ${plantillaFinal}`);
+        console.log(`🏦 Financiera default: ${nombre} → plantilla: ${plantillaFinal}`);
       }
     } catch (err) {
       console.error('⚠️ Error obteniendo financiera default:', err.message);

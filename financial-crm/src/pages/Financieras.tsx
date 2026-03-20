@@ -45,6 +45,7 @@ export function Financieras() {
     alias: '',
     porcentaje: '',
     palabras_clave: [] as string[],
+    plantilla_sufijo: '',
   });
   const [newTag, setNewTag] = useState('');
   const [formError, setFormError] = useState('');
@@ -83,6 +84,7 @@ export function Financieras() {
       alias: '',
       porcentaje: '',
       palabras_clave: [],
+      plantilla_sufijo: '',
     });
     setNewTag('');
     setFormError('');
@@ -100,6 +102,7 @@ export function Financieras() {
       alias: financiera.alias || '',
       porcentaje: financiera.porcentaje?.toString() || '',
       palabras_clave: financiera.palabras_clave || [],
+      plantilla_sufijo: financiera.plantilla_sufijo || '',
     });
     setNewTag('');
     setFormError('');
@@ -145,6 +148,7 @@ export function Financieras() {
         alias: formData.alias || undefined,
         porcentaje: formData.porcentaje ? parseFloat(formData.porcentaje) : undefined,
         palabras_clave: formData.palabras_clave,
+        plantilla_sufijo: formData.plantilla_sufijo || undefined,
       };
 
       if (modalMode === 'create') {
@@ -528,6 +532,22 @@ export function Financieras() {
                   className="w-full px-4 py-2.5 border border-neutral-200 rounded-lg focus:ring-2 focus:ring-neutral-900 focus:border-transparent outline-none"
                   placeholder="alias.cuenta.mp"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-1.5">
+                  Sufijo de Plantilla WhatsApp
+                </label>
+                <input
+                  type="text"
+                  value={formData.plantilla_sufijo}
+                  onChange={(e) => setFormData(prev => ({ ...prev, plantilla_sufijo: e.target.value }))}
+                  className="w-full px-4 py-2.5 border border-neutral-200 rounded-lg focus:ring-2 focus:ring-neutral-900 focus:border-transparent outline-none"
+                  placeholder="ej: wanda_v2, kiesel_v2"
+                />
+                <p className="mt-1 text-xs text-neutral-500">
+                  Se agrega al nombre de la plantilla: pedido_creado → pedido_creado_[sufijo]
+                </p>
               </div>
 
               <div>

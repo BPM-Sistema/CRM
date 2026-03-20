@@ -58,21 +58,19 @@ async function processWhatsAppJob(job) {
     telefono = testingPhone;
   }
 
-  // 3. Determinar sufijo de financiera
+  // 3. Determinar sufijo de financiera (desde DB, no hardcodeado)
   let plantillaFinal = plantilla;
   if (!PLANTILLAS_SIN_SUFIJO.includes(plantilla)) {
     try {
       const finResult = await pool.query(
-        `SELECT nombre FROM financieras WHERE is_default = true LIMIT 1`
+        `SELECT nombre, plantilla_sufijo FROM financieras WHERE is_default = true LIMIT 1`
       );
       if (finResult.rows.length > 0) {
-        const nombreFinanciera = finResult.rows[0].nombre.toLowerCase();
-        if (nombreFinanciera.includes('wanda')) {
-          plantillaFinal = `${plantilla}_wanda_v2`;
-        } else if (nombreFinanciera.includes('kiesel')) {
-          plantillaFinal = `${plantilla}_kiesel_v2`;
+        const { nombre, plantilla_sufijo } = finResult.rows[0];
+        if (plantilla_sufijo) {
+          plantillaFinal = `${plantilla}_${plantilla_sufijo}`;
         }
-        jobLog.debug({ financiera: finResult.rows[0].nombre, plantillaFinal }, 'Sufijo financiera aplicado');
+        jobLog.debug({ financiera: nombre, plantillaFinal }, 'Sufijo financiera aplicado');
       }
     } catch (err) {
       jobLog.error({ err: err.message }, 'Error obteniendo financiera default');

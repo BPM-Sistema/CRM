@@ -1118,6 +1118,7 @@ export interface Financiera {
   porcentaje: number | null;
   alias: string | null;
   is_default: boolean;
+  plantilla_sufijo: string | null;
 }
 
 // Listar financieras

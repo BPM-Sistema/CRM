@@ -29,7 +29,8 @@ router.get('/', requirePermission('financieras.view'), async (req, res) => {
         cbu,
         porcentaje,
         alias,
-        is_default
+        is_default,
+        plantilla_sufijo
       FROM financieras
       ORDER BY is_default DESC, id ASC
     `);
@@ -65,7 +66,8 @@ router.get('/:id', requirePermission('financieras.view'), async (req, res) => {
         cbu,
         porcentaje,
         alias,
-        is_default
+        is_default,
+        plantilla_sufijo
       FROM financieras
       WHERE id = $1
     `, [id]);
@@ -91,7 +93,7 @@ router.get('/:id', requirePermission('financieras.view'), async (req, res) => {
  */
 router.post('/', requirePermission('financieras.create'), async (req, res) => {
   try {
-    const { nombre, titular_principal, celular, palabras_clave, cbu, porcentaje, alias } = req.body;
+    const { nombre, titular_principal, celular, palabras_clave, cbu, porcentaje, alias, plantilla_sufijo } = req.body;
 
     // Validaciones
     if (!nombre) {
@@ -111,9 +113,9 @@ router.post('/', requirePermission('financieras.create'), async (req, res) => {
       : null;
 
     const result = await pool.query(`
-      INSERT INTO financieras (nombre, titular_principal, celular, palabras_clave, activa, cbu, porcentaje, alias, is_default)
-      VALUES ($1, $2, $3, $4::jsonb, true, $5, $6, $7, $8)
-      RETURNING id, nombre, titular_principal, celular, palabras_clave, activa, created_at, cbu, porcentaje, alias, is_default
+      INSERT INTO financieras (nombre, titular_principal, celular, palabras_clave, activa, cbu, porcentaje, alias, is_default, plantilla_sufijo)
+      VALUES ($1, $2, $3, $4::jsonb, true, $5, $6, $7, $8, $9)
+      RETURNING id, nombre, titular_principal, celular, palabras_clave, activa, created_at, cbu, porcentaje, alias, is_default, plantilla_sufijo
     `, [
       nombre,
       titular_principal || null,
@@ -122,7 +124,8 @@ router.post('/', requirePermission('financieras.create'), async (req, res) => {
       cbu || null,
       porcentaje || null,
       alias || null,
-      isDefault
+      isDefault,
+      plantilla_sufijo || null
     ]);
 
     console.log(`🏦 Financiera creada: ${nombre}${isDefault ? ' (default)' : ''}`);
@@ -145,7 +148,7 @@ router.post('/', requirePermission('financieras.create'), async (req, res) => {
 router.put('/:id', requirePermission('financieras.update'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, titular_principal, celular, palabras_clave, cbu, porcentaje, alias } = req.body;
+    const { nombre, titular_principal, celular, palabras_clave, cbu, porcentaje, alias, plantilla_sufijo } = req.body;
 
     // Verificar que existe
     const exists = await pool.query('SELECT id FROM financieras WHERE id = $1', [id]);
@@ -171,9 +174,10 @@ router.put('/:id', requirePermission('financieras.update'), async (req, res) => 
           palabras_clave = $4::jsonb,
           cbu = $5,
           porcentaje = $6,
-          alias = $7
-      WHERE id = $8
-      RETURNING id, nombre, titular_principal, celular, palabras_clave, activa, created_at, cbu, porcentaje, alias, is_default
+          alias = $7,
+          plantilla_sufijo = $8
+      WHERE id = $9
+      RETURNING id, nombre, titular_principal, celular, palabras_clave, activa, created_at, cbu, porcentaje, alias, is_default, plantilla_sufijo
     `, [
       nombre,
       titular_principal || null,
@@ -182,6 +186,7 @@ router.put('/:id', requirePermission('financieras.update'), async (req, res) => 
       cbu || null,
       porcentaje || null,
       alias || null,
+      plantilla_sufijo || null,
       id
     ]);
 
@@ -252,7 +257,7 @@ router.patch('/:id/activar', requirePermission('financieras.update'), async (req
       UPDATE financieras
       SET activa = $1
       WHERE id = $2
-      RETURNING id, nombre, titular_principal, celular, palabras_clave, activa, created_at, cbu, porcentaje, alias, is_default
+      RETURNING id, nombre, titular_principal, celular, palabras_clave, activa, created_at, cbu, porcentaje, alias, is_default, plantilla_sufijo
     `, [activa, id]);
 
     if (result.rowCount === 0) {
@@ -294,7 +299,7 @@ router.patch('/:id/default', requirePermission('financieras.set_default'), async
       UPDATE financieras
       SET is_default = true
       WHERE id = $1
-      RETURNING id, nombre, titular_principal, celular, palabras_clave, activa, created_at, cbu, porcentaje, alias, is_default
+      RETURNING id, nombre, titular_principal, celular, palabras_clave, activa, created_at, cbu, porcentaje, alias, is_default, plantilla_sufijo
     `, [id]);
 
     console.log(`⭐ Financiera marcada como default: ${result.rows[0].nombre}`);
