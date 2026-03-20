@@ -430,7 +430,6 @@ export function RealOrders() {
     <div className="min-h-screen">
       <Header
         title="Pedidos"
-        subtitle={`${statusCounts.total} pedidos en total · ${statusCounts.pendiente || 0} pendientes de pago`}
         actions={
           <div className="flex items-center gap-2">
             {selectionMode ? (
