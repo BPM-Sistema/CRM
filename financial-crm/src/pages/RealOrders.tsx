@@ -258,18 +258,6 @@ export function RealOrders() {
   // Los filtros ahora se aplican en el servidor, solo filtramos por permisos localmente
   const filteredOrders = permittedOrders;
 
-  const statusCounts = useMemo(() => {
-    return permittedOrders.reduce(
-      (acc, order) => {
-        const status = mapEstadoPago(order.estado_pago);
-        acc[status] = (acc[status] || 0) + 1;
-        acc.total += 1;
-        return acc;
-      },
-      { total: 0 } as Record<string, number>
-    );
-  }, [permittedOrders]);
-
   // Contar pedidos seleccionados para imprimir - usa conteos del API
   const selectedPrintCount = useMemo(() => {
     if (!printCounts) return 0;
