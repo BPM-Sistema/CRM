@@ -78,7 +78,7 @@ router.get('/deep', authenticate, requirePermission('integrations.view'), async 
         if (pong !== 'PONG') throw new Error(`Unexpected response: ${pong}`);
       }),
 
-      // 3. Storage (GCS or Supabase)
+      // 3. Storage (GCS)
       checkServiceWithTimeout('Storage', async () => {
         await storageHealthCheck();
       }),

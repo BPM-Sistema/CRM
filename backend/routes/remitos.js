@@ -69,7 +69,7 @@ router.post('/upload',
 
     for (const file of files) {
       try {
-        // 1. Subir a Storage (GCS o Supabase según configuración)
+        // 1. Subir a Storage (GCS)
         const fileBuffer = fs.readFileSync(file.path);
         // Sanitizar nombre de archivo: remover caracteres especiales Unicode
         const safeName = file.originalname

@@ -65,7 +65,7 @@ async function checkAllServices() {
       if (result.rows[0]?.ok !== 1) throw new Error('Query falló');
     }),
 
-    // 3. Storage (GCS or Supabase)
+    // 3. Storage (GCS)
     checkService('Storage', async () => {
       await storageHealthCheck();
     }),

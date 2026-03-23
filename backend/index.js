@@ -3635,7 +3635,7 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     });
 
     /* ===============================
-       8️⃣ SUBIR ARCHIVO A STORAGE (GCS o Supabase)
+       8️⃣ SUBIR ARCHIVO A STORAGE (GCS)
     ================================ */
     const finalBuffer = await fs.promises.readFile(file.path);
 
@@ -4255,7 +4255,7 @@ app.get('/sync/status', authenticate, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// SYNC LOCK: Distributed lock usando tabla (compatible con Supabase Pooler)
+// SYNC LOCK: Distributed lock usando tabla
 // ═══════════════════════════════════════════════════════════════
 const SYNC_LOCK_KEY = 'sync_job_lock';
 const SYNC_LOCK_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos máximo

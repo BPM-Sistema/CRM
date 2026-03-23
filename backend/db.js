@@ -2,7 +2,7 @@ const { Pool } = require('pg');
 require('dotenv').config();
 
 // Cloud SQL uses Unix socket: /cloudsql/PROJECT:REGION:INSTANCE
-// Supabase uses TCP: host:port
+// TCP for local dev or Cloud SQL Auth Proxy
 const isCloudSQL = process.env.DB_HOST && process.env.DB_HOST.startsWith('/cloudsql/');
 
 const poolConfig = {
@@ -18,10 +18,9 @@ const poolConfig = {
 
 if (isCloudSQL) {
   // Cloud SQL via Unix socket (Cloud Run)
-  poolConfig.host = process.env.DB_HOST; // /cloudsql/project:region:instance
-  // No SSL needed for Unix socket
+  poolConfig.host = process.env.DB_HOST;
 } else {
-  // TCP connection (Supabase pooler or direct)
+  // TCP connection (local dev or Cloud SQL Auth Proxy)
   poolConfig.host = process.env.DB_HOST;
   poolConfig.port = Number(process.env.DB_PORT) || 5432;
   poolConfig.ssl = { rejectUnauthorized: false };
@@ -29,7 +28,7 @@ if (isCloudSQL) {
 
 const pool = new Pool(poolConfig);
 
-const dbLabel = isCloudSQL ? 'CLOUD SQL' : 'SUPABASE POOLER';
+const dbLabel = isCloudSQL ? 'CLOUD SQL' : 'TCP';
 pool.on('connect', () => {
   console.log(`[DB] Connected to PostgreSQL (${dbLabel})`);
 });

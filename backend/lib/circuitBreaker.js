@@ -56,20 +56,13 @@ async function claudeVisionRequest(config) {
   return axios(config);
 }
 
-async function supabaseStorageRequest(config) {
-  return axios(config);
-}
-
 // Pre-configured breakers connected to real axios calls
 const tiendanubeBreaker = createBreaker('tiendanube', tiendanubeRequest, { timeout: 20000 });
 const botmakerBreaker = createBreaker('botmaker', botmakerRequest, { timeout: 10000 });
 const claudeVisionBreaker = createBreaker('claudeVision', claudeVisionRequest, { timeout: 30000 });
-const supabaseStorageBreaker = createBreaker('supabaseStorage', supabaseStorageRequest, { timeout: 15000 });
 
 /**
  * Call Tiendanube API through circuit breaker.
- * @param {object} config - axios request config
- * @returns {Promise} axios response
  */
 async function callTiendanube(config) {
   return tiendanubeBreaker.fire(config);
@@ -77,29 +70,16 @@ async function callTiendanube(config) {
 
 /**
  * Call Botmaker API through circuit breaker.
- * @param {object} config - axios request config
- * @returns {Promise} axios response
  */
 async function callBotmaker(config) {
   return botmakerBreaker.fire(config);
 }
 
 /**
- * Call Google Vision API through circuit breaker.
- * @param {object} config - axios request config
- * @returns {Promise} axios response
+ * Call Claude Vision API through circuit breaker.
  */
 async function callClaudeVision(config) {
   return claudeVisionBreaker.fire(config);
-}
-
-/**
- * Call Supabase Storage through circuit breaker.
- * @param {object} config - axios request config
- * @returns {Promise} axios response
- */
-async function callSupabaseStorage(config) {
-  return supabaseStorageBreaker.fire(config);
 }
 
 /**
@@ -128,9 +108,7 @@ module.exports = {
   tiendanubeBreaker,
   botmakerBreaker,
   claudeVisionBreaker,
-  supabaseStorageBreaker,
   callTiendanube,
   callBotmaker,
-  callClaudeVision,
-  callSupabaseStorage
+  callClaudeVision
 };

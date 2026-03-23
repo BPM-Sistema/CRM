@@ -1,13 +1,8 @@
 #!/usr/bin/env node
 /**
- * Runtime test for storage abstraction layer.
- * Tests both GCS and Supabase paths depending on env vars.
+ * Runtime test for storage abstraction layer (GCS).
  *
  * Usage:
- *   # Test Supabase path (current prod):
- *   node tests/storage-runtime-test.js
- *
- *   # Test GCS path:
  *   GCS_BUCKET=your-bucket node tests/storage-runtime-test.js
  */
 
@@ -30,8 +25,12 @@ function test(name, fn) {
 }
 
 async function run() {
-  const backend = process.env.GCS_BUCKET ? 'GCS' : 'Supabase';
-  console.log(`\n═══ Storage Runtime Tests (backend: ${backend}) ═══\n`);
+  if (!process.env.GCS_BUCKET) {
+    console.error('GCS_BUCKET env var is required');
+    process.exit(1);
+  }
+
+  console.log(`\n═══ Storage Runtime Tests (GCS: ${process.env.GCS_BUCKET}) ═══\n`);
 
   // 1. Module loads without error
   await test('storage module loads', async () => {
@@ -46,12 +45,8 @@ async function run() {
   await test('getPublicUrl format', async () => {
     const { getPublicUrl } = require('../lib/storage');
     const url = getPublicUrl('test/foo.jpg');
-    if (process.env.GCS_BUCKET) {
-      if (!url.includes('storage.googleapis.com')) throw new Error(`Bad GCS URL: ${url}`);
-      if (!url.includes(process.env.GCS_BUCKET)) throw new Error(`Missing bucket in URL: ${url}`);
-    } else {
-      if (!url.includes('/storage/v1/object/public/comprobantes/')) throw new Error(`Bad Supabase URL: ${url}`);
-    }
+    if (!url.includes('storage.googleapis.com')) throw new Error(`Bad GCS URL: ${url}`);
+    if (!url.includes(process.env.GCS_BUCKET)) throw new Error(`Missing bucket in URL: ${url}`);
     return url;
   });
 

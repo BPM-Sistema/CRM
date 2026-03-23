@@ -11,8 +11,7 @@
 
 // Mock de variables de entorno
 process.env.PORT = '3998'; // Puerto diferente para evitar conflictos
-process.env.SUPABASE_URL = 'https://test.supabase.co';
-process.env.SUPABASE_KEY = 'test-key';
+process.env.GCS_BUCKET = 'test-bucket';
 process.env.TIENDANUBE_ACCESS_TOKEN = 'test-token';
 process.env.TIENDANUBE_STORE_ID = '12345';
 process.env.JWT_SECRET = 'test-secret';
@@ -34,15 +33,15 @@ jest.mock('pg', () => ({
   Pool: jest.fn(() => mockPool)
 }));
 
-// Mock de Supabase
-jest.mock('@supabase/supabase-js', () => ({
-  createClient: jest.fn(() => ({
-    storage: {
-      from: jest.fn(() => ({
-        upload: jest.fn().mockResolvedValue({ data: {}, error: null }),
-        getPublicUrl: jest.fn().mockReturnValue({ data: { publicUrl: 'https://test.url' } })
-      }))
-    }
+// Mock de Google Cloud Storage
+jest.mock('@google-cloud/storage', () => ({
+  Storage: jest.fn().mockImplementation(() => ({
+    bucket: jest.fn(() => ({
+      file: jest.fn(() => ({
+        save: jest.fn().mockResolvedValue()
+      })),
+      getFiles: jest.fn().mockResolvedValue([[]])
+    }))
   }))
 }));
 

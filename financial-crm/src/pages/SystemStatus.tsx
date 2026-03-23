@@ -125,7 +125,7 @@ const SERVICE_ICONS: Record<string, typeof Database> = {
   TiendaNube: ShoppingCart,
   Botmaker: MessageSquare,
   'Claude Vision': Eye,
-  'Supabase Storage': Cloud,
+  Storage: Cloud,
 };
 
 function formatUptime(seconds: number): string {

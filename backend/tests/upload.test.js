@@ -14,8 +14,7 @@ const fs = require('fs');
 
 // Mock de variables de entorno
 process.env.PORT = '3999'; // Puerto diferente para tests
-process.env.SUPABASE_URL = 'https://test.supabase.co';
-process.env.SUPABASE_KEY = 'test-key';
+process.env.GCS_BUCKET = 'test-bucket';
 process.env.TIENDANUBE_ACCESS_TOKEN = 'test-token';
 process.env.TIENDANUBE_STORE_ID = '12345';
 process.env.JWT_SECRET = 'test-secret';
@@ -37,17 +36,16 @@ jest.mock('pg', () => ({
   Pool: jest.fn(() => mockPool)
 }));
 
-// Mock de Supabase
-const mockSupabaseUpload = jest.fn();
-const mockSupabaseGetPublicUrl = jest.fn();
-jest.mock('@supabase/supabase-js', () => ({
-  createClient: jest.fn(() => ({
-    storage: {
-      from: jest.fn(() => ({
-        upload: mockSupabaseUpload,
-        getPublicUrl: mockSupabaseGetPublicUrl
-      }))
-    }
+// Mock de Google Cloud Storage
+const mockGCSSave = jest.fn().mockResolvedValue();
+jest.mock('@google-cloud/storage', () => ({
+  Storage: jest.fn().mockImplementation(() => ({
+    bucket: jest.fn(() => ({
+      file: jest.fn(() => ({
+        save: mockGCSSave
+      })),
+      getFiles: jest.fn().mockResolvedValue([[]])
+    }))
   }))
 }));
 
@@ -193,12 +191,6 @@ function setupDefaultMocks() {
     }
     // Default - return empty but valid
     return Promise.resolve({ rows: [], rowCount: 0 });
-  });
-
-  // Supabase Storage
-  mockSupabaseUpload.mockResolvedValue({ data: { path: 'comprobantes/test.png' }, error: null });
-  mockSupabaseGetPublicUrl.mockReturnValue({
-    data: { publicUrl: 'https://test.supabase.co/storage/v1/object/public/comprobantes/test.png' }
   });
 
   // Google Vision OCR - Formato correcto para textDetection
