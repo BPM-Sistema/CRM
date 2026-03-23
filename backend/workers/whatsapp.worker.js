@@ -59,11 +59,33 @@ async function processWhatsAppJob(job) {
     telefono = testingPhone;
   }
 
+  // 2.5 Prevenir duplicados en retry: si ya enviamos este mensaje, no reenviar
+  if (job.attemptsMade > 0 && orderNumber) {
+    const duplicateCheck = await pool.query(
+      `SELECT 1 FROM whatsapp_messages
+       WHERE order_number = $1
+       AND created_at > NOW() - INTERVAL '5 minutes'
+       LIMIT 1`,
+      [orderNumber]
+    );
+    if (duplicateCheck.rows.length > 0) {
+      jobLog.info({ attemptsMade: job.attemptsMade }, 'Retry omitido: mensaje ya enviado para este pedido');
+      return { status: 'skipped', reason: 'duplicate_prevented' };
+    }
+  }
+
   // 3. Resolve template using catalog-based system (no hardcoded logic)
   const plantillaFinal = await getPlantillaFinal(plantilla);
   jobLog.debug({ plantillaFinal }, 'Template resolved');
 
-  // 4. Enviar via Botmaker API
+  // 4. Obtener channelId desde config (con fallback a env var)
+  const channelId = await waConfig.getChannelId();
+  if (!channelId) {
+    jobLog.error('No hay channelId configurado');
+    throw new Error('No channel ID configured');
+  }
+
+  // 5. Enviar via Botmaker API
   const contactIdClean = telefono.replace('+', '');
 
   const response = await callBotmaker({
@@ -71,7 +93,7 @@ async function processWhatsAppJob(job) {
     url: 'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
     data: {
       chat: {
-        channelId: process.env.BOTMAKER_CHANNEL_ID,
+        channelId,
         contactId: contactIdClean
       },
       intentIdOrName: plantillaFinal,
@@ -84,7 +106,7 @@ async function processWhatsAppJob(job) {
     timeout: 15000
   });
 
-  // 5. Guardar en whatsapp_messages para tracking
+  // 6. Guardar en whatsapp_messages para tracking
   const botmakerRequestId = response.data?.requestId || requestId;
   try {
     await pool.query(
