@@ -80,47 +80,80 @@ function normalizePhoneForComparison(phone) {
 }
 
 /* =====================================================
-   UTIL — MAPEAR SHIPPING STATUS DE TN → ESTADO_PEDIDO
+   UTIL — MAPEAR SHIPPING DE TN → ESTADO_PEDIDO
    Solo avanza hacia adelante, nunca retrocede.
    Retorna null si no corresponde cambiar.
+
+   Datos reales de TN API (verificado 2026-03-26):
+   - shipping_status: unpacked | shipped | delivered (los estados reales)
+   - shipping: carrier ID (api_3988894, table, draft, pickup-point) — NO es el estado
+   - fulfillments[].status: UNPACKED | DISPATCHED | DELIVERED
+   - shipping_option.name: nombre legible del envío
+
+   Prioridad: shipping_status > fulfillments > shipping (carrier)
 ===================================================== */
 const ESTADO_PEDIDO_ORDER = {
   'pendiente_pago': 0, 'a_imprimir': 1, 'hoja_impresa': 2,
   'armado': 3, 'retirado': 4, 'en_calle': 4, 'enviado': 4, 'cancelado': 99,
 };
 
-function mapShippingToEstadoPedido(tnShippingStatus, shippingType, estadoPedidoActual, hasFulfillments) {
+/**
+ * @param {string} shippingStatus - pedido.shipping_status (unpacked/shipped/delivered)
+ * @param {string} shippingCarrier - pedido.shipping (api_3988894/table/draft/pickup-point)
+ * @param {string} shippingType - shipping_type de DB (nombre legible del envío)
+ * @param {string} estadoPedidoActual - estado_pedido actual en DB
+ * @param {object} [opts] - opciones
+ * @param {string} [opts.fulfillmentStatus] - fulfillments[0].status (UNPACKED/DISPATCHED/DELIVERED)
+ */
+function mapShippingToEstadoPedido(shippingStatus, shippingCarrier, shippingType, estadoPedidoActual, opts = {}) {
   if (estadoPedidoActual === 'cancelado') return null;
 
-  const isPickup = shippingType && /pickup|retiro|deposito|depósito/i.test(shippingType);
+  const isPickup = (shippingType && /pickup|retiro|deposito|depósito/i.test(shippingType))
+    || shippingCarrier === 'pickup-point';
 
+  const fulfillStatus = opts.fulfillmentStatus?.toUpperCase();
   let nuevoEstado = null;
 
-  // Si TN tiene fulfillments, el pedido fue despachado sin importar el campo shipping
-  if (hasFulfillments && !['fulfilled', 'shipped', 'delivered', 'pickup-point'].includes(tnShippingStatus)) {
-    nuevoEstado = isPickup ? 'retirado' : 'enviado';
-  } else {
-    switch (tnShippingStatus) {
-      case 'packed':
-        nuevoEstado = 'armado';
-        break;
-      case 'fulfilled':
+  // 1. Prioridad: shipping_status (campo real de la API)
+  if (shippingStatus) {
+    switch (shippingStatus) {
+      case 'delivered':
         nuevoEstado = isPickup ? 'retirado' : 'enviado';
         break;
       case 'shipped':
-        nuevoEstado = 'en_calle';
+        nuevoEstado = isPickup ? 'retirado' : 'enviado';
         break;
-      case 'delivered':
-        nuevoEstado = 'enviado';
+      case 'packed':
+        nuevoEstado = 'armado';
         break;
-      case 'pickup-point':
-        nuevoEstado = 'retirado';
+      case 'unpacked':
+      case 'unshipped':
+        // No avanzar — todavía sin despachar
         break;
-      default:
-        return null;
     }
   }
 
+  // 2. Fallback: fulfillment status
+  if (!nuevoEstado && fulfillStatus) {
+    switch (fulfillStatus) {
+      case 'DELIVERED':
+        nuevoEstado = isPickup ? 'retirado' : 'enviado';
+        break;
+      case 'DISPATCHED':
+        nuevoEstado = isPickup ? 'retirado' : 'enviado';
+        break;
+      // UNPACKED = no avanzar
+    }
+  }
+
+  // 3. Carrier-based: pickup-point como carrier siempre implica retiro
+  if (!nuevoEstado && shippingCarrier === 'pickup-point') {
+    nuevoEstado = 'retirado';
+  }
+
+  if (!nuevoEstado) return null;
+
+  // Solo avanzar, nunca retroceder
   const ordenActual = ESTADO_PEDIDO_ORDER[estadoPedidoActual] ?? 0;
   const ordenNuevo = ESTADO_PEDIDO_ORDER[nuevoEstado] ?? 0;
   if (ordenNuevo <= ordenActual) return null;

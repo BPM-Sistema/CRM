@@ -2608,13 +2608,15 @@ app.post('/admin/resync-estados', authenticate, requirePermission('users.view'),
         }
 
         // Shipping sync (si toggle ON y no cancelado)
-        const tnShipReal = tn.shipping_status || tn.shipping;
-        const tnHasFulfillments = Array.isArray(tn.fulfillments) && tn.fulfillments.length > 0;
-        if (syncShipping && tn.status !== 'cancelled' && (tnShipReal !== db.tn_shipping_status || tnHasFulfillments)) {
+        const tnShipStatus = tn.shipping_status || null;
+        const tnShipCarrier = tn.shipping || null;
+        const tnFulfillStatus = tn.fulfillments?.[0]?.status || null;
+        const tnShipToStore = tnShipStatus || tnShipCarrier;
+        if (syncShipping && tn.status !== 'cancelled' && (tnShipToStore !== db.tn_shipping_status || tnFulfillStatus)) {
           setClauses.push(`tn_shipping_status = $${paramIdx++}`);
-          setParams.push(tnShipReal);
+          setParams.push(tnShipToStore);
 
-          const nuevoEstado = mapShippingToEstadoPedido(tnShipReal, db.shipping_type || '', db.estado_pedido, tnHasFulfillments);
+          const nuevoEstado = mapShippingToEstadoPedido(tnShipStatus, tnShipCarrier, db.shipping_type || '', db.estado_pedido, { fulfillmentStatus: tnFulfillStatus });
           if (nuevoEstado) {
             setClauses.push(`estado_pedido = $${paramIdx++}`);
             setParams.push(nuevoEstado);
@@ -3212,8 +3214,9 @@ app.post('/webhook/tiendanube', async (req, res) => {
       // Valores nuevos de Tiendanube
       const montoNuevo = Math.round(Number(pedido.total));
       const paymentStatusNuevo = pedido.payment_status || null;
-      const shippingStatusNuevo = pedido.shipping_status || pedido.shipping || null;
-      const hasFulfillments = Array.isArray(pedido.fulfillments) && pedido.fulfillments.length > 0;
+      const shippingStatusNuevo = pedido.shipping_status || null;
+      const shippingCarrier = pedido.shipping || null;
+      const fulfillmentStatus = pedido.fulfillments?.[0]?.status || null;
 
       // Valores actuales en DB
       const montoAnterior = Number(db.monto_tiendanube);
@@ -3357,9 +3360,10 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
         shippingDerivedEstado = mapShippingToEstadoPedido(
           shippingStatusNuevo,
+          shippingCarrier,
           db.shipping_type || '',
           db.estado_pedido,
-          hasFulfillments
+          { fulfillmentStatus }
         );
         if (shippingDerivedEstado) {
           setClauses.push(`estado_pedido = $${paramIdx++}`);
@@ -4682,12 +4686,14 @@ app.post('/resync-estados/cron', verifyCronAuth, async (req, res) => {
           cambios.push(`pago: ${db.tn_payment_status} → ${tn.payment_status}`);
         }
 
-        const tnShipRealCron = tn.shipping_status || tn.shipping;
-        const tnHasFulfillCron = Array.isArray(tn.fulfillments) && tn.fulfillments.length > 0;
-        if (syncShipping && tn.status !== 'cancelled' && (tnShipRealCron !== db.tn_shipping_status || tnHasFulfillCron)) {
+        const tnShipStatusCron = tn.shipping_status || null;
+        const tnShipCarrierCron = tn.shipping || null;
+        const tnFulfillStatusCron = tn.fulfillments?.[0]?.status || null;
+        const tnShipToStoreCron = tnShipStatusCron || tnShipCarrierCron;
+        if (syncShipping && tn.status !== 'cancelled' && (tnShipToStoreCron !== db.tn_shipping_status || tnFulfillStatusCron)) {
           setClauses.push(`tn_shipping_status = $${paramIdx++}`);
-          setParams.push(tnShipRealCron);
-          const nuevoEstado = mapShippingToEstadoPedido(tnShipRealCron, db.shipping_type || '', db.estado_pedido, tnHasFulfillCron);
+          setParams.push(tnShipToStoreCron);
+          const nuevoEstado = mapShippingToEstadoPedido(tnShipStatusCron, tnShipCarrierCron, db.shipping_type || '', db.estado_pedido, { fulfillmentStatus: tnFulfillStatusCron });
           if (nuevoEstado) {
             setClauses.push(`estado_pedido = $${paramIdx++}`);
             setParams.push(nuevoEstado);
