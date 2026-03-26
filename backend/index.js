@@ -628,7 +628,7 @@ async function guardarPedidoCompleto(pedido) {
     pedido.note || null,
     pedido.owner_note || null,
     pedido.payment_status || null,
-    pedido.shipping_status || pedido.shipping || null,
+    pedido.shipping_status || null,
     pedido.paid_at || null,
     Math.round(Number(pedido.total_paid || 0)),
     pedido.gateway || pedido.gateway_name || null,
@@ -2601,6 +2601,15 @@ app.post('/admin/resync-estados', authenticate, requirePermission('users.view'),
             const pagoOnline = tnTotalPaid > 0 ? tnTotalPaid : Math.round(Number(tn.total));
             setClauses.push(`pago_online_tn = $${paramIdx++}`);
             setParams.push(pagoOnline);
+          } else if (tn.payment_status === 'partially_paid') {
+            setClauses.push(`pago_online_tn = $${paramIdx++}`);
+            setParams.push(tnTotalPaid);
+          } else if (tn.payment_status === 'refunded') {
+            setClauses.push(`estado_pago = 'reembolsado'`);
+            setClauses.push(`pago_online_tn = 0`);
+          } else if (tn.payment_status === 'voided') {
+            setClauses.push(`estado_pago = 'anulado'`);
+            setClauses.push(`pago_online_tn = 0`);
           } else if (tn.payment_status === 'pending') {
             setClauses.push(`pago_online_tn = 0`);
           }
@@ -2611,10 +2620,10 @@ app.post('/admin/resync-estados', authenticate, requirePermission('users.view'),
         const tnShipStatus = tn.shipping_status || null;
         const tnShipCarrier = tn.shipping || null;
         const tnFulfillStatus = tn.fulfillments?.[0]?.status || null;
-        const tnShipToStore = tnShipStatus || tnShipCarrier;
-        if (syncShipping && tn.status !== 'cancelled' && (tnShipToStore !== db.tn_shipping_status || tnFulfillStatus)) {
+        // Solo comparar shipping_status real (no carrier) — y solo si realmente cambió
+        if (syncShipping && tn.status !== 'cancelled' && (tnShipStatus !== db.tn_shipping_status || (tnFulfillStatus && tnFulfillStatus !== 'UNPACKED'))) {
           setClauses.push(`tn_shipping_status = $${paramIdx++}`);
-          setParams.push(tnShipToStore);
+          setParams.push(tnShipStatus);
 
           const nuevoEstado = mapShippingToEstadoPedido(tnShipStatus, tnShipCarrier, db.shipping_type || '', db.estado_pedido, { fulfillmentStatus: tnFulfillStatus });
           if (nuevoEstado) {
@@ -2626,9 +2635,9 @@ app.post('/admin/resync-estados', authenticate, requirePermission('users.view'),
             if (nuevoEstado === 'armado') {
               setClauses.push(`packed_at = COALESCE(packed_at, NOW())`);
             }
-            cambios.push(`envío: ${db.tn_shipping_status} → ${tnShipReal} (estado: ${nuevoEstado})`);
+            cambios.push(`envío: ${db.tn_shipping_status} → ${tnShipStatus} (estado: ${nuevoEstado})`);
           } else {
-            cambios.push(`envío TN: ${db.tn_shipping_status} → ${tnShipReal}`);
+            cambios.push(`envío TN: ${db.tn_shipping_status} → ${tnShipStatus}`);
           }
         }
 
@@ -3125,12 +3134,31 @@ app.post('/webhook/tiendanube', async (req, res) => {
       log.info({ event: 'order/cancelled', store_id, orderId, orderNumber }, 'Order cancelled via webhook');
 
       if (orderNumber) {
-        // Actualizar estado en DB
-        await pool.query(`
-          UPDATE orders_validated
-          SET estado_pedido = 'cancelado'
-          WHERE order_number = $1
-        `, [orderNumber]);
+        // Actualizar estado en DB + campos TN del pedido cancelado
+        const cancelPaymentStatus = pedido.payment_status || null;
+        const cancelUpdateFields = ['estado_pedido = \'cancelado\''];
+        const cancelParams = [orderNumber];
+        let cancelIdx = 2;
+        if (cancelPaymentStatus) {
+          cancelUpdateFields.push(`tn_payment_status = $${cancelIdx++}`);
+          cancelParams.push(cancelPaymentStatus);
+        }
+        if (cancelPaymentStatus === 'refunded') {
+          cancelUpdateFields.push(`estado_pago = 'reembolsado'`);
+          cancelUpdateFields.push(`pago_online_tn = 0`);
+        } else if (cancelPaymentStatus === 'voided') {
+          cancelUpdateFields.push(`estado_pago = 'anulado'`);
+          cancelUpdateFields.push(`pago_online_tn = 0`);
+        }
+        await pool.query(
+          `UPDATE orders_validated SET ${cancelUpdateFields.join(', ')} WHERE order_number = $1`,
+          cancelParams
+        );
+
+        // Recalcular pagos si se anuló/reembolsó
+        if (cancelPaymentStatus === 'refunded' || cancelPaymentStatus === 'voided') {
+          await recalcularPagos(pool, orderNumber);
+        }
 
         // Registrar en log de actividad
         await logEvento({
@@ -4680,6 +4708,15 @@ app.post('/resync-estados/cron', verifyCronAuth, async (req, res) => {
             const pagoOnline = tnTotalPaid > 0 ? tnTotalPaid : Math.round(Number(tn.total));
             setClauses.push(`pago_online_tn = $${paramIdx++}`);
             setParams.push(pagoOnline);
+          } else if (tn.payment_status === 'partially_paid') {
+            setClauses.push(`pago_online_tn = $${paramIdx++}`);
+            setParams.push(tnTotalPaid);
+          } else if (tn.payment_status === 'refunded') {
+            setClauses.push(`estado_pago = 'reembolsado'`);
+            setClauses.push(`pago_online_tn = 0`);
+          } else if (tn.payment_status === 'voided') {
+            setClauses.push(`estado_pago = 'anulado'`);
+            setClauses.push(`pago_online_tn = 0`);
           } else if (tn.payment_status === 'pending') {
             setClauses.push(`pago_online_tn = 0`);
           }
@@ -4689,10 +4726,10 @@ app.post('/resync-estados/cron', verifyCronAuth, async (req, res) => {
         const tnShipStatusCron = tn.shipping_status || null;
         const tnShipCarrierCron = tn.shipping || null;
         const tnFulfillStatusCron = tn.fulfillments?.[0]?.status || null;
-        const tnShipToStoreCron = tnShipStatusCron || tnShipCarrierCron;
-        if (syncShipping && tn.status !== 'cancelled' && (tnShipToStoreCron !== db.tn_shipping_status || tnFulfillStatusCron)) {
+        // Solo comparar shipping_status real (no carrier) — y solo si realmente cambió
+        if (syncShipping && tn.status !== 'cancelled' && (tnShipStatusCron !== db.tn_shipping_status || (tnFulfillStatusCron && tnFulfillStatusCron !== 'UNPACKED'))) {
           setClauses.push(`tn_shipping_status = $${paramIdx++}`);
-          setParams.push(tnShipToStoreCron);
+          setParams.push(tnShipStatusCron);
           const nuevoEstado = mapShippingToEstadoPedido(tnShipStatusCron, tnShipCarrierCron, db.shipping_type || '', db.estado_pedido, { fulfillmentStatus: tnFulfillStatusCron });
           if (nuevoEstado) {
             setClauses.push(`estado_pedido = $${paramIdx++}`);
