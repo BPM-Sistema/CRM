@@ -2610,6 +2610,9 @@ app.post('/admin/resync-estados', authenticate, requirePermission('users.view'),
           } else if (tn.payment_status === 'voided') {
             setClauses.push(`estado_pago = 'anulado'`);
             setClauses.push(`pago_online_tn = 0`);
+          } else if (tn.payment_status === 'partially_refunded') {
+            setClauses.push(`pago_online_tn = $${paramIdx++}`);
+            setParams.push(tnTotalPaid);
           } else if (tn.payment_status === 'pending') {
             setClauses.push(`pago_online_tn = 0`);
           }
@@ -3369,6 +3372,10 @@ app.post('/webhook/tiendanube', async (req, res) => {
         } else if (paymentStatusNuevo === 'voided') {
           setClauses.push(`estado_pago = 'anulado'`);
           setClauses.push(`pago_online_tn = 0`);
+        } else if (paymentStatusNuevo === 'partially_refunded') {
+          // Reembolso parcial: total_paid de TN refleja lo que queda pagado
+          setClauses.push(`pago_online_tn = $${paramIdx++}`);
+          setParams.push(tnTotalPaid);
         } else if (paymentStatusNuevo === 'paid' || paymentStatusNuevo === 'partially_paid') {
           // Determinar cuánto pagó el cliente vía gateway online
           let pagoOnline = 0;
@@ -4717,6 +4724,9 @@ app.post('/resync-estados/cron', verifyCronAuth, async (req, res) => {
           } else if (tn.payment_status === 'voided') {
             setClauses.push(`estado_pago = 'anulado'`);
             setClauses.push(`pago_online_tn = 0`);
+          } else if (tn.payment_status === 'partially_refunded') {
+            setClauses.push(`pago_online_tn = $${paramIdx++}`);
+            setParams.push(tnTotalPaid);
           } else if (tn.payment_status === 'pending') {
             setClauses.push(`pago_online_tn = 0`);
           }
