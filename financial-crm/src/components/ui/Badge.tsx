@@ -81,7 +81,7 @@ const orderStatusVariants: Record<OrderStatus, BadgeVariant> = {
   a_imprimir: 'default',
   hoja_impresa: 'default',
   armado: 'cyan',
-  retirado: 'default',
+  retirado: 'success',
   en_calle: 'warning',
   enviado: 'success',
   cancelado: 'danger',
