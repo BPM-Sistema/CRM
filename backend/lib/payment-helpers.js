@@ -112,6 +112,12 @@ function mapShippingToEstadoPedido(tnShippingStatus, shippingType, estadoPedidoA
       nuevoEstado = 'retirado';
       break;
     default:
+      // TN usa IDs de carrier como shipping status (ej: api_3988894 = Envío Nube)
+      // y 'table' para transportes manuales. Ambos significan "enviado".
+      if (/^api_\d+$/.test(tnShippingStatus) || tnShippingStatus === 'table') {
+        nuevoEstado = 'enviado';
+        break;
+      }
       return null;
   }
 
