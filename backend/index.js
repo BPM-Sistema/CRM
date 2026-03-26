@@ -48,7 +48,7 @@ const { tiendanube: tnConfig, whatsapp: waConfig, isEnabled: isIntegrationEnable
 const { verificarConsistencia, getInconsistencias } = require('./utils/orderVerification');
 const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crearNotificacion } = require('./utils/notifications');
 const { enviarWhatsAppPlantilla, PLANTILLAS_SIN_SUFIJO, PLANTILLA_CONFIG_KEY } = require('./lib/whatsapp-helpers');
-const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, normalizePhoneForComparison } = require('./lib/payment-helpers');
+const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, normalizePhoneForComparison, mapShippingToEstadoPedido } = require('./lib/payment-helpers');
 const { recalcularPagos } = require('./lib/recalcularPagos');
 const { watermarkReceipt, isValidDestination, detectarFinancieraDesdeOCR } = require('./lib/comprobante-helpers');
 const customerSync = require('./services/customerSync');
@@ -2529,6 +2529,137 @@ app.post('/admin/resync-all-orders', authenticate, requirePermission('users.view
 
 
 /* =====================================================
+   POST — RESYNC ESTADOS DESDE TIENDANUBE
+   Compara estados de TN vs BPM y corrige desvíos.
+   Respeta toggles: solo sincroniza categorías habilitadas.
+   Puede ejecutarse manualmente o via cron.
+===================================================== */
+app.post('/admin/resync-estados', authenticate, requirePermission('users.view'), async (req, res) => {
+  try {
+    const resyncEnabled = await tnConfig.isResyncManualEnabled();
+    if (!resyncEnabled) {
+      return res.status(503).json({ error: 'Resync manual está deshabilitado' });
+    }
+
+    const storeId = process.env.TIENDANUBE_STORE_ID;
+    const [syncPayment, syncShipping] = await Promise.all([
+      isIntegrationEnabled('tiendanube_webhook_sync_payment', { context: 'resync-estados:payment' }),
+      isIntegrationEnabled('tiendanube_webhook_sync_shipping', { context: 'resync-estados:shipping' }),
+    ]);
+
+    // Obtener pedidos no cancelados con tn_order_id
+    const ordersRes = await pool.query(`
+      SELECT order_number, tn_order_id, tn_payment_status, tn_shipping_status,
+             estado_pago, estado_pedido, monto_tiendanube, shipping_type
+      FROM orders_validated
+      WHERE tn_order_id IS NOT NULL AND estado_pedido != 'cancelado'
+      ORDER BY created_at DESC
+    `);
+
+    const total = ordersRes.rows.length;
+    console.log(`🔄 Resync estados: ${total} pedidos, toggles: payment=${syncPayment}, shipping=${syncShipping}`);
+
+    res.json({ ok: true, message: `Resync estados iniciado para ${total} pedidos`, total });
+
+    let corregidos = 0, errores = 0, sinCambios = 0;
+
+    for (let i = 0; i < ordersRes.rows.length; i++) {
+      const db = ordersRes.rows[i];
+      try {
+        const pedidoRes = await callTiendanube({
+          method: 'get',
+          url: `https://api.tiendanube.com/v1/${storeId}/orders/${db.tn_order_id}`,
+          headers: { authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`, 'User-Agent': 'bpm-resync' },
+          timeout: 10000
+        });
+        const tn = pedidoRes.data;
+
+        const setClauses = ['updated_at = NOW()'];
+        const setParams = [];
+        let paramIdx = 2;
+        let cambios = [];
+
+        // Cancelado en TN
+        if (tn.status === 'cancelled' && db.estado_pedido !== 'cancelado') {
+          setClauses.push(`estado_pedido = 'cancelado'`);
+          cambios.push('cancelado');
+        }
+
+        // Payment sync (si toggle ON)
+        if (syncPayment && tn.payment_status !== db.tn_payment_status) {
+          setClauses.push(`tn_payment_status = $${paramIdx++}`);
+          setParams.push(tn.payment_status);
+          setClauses.push(`tn_paid_at = $${paramIdx++}`);
+          setParams.push(tn.paid_at || null);
+          const tnTotalPaid = Math.round(Number(tn.total_paid || 0));
+          setClauses.push(`tn_total_paid = $${paramIdx++}`);
+          setParams.push(tnTotalPaid);
+          setClauses.push(`tn_gateway = $${paramIdx++}`);
+          setParams.push(tn.gateway || null);
+
+          if (tn.payment_status === 'paid') {
+            const pagoOnline = tnTotalPaid > 0 ? tnTotalPaid : Math.round(Number(tn.total));
+            setClauses.push(`pago_online_tn = $${paramIdx++}`);
+            setParams.push(pagoOnline);
+          } else if (tn.payment_status === 'pending') {
+            setClauses.push(`pago_online_tn = 0`);
+          }
+          cambios.push(`pago: ${db.tn_payment_status} → ${tn.payment_status}`);
+        }
+
+        // Shipping sync (si toggle ON y no cancelado)
+        if (syncShipping && tn.status !== 'cancelled' && tn.shipping !== db.tn_shipping_status) {
+          setClauses.push(`tn_shipping_status = $${paramIdx++}`);
+          setParams.push(tn.shipping);
+
+          const nuevoEstado = mapShippingToEstadoPedido(tn.shipping, db.shipping_type || '', db.estado_pedido);
+          if (nuevoEstado) {
+            setClauses.push(`estado_pedido = $${paramIdx++}`);
+            setParams.push(nuevoEstado);
+            if (['enviado', 'en_calle', 'retirado'].includes(nuevoEstado)) {
+              setClauses.push(`shipped_at = COALESCE(shipped_at, NOW())`);
+            }
+            if (nuevoEstado === 'armado') {
+              setClauses.push(`packed_at = COALESCE(packed_at, NOW())`);
+            }
+            cambios.push(`envío: ${db.tn_shipping_status} → ${tn.shipping} (estado: ${nuevoEstado})`);
+          } else {
+            cambios.push(`envío TN: ${db.tn_shipping_status} → ${tn.shipping}`);
+          }
+        }
+
+        if (setClauses.length > 1) {
+          await pool.query(
+            `UPDATE orders_validated SET ${setClauses.join(', ')} WHERE order_number = $1`,
+            [db.order_number, ...setParams]
+          );
+          // Recalcular pagos si hubo cambio de payment
+          if (syncPayment && tn.payment_status !== db.tn_payment_status) {
+            await recalcularPagos(pool, db.order_number);
+          }
+          await logEvento({ orderNumber: db.order_number, accion: `Resync: ${cambios.join(', ')}`, origen: 'resync_estados' });
+          corregidos++;
+        } else {
+          sinCambios++;
+        }
+
+        if ((i + 1) % 100 === 0) {
+          console.log(`📊 Resync: ${i + 1}/${total} (${corregidos} corregidos, ${sinCambios} OK, ${errores} errores)`);
+        }
+        await new Promise(r => setTimeout(r, 200));
+      } catch (err) {
+        errores++;
+      }
+    }
+
+    console.log(`✅ Resync estados completado: ${corregidos} corregidos, ${sinCambios} sin cambios, ${errores} errores`);
+  } catch (error) {
+    console.error('❌ /admin/resync-estados error:', error.message);
+  }
+});
+
+
+/* =====================================================
    POST — SYNC PEDIDOS CANCELADOS (RÁPIDO)
    Solo sincroniza el estado cancelado, no productos
    Approach: verificar nuestros pedidos contra TiendaNube
@@ -3032,10 +3163,11 @@ app.post('/webhook/tiendanube', async (req, res) => {
       return;
     }
 
-    // Solo procesar order/created y order/updated
-    if (event !== 'order/created' && event !== 'order/updated') return;
+    // Procesar order/created, order/updated, order/paid, order/fulfilled
+    const updatedEvents = ['order/updated', 'order/paid', 'order/fulfilled'];
+    if (event !== 'order/created' && !updatedEvents.includes(event)) return;
 
-    // Check sub-toggle por evento
+    // Check sub-toggle por evento (paid/fulfilled usan el toggle de updated)
     const eventSubKey = event === 'order/created' ? 'tiendanube_webhook_order_created' : 'tiendanube_webhook_order_updated';
     const eventEnabled = await isIntegrationEnabled(eventSubKey, { context: `webhook:${event}` });
     if (!eventEnabled) {
@@ -3058,11 +3190,12 @@ app.post('/webhook/tiendanube', async (req, res) => {
     }
 
     // 4️⃣ Procesar según el evento
-    if (event === 'order/updated') {
+    if (updatedEvents.includes(event)) {
       // Verificar si existe en nuestra DB
       const existente = await pool.query(
-        `SELECT order_number, monto_tiendanube, total_pagado, estado_pago,
-                tn_payment_status, tn_shipping_status, tn_paid_at, tn_total_paid, tn_gateway
+        `SELECT order_number, monto_tiendanube, total_pagado, estado_pago, estado_pedido,
+                tn_payment_status, tn_shipping_status, tn_paid_at, tn_total_paid, tn_gateway,
+                shipping_type
          FROM orders_validated WHERE order_number = $1`,
         [String(pedido.number)]
       );
@@ -3214,9 +3347,26 @@ app.post('/webhook/tiendanube', async (req, res) => {
           setParams.push(pagoOnline);
         }
       }
+      let shippingDerivedEstado = null;
       if (syncShipping && cambioShipping) {
         setClauses.push(`tn_shipping_status = $${paramIdx++}`);
         setParams.push(shippingStatusNuevo);
+
+        shippingDerivedEstado = mapShippingToEstadoPedido(
+          shippingStatusNuevo,
+          db.shipping_type || '',
+          db.estado_pedido
+        );
+        if (shippingDerivedEstado) {
+          setClauses.push(`estado_pedido = $${paramIdx++}`);
+          setParams.push(shippingDerivedEstado);
+          if (['enviado', 'en_calle', 'retirado'].includes(shippingDerivedEstado)) {
+            setClauses.push(`shipped_at = COALESCE(shipped_at, NOW())`);
+          }
+          if (shippingDerivedEstado === 'armado') {
+            setClauses.push(`packed_at = COALESCE(packed_at, NOW())`);
+          }
+        }
       }
       if (syncProducts && (cambioMonto || hayProductosCambiados)) {
         setClauses.push(`monto_tiendanube = $${paramIdx++}`);
@@ -3278,14 +3428,16 @@ app.post('/webhook/tiendanube', async (req, res) => {
       // Guardar en historial — logs separados por tipo de cambio
       const orderNum = String(pedido.number);
 
-      // Log cada cambio de producto individualmente
-      for (const productLine of mensaje.productChanges) {
-        await logEvento({ orderNumber: orderNum, accion: productLine, origen: 'webhook_tiendanube' });
-      }
+      // Log cada cambio de producto individualmente (solo si toggle ON)
+      if (syncProducts) {
+        for (const productLine of mensaje.productChanges) {
+          await logEvento({ orderNumber: orderNum, accion: productLine, origen: 'webhook_tiendanube' });
+        }
 
-      // Log cambio de monto como evento separado (solo si realmente cambió)
-      if (cambioMonto) {
-        await logEvento({ orderNumber: orderNum, accion: mensaje.montoLine, origen: 'webhook_tiendanube' });
+        // Log cambio de monto como evento separado (solo si realmente cambió)
+        if (cambioMonto) {
+          await logEvento({ orderNumber: orderNum, accion: mensaje.montoLine, origen: 'webhook_tiendanube' });
+        }
       }
 
       // Log cambio de pago
@@ -3296,6 +3448,39 @@ app.post('/webhook/tiendanube', async (req, res) => {
           ? `Pago parcial en TiendaNube ($${tnTotalPaid.toLocaleString('es-AR')})`
           : `Estado de pago cambiado a: ${paymentStatusNuevo}`;
         await logEvento({ orderNumber: orderNum, accion: pagoMsg, origen: 'webhook_tiendanube' });
+      }
+
+      // Log cambio de envío
+      if (cambioShipping && syncShipping) {
+        await logEvento({ orderNumber: orderNum, accion: `Estado envío TN: ${shippingStatusAnterior || 'N/A'} → ${shippingStatusNuevo}`, origen: 'webhook_tiendanube' });
+        if (shippingDerivedEstado) {
+          await logEvento({ orderNumber: orderNum, accion: `Estado pedido actualizado a "${shippingDerivedEstado}" (sync envío TN)`, origen: 'webhook_tiendanube' });
+        }
+      }
+
+      // Log cambio de cliente
+      if (cambioCustomer && syncCustomer) {
+        await logEvento({ orderNumber: orderNum, accion: `Datos de cliente actualizados desde TN`, origen: 'webhook_tiendanube' });
+      }
+
+      // Log cambio de dirección
+      if (cambioAddress && syncAddress) {
+        await logEvento({ orderNumber: orderNum, accion: `Dirección de envío actualizada desde TN`, origen: 'webhook_tiendanube' });
+      }
+
+      // Log cambio de notas
+      if (cambioNotes && syncNotes) {
+        await logEvento({ orderNumber: orderNum, accion: `Notas del pedido actualizadas desde TN`, origen: 'webhook_tiendanube' });
+      }
+
+      // Log cambio de costos
+      if (cambioCosts && syncCosts) {
+        await logEvento({ orderNumber: orderNum, accion: `Descuentos/costos actualizados desde TN`, origen: 'webhook_tiendanube' });
+      }
+
+      // Log cambio de tracking
+      if (cambioTracking && syncTracking) {
+        await logEvento({ orderNumber: orderNum, accion: `Nro. de seguimiento actualizado desde TN: ${pedido.shipping_tracking_number}`, origen: 'webhook_tiendanube' });
       }
 
       return;
@@ -4427,6 +4612,104 @@ app.post('/reconcile/cron', verifyCronAuth, async (req, res) => {
     res.json({ ok: true, ...results });
   } catch (error) {
     log.error({ err: error }, 'Cron reconciliation error');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Cron: resync estados con TiendaNube (llamado por Cloud Scheduler)
+app.post('/resync-estados/cron', verifyCronAuth, async (req, res) => {
+  log.info({ authMethod: req.cronAuth?.method }, 'Cron resync-estados started');
+  try {
+    const storeId = process.env.TIENDANUBE_STORE_ID;
+    const [syncPayment, syncShipping] = await Promise.all([
+      isIntegrationEnabled('tiendanube_webhook_sync_payment', { context: 'cron:resync-estados:payment' }),
+      isIntegrationEnabled('tiendanube_webhook_sync_shipping', { context: 'cron:resync-estados:shipping' }),
+    ]);
+
+    // Solo pedidos recientes (últimos 7 días) para el cron diario
+    const ordersRes = await pool.query(`
+      SELECT order_number, tn_order_id, tn_payment_status, tn_shipping_status,
+             estado_pago, estado_pedido, monto_tiendanube, shipping_type
+      FROM orders_validated
+      WHERE tn_order_id IS NOT NULL AND estado_pedido != 'cancelado'
+        AND created_at > NOW() - INTERVAL '7 days'
+      ORDER BY created_at DESC
+    `);
+
+    let corregidos = 0, errores = 0;
+
+    for (const db of ordersRes.rows) {
+      try {
+        const pedidoRes = await callTiendanube({
+          method: 'get',
+          url: `https://api.tiendanube.com/v1/${storeId}/orders/${db.tn_order_id}`,
+          headers: { authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`, 'User-Agent': 'bpm-cron-resync' },
+          timeout: 10000
+        });
+        const tn = pedidoRes.data;
+
+        const setClauses = ['updated_at = NOW()'];
+        const setParams = [];
+        let paramIdx = 2;
+        let cambios = [];
+
+        if (tn.status === 'cancelled' && db.estado_pedido !== 'cancelado') {
+          setClauses.push(`estado_pedido = 'cancelado'`);
+          cambios.push('cancelado');
+        }
+
+        if (syncPayment && tn.payment_status !== db.tn_payment_status) {
+          setClauses.push(`tn_payment_status = $${paramIdx++}`);
+          setParams.push(tn.payment_status);
+          setClauses.push(`tn_paid_at = $${paramIdx++}`);
+          setParams.push(tn.paid_at || null);
+          const tnTotalPaid = Math.round(Number(tn.total_paid || 0));
+          setClauses.push(`tn_total_paid = $${paramIdx++}`);
+          setParams.push(tnTotalPaid);
+          setClauses.push(`tn_gateway = $${paramIdx++}`);
+          setParams.push(tn.gateway || null);
+          if (tn.payment_status === 'paid') {
+            const pagoOnline = tnTotalPaid > 0 ? tnTotalPaid : Math.round(Number(tn.total));
+            setClauses.push(`pago_online_tn = $${paramIdx++}`);
+            setParams.push(pagoOnline);
+          } else if (tn.payment_status === 'pending') {
+            setClauses.push(`pago_online_tn = 0`);
+          }
+          cambios.push(`pago: ${db.tn_payment_status} → ${tn.payment_status}`);
+        }
+
+        if (syncShipping && tn.status !== 'cancelled' && tn.shipping !== db.tn_shipping_status) {
+          setClauses.push(`tn_shipping_status = $${paramIdx++}`);
+          setParams.push(tn.shipping);
+          const nuevoEstado = mapShippingToEstadoPedido(tn.shipping, db.shipping_type || '', db.estado_pedido);
+          if (nuevoEstado) {
+            setClauses.push(`estado_pedido = $${paramIdx++}`);
+            setParams.push(nuevoEstado);
+            if (['enviado', 'en_calle', 'retirado'].includes(nuevoEstado)) {
+              setClauses.push(`shipped_at = COALESCE(shipped_at, NOW())`);
+            }
+            cambios.push(`envío: ${nuevoEstado}`);
+          }
+        }
+
+        if (setClauses.length > 1) {
+          await pool.query(`UPDATE orders_validated SET ${setClauses.join(', ')} WHERE order_number = $1`, [db.order_number, ...setParams]);
+          if (syncPayment && tn.payment_status !== db.tn_payment_status) {
+            await recalcularPagos(pool, db.order_number);
+          }
+          await logEvento({ orderNumber: db.order_number, accion: `Resync cron: ${cambios.join(', ')}`, origen: 'cron_resync' });
+          corregidos++;
+        }
+        await new Promise(r => setTimeout(r, 200));
+      } catch (err) {
+        errores++;
+      }
+    }
+
+    log.info({ total: ordersRes.rowCount, corregidos, errores }, 'Cron resync-estados completed');
+    res.json({ ok: true, total: ordersRes.rowCount, corregidos, errores });
+  } catch (error) {
+    log.error({ err: error }, 'Cron resync-estados error');
     res.status(500).json({ error: error.message });
   }
 });

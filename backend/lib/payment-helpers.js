@@ -79,6 +79,49 @@ function normalizePhoneForComparison(phone) {
   return phone.replace(/\D/g, '').slice(-10);
 }
 
+/* =====================================================
+   UTIL — MAPEAR SHIPPING STATUS DE TN → ESTADO_PEDIDO
+   Solo avanza hacia adelante, nunca retrocede.
+   Retorna null si no corresponde cambiar.
+===================================================== */
+const ESTADO_PEDIDO_ORDER = {
+  'pendiente_pago': 0, 'a_imprimir': 1, 'hoja_impresa': 2,
+  'armado': 3, 'retirado': 4, 'en_calle': 4, 'enviado': 4, 'cancelado': 99,
+};
+
+function mapShippingToEstadoPedido(tnShippingStatus, shippingType, estadoPedidoActual) {
+  if (!tnShippingStatus || estadoPedidoActual === 'cancelado') return null;
+
+  const isPickup = shippingType && /pickup|retiro|deposito|depósito/i.test(shippingType);
+
+  let nuevoEstado = null;
+  switch (tnShippingStatus) {
+    case 'packed':
+      nuevoEstado = 'armado';
+      break;
+    case 'fulfilled':
+      nuevoEstado = isPickup ? 'retirado' : 'enviado';
+      break;
+    case 'shipped':
+      nuevoEstado = 'en_calle';
+      break;
+    case 'delivered':
+      nuevoEstado = 'enviado';
+      break;
+    case 'pickup-point':
+      nuevoEstado = 'retirado';
+      break;
+    default:
+      return null;
+  }
+
+  const ordenActual = ESTADO_PEDIDO_ORDER[estadoPedidoActual] ?? 0;
+  const ordenNuevo = ESTADO_PEDIDO_ORDER[nuevoEstado] ?? 0;
+  if (ordenNuevo <= ordenActual) return null;
+
+  return nuevoEstado;
+}
+
 module.exports = {
   calcularTotalPagado,
   calcularEstadoPedido,
@@ -86,4 +129,5 @@ module.exports = {
   normalizePhoneForComparison,
   normalizePhone,
   calcularEstadoCuenta,
+  mapShippingToEstadoPedido,
 };
