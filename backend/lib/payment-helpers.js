@@ -89,36 +89,36 @@ const ESTADO_PEDIDO_ORDER = {
   'armado': 3, 'retirado': 4, 'en_calle': 4, 'enviado': 4, 'cancelado': 99,
 };
 
-function mapShippingToEstadoPedido(tnShippingStatus, shippingType, estadoPedidoActual) {
-  if (!tnShippingStatus || estadoPedidoActual === 'cancelado') return null;
+function mapShippingToEstadoPedido(tnShippingStatus, shippingType, estadoPedidoActual, hasFulfillments) {
+  if (estadoPedidoActual === 'cancelado') return null;
 
   const isPickup = shippingType && /pickup|retiro|deposito|depósito/i.test(shippingType);
 
   let nuevoEstado = null;
-  switch (tnShippingStatus) {
-    case 'packed':
-      nuevoEstado = 'armado';
-      break;
-    case 'fulfilled':
-      nuevoEstado = isPickup ? 'retirado' : 'enviado';
-      break;
-    case 'shipped':
-      nuevoEstado = 'en_calle';
-      break;
-    case 'delivered':
-      nuevoEstado = 'enviado';
-      break;
-    case 'pickup-point':
-      nuevoEstado = 'retirado';
-      break;
-    default:
-      // TN usa IDs de carrier como shipping status (ej: api_3988894 = Envío Nube)
-      // y 'table' para transportes manuales. Ambos significan "enviado".
-      if (/^api_\d+$/.test(tnShippingStatus) || tnShippingStatus === 'table') {
+
+  // Si TN tiene fulfillments, el pedido fue despachado sin importar el campo shipping
+  if (hasFulfillments && !['fulfilled', 'shipped', 'delivered', 'pickup-point'].includes(tnShippingStatus)) {
+    nuevoEstado = isPickup ? 'retirado' : 'enviado';
+  } else {
+    switch (tnShippingStatus) {
+      case 'packed':
+        nuevoEstado = 'armado';
+        break;
+      case 'fulfilled':
+        nuevoEstado = isPickup ? 'retirado' : 'enviado';
+        break;
+      case 'shipped':
+        nuevoEstado = 'en_calle';
+        break;
+      case 'delivered':
         nuevoEstado = 'enviado';
         break;
-      }
-      return null;
+      case 'pickup-point':
+        nuevoEstado = 'retirado';
+        break;
+      default:
+        return null;
+    }
   }
 
   const ordenActual = ESTADO_PEDIDO_ORDER[estadoPedidoActual] ?? 0;

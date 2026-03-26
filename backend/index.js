@@ -628,7 +628,7 @@ async function guardarPedidoCompleto(pedido) {
     pedido.note || null,
     pedido.owner_note || null,
     pedido.payment_status || null,
-    pedido.shipping || null,  // El campo es "shipping", no "shipping_status"
+    pedido.shipping_status || pedido.shipping || null,
     pedido.paid_at || null,
     Math.round(Number(pedido.total_paid || 0)),
     pedido.gateway || pedido.gateway_name || null,
@@ -2608,11 +2608,13 @@ app.post('/admin/resync-estados', authenticate, requirePermission('users.view'),
         }
 
         // Shipping sync (si toggle ON y no cancelado)
-        if (syncShipping && tn.status !== 'cancelled' && tn.shipping !== db.tn_shipping_status) {
+        const tnShipReal = tn.shipping_status || tn.shipping;
+        const tnHasFulfillments = Array.isArray(tn.fulfillments) && tn.fulfillments.length > 0;
+        if (syncShipping && tn.status !== 'cancelled' && (tnShipReal !== db.tn_shipping_status || tnHasFulfillments)) {
           setClauses.push(`tn_shipping_status = $${paramIdx++}`);
-          setParams.push(tn.shipping);
+          setParams.push(tnShipReal);
 
-          const nuevoEstado = mapShippingToEstadoPedido(tn.shipping, db.shipping_type || '', db.estado_pedido);
+          const nuevoEstado = mapShippingToEstadoPedido(tnShipReal, db.shipping_type || '', db.estado_pedido, tnHasFulfillments);
           if (nuevoEstado) {
             setClauses.push(`estado_pedido = $${paramIdx++}`);
             setParams.push(nuevoEstado);
@@ -2622,9 +2624,9 @@ app.post('/admin/resync-estados', authenticate, requirePermission('users.view'),
             if (nuevoEstado === 'armado') {
               setClauses.push(`packed_at = COALESCE(packed_at, NOW())`);
             }
-            cambios.push(`envío: ${db.tn_shipping_status} → ${tn.shipping} (estado: ${nuevoEstado})`);
+            cambios.push(`envío: ${db.tn_shipping_status} → ${tnShipReal} (estado: ${nuevoEstado})`);
           } else {
-            cambios.push(`envío TN: ${db.tn_shipping_status} → ${tn.shipping}`);
+            cambios.push(`envío TN: ${db.tn_shipping_status} → ${tnShipReal}`);
           }
         }
 
@@ -3210,7 +3212,8 @@ app.post('/webhook/tiendanube', async (req, res) => {
       // Valores nuevos de Tiendanube
       const montoNuevo = Math.round(Number(pedido.total));
       const paymentStatusNuevo = pedido.payment_status || null;
-      const shippingStatusNuevo = pedido.shipping || null;
+      const shippingStatusNuevo = pedido.shipping_status || pedido.shipping || null;
+      const hasFulfillments = Array.isArray(pedido.fulfillments) && pedido.fulfillments.length > 0;
 
       // Valores actuales en DB
       const montoAnterior = Number(db.monto_tiendanube);
@@ -3355,7 +3358,8 @@ app.post('/webhook/tiendanube', async (req, res) => {
         shippingDerivedEstado = mapShippingToEstadoPedido(
           shippingStatusNuevo,
           db.shipping_type || '',
-          db.estado_pedido
+          db.estado_pedido,
+          hasFulfillments
         );
         if (shippingDerivedEstado) {
           setClauses.push(`estado_pedido = $${paramIdx++}`);
@@ -4678,10 +4682,12 @@ app.post('/resync-estados/cron', verifyCronAuth, async (req, res) => {
           cambios.push(`pago: ${db.tn_payment_status} → ${tn.payment_status}`);
         }
 
-        if (syncShipping && tn.status !== 'cancelled' && tn.shipping !== db.tn_shipping_status) {
+        const tnShipRealCron = tn.shipping_status || tn.shipping;
+        const tnHasFulfillCron = Array.isArray(tn.fulfillments) && tn.fulfillments.length > 0;
+        if (syncShipping && tn.status !== 'cancelled' && (tnShipRealCron !== db.tn_shipping_status || tnHasFulfillCron)) {
           setClauses.push(`tn_shipping_status = $${paramIdx++}`);
-          setParams.push(tn.shipping);
-          const nuevoEstado = mapShippingToEstadoPedido(tn.shipping, db.shipping_type || '', db.estado_pedido);
+          setParams.push(tnShipRealCron);
+          const nuevoEstado = mapShippingToEstadoPedido(tnShipRealCron, db.shipping_type || '', db.estado_pedido, tnHasFulfillCron);
           if (nuevoEstado) {
             setClauses.push(`estado_pedido = $${paramIdx++}`);
             setParams.push(nuevoEstado);
