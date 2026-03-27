@@ -51,6 +51,7 @@ const { enviarWhatsAppPlantilla, PLANTILLAS_SIN_SUFIJO, PLANTILLA_CONFIG_KEY } =
 const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, normalizePhoneForComparison, mapShippingToEstadoPedido } = require('./lib/payment-helpers');
 const { recalcularPagos } = require('./lib/recalcularPagos');
 const { watermarkReceipt, isValidDestination, detectarFinancieraDesdeOCR } = require('./lib/comprobante-helpers');
+const { buildDivergenceReport, saveDivergences, applyAutoFixes, getBpmOrderForComparison } = require('./lib/divergence-detector');
 const customerSync = require('./services/customerSync');
 const customerMetrics = require('./services/customerMetrics');
 const customerSegmentation = require('./services/customerSegmentation');
@@ -3479,6 +3480,43 @@ app.post('/webhook/tiendanube', async (req, res) => {
         await recalcularPagos(pool, String(pedido.number));
       }
 
+      // 🔍 Detectar divergencias BPM vs TN (post-sync)
+      try {
+        const divDetectionEnabled = await isIntegrationEnabled('tiendanube_divergence_detection', { context: 'webhook:divergence' });
+        if (divDetectionEnabled) {
+          const bpmPostSync = await getBpmOrderForComparison(String(pedido.number));
+          if (bpmPostSync) {
+            const toggleMap = {
+              tiendanube_webhook_sync_payment: syncPayment,
+              tiendanube_webhook_sync_shipping: syncShipping,
+              tiendanube_webhook_sync_products: syncProducts,
+              tiendanube_webhook_sync_customer: syncCustomer,
+              tiendanube_webhook_sync_address: syncAddress,
+              tiendanube_webhook_sync_notes: syncNotes,
+            };
+            const divReport = buildDivergenceReport(pedido, bpmPostSync, { toggles: toggleMap });
+            if (divReport.divergences.length > 0) {
+              await saveDivergences(String(pedido.number), pedido.id, divReport.divergences, 'webhook');
+              log.warn({ orderNumber: String(pedido.number), ...divReport.summary }, 'Divergences detected post-webhook');
+
+              // Auto-fix si toggle habilitado
+              const autofixEnabled = await isIntegrationEnabled('tiendanube_divergence_autofix', { context: 'webhook:autofix' });
+              if (autofixEnabled) {
+                const fixResult = await applyAutoFixes(String(pedido.number), divReport.divergences, {
+                  fixedBy: 'auto:webhook',
+                  toggles: toggleMap,
+                });
+                if (fixResult.fixed > 0) {
+                  log.info({ orderNumber: String(pedido.number), ...fixResult }, 'Divergences auto-fixed via webhook');
+                }
+              }
+            }
+          }
+        }
+      } catch (divErr) {
+        log.error({ err: divErr, orderNumber: String(pedido.number) }, 'Error detecting divergences in webhook');
+      }
+
       // Guardar en historial — logs separados por tipo de cambio
       const orderNum = String(pedido.number);
 
@@ -4447,6 +4485,7 @@ const integrationsRoutes = require('./routes/integrations');
 const healthRoutes = require('./routes/health');
 const adminStatusRoutes = require('./routes/admin-status');
 const systemAlertsRoutes = require('./routes/system-alerts');
+const adminDivergencesRoutes = require('./routes/admin-divergences');
 // AI Bot routes — PAUSADO, descomentar cuando se active el bot en prod
 // let aiBotRoutes;
 // try {
@@ -4468,6 +4507,7 @@ app.use('/integrations', integrationsRoutes);
 app.use('/health', healthRoutes);
 app.use('/admin/status', adminStatusRoutes);
 app.use('/system-alerts', systemAlertsRoutes);
+app.use('/admin/divergences', adminDivergencesRoutes);
 if (aiBotRoutes) app.use('/ai-bot', aiBotRoutes);
 app.use('/admin/queues', bullBoardAuth, bullBoardAdapter.getRouter());
 
@@ -4770,6 +4810,35 @@ app.post('/resync-estados/cron', verifyCronAuth, async (req, res) => {
           await logEvento({ orderNumber: db.order_number, accion: `Resync cron: ${cambios.join(', ')}`, origen: 'cron_resync' });
           corregidos++;
         }
+
+        // Detectar divergencias remanentes post-resync
+        try {
+          const divDetectionEnabled = await isIntegrationEnabled('tiendanube_divergence_detection', { context: 'cron:divergence' });
+          if (divDetectionEnabled) {
+            const bpmPostResync = await getBpmOrderForComparison(db.order_number);
+            if (bpmPostResync) {
+              const toggleMap = {
+                tiendanube_webhook_sync_payment: syncPayment,
+                tiendanube_webhook_sync_shipping: syncShipping,
+              };
+              const divReport = buildDivergenceReport(tn, bpmPostResync, { toggles: toggleMap });
+              if (divReport.divergences.length > 0) {
+                await saveDivergences(db.order_number, db.tn_order_id, divReport.divergences, 'cron');
+                // Auto-fix solo divergencias seguras si toggle habilitado
+                const autofixEnabled = await isIntegrationEnabled('tiendanube_divergence_autofix', { context: 'cron:autofix' });
+                if (autofixEnabled) {
+                  await applyAutoFixes(db.order_number, divReport.divergences, {
+                    fixedBy: 'auto:cron',
+                    toggles: toggleMap,
+                  });
+                }
+              }
+            }
+          }
+        } catch (divErr) {
+          log.error({ err: divErr, orderNumber: db.order_number }, 'Error detecting divergences in cron');
+        }
+
         await new Promise(r => setTimeout(r, 200));
       } catch (err) {
         errores++;
