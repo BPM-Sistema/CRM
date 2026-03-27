@@ -3411,9 +3411,11 @@ app.post('/webhook/tiendanube', async (req, res) => {
           setClauses.push(`pago_online_tn = $${paramIdx++}`);
           setParams.push(tnTotalPaid);
         } else if (paymentStatusNuevo === 'paid' || paymentStatusNuevo === 'partially_paid') {
-          // Solo actualizar pago_online_tn si el payment_status realmente cambió
-          // (no cuando solo cambia total_paid por un edit de monto — TN ajusta total_paid al nuevo total)
-          if (cambioPaymentStatus) {
+          // Actualizar pago_online_tn solo si:
+          // - payment_status cambió (pending→paid), o
+          // - el evento es order/paid (TN confirma un pago nuevo, aunque status siga 'paid')
+          // NO actualizar en order/updated sin cambio de status (es un edit de monto, no un pago)
+          if (cambioPaymentStatus || event === 'order/paid') {
             let pagoOnline = 0;
             if (paymentStatusNuevo === 'partially_paid' && tnTotalPaid > 0) {
               pagoOnline = tnTotalPaid;
