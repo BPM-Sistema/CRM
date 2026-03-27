@@ -100,12 +100,7 @@ async function getNextPending(retryCount = 0) {
  * Marcar item como completado
  */
 async function markCompleted(id) {
-  await pool.query(`
-    UPDATE sync_queue
-    SET status = 'completed', processed_at = NOW()
-    WHERE id = $1
-  `, [id]);
-  console.log(`✅ Completado en cola: ${id}`);
+  await pool.query(`DELETE FROM sync_queue WHERE id = $1`, [id]);
 }
 
 /**
