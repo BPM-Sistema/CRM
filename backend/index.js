@@ -3398,7 +3398,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
             if (paymentStatusNuevo === 'partially_paid' && tnTotalPaid > 0) {
               pagoOnline = tnTotalPaid;
             } else if (paymentStatusNuevo === 'paid') {
-              pagoOnline = tnTotalPaid > 0 ? tnTotalPaid : montoNuevo;
+              pagoOnline = tnTotalPaid > 0 ? tnTotalPaid : montoAnterior;
             }
             setClauses.push(`pago_online_tn = $${paramIdx++}`);
             setParams.push(pagoOnline);
