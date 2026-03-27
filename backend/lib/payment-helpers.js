@@ -124,11 +124,12 @@ function mapShippingToEstadoPedido(shippingStatus, shippingCarrier, shippingType
         nuevoEstado = isPickup ? 'retirado' : 'enviado';
         break;
       case 'packed':
+      case 'unshipped':
+        // unshipped en TN = preparado/empaquetado pero no despachado
         nuevoEstado = 'armado';
         break;
       case 'unpacked':
-      case 'unshipped':
-        // No avanzar — todavía sin despachar
+        // No avanzar — todavía sin preparar
         break;
     }
   }
