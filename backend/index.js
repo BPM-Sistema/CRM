@@ -3411,15 +3411,18 @@ app.post('/webhook/tiendanube', async (req, res) => {
           setClauses.push(`pago_online_tn = $${paramIdx++}`);
           setParams.push(tnTotalPaid);
         } else if (paymentStatusNuevo === 'paid' || paymentStatusNuevo === 'partially_paid') {
-          // Determinar cuánto pagó el cliente vía gateway online
-          let pagoOnline = 0;
-          if (paymentStatusNuevo === 'partially_paid' && tnTotalPaid > 0) {
-            pagoOnline = tnTotalPaid;
-          } else if (paymentStatusNuevo === 'paid') {
-            pagoOnline = tnTotalPaid > 0 ? tnTotalPaid : montoNuevo;
+          // Solo actualizar pago_online_tn si el payment_status realmente cambió
+          // (no cuando solo cambia total_paid por un edit de monto — TN ajusta total_paid al nuevo total)
+          if (cambioPaymentStatus) {
+            let pagoOnline = 0;
+            if (paymentStatusNuevo === 'partially_paid' && tnTotalPaid > 0) {
+              pagoOnline = tnTotalPaid;
+            } else if (paymentStatusNuevo === 'paid') {
+              pagoOnline = tnTotalPaid > 0 ? tnTotalPaid : montoNuevo;
+            }
+            setClauses.push(`pago_online_tn = $${paramIdx++}`);
+            setParams.push(pagoOnline);
           }
-          setClauses.push(`pago_online_tn = $${paramIdx++}`);
-          setParams.push(pagoOnline);
         }
       }
       let shippingDerivedEstado = null;
