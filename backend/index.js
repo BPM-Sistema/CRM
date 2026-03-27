@@ -43,7 +43,7 @@ const sharp = require('sharp');
 const PDFDocument = require('pdfkit');
 const { PDFDocument: PDFLib } = require('pdf-lib');
 const { runSyncJob } = require('./services/orderSync');
-const { getQueueStats, getSyncState } = require('./services/syncQueue');
+const { getQueueStats, getSyncState, markCompleted: markQueueCompleted, markFailed: markQueueFailed } = require('./services/syncQueue');
 const { tiendanube: tnConfig, whatsapp: waConfig, isEnabled: isIntegrationEnabled } = require('./services/integrationConfig');
 const { verificarConsistencia, getInconsistencias } = require('./utils/orderVerification');
 const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crearNotificacion } = require('./utils/notifications');
@@ -3061,6 +3061,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
   // 2️⃣ Registro durable ANTES de responder 200
   // Si el procesamiento falla después, el polling lo recupera
+  let queueId = null;
   try {
     const qResult = await pool.query(`
       INSERT INTO sync_queue (type, resource_id, order_number, payload, status, max_attempts)
@@ -3076,6 +3077,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
       log.info({ event, orderId }, 'Webhook already enqueued, skipping');
       return res.status(200).json({ ok: true, skipped: true, reason: 'already_enqueued' });
     }
+    queueId = qResult.rows[0].id;
   } catch (qErr) {
     // 23505 = unique_violation - backup por race conditions extremas
     if (qErr.code === '23505') {
@@ -3636,8 +3638,17 @@ app.post('/webhook/tiendanube', async (req, res) => {
       log.info({ orderNumber: String(pedido.number), shippingOption }, 'Order requires shipping form (will be requested on comprobante confirmation)');
     }
 
+    // ✅ Procesamiento exitoso — liberar slot en sync_queue
+    if (queueId) {
+      await markQueueCompleted(queueId).catch(e => log.error({ err: e, queueId }, 'Error marking queue completed'));
+    }
+
   } catch (err) {
     log.error({ err, event, orderId }, 'Error processing Tiendanube webhook');
+    // ❌ Procesamiento falló — marcar en sync_queue para retry
+    if (queueId) {
+      await markQueueFailed(queueId, err.message).catch(e => log.error({ err: e, queueId }, 'Error marking queue failed'));
+    }
   }
 });
 
