@@ -3554,14 +3554,20 @@ app.post('/webhook/tiendanube', async (req, res) => {
         }
       }
 
-      // Log cambio de pago
+      // Log cambio de pago (dedup: no loguear si ya existe un log de pago reciente para este pedido)
       if (cambioPayment && syncPayment) {
         const pagoMsg = paymentStatusNuevo === 'paid'
           ? `Pago confirmado en TiendaNube (${tnGateway || 'manual'}${tnTotalPaid > 0 ? ', $' + tnTotalPaid.toLocaleString('es-AR') : ''})`
           : paymentStatusNuevo === 'partially_paid'
           ? `Pago parcial en TiendaNube ($${tnTotalPaid.toLocaleString('es-AR')})`
           : `Estado de pago cambiado a: ${paymentStatusNuevo}`;
-        await logEvento({ orderNumber: orderNum, accion: pagoMsg, origen: 'webhook_tiendanube' });
+        const dupCheck = await pool.query(
+          `SELECT 1 FROM logs WHERE order_number = $1 AND accion = $2 AND created_at > NOW() - INTERVAL '30 seconds' LIMIT 1`,
+          [orderNum, pagoMsg]
+        );
+        if (dupCheck.rows.length === 0) {
+          await logEvento({ orderNumber: orderNum, accion: pagoMsg, origen: 'webhook_tiendanube' });
+        }
       }
 
       // Log cambio de envío
