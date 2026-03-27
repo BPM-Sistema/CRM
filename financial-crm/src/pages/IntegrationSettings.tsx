@@ -28,14 +28,26 @@ import {
   FileText,
   DollarSign,
   Truck,
+  Check,
+  Plus,
+  Edit2,
+  Trash2,
+  X,
 } from 'lucide-react';
 import {
   fetchIntegrations,
   updateIntegration,
   updateIntegrationMetadata,
   fetchIntegrationHistory,
+  fetchPlantillasResueltas,
+  fetchPlantillaTiposCRUD,
+  createPlantillaTipo,
+  updatePlantillaTipo,
+  deletePlantillaTipo,
   IntegrationConfig,
   IntegrationConfigHistory,
+  PlantillaResuelta,
+  PlantillaTipoCRUD,
 } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Switch } from '../components/ui/Switch';
@@ -70,6 +82,7 @@ const KEY_ICONS: Record<string, typeof Settings> = {
   tiendanube_sync_estado_enviado: CreditCard,
   tiendanube_sync_estado_cancelado: CreditCard,
   whatsapp_testing_mode: MessageSquare,
+  botmaker_channel: Phone,
   whatsapp_tpl_pedido_creado: Send,
   whatsapp_tpl_comprobante_confirmado: Send,
   whatsapp_tpl_comprobante_rechazado: Send,
@@ -110,6 +123,7 @@ const KEY_NAMES: Record<string, string> = {
   tiendanube_sync_estado_enviado: 'Enviado → Despachado',
   tiendanube_sync_estado_cancelado: 'Cancelado',
   whatsapp_testing_mode: 'Modo Testing',
+  botmaker_channel: 'Canal de WhatsApp',
   whatsapp_tpl_pedido_creado: 'Pedido Creado',
   whatsapp_tpl_comprobante_confirmado: 'Comprobante Confirmado',
   whatsapp_tpl_comprobante_rechazado: 'Comprobante Rechazado',
@@ -142,6 +156,8 @@ const KEY_TOOLTIPS: Record<string, string> = {
     'Sincroniza estados de pedido desde BPM hacia Tiendanube (pagado, armado, enviado, cancelado). Si esta apagado, Tiendanube no se entera de los cambios de estado.',
   whatsapp_testing_mode:
     'Cuando esta activado, TODOS los mensajes de WhatsApp se envian al numero de testing configurado en vez de al cliente real. Al desactivarlo, los mensajes van directo al cliente.',
+  botmaker_channel:
+    'El Channel ID de Botmaker desde el cual se envian los mensajes. Formato: nombre-whatsapp-numero. Lo encontras en Botmaker → Configuración → Canales.',
 };
 
 export function IntegrationSettings() {
@@ -159,6 +175,22 @@ export function IntegrationSettings() {
   const [savingPhone, setSavingPhone] = useState(false);
   const [phoneSaved, setPhoneSaved] = useState(false);
 
+  // Canal de WhatsApp (Botmaker channelId)
+  const [channelId, setChannelId] = useState('');
+  const [editingChannelId, setEditingChannelId] = useState('');
+  const [savingChannel, setSavingChannel] = useState(false);
+  const [channelSaved, setChannelSaved] = useState(false);
+
+  // Plantillas resueltas (para mostrar qué template usa cada toggle)
+  const [plantillas, setPlantillas] = useState<Record<string, PlantillaResuelta>>({});
+
+  // CRUD de tipos de plantilla
+  const [plantillaTipos, setPlantillaTipos] = useState<PlantillaTipoCRUD[]>([]);
+  const [tipoModal, setTipoModal] = useState<{ mode: 'create' | 'edit'; tipo?: PlantillaTipoCRUD } | null>(null);
+  const [tipoForm, setTipoForm] = useState({ key: '', nombre: '', descripcion: '', plantilla_default: '', requiere_variante: false });
+  const [tipoSaving, setTipoSaving] = useState(false);
+  const [tipoError, setTipoError] = useState('');
+
   const canView = hasPermission('integrations.view');
   const canUpdate = hasPermission('integrations.update');
 
@@ -166,14 +198,32 @@ export function IntegrationSettings() {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchIntegrations();
+      // Cargar configs, plantillas y tipos en paralelo
+      const [data, plantillasData, tiposData] = await Promise.all([
+        fetchIntegrations(),
+        fetchPlantillasResueltas().catch(() => ({ byKey: {} })),
+        fetchPlantillaTiposCRUD().catch(() => [])
+      ]);
+
       setConfigs(data.configs);
+      setPlantillas(plantillasData.byKey || {});
+      setPlantillaTipos(tiposData);
+
       // Inicializar teléfonos de testing desde metadata
       const waConfig = data.configs.find((c: IntegrationConfig) => c.key === 'whatsapp_testing_mode');
       if (waConfig?.metadata) {
         const phones = waConfig.metadata.phones;
         setTestingPhones(Array.isArray(phones) ? phones : (waConfig.metadata.testing_phone ? [waConfig.metadata.testing_phone] : []));
         setActivePhone(String(waConfig.metadata.active_phone || waConfig.metadata.testing_phone || ''));
+      }
+      // Inicializar channelId desde metadata
+      const channelConfig = data.configs.find((c: IntegrationConfig) => c.key === 'botmaker_channel');
+      if (channelConfig?.metadata) {
+        const meta = channelConfig.metadata as { channel_id?: string };
+        if (meta.channel_id) {
+          setChannelId(meta.channel_id);
+          setEditingChannelId(meta.channel_id);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar datos');
@@ -247,6 +297,22 @@ export function IntegrationSettings() {
     savePhoneMetadata(updatedPhones, active);
   };
 
+  const saveChannelId = async () => {
+    if (!editingChannelId.trim() || editingChannelId === channelId) return;
+    setSavingChannel(true);
+    setError(null);
+    try {
+      await updateIntegrationMetadata('botmaker_channel', { channel_id: editingChannelId.trim() });
+      setChannelId(editingChannelId.trim());
+      setChannelSaved(true);
+      setTimeout(() => setChannelSaved(false), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al guardar canal');
+    } finally {
+      setSavingChannel(false);
+    }
+  };
+
   const handleRemovePhone = (phone: string) => {
     const updatedPhones = testingPhones.filter(p => p !== phone);
     const active = activePhone === phone ? (updatedPhones[0] || '') : activePhone;
@@ -255,6 +321,75 @@ export function IntegrationSettings() {
 
   const handleSelectActive = (phone: string) => {
     savePhoneMetadata(testingPhones, phone);
+  };
+
+  // ─── CRUD Tipos de Plantilla ────────────────────────────
+
+  const openTipoModal = (mode: 'create' | 'edit', tipo?: PlantillaTipoCRUD) => {
+    setTipoModal({ mode, tipo });
+    // Para edición, mostrar la plantilla resuelta (la que realmente se usa), no el default
+    const plantillaResuelta = tipo ? (plantillas[tipo.key]?.plantilla_resuelta || tipo.plantilla_default) : '';
+    setTipoForm(tipo ? {
+      key: tipo.key,
+      nombre: tipo.nombre,
+      descripcion: tipo.descripcion || '',
+      plantilla_default: plantillaResuelta,
+      requiere_variante: tipo.requiere_variante
+    } : { key: '', nombre: '', descripcion: '', plantilla_default: '', requiere_variante: false });
+    setTipoError('');
+  };
+
+  const closeTipoModal = () => {
+    setTipoModal(null);
+    setTipoForm({ key: '', nombre: '', descripcion: '', plantilla_default: '', requiere_variante: false });
+    setTipoError('');
+  };
+
+  const handleTipoSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTipoSaving(true);
+    setTipoError('');
+
+    try {
+      if (tipoModal?.mode === 'create') {
+        const nuevo = await createPlantillaTipo({
+          key: tipoForm.key,
+          nombre: tipoForm.nombre,
+          descripcion: tipoForm.descripcion || undefined,
+          plantilla_default: tipoForm.plantilla_default,
+          requiere_variante: tipoForm.requiere_variante
+        });
+        setPlantillaTipos(prev => [...prev, nuevo]);
+      } else if (tipoModal?.tipo) {
+        const actualizado = await updatePlantillaTipo(tipoModal.tipo.id, {
+          nombre: tipoForm.nombre,
+          descripcion: tipoForm.descripcion || undefined,
+          plantilla_default: tipoForm.plantilla_default
+        });
+        setPlantillaTipos(prev => prev.map(t => t.id === actualizado.id ? actualizado : t));
+      }
+      closeTipoModal();
+      // Recargar plantillas resueltas
+      const plantillasData = await fetchPlantillasResueltas().catch(() => ({ byKey: {} }));
+      setPlantillas(plantillasData.byKey || {});
+    } catch (err) {
+      setTipoError(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setTipoSaving(false);
+    }
+  };
+
+  const handleDeleteTipo = async (tipo: PlantillaTipoCRUD) => {
+    if (!confirm(`¿Eliminar tipo "${tipo.nombre}"? Esto también eliminará su toggle.`)) return;
+
+    try {
+      await deletePlantillaTipo(tipo.id);
+      setPlantillaTipos(prev => prev.filter(t => t.id !== tipo.id));
+      // Recargar configs y plantillas
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al eliminar');
+    }
   };
 
   // Separar configs por categoría
@@ -490,6 +625,69 @@ export function IntegrationSettings() {
                 </div>
 
                 <div className="space-y-3">
+                {/* Canal de WhatsApp (Botmaker) */}
+                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 rounded-lg bg-blue-100 text-blue-600">
+                      <Phone className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-medium text-gray-900">Canal de WhatsApp</h3>
+                        <div className="relative group">
+                          <Info className="h-4 w-4 text-gray-400 cursor-help" />
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-50">
+                            <div className="bg-gray-900 text-white text-sm rounded-lg py-2 px-3 max-w-xs shadow-lg">
+                              {KEY_TOOLTIPS['botmaker_channel']}
+                              <div className="absolute left-3 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-500">
+                        Channel ID desde el cual se envian los mensajes
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={editingChannelId}
+                      onChange={(e) => setEditingChannelId(e.target.value)}
+                      placeholder="blanqueriaxmayor-whatsapp-5491136914124"
+                      disabled={!canUpdate || savingChannel}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                    />
+                    <button
+                      onClick={saveChannelId}
+                      disabled={!canUpdate || savingChannel || editingChannelId === channelId || !editingChannelId.trim()}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {savingChannel ? (
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                      ) : channelSaved ? (
+                        <>
+                          <Check className="h-4 w-4" />
+                          Guardado
+                        </>
+                      ) : (
+                        'Guardar'
+                      )}
+                    </button>
+                  </div>
+                  {(channelId || editingChannelId) && (
+                    <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
+                      <span className="text-xs text-gray-500 font-medium">Activo:</span>
+                      <code className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded border border-green-200">
+                        {channelId || editingChannelId}
+                      </code>
+                      {channelId && editingChannelId && channelId !== editingChannelId && (
+                        <span className="text-xs text-amber-600">(sin guardar)</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {/* Modo Testing */}
                 {whatsappConfigs.filter(c => c.key === 'whatsapp_testing_mode').map(config => {
                     const Icon = KEY_ICONS[config.key] || Settings;
@@ -662,86 +860,94 @@ export function IntegrationSettings() {
                     );
                 })}
 
-                {/* Plantillas WhatsApp por categoría */}
-                {(() => {
-                  const templates = whatsappConfigs.filter(c => c.key.startsWith('whatsapp_tpl_'));
-                  if (templates.length === 0) return null;
-
-                  const TEMPLATE_CATEGORIES: { label: string; icon: string; keys: string[] }[] = [
-                    { label: 'Pedidos', icon: '📦', keys: ['whatsapp_tpl_pedido_creado', 'whatsapp_tpl_pedido_cancelado'] },
-                    { label: 'Pagos', icon: '💰', keys: ['whatsapp_tpl_comprobante_confirmado', 'whatsapp_tpl_comprobante_rechazado', 'whatsapp_tpl_partial_paid'] },
-                    { label: 'Envíos', icon: '🚚', keys: ['whatsapp_tpl_datos_envio', 'whatsapp_tpl_enviado_env_nube', 'whatsapp_tpl_enviado_transporte'] },
-                  ];
-
-                  const renderTemplateRow = (config: typeof templates[0]) => {
-                    const friendlyName = KEY_NAMES[config.key] || config.key;
-                    const isUpd = updating === config.key;
-                    const isNotImpl = config.description?.includes('NO IMPLEMENTADA');
-
-                    return (
-                      <div
-                        key={config.key}
-                        className={`flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
-                          isNotImpl
-                            ? 'bg-red-50 border-red-200'
-                            : config.enabled
-                              ? 'bg-white border-gray-200'
-                              : 'bg-gray-50 border-gray-200'
-                        }`}
+                {/* Plantillas WhatsApp - Vista unificada */}
+                <div className="mt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-semibold text-gray-700">Plantillas de Mensajes</h3>
+                    {canUpdate && (
+                      <button
+                        onClick={() => openTipoModal('create')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800"
                       >
-                        <div className="flex items-center gap-3">
-                          <Send className={`h-4 w-4 ${
-                            isNotImpl ? 'text-red-400' : config.enabled ? 'text-green-500' : 'text-gray-400'
-                          }`} />
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className={`text-sm font-medium ${isNotImpl ? 'text-red-700' : 'text-gray-900'}`}>
-                                {friendlyName}
-                              </span>
-                              {isNotImpl && (
-                                <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-xs font-medium rounded">
-                                  Sin implementar
-                                </span>
-                              )}
+                        <Plus className="h-4 w-4" />
+                        Nueva Plantilla
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    {plantillaTipos.map(tipo => {
+                      const configKey = `whatsapp_tpl_${tipo.key}`;
+                      const config = configs.find(c => c.key === configKey);
+                      const plantillaInfo = plantillas[tipo.key];
+                      const isUpd = updating === configKey;
+                      const isEnabled = config?.enabled ?? false; // Si no existe config, mostrar como deshabilitado
+                      const hasConfig = !!config;
+
+                      return (
+                        <div
+                          key={tipo.id}
+                          className={`flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
+                            !hasConfig ? 'bg-amber-50 border-amber-200' : isEnabled ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <Send className={`h-4 w-4 flex-shrink-0 ${!hasConfig ? 'text-amber-500' : isEnabled ? 'text-green-500' : 'text-gray-400'}`} />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-gray-900">{tipo.nombre}</span>
+                                {!hasConfig && (
+                                  <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">sin toggle</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono text-gray-700">
+                                  {plantillaInfo?.plantilla_resuelta || tipo.plantilla_default}
+                                </code>
+                                {plantillaInfo && !plantillaInfo.usa_default && (
+                                  <span className="text-xs text-indigo-600">✓ custom</span>
+                                )}
+                              </div>
                             </div>
-                            <p className="text-xs text-gray-500">{config.description}</p>
+                          </div>
+
+                          <div className="flex items-center gap-2 ml-4">
+                            {canUpdate && (
+                              <>
+                                <button
+                                  onClick={() => openTipoModal('edit', tipo)}
+                                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                                  title="Editar"
+                                >
+                                  <Edit2 className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteTipo(tipo)}
+                                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                                  title="Eliminar"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </>
+                            )}
+                            {isUpd ? (
+                              <RefreshCw className="h-4 w-4 text-gray-400 animate-spin" />
+                            ) : (
+                              <Switch
+                                checked={isEnabled}
+                                onChange={() => config && handleToggle(configKey, isEnabled)}
+                                disabled={!canUpdate || !config}
+                              />
+                            )}
                           </div>
                         </div>
-                        {isUpd ? (
-                          <RefreshCw className="h-4 w-4 text-gray-400 animate-spin" />
-                        ) : (
-                          <Switch
-                            checked={config.enabled}
-                            onChange={() => handleToggle(config.key, config.enabled)}
-                            disabled={!canUpdate}
-                          />
-                        )}
-                      </div>
-                    );
-                  };
-
-                  return (
-                    <div className="mt-6 space-y-5">
-                      {TEMPLATE_CATEGORIES.map(cat => {
-                        const catTemplates = cat.keys
-                          .map(k => templates.find(t => t.key === k))
-                          .filter(Boolean) as typeof templates;
-                        if (catTemplates.length === 0) return null;
-                        return (
-                          <div key={cat.label}>
-                            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                              <span>{cat.icon}</span>
-                              {cat.label}
-                            </h3>
-                            <div className="space-y-2">
-                              {catTemplates.map(renderTemplateRow)}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
+                      );
+                    })}
+                    {plantillaTipos.length === 0 && (
+                      <p className="text-center text-gray-400 py-4">No hay plantillas configuradas</p>
+                    )}
+                  </div>
+                </div>
                 </div>
               </div>
             )}
@@ -829,6 +1035,113 @@ export function IntegrationSettings() {
           )}
         </div>
       </main>
+
+      {/* Modal: Crear/Editar Tipo de Plantilla */}
+      {tipoModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">
+                {tipoModal.mode === 'create' ? 'Nuevo Tipo de Plantilla' : 'Editar Tipo'}
+              </h2>
+              <button onClick={closeTipoModal} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleTipoSubmit} className="p-4 space-y-4">
+              {tipoModal.mode === 'create' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Key *</label>
+                  <input
+                    type="text"
+                    value={tipoForm.key}
+                    onChange={e => setTipoForm(prev => ({ ...prev, key: e.target.value.toLowerCase().replace(/[^a-z_]/g, '') }))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none font-mono"
+                    placeholder="nombre_plantilla"
+                    required
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Solo minúsculas y guiones bajos. No se puede cambiar después.</p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                <input
+                  type="text"
+                  value={tipoForm.nombre}
+                  onChange={e => setTipoForm(prev => ({ ...prev, nombre: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none"
+                  placeholder="Nombre para mostrar"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Plantilla en Botmaker *</label>
+                {tipoModal.mode === 'edit' && tipoModal.tipo?.requiere_variante ? (
+                  <div>
+                    <div className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg font-mono text-sm text-gray-700">
+                      {tipoForm.plantilla_default}
+                    </div>
+                    <p className="mt-1 text-xs text-amber-600">
+                      Esta plantilla tiene variantes por financiera. Para cambiarla, editá la financiera correspondiente.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="text"
+                      value={tipoForm.plantilla_default}
+                      onChange={e => setTipoForm(prev => ({ ...prev, plantilla_default: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none font-mono"
+                      placeholder="nombre_en_botmaker"
+                      required
+                    />
+                    <p className="mt-1 text-xs text-gray-500">Nombre exacto del intent en Botmaker</p>
+                  </>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                <input
+                  type="text"
+                  value={tipoForm.descripcion}
+                  onChange={e => setTipoForm(prev => ({ ...prev, descripcion: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none"
+                  placeholder="Cuándo se envía este mensaje..."
+                />
+              </div>
+
+
+              {tipoError && (
+                <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm">
+                  {tipoError}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeTipoModal}
+                  className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-gray-700 font-medium hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={tipoSaving}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 disabled:opacity-50"
+                >
+                  {tipoSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  {tipoModal.mode === 'create' ? 'Crear' : 'Guardar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

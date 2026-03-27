@@ -1,17 +1,42 @@
-import { useState, FormEvent, useRef } from 'react';
-import { Check, AlertCircle, Loader2, FileImage } from 'lucide-react';
+import { useState, FormEvent, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Check, AlertCircle, Loader2, FileImage, AlertTriangle } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'https://api.bpmadministrador.com';
 
 export function ComprobantesForm() {
-  const [orderNumber, setOrderNumber] = useState('');
+  const [searchParams] = useSearchParams();
+  const orderFromUrl = searchParams.get('order') || '';
+
+  const [orderNumber, setOrderNumber] = useState(orderFromUrl);
+  const isOrderFromUrl = orderFromUrl.length > 0;
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isOrderNotFound, setIsOrderNotFound] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [showExistingReceiptModal, setShowExistingReceiptModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Verificar si el pedido ya tiene comprobantes
+  useEffect(() => {
+    if (!orderFromUrl) return;
+
+    const checkExistingReceipts = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/orders/${orderFromUrl}/has-receipts`);
+        const data = await response.json();
+        if (data.hasReceipts) {
+          setShowExistingReceiptModal(true);
+        }
+      } catch {
+        // Si falla, no mostrar modal (fail-safe)
+      }
+    };
+
+    checkExistingReceipts();
+  }, [orderFromUrl]);
 
   const handleOrderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     // Solo permitir números
@@ -133,6 +158,38 @@ export function ComprobantesForm() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-neutral-50 to-neutral-100 flex items-center justify-center p-4">
+      {/* Modal de advertencia: pedido ya tiene comprobante */}
+      {showExistingReceiptModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full">
+            <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle size={28} className="text-amber-600" />
+            </div>
+            <h3 className="text-xl font-bold text-neutral-900 text-center mb-2">
+              Este pedido ya tiene un comprobante
+            </h3>
+            <p className="text-neutral-600 text-center mb-6">
+              El pedido <span className="font-semibold">#{orderFromUrl}</span> ya tiene un comprobante subido.
+              Si querés subir para otro pedido, hacé click abajo.
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={() => window.location.href = '/comprobantes'}
+                className="w-full bg-neutral-900 text-white font-medium py-3 px-4 rounded-xl hover:bg-neutral-800 transition-colors"
+              >
+                Subir para otro pedido
+              </button>
+              <button
+                onClick={() => setShowExistingReceiptModal(false)}
+                className="w-full bg-neutral-100 text-neutral-700 font-medium py-3 px-4 rounded-xl hover:bg-neutral-200 transition-colors"
+              >
+                Continuar de todos modos
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
@@ -140,9 +197,15 @@ export function ComprobantesForm() {
           <h1 className="text-3xl font-bold text-neutral-900 mb-2">
             Confirmar pago
           </h1>
-          <p className="text-neutral-600">
-            Ingresá tu número de pedido y subí el comprobante
-          </p>
+          {isOrderFromUrl ? (
+            <p className="text-neutral-600">
+              Subí el comprobante para el pedido <span className="font-semibold">#{orderFromUrl}</span>
+            </p>
+          ) : (
+            <p className="text-neutral-600">
+              Ingresá tu número de pedido y subí el comprobante
+            </p>
+          )}
         </div>
 
         {/* Form */}
@@ -157,8 +220,9 @@ export function ComprobantesForm() {
               value={orderNumber}
               onChange={handleOrderChange}
               placeholder="Ej: 12345"
-              autoFocus
-              className={`w-full rounded-lg border ${isOrderNotFound ? 'border-red-300 ring-2 ring-red-100' : 'border-neutral-200'} bg-white px-4 py-3 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent transition-all`}
+              readOnly={isOrderFromUrl}
+              autoFocus={!isOrderFromUrl}
+              className={`w-full rounded-lg border ${isOrderNotFound ? 'border-red-300 ring-2 ring-red-100' : isOrderFromUrl ? 'border-emerald-200 bg-emerald-50' : 'border-neutral-200 bg-white'} px-4 py-3 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent transition-all ${isOrderFromUrl ? 'cursor-not-allowed' : ''}`}
             />
             {isOrderNotFound && (
               <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">

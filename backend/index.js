@@ -47,11 +47,12 @@ const { getQueueStats, getSyncState } = require('./services/syncQueue');
 const { tiendanube: tnConfig, whatsapp: waConfig, isEnabled: isIntegrationEnabled } = require('./services/integrationConfig');
 const { verificarConsistencia, getInconsistencias } = require('./utils/orderVerification');
 const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crearNotificacion } = require('./utils/notifications');
-const { enviarWhatsAppPlantilla, PLANTILLAS_SIN_SUFIJO, PLANTILLA_CONFIG_KEY } = require('./lib/whatsapp-helpers');
+const { enviarWhatsAppPlantilla } = require('./lib/whatsapp-helpers');
 const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, normalizePhoneForComparison, mapShippingToEstadoPedido } = require('./lib/payment-helpers');
 const { recalcularPagos } = require('./lib/recalcularPagos');
 const { watermarkReceipt, isValidDestination, detectarFinancieraDesdeOCR } = require('./lib/comprobante-helpers');
 const { buildDivergenceReport, saveDivergences, applyAutoFixes, getBpmOrderForComparison } = require('./lib/divergence-detector');
+const { hashPaymentChange, hashProductChange, markEventProcessed } = require('./lib/webhookDedup');
 const customerSync = require('./services/customerSync');
 const customerMetrics = require('./services/customerMetrics');
 const customerSegmentation = require('./services/customerSegmentation');
@@ -133,25 +134,14 @@ app.get('/leads', (req, res) => {
 });
 
 async function logEvento({ comprobanteId, orderNumber, accion, origen, userId, username }) {
-  // DEBUG: Stack trace para encontrar duplicados
-  const stack = new Error().stack;
-  const timestamp = new Date().toISOString();
-  console.log(`\n🔍 [${timestamp}] logEvento llamado:`);
-  console.log(`   Acción: ${accion}`);
-  console.log(`   ComprobanteId: ${comprobanteId}`);
-  console.log(`   OrderNumber: ${orderNumber}`);
-  console.log(`   Stack trace:\n${stack.split('\n').slice(1, 5).join('\n')}`);
-
   try {
-    const result = await pool.query(
+    await pool.query(
       `INSERT INTO logs (comprobante_id, order_number, accion, origen, user_id, username)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, created_at`,
+       VALUES ($1, $2, $3, $4, $5, $6)`,
       [comprobanteId || null, orderNumber || null, accion, origen, userId || null, username || null]
     );
-    console.log(`   ✅ Log insertado con ID: ${result.rows[0].id}`);
   } catch (err) {
-    console.error('❌ Error guardando log:', err.message);
+    log.error({ err, orderNumber, accion }, 'Error guardando log de actividad');
   }
 }
 
@@ -663,35 +653,10 @@ async function guardarPedidoCompleto(pedido) {
 
 /**
  * Queue a WhatsApp message via BullMQ if available, otherwise send directly.
- * FILTRO: Solo envía a clientes nuevos (sin compras previas)
+ * Testing mode filter is applied in worker/helper (NOT here).
  */
 async function queueWhatsApp({ telefono, plantilla, variables, orderNumber }) {
-  // Verificar si es cliente nuevo (sin órdenes previas)
-  try {
-    const previousOrdersResult = await pool.query(`
-      SELECT COUNT(*) as count
-      FROM orders_validated
-      WHERE customer_phone = $1
-      AND order_number != $2
-    `, [telefono, String(orderNumber || '')]);
-
-    const previousOrders = parseInt(previousOrdersResult.rows[0].count, 10);
-
-    if (previousOrders > 0) {
-      log.info({
-        orderNumber,
-        plantilla,
-        customerPhone: telefono,
-        totalOrders: previousOrders + 1,
-      }, '[WHATSAPP] Skip cliente existente');
-      return { skipped: true, reason: 'cliente_existente' };
-    }
-  } catch (err) {
-    log.error({ err: err.message, orderNumber, plantilla }, 'Error verificando cliente nuevo, enviando igual');
-    // Si falla la verificación, enviamos igual para no bloquear
-  }
-
-  log.info({ orderNumber, plantilla }, '[WHATSAPP] Enviando a cliente nuevo');
+  log.info({ orderNumber, plantilla }, '[WHATSAPP] Encolando mensaje');
 
   const { whatsappQueue } = require('./lib/queues');
   if (whatsappQueue) {
@@ -1253,6 +1218,7 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
         o.shipped_at,
         o.shipping_type,
         COUNT(c.id) as comprobantes_count,
+        COUNT(c.id) FILTER (WHERE c.estado IN ('a_confirmar', 'pendiente')) as pending_receipts_count,
         (SELECT COALESCE(SUM(op.quantity), 0) FROM order_products op WHERE op.order_number = o.order_number)::int as productos_count,
         CASE
           WHEN LOWER(COALESCE(o.shipping_type, '')) LIKE '%expreso%' AND LOWER(COALESCE(o.shipping_type, '')) LIKE '%elec%' THEN true
@@ -3108,11 +3074,13 @@ app.post('/webhook/tiendanube', async (req, res) => {
     ]);
     if (!qResult.rows[0]) {
       log.info({ event, orderId }, 'Webhook already enqueued, skipping');
+      return res.status(200).json({ ok: true, skipped: true, reason: 'already_enqueued' });
     }
   } catch (qErr) {
     // 23505 = unique_violation - backup por race conditions extremas
     if (qErr.code === '23505') {
       log.info({ event, orderId }, 'Webhook already enqueued (catch), skipping');
+      return res.status(200).json({ ok: true, skipped: true, reason: 'already_enqueued' });
     } else {
       log.error({ err: qErr, event, orderId }, 'Error enqueuing webhook');
     }
@@ -3295,9 +3263,18 @@ app.post('/webhook/tiendanube', async (req, res) => {
       const dbExt = dbExtended.rows[0] || {};
 
       // Datos de pago de TN (campos reales, no solo payment_status)
-      const tnTotalPaid = Math.round(Number(pedido.total_paid || 0));
+      // Si total_paid es 0 pero payment_status es paid, usar total como fallback
+      // (TN no actualiza total_paid cuando se marca "Pago recibido" manualmente)
+      const rawTotalPaid = Number(pedido.total_paid || 0);
+      const tnTotalPaid = Math.round(
+        rawTotalPaid > 0 ? rawTotalPaid :
+        (paymentStatusNuevo === 'paid' ? Number(pedido.total || 0) : 0)
+      );
       const tnPaidAt = pedido.paid_at || null;
-      const tnGateway = pedido.gateway || pedido.gateway_name || null;
+      // Preferir gateway_name si es descriptivo, sino gateway
+      const tnGateway = (pedido.gateway_name && pedido.gateway_name !== 'not-provided')
+        ? pedido.gateway_name
+        : (pedido.gateway && pedido.gateway !== 'not-provided' ? pedido.gateway : 'manual');
       const dbPaidAt = db.tn_paid_at || null;
       const dbTotalPaid = Number(db.tn_total_paid || 0);
 
@@ -3560,19 +3537,26 @@ app.post('/webhook/tiendanube', async (req, res) => {
         }
       }
 
-      // Log cambio de pago (dedup: no loguear si ya existe un log de pago reciente para este pedido)
+      // Log cambio de pago (con deduplicación para evitar logs duplicados por retries de TN)
       if (cambioPayment && syncPayment) {
-        const pagoMsg = paymentStatusNuevo === 'paid'
-          ? `Pago confirmado en TiendaNube (${tnGateway || 'manual'}${tnTotalPaid > 0 ? ', $' + tnTotalPaid.toLocaleString('es-AR') : ''})`
-          : paymentStatusNuevo === 'partially_paid'
-          ? `Pago parcial en TiendaNube ($${tnTotalPaid.toLocaleString('es-AR')})`
-          : `Estado de pago cambiado a: ${paymentStatusNuevo}`;
-        const dupCheck = await pool.query(
-          `SELECT 1 FROM logs WHERE order_number = $1 AND accion = $2 AND created_at > NOW() - INTERVAL '30 seconds' LIMIT 1`,
-          [orderNum, pagoMsg]
-        );
-        if (dupCheck.rows.length === 0) {
+        const paymentHash = hashPaymentChange(orderId, paymentStatusNuevo, tnPaidAt, tnTotalPaid);
+        const isNewEvent = await markEventProcessed({
+          eventHash: paymentHash,
+          eventType: 'order_updated',
+          orderId: String(orderId),
+          orderNumber: orderNum,
+          changeType: 'payment'
+        });
+
+        if (isNewEvent) {
+          const pagoMsg = paymentStatusNuevo === 'paid'
+            ? `Pago confirmado en TiendaNube (${tnGateway || 'manual'}${tnTotalPaid > 0 ? ', $' + tnTotalPaid.toLocaleString('es-AR') : ''})`
+            : paymentStatusNuevo === 'partially_paid'
+            ? `Pago parcial en TiendaNube ($${tnTotalPaid.toLocaleString('es-AR')})`
+            : `Estado de pago cambiado a: ${paymentStatusNuevo}`;
           await logEvento({ orderNumber: orderNum, accion: pagoMsg, origen: 'webhook_tiendanube' });
+        } else {
+          log.info({ orderNumber: orderNum, paymentStatus: paymentStatusNuevo }, 'Skipping duplicate payment log (already processed)');
         }
       }
 
@@ -3631,7 +3615,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
       return;
     }
 
-    // 6️⃣ Botmaker - queueWhatsApp verifica cliente nuevo automáticamente
+    // 6️⃣ Botmaker - envía WhatsApp a TODOS los pedidos nuevos
     await queueWhatsApp({
       telefono,
       plantilla: 'pedido_creado',
@@ -3659,6 +3643,31 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
 
 
+
+/* =====================================================
+   CHECK SI PEDIDO TIENE COMPROBANTES (público)
+===================================================== */
+
+app.get('/orders/:orderNumber/has-receipts', async (req, res) => {
+  try {
+    const { orderNumber } = req.params;
+    const sanitized = String(orderNumber).replace(/\D/g, '');
+
+    if (!sanitized) {
+      return res.json({ hasReceipts: false });
+    }
+
+    const result = await pool.query(
+      `SELECT COUNT(*) as count FROM comprobantes WHERE order_number = $1 AND estado IN ('a_confirmar', 'confirmado')`,
+      [sanitized]
+    );
+
+    res.json({ hasReceipts: parseInt(result.rows[0].count) > 0 });
+  } catch (error) {
+    console.error('❌ /orders/:orderNumber/has-receipts error:', error.message);
+    res.json({ hasReceipts: false });
+  }
+});
 
 /* =====================================================
    PASO 1 — VALIDAR PEDIDO
@@ -5027,7 +5036,37 @@ app.post('/sync/customers/incremental', authenticate, requirePermission('custome
   }
 });
 
+// Sync orders_count from TN orders API (llenar datos que customers API no provee)
+// ?method=byCustomer para usar la versión más robusta (consulta por cliente)
+// ?method=byPages para usar la versión tradicional (pagina todas las órdenes)
+// IMPORTANTE: Esta ruta debe estar ANTES de /sync/customers/:tnCustomerId
+app.post('/sync/customers/orders-count', authenticate, requirePermission('customers.sync'), async (req, res) => {
+  try {
+    const method = req.query.method || 'byCustomer'; // Default to more robust method
+    console.log(`📦 [CustomerSync] Sync orders_count iniciado por ${req.user.username} (method: ${method})`);
+
+    // Ejecutar en background (sync toma ~2 horas para 1000+ clientes)
+    const syncFn = method === 'byCustomer'
+      ? customerSync.syncOrdersCountByCustomer
+      : customerSync.syncOrdersCountFromTN;
+
+    syncFn()
+      .then(result => {
+        console.log(`✅ [CustomerSync] Sync orders_count completado:`, result);
+      })
+      .catch(err => {
+        console.error(`❌ [CustomerSync] Error en sync orders_count:`, err.message);
+      });
+
+    res.json({ ok: true, method, message: 'Sync iniciado en background. Tomará ~2 horas.' });
+  } catch (error) {
+    console.error('❌ /sync/customers/orders-count error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Sync de un cliente específico
+// IMPORTANTE: Esta ruta con :tnCustomerId debe estar DESPUÉS de las rutas específicas
 app.post('/sync/customers/:tnCustomerId', authenticate, requirePermission('customers.sync'), async (req, res) => {
   try {
     const { tnCustomerId } = req.params;
@@ -5040,30 +5079,6 @@ app.post('/sync/customers/:tnCustomerId', authenticate, requirePermission('custo
     res.json({ ok: true, ...result });
   } catch (error) {
     console.error('❌ /sync/customers/:id error:', error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Sync orders_count from TN orders API (llenar datos que customers API no provee)
-// ?method=byCustomer para usar la versión más robusta (consulta por cliente)
-// ?method=byPages para usar la versión tradicional (pagina todas las órdenes)
-app.post('/sync/customers/orders-count', authenticate, requirePermission('customers.sync'), async (req, res) => {
-  try {
-    const method = req.query.method || 'byCustomer'; // Default to more robust method
-    console.log(`📦 [CustomerSync] Sync orders_count iniciado por ${req.user.username} (method: ${method})`);
-
-    let result;
-    if (method === 'byCustomer') {
-      // Más robusto: consulta TN por cada cliente individualmente
-      result = await customerSync.syncOrdersCountByCustomer();
-    } else {
-      // Tradicional: pagina todas las órdenes (puede fallar con errores 502)
-      result = await customerSync.syncOrdersCountFromTN();
-    }
-
-    res.json({ ok: true, method, ...result });
-  } catch (error) {
-    console.error('❌ /sync/customers/orders-count error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });

@@ -23,7 +23,9 @@ if (isCloudSQL) {
   // TCP connection (local dev or Cloud SQL Auth Proxy)
   poolConfig.host = process.env.DB_HOST;
   poolConfig.port = Number(process.env.DB_PORT) || 5432;
-  poolConfig.ssl = { rejectUnauthorized: false };
+  // Disable SSL for localhost connections (Cloud SQL Proxy)
+  const isLocalhost = process.env.DB_HOST === '127.0.0.1' || process.env.DB_HOST === 'localhost';
+  poolConfig.ssl = isLocalhost ? false : { rejectUnauthorized: false };
 }
 
 const pool = new Pool(poolConfig);

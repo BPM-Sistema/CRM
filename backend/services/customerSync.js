@@ -5,6 +5,7 @@
 
 const pool = require('../db');
 const axios = require('axios');
+const { determineSegment } = require('./customerSegmentation');
 
 const TN_API_BASE = `https://api.tiendanube.com/v1/${process.env.TIENDANUBE_STORE_ID}`;
 const TN_HEADERS = {
@@ -353,11 +354,17 @@ async function syncOrdersCountFromTN(onProgress = null) {
   let updated = 0;
   for (const [tnCustomerId, data] of customerOrders) {
     try {
+      // Calculate segment inline to avoid desync
+      const segment = determineSegment({
+        orders_count: data.count,
+        last_order_at: data.lastOrderAt
+      });
+
       const result = await pool.query(`
         UPDATE customers
-        SET orders_count = $1, last_order_at = $2, updated_at = NOW()
-        WHERE tn_customer_id = $3 AND (orders_count IS NULL OR orders_count != $1)
-      `, [data.count, data.lastOrderAt, tnCustomerId]);
+        SET orders_count = $1, last_order_at = $2, segment = $3, segment_updated_at = NOW(), updated_at = NOW()
+        WHERE tn_customer_id = $4 AND (orders_count IS NULL OR orders_count != $1)
+      `, [data.count, data.lastOrderAt, segment, tnCustomerId]);
 
       if (result.rowCount > 0) updated++;
     } catch (err) {
@@ -378,15 +385,27 @@ async function syncOrdersCountFromTN(onProgress = null) {
 async function syncOrdersCountByCustomer(onProgress = null) {
   console.log('[CustomerSync] Syncing orders count by customer (using TN search API)...');
 
-  // Get customers that likely have orders (total_spent > 0 or already have orders_count)
-  // This filters out the 15,000+ contacts without purchases
-  const customersResult = await pool.query(`
-    SELECT id, tn_customer_id, name, email
-    FROM customers
-    WHERE name IS NOT NULL AND name != ''
-      AND (total_spent > 0 OR orders_count > 0 OR tn_last_order_id IS NOT NULL)
-    ORDER BY total_spent DESC NULLS LAST
-  `);
+  // Use dedicated connection with extended timeout for long-running sync
+  const client = await pool.connect();
+
+  try {
+    // Set extended timeout (10 minutes for the whole session)
+    await client.query('SET statement_timeout = 600000');
+
+    // Ensure pending_orders_count column exists
+    await client.query(`
+      ALTER TABLE customers ADD COLUMN IF NOT EXISTS pending_orders_count INTEGER DEFAULT 0
+    `).catch(() => {}); // Ignore if already exists
+
+    // Get customers that likely have orders (total_spent > 0 or already have orders_count)
+    // This filters out the 15,000+ contacts without purchases
+    const customersResult = await client.query(`
+      SELECT id, tn_customer_id, name, email
+      FROM customers
+      WHERE name IS NOT NULL AND name != ''
+        AND (total_spent > 0 OR orders_count > 0 OR tn_last_order_id IS NOT NULL)
+      ORDER BY total_spent DESC NULLS LAST
+    `);
 
   const customers = customersResult.rows;
   console.log(`[CustomerSync] Processing ${customers.length} customers...`);
@@ -402,43 +421,61 @@ async function syncOrdersCountByCustomer(onProgress = null) {
       const url = `${TN_API_BASE}/orders?q=${searchName}&per_page=200`;
       const response = await axios.get(url, { headers: TN_HEADERS });
 
-      // Filter only orders from THIS customer (by tn_customer_id) that are paid
-      const orders = response.data.filter(o =>
-        o.customer?.id === parseInt(customer.tn_customer_id) &&
-        (o.payment_status === 'paid' || o.payment_status === 'partially_paid')
+      // Filter ALL orders from THIS customer (by tn_customer_id)
+      const allOrders = response.data.filter(o =>
+        o.customer?.id === parseInt(customer.tn_customer_id)
       );
 
-      if (orders.length > 0) {
-        // Find most recent order
-        const lastOrder = orders.reduce((a, b) =>
+      // Separate paid vs pending
+      const paidOrders = allOrders.filter(o =>
+        o.payment_status === 'paid' || o.payment_status === 'partially_paid'
+      );
+      const pendingOrders = allOrders.filter(o =>
+        o.payment_status === 'pending'
+      );
+
+      if (allOrders.length > 0) {
+        // Find most recent order (from all orders)
+        const lastOrder = allOrders.reduce((a, b) =>
           new Date(a.created_at) > new Date(b.created_at) ? a : b
         );
 
-        // Calculate total spent from orders
-        const totalSpent = orders.reduce((sum, o) => sum + parseFloat(o.total || 0), 0);
+        // Calculate total spent from PAID orders only
+        const totalSpent = paidOrders.reduce((sum, o) => sum + parseFloat(o.total || 0), 0);
 
         // Find first order
-        const firstOrder = orders.reduce((a, b) =>
+        const firstOrder = allOrders.reduce((a, b) =>
           new Date(a.created_at) < new Date(b.created_at) ? a : b
         );
 
-        const result = await pool.query(`
+        // Calculate segment based on ALL orders
+        const segment = determineSegment({
+          orders_count: allOrders.length,
+          last_order_at: lastOrder.created_at
+        });
+
+        const result = await client.query(`
           UPDATE customers
           SET
             orders_count = $1,
-            last_order_at = $2,
-            first_order_at = $3,
-            total_spent = $4,
-            avg_order_value = $5,
+            pending_orders_count = $2,
+            last_order_at = $3,
+            first_order_at = $4,
+            total_spent = $5,
+            avg_order_value = $6,
+            segment = $7,
+            segment_updated_at = NOW(),
             updated_at = NOW()
-          WHERE id = $6 AND (orders_count IS NULL OR orders_count != $1)
+          WHERE id = $8
           RETURNING id
         `, [
-          orders.length,
+          allOrders.length,
+          pendingOrders.length,
           lastOrder.created_at,
           firstOrder.created_at,
           totalSpent,
-          totalSpent / orders.length,
+          allOrders.length > 0 ? totalSpent / allOrders.length : 0,
+          segment,
           customer.id
         ]);
 
@@ -465,6 +502,11 @@ async function syncOrdersCountByCustomer(onProgress = null) {
 
   console.log(`[CustomerSync] Completed: ${updated} updated, ${errors} errors out of ${customers.length} customers`);
   return { updated, total: customers.length, errors };
+
+  } finally {
+    // Always release the client back to the pool
+    client.release();
+  }
 }
 
 module.exports = {

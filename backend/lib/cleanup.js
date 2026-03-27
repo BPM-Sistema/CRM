@@ -53,6 +53,19 @@ async function runCleanup() {
     console.error('[Cleanup] order_inconsistencies error:', err.message);
   }
 
+  // 6. webhook_events_processed antiguos (>7 días) - solo necesitamos protección para retries inmediatos
+  try {
+    const r = await pool.query(`
+      DELETE FROM webhook_events_processed WHERE processed_at < NOW() - INTERVAL '7 days'
+    `);
+    results.cleaned.webhook_events_processed = r.rowCount;
+  } catch (err) {
+    // Tabla puede no existir aún
+    if (err.code !== '42P01') {
+      console.error('[Cleanup] webhook_events_processed error:', err.message);
+    }
+  }
+
   const total = Object.values(results.cleaned).reduce((a, b) => a + (b || 0), 0);
   if (total > 0) {
     console.log(`[Cleanup] Limpiados ${total} registros:`, results.cleaned);

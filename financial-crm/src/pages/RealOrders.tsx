@@ -784,8 +784,16 @@ export function RealOrders() {
                     {/* Pago */}
                     <TableCell>
                       <div className="flex flex-col gap-1">
-                        <div>
+                        <div className="flex items-center gap-1.5">
                           <PaymentStatusBadge status={mapEstadoPago(order.estado_pago)} size="md" />
+                          {order.pending_receipts_count > 0 && (
+                            <span
+                              className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800"
+                              title={`${order.pending_receipts_count} comprobante(s) pendiente(s) de revisión`}
+                            >
+                              {order.pending_receipts_count} pend.
+                            </span>
+                          )}
                         </div>
                         {order.estado_pedido === 'cancelado' && (
                           <div>

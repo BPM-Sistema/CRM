@@ -29,10 +29,34 @@ let memoryCacheTimestamp = 0;
 // ─── Funciones internas ───────────────────────────────────
 
 /**
+ * Asegurar que configs críticas existan (auto-migración)
+ */
+async function ensureCriticalConfigs() {
+  try {
+    await pool.query(`
+      INSERT INTO integration_config (key, enabled, description, category, metadata)
+      VALUES (
+        'botmaker_channel',
+        true,
+        'Canal de WhatsApp Business (número desde el cual se envían mensajes)',
+        'whatsapp',
+        '{"channel_id": "blanqueriaxmayor-whatsapp-5491136914124"}'
+      )
+      ON CONFLICT (key) DO NOTHING
+    `);
+  } catch (err) {
+    console.warn('[IntegrationConfig] Error en auto-migración:', err.message);
+  }
+}
+
+/**
  * Cargar toda la configuración desde DB
  */
 async function loadConfigFromDB() {
   try {
+    // Auto-migrar configs críticas si no existen
+    await ensureCriticalConfigs();
+
     const result = await pool.query(`
       SELECT key, enabled, description, category, metadata, updated_at
       FROM integration_config
@@ -402,6 +426,24 @@ const whatsapp = {
       enabled: config.enabled,
       testingPhone: config.metadata?.active_phone || config.metadata?.testing_phone || null
     };
+  },
+
+  /**
+   * Obtener el channelId de Botmaker desde config
+   * Fallback a process.env si no está configurado
+   */
+  async getChannelId() {
+    try {
+      const config = await getConfigWithMetadata('botmaker_channel');
+      const channelId = config?.metadata?.channel_id;
+      if (channelId) {
+        return channelId;
+      }
+    } catch (err) {
+      console.warn('[IntegrationConfig] Error obteniendo botmaker_channel:', err.message);
+    }
+    // Fallback a env var
+    return process.env.BOTMAKER_CHANNEL_ID;
   }
 };
 

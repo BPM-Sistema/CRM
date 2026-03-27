@@ -5,7 +5,7 @@
  * Extraidas de index.js para uso compartido.
  *
  * Template resolution uses the catalog-based system (plantilla_tipos + financiera_plantillas).
- * NO hardcoded suffixes. NO dynamic string construction.
+ * NO hardcoded mappings. Config keys are derived dynamically from plantilla key.
  */
 
 const axios = require('axios');
@@ -13,29 +13,32 @@ const { callBotmaker } = require('./circuitBreaker');
 const pool = require('../db');
 const { whatsapp: waConfig, isEnabled: isIntegrationEnabled } = require('../services/integrationConfig');
 const { apiLogger: log } = require('./logger');
-const { getPlantillaFinal } = require('./plantilla-resolver');
+const { getPlantillaFinal, getPlantillaTipos } = require('./plantilla-resolver');
 
-// Mapeo de plantilla base -> key en integration_config (for toggle checks)
-const PLANTILLA_CONFIG_KEY = {
-  'pedido_creado': 'whatsapp_tpl_pedido_creado',
-  'comprobante_confirmado': 'whatsapp_tpl_comprobante_confirmado',
-  'comprobante_rechazado': 'whatsapp_tpl_comprobante_rechazado',
-  'datos__envio': 'whatsapp_tpl_datos_envio',
-  'enviado_env_nube': 'whatsapp_tpl_enviado_env_nube',
-  'pedido_cancelado': 'whatsapp_tpl_pedido_cancelado',
-  'partial_paid': 'whatsapp_tpl_partial_paid',
-  'enviado_transporte': 'whatsapp_tpl_enviado_transporte',
-};
+/**
+ * Derive the integration config key from plantilla key
+ * No hardcoded mapping - convention based: plantilla_key -> whatsapp_tpl_plantilla_key
+ */
+function getConfigKey(plantillaKey) {
+  return `whatsapp_tpl_${plantillaKey}`;
+}
 
 async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNumber = null }) {
-  // Verificar si la plantilla esta habilitada
-  const configKey = PLANTILLA_CONFIG_KEY[plantilla];
-  if (configKey) {
-    const enabled = await isIntegrationEnabled(configKey, { context: `plantilla:${plantilla}` });
-    if (!enabled) {
-      log.info({ plantilla, configKey }, 'WhatsApp template disabled by toggle');
-      return { data: { skipped: true, reason: 'template_disabled' } };
-    }
+  // Verificar que el tipo de plantilla exista en el catálogo
+  const tipos = await getPlantillaTipos();
+  const tipoExiste = tipos.some(t => t.key === plantilla);
+
+  if (!tipoExiste) {
+    log.warn({ plantilla }, 'WhatsApp template type not found in catalog, skipping');
+    return { data: { skipped: true, reason: 'template_type_not_found' } };
+  }
+
+  // Verificar si la plantilla está habilitada (config key derivado dinámicamente)
+  const configKey = getConfigKey(plantilla);
+  const enabled = await isIntegrationEnabled(configKey, { context: `plantilla:${plantilla}` });
+  if (!enabled) {
+    log.info({ plantilla, configKey }, 'WhatsApp template disabled by toggle');
+    return { data: { skipped: true, reason: 'template_disabled' } };
   }
 
   // Filtro de testing desde integrationConfig (con cache)
@@ -61,6 +64,13 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNu
   // No hardcoded logic - uses explicit mappings from database
   const plantillaFinal = await getPlantillaFinal(plantilla);
 
+  // Obtener channelId desde config (con fallback a env var)
+  const channelId = await waConfig.getChannelId();
+  if (!channelId) {
+    console.error('❌ WhatsApp bloqueado: no hay channelId configurado');
+    return { data: { skipped: true, reason: 'no_channel_id' } };
+  }
+
   console.log('📤 Enviando WhatsApp a:', telefono, 'plantilla:', plantillaFinal);
 
   const contactIdClean = telefono.replace('+', '');
@@ -71,7 +81,7 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNu
       url: 'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
       data: {
         chat: {
-          channelId: process.env.BOTMAKER_CHANNEL_ID,
+          channelId,
           contactId: contactIdClean
         },
         intentIdOrName: plantillaFinal,
@@ -107,5 +117,5 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNu
 
 module.exports = {
   enviarWhatsAppPlantilla,
-  PLANTILLA_CONFIG_KEY,
+  getConfigKey,
 };

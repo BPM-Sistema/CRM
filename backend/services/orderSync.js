@@ -18,8 +18,6 @@ const {
 
 const TIENDANUBE_STORE_ID = process.env.TIENDANUBE_STORE_ID;
 const TIENDANUBE_ACCESS_TOKEN = process.env.TIENDANUBE_ACCESS_TOKEN;
-const BOTMAKER_ACCESS_TOKEN = process.env.BOTMAKER_ACCESS_TOKEN;
-const BOTMAKER_CHANNEL_ID = process.env.BOTMAKER_CHANNEL_ID;
 
 /**
  * Obtener pedido de TiendaNube por ID

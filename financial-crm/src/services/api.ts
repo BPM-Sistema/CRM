@@ -79,6 +79,7 @@ export interface ApiOrder {
   shipped_at: string | null;
   monto_original: number | null;
   comprobantes_count: string;
+  pending_receipts_count: number;
   productos_count: number;
   shipping_type: string | null;
   requires_shipping_form: boolean;
@@ -1695,6 +1696,100 @@ export interface IntegrationsResponse {
     valid: boolean;
     ttl_ms: number;
   };
+}
+
+export interface PlantillaResuelta {
+  key: string;
+  nombre: string;
+  descripcion: string;
+  requiere_variante: boolean;
+  plantilla_default: string;
+  plantilla_resuelta: string;
+  usa_default: boolean;
+}
+
+export interface PlantillasResponse {
+  ok: boolean;
+  plantillas: PlantillaResuelta[];
+  byKey: Record<string, PlantillaResuelta>;
+}
+
+// Obtener plantillas resueltas para mostrar en integraciones
+export async function fetchPlantillasResueltas(): Promise<PlantillasResponse> {
+  const response = await authFetch(`${API_BASE_URL}/integrations/plantillas`);
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al obtener plantillas');
+  }
+
+  return data;
+}
+
+// ─── Plantilla Tipos CRUD ─────────────────────────────────
+
+export interface PlantillaTipoCRUD {
+  id: number;
+  key: string;
+  nombre: string;
+  descripcion: string | null;
+  requiere_variante: boolean;
+  plantilla_default: string;
+  created_at: string;
+}
+
+export interface CreatePlantillaTipoInput {
+  key: string;
+  nombre: string;
+  descripcion?: string;
+  requiere_variante?: boolean;
+  plantilla_default: string;
+}
+
+export interface UpdatePlantillaTipoInput {
+  nombre: string;
+  descripcion?: string;
+  plantilla_default: string;
+}
+
+// Listar todos los tipos de plantilla
+export async function fetchPlantillaTiposCRUD(): Promise<PlantillaTipoCRUD[]> {
+  const response = await authFetch(`${API_BASE_URL}/integrations/plantilla-tipos`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al obtener tipos');
+  return data.tipos;
+}
+
+// Crear un nuevo tipo de plantilla
+export async function createPlantillaTipo(input: CreatePlantillaTipoInput): Promise<PlantillaTipoCRUD> {
+  const response = await authFetch(`${API_BASE_URL}/integrations/plantilla-tipos`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al crear tipo');
+  return data.tipo;
+}
+
+// Actualizar un tipo de plantilla
+export async function updatePlantillaTipo(id: number, input: UpdatePlantillaTipoInput): Promise<PlantillaTipoCRUD> {
+  const response = await authFetch(`${API_BASE_URL}/integrations/plantilla-tipos/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al actualizar tipo');
+  return data.tipo;
+}
+
+// Eliminar un tipo de plantilla
+export async function deletePlantillaTipo(id: number): Promise<void> {
+  const response = await authFetch(`${API_BASE_URL}/integrations/plantilla-tipos/${id}`, {
+    method: 'DELETE',
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al eliminar tipo');
 }
 
 // Obtener todas las configuraciones de integraciones

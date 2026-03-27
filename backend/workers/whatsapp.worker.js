@@ -13,8 +13,8 @@ const { callBotmaker } = require('../lib/circuitBreaker');
 const pool = require('../db');
 const { workerLogger: log } = require('../lib/logger');
 const { whatsapp: waConfig, isEnabled: isIntegrationEnabled } = require('../services/integrationConfig');
-const { PLANTILLA_CONFIG_KEY } = require('../lib/whatsapp-helpers');
-const { getPlantillaFinal } = require('../lib/plantilla-resolver');
+const { getConfigKey } = require('../lib/whatsapp-helpers');
+const { getPlantillaFinal, getPlantillaTipos } = require('../lib/plantilla-resolver');
 
 /**
  * Procesador principal del job WhatsApp
@@ -33,14 +33,20 @@ async function processWhatsAppJob(job) {
 
   let telefono = telefonoOriginal;
 
-  // 1. Verificar si la plantilla esta habilitada
-  const configKey = PLANTILLA_CONFIG_KEY[plantilla];
-  if (configKey) {
-    const enabled = await isIntegrationEnabled(configKey, { context: `plantilla:${plantilla}` });
-    if (!enabled) {
-      jobLog.info('Plantilla deshabilitada por toggle');
-      return { status: 'skipped', reason: 'template_disabled' };
-    }
+  // 1. Verificar que el tipo de plantilla exista en el catálogo
+  const tipos = await getPlantillaTipos();
+  const tipoExiste = tipos.some(t => t.key === plantilla);
+  if (!tipoExiste) {
+    jobLog.warn('Tipo de plantilla no existe en catálogo');
+    return { status: 'skipped', reason: 'template_type_not_found' };
+  }
+
+  // 2. Verificar si la plantilla está habilitada (config key derivado dinámicamente)
+  const configKey = getConfigKey(plantilla);
+  const enabled = await isIntegrationEnabled(configKey, { context: `plantilla:${plantilla}` });
+  if (!enabled) {
+    jobLog.info('Plantilla deshabilitada por toggle');
+    return { status: 'skipped', reason: 'template_disabled' };
   }
 
   // 2. Verificar modo testing (fail-safe: si no se puede leer config, bloquear envío)
