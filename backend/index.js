@@ -3638,16 +3638,17 @@ app.post('/webhook/tiendanube', async (req, res) => {
       log.info({ orderNumber: String(pedido.number), shippingOption }, 'Order requires shipping form (will be requested on comprobante confirmation)');
     }
 
-    // ✅ Procesamiento exitoso — liberar slot en sync_queue
-    if (queueId) {
-      await markQueueCompleted(queueId).catch(e => log.error({ err: e, queueId }, 'Error marking queue completed'));
-    }
-
   } catch (err) {
     log.error({ err, event, orderId }, 'Error processing Tiendanube webhook');
     // ❌ Procesamiento falló — marcar en sync_queue para retry
     if (queueId) {
       await markQueueFailed(queueId, err.message).catch(e => log.error({ err: e, queueId }, 'Error marking queue failed'));
+      queueId = null; // evitar doble mark en finally
+    }
+  } finally {
+    // ✅ Liberar slot en sync_queue (finally corre incluso después de return)
+    if (queueId) {
+      await markQueueCompleted(queueId).catch(e => log.error({ err: e, queueId }, 'Error marking queue completed'));
     }
   }
 });
