@@ -3307,6 +3307,11 @@ app.post('/webhook/tiendanube', async (req, res) => {
       const cambioAddress = pedido.shipping_address
         ? addressFields.some(f => (dbAddr[f] || null) !== (tnAddr[f] || null))
         : (dbExt.shipping_address !== null);
+      // DEBUG: log qué campo difiere para diagnosticar falsos positivos
+      if (cambioAddress && pedido.shipping_address) {
+        const diffs = addressFields.filter(f => (dbAddr[f] || null) !== (tnAddr[f] || null));
+        log.info({ orderNumber: String(pedido.number), addressDiffs: diffs, diffDetails: diffs.map(f => ({ field: f, db: dbAddr[f], tn: tnAddr[f], dbType: typeof dbAddr[f], tnType: typeof tnAddr[f] })) }, 'Address change detected — field diff');
+      }
       const addressNuevo = pedido.shipping_address ? JSON.stringify({
         name: tnAddr.name, address: tnAddr.address, number: tnAddr.number,
         floor: tnAddr.floor, locality: tnAddr.locality, city: tnAddr.city,
