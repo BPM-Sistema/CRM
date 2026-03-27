@@ -3243,6 +3243,12 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
       const db = existente.rows[0];
 
+      // Si el pedido ya está cancelado, no procesar updates (evita falsos logs de pago/address junto con cancelación)
+      if (db.estado_pedido === 'cancelado') {
+        log.info({ orderNumber: String(pedido.number) }, 'order/updated skipped — order already cancelled');
+        return;
+      }
+
       // Valores nuevos de Tiendanube
       const montoNuevo = Math.round(Number(pedido.total));
       const paymentStatusNuevo = pedido.payment_status || null;
