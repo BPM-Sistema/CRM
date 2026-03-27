@@ -3245,9 +3245,9 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
       // Si el pedido está cancelado en BPM, verificar si TN lo reabrió
       if (db.estado_pedido === 'cancelado') {
-        if (pedido.status === 'cancelled' || pedido.cancel_reason) {
+        if (pedido.status === 'cancelled') {
           // TN también dice cancelado → skip (evita falsos logs de pago/address junto con cancelación)
-          log.info({ orderNumber: String(pedido.number) }, 'order/updated skipped — order cancelled in both BPM and TN');
+          log.info({ orderNumber: String(pedido.number), tnStatus: pedido.status }, 'order/updated skipped — order cancelled in both BPM and TN');
           return;
         }
         // TN ya no dice cancelado → reabrir el pedido
