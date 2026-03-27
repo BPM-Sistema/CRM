@@ -3265,13 +3265,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
       const dbExt = dbExtended.rows[0] || {};
 
       // Datos de pago de TN (campos reales, no solo payment_status)
-      // Si total_paid es 0 pero payment_status es paid, usar total como fallback
-      // (TN no actualiza total_paid cuando se marca "Pago recibido" manualmente)
-      const rawTotalPaid = Number(pedido.total_paid || 0);
-      const tnTotalPaid = Math.round(
-        rawTotalPaid > 0 ? rawTotalPaid :
-        (paymentStatusNuevo === 'paid' ? Number(pedido.total || 0) : 0)
-      );
+      const tnTotalPaid = Math.round(Number(pedido.total_paid || 0));
       const tnPaidAt = pedido.paid_at || null;
       // Preferir gateway_name si es descriptivo, sino gateway
       const tnGateway = (pedido.gateway_name && pedido.gateway_name !== 'not-provided')
