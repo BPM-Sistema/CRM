@@ -25,6 +25,9 @@ import {
   Bell,
   Shield,
   CheckCheck,
+  Search,
+  Wrench,
+  GitCompareArrows,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -113,10 +116,33 @@ async function authFetch(url: string) {
   return res.json();
 }
 
-async function authPost(url: string) {
-  const res = await apiAuthFetch(url, { method: 'POST' });
+async function authPost(url: string, body?: unknown) {
+  const res = await apiAuthFetch(url, {
+    method: 'POST',
+    ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
+  });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
+}
+
+interface DivergenceStats {
+  stats: Array<{ severity: string; status: string; count: number }>;
+  top_orders: Array<{ order_number: string; count: number; critical: number }>;
+}
+
+interface DivergenceAuditResult {
+  orders_audited: number;
+  total_divergences: number;
+  total_critical: number;
+  results: Array<{
+    order_number: string;
+    total?: number;
+    critical?: number;
+    operational?: number;
+    tolerable?: number;
+    divergences?: Array<{ field_name: string; severity: string; tn_value: unknown; bpm_value: unknown; expected_value: unknown; auto_fixable: boolean }>;
+    error?: string;
+  }>;
 }
 
 const SERVICE_ICONS: Record<string, typeof Database> = {
@@ -198,6 +224,12 @@ export default function SystemStatus() {
   const [showIncidents, setShowIncidents] = useState(true);
   const [showQueues, setShowQueues] = useState(true);
   const [showAlerts, setShowAlerts] = useState(true);
+  const [showDivergences, setShowDivergences] = useState(true);
+  const [divStats, setDivStats] = useState<DivergenceStats | null>(null);
+  const [divAuditResult, setDivAuditResult] = useState<DivergenceAuditResult | null>(null);
+  const [divAuditing, setDivAuditing] = useState(false);
+  const [divFixing, setDivFixing] = useState(false);
+  const [divFixResult, setDivFixResult] = useState<{ total_fixed: number; total_skipped: number } | null>(null);
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
   const [alertSummary, setAlertSummary] = useState<AlertSummary | null>(null);
   const [alertFilter, setAlertFilter] = useState<'open' | 'acknowledged' | 'all'>('open');
@@ -225,14 +257,16 @@ export default function SystemStatus() {
   const loadAll = useCallback(async () => {
     setError(null);
     try {
-      const [overviewData, incidentsData, queuesData] = await Promise.all([
+      const [overviewData, incidentsData, queuesData, divStatsData] = await Promise.all([
         authFetch(`${API_BASE_URL}/admin/status/overview`).catch(() => null),
         authFetch(`${API_BASE_URL}/admin/status/incidents`).catch(() => ({ incidents: [] })),
         authFetch(`${API_BASE_URL}/admin/status/queues`).catch(() => ({ queues: {} })),
+        authFetch(`${API_BASE_URL}/admin/divergences/stats?days=7`).catch(() => null),
       ]);
       if (overviewData) setOverview(overviewData);
       setIncidents(incidentsData.incidents || []);
       setQueueDetails(queuesData.queues || {});
+      if (divStatsData) setDivStats(divStatsData);
       setLastRefresh(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error cargando estado del sistema');
@@ -248,6 +282,37 @@ export default function SystemStatus() {
     const interval = setInterval(() => { loadAll(); }, 30000);
     return () => clearInterval(interval);
   }, [canView, loadAll]);
+
+  const handleDivAudit = async (days = 3) => {
+    setDivAuditing(true);
+    setDivAuditResult(null);
+    try {
+      const data = await authPost(`${API_BASE_URL}/admin/divergences/audit`, { days });
+      setDivAuditResult(data);
+      // Refresh stats
+      const stats = await authFetch(`${API_BASE_URL}/admin/divergences/stats?days=7`).catch(() => null);
+      if (stats) setDivStats(stats);
+    } catch (err) {
+      console.error('Error auditing:', err);
+    } finally {
+      setDivAuditing(false);
+    }
+  };
+
+  const handleDivFix = async () => {
+    setDivFixing(true);
+    setDivFixResult(null);
+    try {
+      const data = await authPost(`${API_BASE_URL}/admin/divergences/fix`, { max_orders: 100 });
+      setDivFixResult(data);
+      const stats = await authFetch(`${API_BASE_URL}/admin/divergences/stats?days=7`).catch(() => null);
+      if (stats) setDivStats(stats);
+    } catch (err) {
+      console.error('Error fixing:', err);
+    } finally {
+      setDivFixing(false);
+    }
+  };
 
   const handleRetry = async (queueName: string) => {
     setRetrying(queueName);
@@ -853,6 +918,156 @@ export default function SystemStatus() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Divergence Detector */}
+        <div className="bg-white rounded-xl border border-neutral-200">
+          <button
+            onClick={() => setShowDivergences(!showDivergences)}
+            className="w-full flex items-center justify-between p-5 text-left"
+          >
+            <div className="flex items-center gap-2">
+              <GitCompareArrows size={18} className="text-neutral-600" />
+              <h3 className="font-semibold text-neutral-900">Divergencias BPM vs TiendaNube</h3>
+              {divStats && (() => {
+                const openCritical = divStats.stats.filter(s => s.status === 'open' && s.severity === 'critical').reduce((sum, s) => sum + s.count, 0);
+                const openTotal = divStats.stats.filter(s => s.status === 'open').reduce((sum, s) => sum + s.count, 0);
+                return openTotal > 0 ? (
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${openCritical > 0 ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                    {openTotal} abiertas{openCritical > 0 ? ` (${openCritical} criticas)` : ''}
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    Sin divergencias
+                  </span>
+                );
+              })()}
+            </div>
+            {showDivergences ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </button>
+
+          {showDivergences && (
+            <div className="px-5 pb-5 space-y-4">
+              {/* Stats summary */}
+              {divStats && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {(['critical', 'operational', 'tolerable'] as const).map(sev => {
+                    const open = divStats.stats.filter(s => s.status === 'open' && s.severity === sev).reduce((sum, s) => sum + s.count, 0);
+                    const fixed = divStats.stats.filter(s => s.status === 'fixed' && s.severity === sev).reduce((sum, s) => sum + s.count, 0);
+                    const color = sev === 'critical' ? 'red' : sev === 'operational' ? 'yellow' : 'blue';
+                    return (
+                      <div key={sev} className={`p-3 rounded-lg bg-${color}-50 border border-${color}-200`}>
+                        <div className="text-xs text-neutral-500 uppercase">{sev}</div>
+                        <div className={`text-xl font-bold text-${color}-700`}>{open}</div>
+                        <div className="text-xs text-neutral-400">{fixed} corregidas</div>
+                      </div>
+                    );
+                  })}
+                  <div className="p-3 rounded-lg bg-neutral-50 border border-neutral-200">
+                    <div className="text-xs text-neutral-500 uppercase">Pedidos afectados</div>
+                    <div className="text-xl font-bold text-neutral-700">{divStats.top_orders.length}</div>
+                    <div className="text-xs text-neutral-400">con divergencias abiertas</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Actions */}
+              {canUpdate && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => handleDivAudit(3)}
+                    disabled={divAuditing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 disabled:opacity-50 border border-blue-200"
+                  >
+                    <Search size={14} />
+                    {divAuditing ? 'Auditando...' : 'Auditar ultimos 3 dias'}
+                  </button>
+                  <button
+                    onClick={() => handleDivAudit(7)}
+                    disabled={divAuditing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 disabled:opacity-50 border border-blue-200"
+                  >
+                    <Search size={14} />
+                    {divAuditing ? 'Auditando...' : 'Auditar ultimos 7 dias'}
+                  </button>
+                  <button
+                    onClick={handleDivFix}
+                    disabled={divFixing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-50 text-green-700 rounded-lg hover:bg-green-100 disabled:opacity-50 border border-green-200"
+                  >
+                    <Wrench size={14} />
+                    {divFixing ? 'Corrigiendo...' : 'Corregir auto-fixable'}
+                  </button>
+                </div>
+              )}
+
+              {/* Fix result */}
+              {divFixResult && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
+                  <span className="font-medium text-green-800">Resultado:</span>{' '}
+                  {divFixResult.total_fixed} corregidas, {divFixResult.total_skipped} omitidas
+                </div>
+              )}
+
+              {/* Audit result */}
+              {divAuditResult && (
+                <div className="space-y-2">
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+                    <span className="font-medium text-blue-800">Auditados:</span>{' '}
+                    {divAuditResult.orders_audited} pedidos | {divAuditResult.total_divergences} divergencias | {divAuditResult.total_critical} criticas
+                  </div>
+                  {divAuditResult.results.filter(r => (r.total || 0) > 0).length > 0 && (
+                    <div className="max-h-64 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-neutral-50 sticky top-0">
+                          <tr>
+                            <th className="text-left p-2 font-medium">Pedido</th>
+                            <th className="text-center p-2 font-medium text-red-600">Criticas</th>
+                            <th className="text-center p-2 font-medium text-yellow-600">Operativas</th>
+                            <th className="text-center p-2 font-medium text-blue-600">Tolerables</th>
+                            <th className="text-left p-2 font-medium">Campos</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {divAuditResult.results.filter(r => (r.total || 0) > 0).slice(0, 30).map(r => (
+                            <tr key={r.order_number} className="border-t border-neutral-100">
+                              <td className="p-2 font-mono">#{r.order_number}</td>
+                              <td className="p-2 text-center">{r.critical || 0}</td>
+                              <td className="p-2 text-center">{r.operational || 0}</td>
+                              <td className="p-2 text-center">{r.tolerable || 0}</td>
+                              <td className="p-2 text-neutral-500">{r.divergences?.map(d => d.field_name).join(', ')}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Top orders with divergences */}
+              {divStats && divStats.top_orders.length > 0 && !divAuditResult && (
+                <div>
+                  <div className="text-xs font-medium text-neutral-500 mb-2">Pedidos con mas divergencias abiertas</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {divStats.top_orders.slice(0, 10).map(o => (
+                      <span key={o.order_number} className={`px-2 py-0.5 rounded text-xs font-mono ${o.critical > 0 ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-yellow-50 text-yellow-700 border border-yellow-200'}`}>
+                        #{o.order_number} ({o.count})
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Empty state */}
+              {divStats && divStats.top_orders.length === 0 && !divAuditResult && (
+                <div className="text-center py-4 text-sm text-neutral-400">
+                  <CheckCircle2 size={24} className="mx-auto mb-1 text-green-400" />
+                  Sin divergencias abiertas en los ultimos 7 dias
                 </div>
               )}
             </div>
