@@ -3304,7 +3304,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
       // Detectar qué cambió por categoría
       // Para pago: detectar cambio en payment_status O en paid_at O en total_paid
       const cambioPaymentStatus = paymentStatusAnterior !== paymentStatusNuevo;
-      const cambioPaidAt = String(dbPaidAt) !== String(tnPaidAt);
+      const cambioPaidAt = (dbPaidAt ? new Date(dbPaidAt).toISOString() : null) !== (tnPaidAt ? new Date(tnPaidAt).toISOString() : null);
       const cambioTotalPaid = dbTotalPaid !== tnTotalPaid;
       const cambioPayment = cambioPaymentStatus || cambioPaidAt || cambioTotalPaid;
       const cambioShipping = shippingStatusAnterior !== shippingStatusNuevo;
