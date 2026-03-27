@@ -3299,7 +3299,20 @@ app.post('/webhook/tiendanube', async (req, res) => {
                              (dbExt.customer_email !== customerEmailNuevo) ||
                              (dbExt.customer_phone !== customerPhoneNuevo);
 
-      const addressNuevo = pedido.shipping_address ? JSON.stringify(pedido.shipping_address) : null;
+      // Normalizar address con los mismos campos que se guardan en DB para evitar falsos positivos
+      const addressNuevo = pedido.shipping_address ? JSON.stringify({
+        name: pedido.shipping_address.name,
+        address: pedido.shipping_address.address,
+        number: pedido.shipping_address.number,
+        floor: pedido.shipping_address.floor,
+        locality: pedido.shipping_address.locality,
+        city: pedido.shipping_address.city,
+        province: pedido.shipping_address.province,
+        zipcode: pedido.shipping_address.zipcode,
+        phone: pedido.shipping_address.phone,
+        between_streets: pedido.shipping_address.between_streets,
+        reference: pedido.shipping_address.reference,
+      }) : null;
       const cambioAddress = JSON.stringify(dbExt.shipping_address) !== addressNuevo;
 
       const cambioNotes = (dbExt.note !== (pedido.note || null)) || (dbExt.owner_note !== (pedido.owner_note || null));
