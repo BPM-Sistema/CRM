@@ -3243,10 +3243,21 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
       const db = existente.rows[0];
 
-      // Si el pedido ya está cancelado, no procesar updates (evita falsos logs de pago/address junto con cancelación)
+      // Si el pedido está cancelado en BPM, verificar si TN lo reabrió
       if (db.estado_pedido === 'cancelado') {
-        log.info({ orderNumber: String(pedido.number) }, 'order/updated skipped — order already cancelled');
-        return;
+        if (pedido.status === 'cancelled' || pedido.cancel_reason) {
+          // TN también dice cancelado → skip (evita falsos logs de pago/address junto con cancelación)
+          log.info({ orderNumber: String(pedido.number) }, 'order/updated skipped — order cancelled in both BPM and TN');
+          return;
+        }
+        // TN ya no dice cancelado → reabrir el pedido
+        log.info({ orderNumber: String(pedido.number), tnStatus: pedido.status }, 'Reopening cancelled order — TN no longer cancelled');
+        await pool.query(
+          `UPDATE orders_validated SET estado_pedido = 'a_imprimir', updated_at = NOW() WHERE order_number = $1`,
+          [String(pedido.number)]
+        );
+        await logEvento({ orderNumber: String(pedido.number), accion: 'Pedido reabierto desde TN', origen: 'webhook_tiendanube' });
+        db.estado_pedido = 'a_imprimir';
       }
 
       // Valores nuevos de Tiendanube
