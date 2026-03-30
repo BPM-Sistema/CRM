@@ -3389,7 +3389,10 @@ app.post('/webhook/tiendanube', async (req, res) => {
           // - paid_at cambió (pago adicional con gateway que trackea), o
           // - evento es order/paid (TN confirma pago, aunque campos no cambien)
           // NO actualizar en order/updated sin pago (es un edit de monto, no un pago)
-          if (cambioPaymentStatus || cambioPaidAt || event === 'order/paid') {
+          // IMPORTANTE: NO actualizar si el pedido ya está confirmado_total por pagos locales
+          // (evita duplicar cuando nosotros marcamos pagado en TN y TN envía webhook de vuelta)
+          const yaConfirmadoLocal = db.estado_pago === 'confirmado_total' && Number(db.total_pagado) >= Number(db.monto_tiendanube);
+          if ((cambioPaymentStatus || cambioPaidAt || event === 'order/paid') && !yaConfirmadoLocal) {
             let pagoOnline = 0;
             if (paymentStatusNuevo === 'partially_paid' && tnTotalPaid > 0) {
               pagoOnline = tnTotalPaid;
@@ -3398,6 +3401,8 @@ app.post('/webhook/tiendanube', async (req, res) => {
             }
             setClauses.push(`pago_online_tn = $${paramIdx++}`);
             setParams.push(pagoOnline);
+          } else if (yaConfirmadoLocal) {
+            log.info({ orderNumber: String(pedido.number), estadoPago: db.estado_pago }, 'Skipping pago_online_tn update — order already paid locally');
           }
         }
       }

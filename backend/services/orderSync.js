@@ -273,13 +273,10 @@ async function processOrderPaid(orderId, orderNumber) {
     `, [String(pedido.number), pedido.created_at || null]);
   }
 
-  // Registrar pago
-  const montoTotal = Math.round(Number(pedido.total));
-  await pool.query(`
-    INSERT INTO pagos_efectivo (order_number, monto, registrado_por, notas, tipo)
-    VALUES ($1, $2, $3, $4, $5)
-    ON CONFLICT DO NOTHING
-  `, [String(pedido.number), montoTotal, 'sistema', 'Pago sincronizado desde cola', 'tiendanube']);
+  // NO insertar en pagos_efectivo - el pago ya fue registrado por:
+  // - El webhook original (pago_online_tn en orders_validated), o
+  // - Pago manual (pagos_efectivo tipo='efectivo')
+  // Insertar aquí duplicaría el monto.
 
   // Log
   await pool.query(`
