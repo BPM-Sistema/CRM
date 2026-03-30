@@ -3562,6 +3562,38 @@ app.post('/webhook/tiendanube', async (req, res) => {
         if (shippingDerivedEstado) {
           await logEvento({ orderNumber: orderNum, accion: `Estado pedido actualizado a "${shippingDerivedEstado}" (sync envío TN)`, origen: 'webhook_tiendanube' });
         }
+
+        // WhatsApp automático cuando TN marca como "enviado" (Envío Nube)
+        if (shippingDerivedEstado === 'enviado') {
+          const shippingTypeLower = (db.shipping_type || '').toLowerCase();
+          const esEnvioNube = shippingTypeLower.includes('envío nube') || shippingTypeLower.includes('envio nube');
+
+          if (esEnvioNube) {
+            // Obtener datos del cliente para WhatsApp
+            const clienteWebhookRes = await pool.query(
+              `SELECT customer_name, customer_phone, tn_order_id, tn_order_token FROM orders_validated WHERE order_number = $1`,
+              [orderNum]
+            );
+            const clienteWebhook = clienteWebhookRes.rows[0];
+
+            if (clienteWebhook?.customer_phone && clienteWebhook.tn_order_id && clienteWebhook.tn_order_token) {
+              const trackingParam = `${clienteWebhook.tn_order_id}/${clienteWebhook.tn_order_token}`;
+              queueWhatsApp({
+                telefono: clienteWebhook.customer_phone,
+                plantilla: 'enviado_env_nube',
+                variables: {
+                  '1': clienteWebhook.customer_name || 'Cliente',
+                  '2': orderNum,
+                  '3': trackingParam
+                },
+                orderNumber: orderNum
+              }).then(() => log.info({ orderNumber: orderNum }, 'WhatsApp enviado_env_nube sent from webhook'))
+                .catch(err => log.error({ err, orderNumber: orderNum }, 'Error WhatsApp enviado_env_nube from webhook'));
+            } else {
+              log.warn({ orderNumber: orderNum, hasPhone: !!clienteWebhook?.customer_phone, hasOrderId: !!clienteWebhook?.tn_order_id, hasToken: !!clienteWebhook?.tn_order_token }, 'WhatsApp enviado_env_nube skipped - missing data');
+            }
+          }
+        }
       }
 
       // Log cambio de cliente
