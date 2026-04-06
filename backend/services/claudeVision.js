@@ -53,20 +53,27 @@ const USER_PROMPT = `Analizá esta imagen de comprobante y devolvé este JSON ex
  */
 async function analizarComprobante(filePath) {
   const imageBuffer = fs.readFileSync(filePath);
-  const base64Image = imageBuffer.toString('base64');
+  const base64Data = imageBuffer.toString('base64');
 
-  // Detectar media type
+  // Detectar media type por extensión + magic bytes
   const ext = path.extname(filePath).toLowerCase();
+  const isPdf = ext === '.pdf' || imageBuffer[0] === 0x25 && imageBuffer[1] === 0x50; // %P
   const mediaTypes = {
     '.jpg': 'image/jpeg',
     '.jpeg': 'image/jpeg',
     '.png': 'image/png',
     '.webp': 'image/webp',
-    '.gif': 'image/gif'
+    '.gif': 'image/gif',
+    '.pdf': 'application/pdf'
   };
-  const mediaType = mediaTypes[ext] || 'image/jpeg';
+  const mediaType = isPdf ? 'application/pdf' : (mediaTypes[ext] || 'image/jpeg');
 
   const startTime = Date.now();
+
+  // PDFs se envían como document, imágenes como image
+  const contentBlock = isPdf
+    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Data } }
+    : { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } };
 
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
@@ -75,14 +82,7 @@ async function analizarComprobante(filePath) {
       {
         role: 'user',
         content: [
-          {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: mediaType,
-              data: base64Image
-            }
-          },
+          contentBlock,
           {
             type: 'text',
             text: USER_PROMPT
@@ -197,10 +197,14 @@ REGLAS:
  * @returns {Object} Datos estructurados del remito
  */
 async function analizarRemito(imageBuffer, mimeType) {
-  const base64Image = imageBuffer.toString('base64');
+  const base64Data = imageBuffer.toString('base64');
 
-  // Mapear mime type
-  const mediaType = mimeType === 'application/pdf' ? 'image/jpeg' : (mimeType || 'image/jpeg');
+  const isPdf = mimeType === 'application/pdf' || (imageBuffer[0] === 0x25 && imageBuffer[1] === 0x50);
+  const mediaType = isPdf ? 'application/pdf' : (mimeType || 'image/jpeg');
+
+  const contentBlock = isPdf
+    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Data } }
+    : { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } };
 
   const startTime = Date.now();
 
@@ -211,14 +215,7 @@ async function analizarRemito(imageBuffer, mimeType) {
       {
         role: 'user',
         content: [
-          {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: mediaType,
-              data: base64Image
-            }
-          },
+          contentBlock,
           {
             type: 'text',
             text: REMITO_PROMPT
