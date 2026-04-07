@@ -2087,6 +2087,9 @@ export interface ConciliacionPreviewResult {
   summary: {
     total_movimientos: number;
     transferencias_entrantes: number;
+    nuevos: number;
+    filtrados: number;
+    ultima_fecha_procesada: string | null;
     matched: number;
     unmatched: number;
   };
@@ -2115,10 +2118,10 @@ export async function conciliacionPreview(movimientos: unknown[]): Promise<Conci
   return data;
 }
 
-export async function conciliacionAplicar(matches: Array<{ comprobante_id: number; banco_id: string }>): Promise<ConciliacionAplicarResult> {
+export async function conciliacionAplicar(matches: Array<{ comprobante_id: number; banco_id: string }>, fecha_max: string | null): Promise<ConciliacionAplicarResult> {
   const response = await authFetch(`${API_BASE_URL}/comprobantes/conciliacion-aplicar`, {
     method: 'POST',
-    body: JSON.stringify({ matches }),
+    body: JSON.stringify({ matches, fecha_max }),
   });
 
   const data = await response.json();

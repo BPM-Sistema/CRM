@@ -233,6 +233,8 @@ export function RealReceipts() {
   const [bankDragging, setBankDragging] = useState(false);
   const bankFileRef = useRef<HTMLInputElement>(null);
 
+  const [bankFechaMax, setBankFechaMax] = useState<string | null>(null);
+
   const handleBankFile = useCallback(async (file: File) => {
     try {
       const text = await file.text();
@@ -241,7 +243,7 @@ export function RealReceipts() {
         alert('El archivo no contiene un array de movimientos');
         return;
       }
-      const entrantes = movimientos.filter((m: { Tipo?: string; Importe?: string }) =>
+      const entrantes = movimientos.filter((m: { Tipo?: string; Importe?: string; 'Fecha/Hora'?: string }) =>
         m.Tipo === 'Transferencia entrante' && parseFloat(m.Importe || '0') > 0
       );
       if (entrantes.length === 0) {
@@ -249,12 +251,16 @@ export function RealReceipts() {
         return;
       }
 
+      // Calcular fecha máxima del JSON para guardar después
+      const fechas = entrantes.map((m: { 'Fecha/Hora': string }) => m['Fecha/Hora']).filter(Boolean);
+      const maxFecha = fechas.length > 0 ? fechas.sort().pop() || null : null;
+      setBankFechaMax(maxFecha);
+
       setBankProcessing(true);
       setBankPreview(null);
       setBankApplyResult(null);
       const result = await conciliacionPreview(movimientos);
       setBankPreview(result);
-      // Seleccionar todos por defecto
       setBankSelectedMatches(new Set(result.matched.map((_: ConciliacionMatch, i: number) => i)));
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error procesando archivo');
@@ -275,7 +281,8 @@ export function RealReceipts() {
     setBankApplying(true);
     try {
       const result = await conciliacionAplicar(
-        selectedMatches.map((m: ConciliacionMatch) => ({ comprobante_id: m.comprobante_id, banco_id: m.banco_id }))
+        selectedMatches.map((m: ConciliacionMatch) => ({ comprobante_id: m.comprobante_id, banco_id: m.banco_id })),
+        bankFechaMax
       );
       setBankApplyResult(result);
       setBankPreview(null);
@@ -595,16 +602,27 @@ export function RealReceipts() {
                 {/* Preview — matches para revisar antes de confirmar */}
                 {bankPreview && (
                   <div className="space-y-3">
-                    <div className="flex items-center gap-4 text-sm">
+                    <div className="flex flex-wrap items-center gap-3 text-sm">
+                      {bankPreview.summary.filtrados > 0 && (
+                        <span className="flex items-center gap-1 text-neutral-500">
+                          <FileText size={14} />
+                          {bankPreview.summary.filtrados} ya procesados
+                        </span>
+                      )}
                       <span className="flex items-center gap-1 text-blue-700">
                         <Eye size={14} />
-                        {bankPreview.summary.matched} matches encontrados
+                        {bankPreview.summary.matched} matches
                       </span>
                       <span className="flex items-center gap-1 text-amber-700">
                         <AlertTriangle size={14} />
                         {bankPreview.summary.unmatched} sin match
                       </span>
                     </div>
+                    {bankPreview.summary.filtrados > 0 && (
+                      <p className="text-xs text-neutral-400">
+                        Se omitieron {bankPreview.summary.filtrados} transferencias anteriores a {bankPreview.summary.ultima_fecha_procesada}
+                      </p>
+                    )}
 
                     {bankPreview.matched.length > 0 && (
                       <div className="bg-blue-50 rounded-lg p-3">
