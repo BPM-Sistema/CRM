@@ -3949,12 +3949,13 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     /* ===============================
        4.5️⃣ CONVERTIR PDF A JPG
     ================================ */
-    const fileExt = path.extname(file.path).toLowerCase();
     const fileBuf = fs.readFileSync(file.path);
-    const isPdf = fileExt === '.pdf' || (fileBuf[0] === 0x25 && fileBuf[1] === 0x50);
+    const isPdf = path.extname(file.path).toLowerCase() === '.pdf' || (fileBuf[0] === 0x25 && fileBuf[1] === 0x50);
     if (isPdf) {
-      const jpgPath = file.path.replace(/\.pdf$/i, '') + '.jpg';
-      await sharp(file.path, { pages: 0 }).jpeg({ quality: 90 }).toFile(jpgPath);
+      const ppmPrefix = file.path.replace(/\.pdf$/i, '');
+      const { execSync } = require('child_process');
+      execSync(`pdftoppm -jpeg -r 200 -singlefile "${file.path}" "${ppmPrefix}"`);
+      const jpgPath = ppmPrefix + '.jpg';
       fs.unlinkSync(file.path);
       file.path = jpgPath;
       file.mimetype = 'image/jpeg';
