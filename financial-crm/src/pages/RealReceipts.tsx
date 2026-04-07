@@ -6,7 +6,7 @@ import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
 import { AccessDenied } from '../components/AccessDenied';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchComprobantes, fetchFinancieras, ApiComprobanteList, PaginationInfo, Financiera, ComprobantesFilters, autoConfirmarBanco, AutoConfirmarResult } from '../services/api';
+import { fetchComprobantes, fetchFinancieras, ApiComprobanteList, PaginationInfo, Financiera, ComprobantesFilters, conciliacionPreview, conciliacionAplicar, ConciliacionPreviewResult, ConciliacionAplicarResult, ConciliacionMatch } from '../services/api';
 import { format } from 'date-fns';
 import { clsx } from 'clsx';
 import JSZip from 'jszip';
@@ -223,10 +223,13 @@ export function RealReceipts() {
   const [downloading, setDownloading] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
 
-  // Conciliación bancaria
+  // Conciliación bancaria (2 pasos: preview + confirmar)
   const [showBankPanel, setShowBankPanel] = useState(false);
   const [bankProcessing, setBankProcessing] = useState(false);
-  const [bankResult, setBankResult] = useState<AutoConfirmarResult | null>(null);
+  const [bankPreview, setBankPreview] = useState<ConciliacionPreviewResult | null>(null);
+  const [bankApplyResult, setBankApplyResult] = useState<ConciliacionAplicarResult | null>(null);
+  const [bankSelectedMatches, setBankSelectedMatches] = useState<Set<number>>(new Set());
+  const [bankApplying, setBankApplying] = useState(false);
   const [bankDragging, setBankDragging] = useState(false);
   const bankFileRef = useRef<HTMLInputElement>(null);
 
@@ -245,18 +248,44 @@ export function RealReceipts() {
         alert('No se encontraron transferencias entrantes en el archivo');
         return;
       }
-      if (!confirm(`Se encontraron ${entrantes.length} transferencias entrantes. ¿Conciliar contra comprobantes pendientes?`)) return;
 
       setBankProcessing(true);
-      const result = await autoConfirmarBanco(movimientos);
-      setBankResult(result);
-      loadComprobantes();
+      setBankPreview(null);
+      setBankApplyResult(null);
+      const result = await conciliacionPreview(movimientos);
+      setBankPreview(result);
+      // Seleccionar todos por defecto
+      setBankSelectedMatches(new Set(result.matched.map((_: ConciliacionMatch, i: number) => i)));
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error procesando archivo');
     } finally {
       setBankProcessing(false);
     }
   }, []);
+
+  const handleBankApply = useCallback(async () => {
+    if (!bankPreview) return;
+    const selectedMatches = bankPreview.matched.filter((_: ConciliacionMatch, i: number) => bankSelectedMatches.has(i));
+    if (selectedMatches.length === 0) {
+      alert('Selecciona al menos un match para confirmar');
+      return;
+    }
+    if (!confirm(`¿Confirmar ${selectedMatches.length} comprobantes?`)) return;
+
+    setBankApplying(true);
+    try {
+      const result = await conciliacionAplicar(
+        selectedMatches.map((m: ConciliacionMatch) => ({ comprobante_id: m.comprobante_id, banco_id: m.banco_id }))
+      );
+      setBankApplyResult(result);
+      setBankPreview(null);
+      loadComprobantes();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error aplicando conciliación');
+    } finally {
+      setBankApplying(false);
+    }
+  }, [bankPreview, bankSelectedMatches]);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
@@ -511,7 +540,7 @@ export function RealReceipts() {
         {hasPermission('receipts.confirm') && (
           <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
             <button
-              onClick={() => { setShowBankPanel(!showBankPanel); setBankResult(null); }}
+              onClick={() => { setShowBankPanel(!showBankPanel); setBankPreview(null); setBankApplyResult(null); }}
               className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-neutral-50 transition-colors"
             >
               <div className="flex items-center gap-2">
@@ -563,46 +592,122 @@ export function RealReceipts() {
                   )}
                 </div>
 
-                {/* Resultados */}
-                {bankResult && (
+                {/* Preview — matches para revisar antes de confirmar */}
+                {bankPreview && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-4 text-sm">
+                      <span className="flex items-center gap-1 text-blue-700">
+                        <Eye size={14} />
+                        {bankPreview.summary.matched} matches encontrados
+                      </span>
+                      <span className="flex items-center gap-1 text-amber-700">
+                        <AlertTriangle size={14} />
+                        {bankPreview.summary.unmatched} sin match
+                      </span>
+                    </div>
+
+                    {bankPreview.matched.length > 0 && (
+                      <div className="bg-blue-50 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs font-medium text-blue-800">Matches para confirmar ({bankSelectedMatches.size} seleccionados):</p>
+                          <div className="flex gap-2">
+                            <button
+                              className="text-xs text-blue-600 hover:text-blue-800 underline"
+                              onClick={() => setBankSelectedMatches(new Set(bankPreview.matched.map((_: ConciliacionMatch, i: number) => i)))}
+                            >
+                              Todos
+                            </button>
+                            <button
+                              className="text-xs text-blue-600 hover:text-blue-800 underline"
+                              onClick={() => setBankSelectedMatches(new Set())}
+                            >
+                              Ninguno
+                            </button>
+                          </div>
+                        </div>
+                        <div className="space-y-1 max-h-60 overflow-y-auto">
+                          {bankPreview.matched.map((m: ConciliacionMatch, i: number) => (
+                            <label key={m.banco_id} className="flex items-start gap-2 text-xs text-blue-700 cursor-pointer hover:bg-blue-100 rounded p-1 -mx-1">
+                              <input
+                                type="checkbox"
+                                checked={bankSelectedMatches.has(i)}
+                                onChange={() => {
+                                  const next = new Set(bankSelectedMatches);
+                                  next.has(i) ? next.delete(i) : next.add(i);
+                                  setBankSelectedMatches(next);
+                                }}
+                                className="mt-0.5"
+                              />
+                              <span>
+                                <strong>Pedido #{m.order_number}</strong> — ${m.monto.toLocaleString('es-AR')}
+                                <br />
+                                <span className="text-blue-500">Banco: {m.nombre_banco} ({m.hora_banco})</span>
+                                {m.nombre_cliente && <span className="text-blue-500"> | CRM: {m.nombre_cliente}</span>}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                        <button
+                          onClick={handleBankApply}
+                          disabled={bankApplying || bankSelectedMatches.size === 0}
+                          className="mt-3 w-full px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {bankApplying ? 'Aplicando...' : `Confirmar ${bankSelectedMatches.size} comprobantes`}
+                        </button>
+                      </div>
+                    )}
+
+                    {bankPreview.unmatched.length > 0 && (
+                      <div className="bg-amber-50 rounded-lg p-3 max-h-40 overflow-y-auto">
+                        <p className="text-xs font-medium text-amber-800 mb-1">Sin coincidencia:</p>
+                        <div className="space-y-1">
+                          {bankPreview.unmatched.map((u) => (
+                            <p key={u.banco_id} className="text-xs text-amber-700">
+                              ${u.importe.toLocaleString('es-AR')} — {u.fecha} {u.hora} — {u.nombre}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Resultado de aplicacion */}
+                {bankApplyResult && (
                   <div className="space-y-2">
                     <div className="flex items-center gap-4 text-sm">
                       <span className="flex items-center gap-1 text-green-700">
                         <CheckCircle2 size={14} />
-                        {bankResult.summary.matched} confirmados
+                        {bankApplyResult.summary.confirmed} confirmados
                       </span>
-                      <span className="flex items-center gap-1 text-amber-700">
-                        <AlertTriangle size={14} />
-                        {bankResult.summary.unmatched} sin match
-                      </span>
-                      {bankResult.summary.errors > 0 && (
+                      {bankApplyResult.summary.errors > 0 && (
                         <span className="flex items-center gap-1 text-red-700">
                           <AlertCircle size={14} />
-                          {bankResult.summary.errors} errores
+                          {bankApplyResult.summary.errors} errores
                         </span>
                       )}
                     </div>
 
-                    {bankResult.matched.length > 0 && (
+                    {bankApplyResult.confirmed.length > 0 && (
                       <div className="bg-green-50 rounded-lg p-3">
-                        <p className="text-xs font-medium text-green-800 mb-1">Confirmados automaticamente:</p>
+                        <p className="text-xs font-medium text-green-800 mb-1">Confirmados:</p>
                         <div className="space-y-1">
-                          {bankResult.matched.map((m) => (
-                            <p key={m.banco_id} className="text-xs text-green-700">
-                              Pedido #{m.order_number} — ${m.monto.toLocaleString('es-AR')} — {m.nombre}
+                          {bankApplyResult.confirmed.map((c) => (
+                            <p key={c.comprobante_id} className="text-xs text-green-700">
+                              Pedido #{c.order_number} — ${c.monto.toLocaleString('es-AR')}
                             </p>
                           ))}
                         </div>
                       </div>
                     )}
 
-                    {bankResult.unmatched.length > 0 && (
-                      <div className="bg-amber-50 rounded-lg p-3 max-h-40 overflow-y-auto">
-                        <p className="text-xs font-medium text-amber-800 mb-1">Sin coincidencia:</p>
+                    {bankApplyResult.errors.length > 0 && (
+                      <div className="bg-red-50 rounded-lg p-3">
+                        <p className="text-xs font-medium text-red-800 mb-1">Errores:</p>
                         <div className="space-y-1">
-                          {bankResult.unmatched.map((u) => (
-                            <p key={u.banco_id} className="text-xs text-amber-700">
-                              ${u.importe.toLocaleString('es-AR')} — {u.fecha} — {u.nombre}
+                          {bankApplyResult.errors.map((e, i) => (
+                            <p key={i} className="text-xs text-red-700">
+                              Comprobante #{e.comprobante_id} — {e.error}
                             </p>
                           ))}
                         </div>

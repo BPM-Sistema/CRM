@@ -2052,46 +2052,71 @@ export async function fetchCustomers(
 }
 
 // ============================================
-// Auto-confirmar comprobantes desde JSON del banco
+// Conciliación bancaria (2 pasos: preview + aplicar)
 // ============================================
 
-export interface AutoConfirmarMatch {
+export interface ConciliacionMatch {
   banco_id: string;
   comprobante_id: number;
   order_number: string;
   monto: number;
-  nombre: string;
+  nombre_banco: string;
+  nombre_cliente: string;
+  fecha_banco: string;
+  hora_banco: string;
+  fecha_comprobante: string;
 }
 
-export interface AutoConfirmarUnmatched {
+export interface ConciliacionUnmatched {
   banco_id: string;
   importe: number;
   fecha: string;
+  hora: string;
   nombre: string;
 }
 
-export interface AutoConfirmarResult {
+export interface ConciliacionPreviewResult {
   ok: boolean;
+  preview: true;
   summary: {
     total_movimientos: number;
     transferencias_entrantes: number;
     matched: number;
     unmatched: number;
-    errors: number;
   };
-  matched: AutoConfirmarMatch[];
-  unmatched: AutoConfirmarUnmatched[];
-  errors: Array<{ banco_id: string; error: string }>;
+  matched: ConciliacionMatch[];
+  unmatched: ConciliacionUnmatched[];
 }
 
-export async function autoConfirmarBanco(movimientos: unknown[]): Promise<AutoConfirmarResult> {
-  const response = await authFetch(`${API_BASE_URL}/comprobantes/auto-confirmar-banco`, {
+export interface ConciliacionAplicarResult {
+  ok: boolean;
+  summary: {
+    confirmed: number;
+    errors: number;
+  };
+  confirmed: Array<{ banco_id: string; comprobante_id: number; order_number: string; monto: number }>;
+  errors: Array<{ comprobante_id: number; banco_id: string; error: string }>;
+}
+
+export async function conciliacionPreview(movimientos: unknown[]): Promise<ConciliacionPreviewResult> {
+  const response = await authFetch(`${API_BASE_URL}/comprobantes/conciliacion-preview`, {
     method: 'POST',
     body: JSON.stringify({ movimientos }),
   });
 
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Error al procesar conciliación');
+  if (!response.ok) throw new Error(data.error || 'Error al procesar preview');
+  return data;
+}
+
+export async function conciliacionAplicar(matches: Array<{ comprobante_id: number; banco_id: string }>): Promise<ConciliacionAplicarResult> {
+  const response = await authFetch(`${API_BASE_URL}/comprobantes/conciliacion-aplicar`, {
+    method: 'POST',
+    body: JSON.stringify({ matches }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al aplicar conciliación');
   return data;
 }
 
