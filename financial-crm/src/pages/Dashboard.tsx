@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   FileText,
   Truck,
@@ -6,11 +6,43 @@ import {
   DollarSign,
   RefreshCw,
   AlertCircle,
+  Calendar,
+  TrendingUp,
 } from 'lucide-react';
 import { Header } from '../components/layout';
 import { KPISection, ActivityFeed, StatusDistributionChart } from '../components/dashboard';
 import { SystemActivity } from '../components/dashboard/ActivityFeed';
 import { fetchDashboardStats, fetchActivityLog, DashboardStats, ActivityLog } from '../services/api';
+import { format } from 'date-fns';
+
+type DatePreset = 'hoy' | 'ayer' | 'semana' | 'mes' | 'custom';
+
+function getDateRange(preset: DatePreset): { desde: string; hasta: string } {
+  const now = new Date();
+  const today = format(now, 'yyyy-MM-dd');
+
+  switch (preset) {
+    case 'hoy':
+      return { desde: today, hasta: today };
+    case 'ayer': {
+      const ayer = new Date(now);
+      ayer.setDate(ayer.getDate() - 1);
+      const ayerStr = format(ayer, 'yyyy-MM-dd');
+      return { desde: ayerStr, hasta: ayerStr };
+    }
+    case 'semana': {
+      const lunes = new Date(now);
+      lunes.setDate(lunes.getDate() - lunes.getDay() + (lunes.getDay() === 0 ? -6 : 1));
+      return { desde: format(lunes, 'yyyy-MM-dd'), hasta: today };
+    }
+    case 'mes': {
+      const primero = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { desde: format(primero, 'yyyy-MM-dd'), hasta: today };
+    }
+    default:
+      return { desde: today, hasta: today };
+  }
+}
 
 export function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -18,12 +50,23 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = async () => {
+  const [datePreset, setDatePreset] = useState<DatePreset>('hoy');
+  const [customDesde, setCustomDesde] = useState('');
+  const [customHasta, setCustomHasta] = useState('');
+
+  const dateRange = useMemo(() => {
+    if (datePreset === 'custom' && customDesde) {
+      return { desde: customDesde, hasta: customHasta || customDesde };
+    }
+    return getDateRange(datePreset);
+  }, [datePreset, customDesde, customHasta]);
+
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const [statsRes, activityRes] = await Promise.all([
-        fetchDashboardStats(),
+        fetchDashboardStats(dateRange.desde, dateRange.hasta),
         fetchActivityLog(1, 15)
       ]);
       setStats(statsRes);
@@ -33,7 +76,7 @@ export function Dashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [dateRange]);
 
   useEffect(() => {
     loadData();
@@ -55,19 +98,18 @@ export function Dashboard() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(pollInterval);
     };
-  }, []);
+  }, [loadData]);
 
   const chartData = useMemo(() => {
     if (!stats) return [];
-    const today = new Date().toISOString().split('T')[0];
     return [{
-      date: today,
+      date: dateRange.desde,
       paid: stats.comprobantes.confirmados_hoy,
       pending: stats.comprobantes.a_confirmar,
       rejected: stats.comprobantes.rechazados_hoy,
       total: stats.pedidos.nuevos_hoy,
     }];
-  }, [stats]);
+  }, [stats, dateRange]);
 
   const actividadReciente: SystemActivity[] = useMemo(() => {
     return activityLogs.slice(0, 10).map(log => ({
@@ -86,6 +128,16 @@ export function Dashboard() {
       notation: 'compact',
       maximumFractionDigits: 1,
     }).format(amount);
+  };
+
+  const presetLabel = (p: DatePreset) => {
+    switch (p) {
+      case 'hoy': return 'Hoy';
+      case 'ayer': return 'Ayer';
+      case 'semana': return 'Semana';
+      case 'mes': return 'Mes';
+      case 'custom': return 'Rango';
+    }
   };
 
   if (loading && !stats) {
@@ -116,6 +168,9 @@ export function Dashboard() {
 
   if (!stats) return null;
 
+  const facturacionTotal = stats.facturacion.facturacion_confirmada + stats.facturacion.efectivo_periodo;
+  const facturacionConPendiente = facturacionTotal + stats.facturacion.facturacion_pendiente;
+
   return (
     <div className="min-h-screen">
       <Header
@@ -134,6 +189,69 @@ export function Dashboard() {
       />
 
       <div className="p-6 space-y-4">
+        {/* Filtro de fechas */}
+        <div className="bg-white rounded-xl border border-neutral-200/60 p-3 shadow-soft">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Calendar size={14} className="text-neutral-400" />
+            {(['hoy', 'ayer', 'semana', 'mes', 'custom'] as DatePreset[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => setDatePreset(p)}
+                className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                  datePreset === p
+                    ? 'bg-neutral-900 text-white'
+                    : 'text-neutral-600 hover:bg-neutral-100'
+                }`}
+              >
+                {presetLabel(p)}
+              </button>
+            ))}
+            {datePreset === 'custom' && (
+              <div className="flex items-center gap-2 ml-2">
+                <input
+                  type="date"
+                  value={customDesde}
+                  onChange={(e) => setCustomDesde(e.target.value)}
+                  className="px-2 py-1 text-xs border border-neutral-200 rounded-lg"
+                />
+                <span className="text-xs text-neutral-400">a</span>
+                <input
+                  type="date"
+                  value={customHasta}
+                  onChange={(e) => setCustomHasta(e.target.value)}
+                  className="px-2 py-1 text-xs border border-neutral-200 rounded-lg"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Facturación */}
+        <div className="bg-white rounded-xl border border-neutral-200/60 p-4 shadow-soft">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp size={14} className="text-emerald-500" />
+            <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Facturación</h3>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="flex flex-col items-center p-2">
+              <span className="text-xl font-bold text-emerald-600">{formatCurrency(facturacionTotal)}</span>
+              <span className="text-[10px] text-neutral-400 mt-0.5 text-center leading-tight">Confirmada</span>
+            </div>
+            <div className="flex flex-col items-center p-2">
+              <span className="text-xl font-bold text-amber-600">{formatCurrency(stats.facturacion.facturacion_pendiente)}</span>
+              <span className="text-[10px] text-neutral-400 mt-0.5 text-center leading-tight">Pendiente</span>
+            </div>
+            <div className="flex flex-col items-center p-2">
+              <span className="text-xl font-bold text-blue-600">{formatCurrency(facturacionConPendiente)}</span>
+              <span className="text-[10px] text-neutral-400 mt-0.5 text-center leading-tight">Conf + Pend</span>
+            </div>
+            <div className="flex flex-col items-center p-2">
+              <span className="text-xl font-bold text-neutral-900">{formatCurrency(stats.facturacion.efectivo_periodo)}</span>
+              <span className="text-[10px] text-neutral-400 mt-0.5 text-center leading-tight">Efectivo</span>
+            </div>
+          </div>
+        </div>
+
         {/* KPIs en grid 2x2 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Comprobantes */}
@@ -168,7 +286,7 @@ export function Dashboard() {
             icon={<Package size={14} className="text-violet-500" />}
             navigateTo="/orders"
             kpis={[
-              { label: 'Hoy', value: stats.pedidos.nuevos_hoy, color: 'neutral' },
+              { label: 'Nuevos', value: stats.pedidos.nuevos_hoy, color: 'neutral' },
               { label: 'A impr', value: stats.pedidos.a_imprimir, color: 'violet', navigateTo: '/orders?estado_pedido=a_imprimir' },
               { label: 'Armado', value: stats.pedidos.armados, color: 'blue', navigateTo: '/orders?estado_pedido=armado' },
               { label: 'Enviado', value: stats.pedidos.enviados, color: 'green', navigateTo: '/orders?estado_pedido=enviado' },
@@ -180,7 +298,7 @@ export function Dashboard() {
             title="Pagos"
             icon={<DollarSign size={14} className="text-emerald-500" />}
             kpis={[
-              { label: 'Hoy', value: formatCurrency(stats.pagos.recaudado_hoy), color: 'green' },
+              { label: 'Recaudado', value: formatCurrency(stats.pagos.recaudado_hoy), color: 'green' },
               { label: 'Efectivo', value: formatCurrency(stats.pagos.efectivo_hoy), color: 'amber' },
               { label: 'Pend', value: formatCurrency(stats.pagos.saldo_pendiente), color: 'red' },
               { label: 'Parcial', value: stats.pagos.parciales, color: 'amber', navigateTo: '/orders?estado_pago=confirmado_parcial' },

@@ -849,39 +849,66 @@ app.get('/activity-log', authenticate, requirePermission('activity.view'), async
 ===================================================== */
 app.get('/dashboard/stats', authenticate, async (req, res) => {
   try {
-    // Usar timezone de Argentina para todas las comparaciones de fecha
+    const { fecha_desde, fecha_hasta } = req.query;
+    // Si vienen fechas, usar rango; si no, usar "hoy"
+    const params = [];
+    let fechaDesdeExpr, fechaHastaExpr;
+    if (fecha_desde && fecha_hasta) {
+      params.push(fecha_desde, fecha_hasta);
+      fechaDesdeExpr = `$1::date`;
+      fechaHastaExpr = `$2::date`;
+    } else if (fecha_desde) {
+      params.push(fecha_desde);
+      fechaDesdeExpr = `$1::date`;
+      fechaHastaExpr = `$1::date`;
+    } else {
+      fechaDesdeExpr = `(NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date`;
+      fechaHastaExpr = `(NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date`;
+    }
+
     const result = await pool.query(`
-      WITH hoy AS (
-        SELECT (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date as fecha
+      WITH rango AS (
+        SELECT ${fechaDesdeExpr} as fecha_desde, ${fechaHastaExpr} as fecha_hasta
       ),
       comprobantes_stats AS (
         SELECT
           COUNT(*) FILTER (WHERE estado IN ('pendiente', 'a_confirmar')) as a_confirmar,
-          COUNT(*) FILTER (WHERE estado = 'confirmado' AND (confirmed_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date = (SELECT fecha FROM hoy)) as confirmados_hoy,
-          COUNT(*) FILTER (WHERE estado = 'rechazado' AND (confirmed_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date = (SELECT fecha FROM hoy)) as rechazados_hoy,
-          COALESCE(SUM(monto) FILTER (WHERE estado = 'confirmado' AND (confirmed_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date = (SELECT fecha FROM hoy)), 0) as monto_confirmado_hoy
+          COUNT(*) FILTER (WHERE estado = 'confirmado' AND (confirmed_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date BETWEEN (SELECT fecha_desde FROM rango) AND (SELECT fecha_hasta FROM rango)) as confirmados_hoy,
+          COUNT(*) FILTER (WHERE estado = 'rechazado' AND (confirmed_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date BETWEEN (SELECT fecha_desde FROM rango) AND (SELECT fecha_hasta FROM rango)) as rechazados_hoy,
+          COALESCE(SUM(monto) FILTER (WHERE estado = 'confirmado' AND (confirmed_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date BETWEEN (SELECT fecha_desde FROM rango) AND (SELECT fecha_hasta FROM rango)), 0) as monto_confirmado_hoy
         FROM comprobantes
+      ),
+      facturacion_comprobantes AS (
+        SELECT
+          COALESCE(SUM(monto) FILTER (WHERE estado = 'confirmado' AND (confirmed_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date BETWEEN (SELECT fecha_desde FROM rango) AND (SELECT fecha_hasta FROM rango)), 0) as facturacion_confirmada,
+          COALESCE(SUM(monto) FILTER (WHERE estado IN ('pendiente', 'a_confirmar') AND (created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date BETWEEN (SELECT fecha_desde FROM rango) AND (SELECT fecha_hasta FROM rango)), 0) as facturacion_pendiente
+        FROM comprobantes
+      ),
+      facturacion_efectivo AS (
+        SELECT COALESCE(SUM(monto), 0) as efectivo_periodo
+        FROM pagos_efectivo
+        WHERE (created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date BETWEEN (SELECT fecha_desde FROM rango) AND (SELECT fecha_hasta FROM rango)
       ),
       remitos_stats AS (
         SELECT
           COUNT(*) FILTER (WHERE status = 'processing') as procesando,
           COUNT(*) FILTER (WHERE status = 'ready') as listos,
-          COUNT(*) FILTER (WHERE status = 'confirmed' AND (confirmed_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date = (SELECT fecha FROM hoy)) as confirmados_hoy,
+          COUNT(*) FILTER (WHERE status = 'confirmed' AND (confirmed_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date BETWEEN (SELECT fecha_desde FROM rango) AND (SELECT fecha_hasta FROM rango)) as confirmados_hoy,
           COUNT(*) FILTER (WHERE status = 'error') as con_error
         FROM shipping_documents
       ),
       pedidos_stats AS (
         SELECT
-          COUNT(*) FILTER (WHERE (created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date = (SELECT fecha FROM hoy)) as nuevos_hoy,
+          COUNT(*) FILTER (WHERE (created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date BETWEEN (SELECT fecha_desde FROM rango) AND (SELECT fecha_hasta FROM rango)) as nuevos_hoy,
           COUNT(*) FILTER (WHERE estado_pedido = 'a_imprimir') as a_imprimir,
           COUNT(*) FILTER (WHERE estado_pedido = 'armado') as armados,
           COUNT(*) FILTER (WHERE estado_pedido IN ('enviado', 'en_calle', 'retirado')) as enviados,
-          COUNT(*) FILTER (WHERE estado_pedido = 'cancelado' AND (updated_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date = (SELECT fecha FROM hoy)) as cancelados_hoy
+          COUNT(*) FILTER (WHERE estado_pedido = 'cancelado' AND (updated_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date BETWEEN (SELECT fecha_desde FROM rango) AND (SELECT fecha_hasta FROM rango)) as cancelados_hoy
         FROM orders_validated
       ),
       pagos_stats AS (
         SELECT
-          COALESCE(SUM(total_pagado) FILTER (WHERE estado_pago IN ('confirmado_total', 'a_favor') AND (created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date = (SELECT fecha FROM hoy)), 0) as recaudado_hoy,
+          COALESCE(SUM(total_pagado) FILTER (WHERE estado_pago IN ('confirmado_total', 'a_favor') AND (created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date BETWEEN (SELECT fecha_desde FROM rango) AND (SELECT fecha_hasta FROM rango)), 0) as recaudado_hoy,
           COALESCE(SUM(saldo) FILTER (WHERE saldo > 0), 0) as saldo_pendiente,
           COUNT(*) FILTER (WHERE estado_pago = 'confirmado_parcial') as parciales
         FROM orders_validated
@@ -889,7 +916,7 @@ app.get('/dashboard/stats', authenticate, async (req, res) => {
       efectivo_stats AS (
         SELECT COALESCE(SUM(monto), 0) as efectivo_hoy
         FROM pagos_efectivo
-        WHERE (created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date = (SELECT fecha FROM hoy)
+        WHERE (created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date BETWEEN (SELECT fecha_desde FROM rango) AND (SELECT fecha_hasta FROM rango)
       )
       SELECT
         json_build_object(
@@ -898,6 +925,11 @@ app.get('/dashboard/stats', authenticate, async (req, res) => {
           'rechazados_hoy', cs.rechazados_hoy,
           'monto_confirmado_hoy', cs.monto_confirmado_hoy
         ) as comprobantes,
+        json_build_object(
+          'facturacion_confirmada', fc.facturacion_confirmada,
+          'facturacion_pendiente', fc.facturacion_pendiente,
+          'efectivo_periodo', fe.efectivo_periodo
+        ) as facturacion,
         json_build_object(
           'procesando', rs.procesando,
           'listos', rs.listos,
@@ -917,8 +949,8 @@ app.get('/dashboard/stats', authenticate, async (req, res) => {
           'saldo_pendiente', pgs.saldo_pendiente,
           'parciales', pgs.parciales
         ) as pagos
-      FROM comprobantes_stats cs, remitos_stats rs, pedidos_stats ps, pagos_stats pgs, efectivo_stats es
-    `);
+      FROM comprobantes_stats cs, facturacion_comprobantes fc, facturacion_efectivo fe, remitos_stats rs, pedidos_stats ps, pagos_stats pgs, efectivo_stats es
+    `, params);
 
     res.json(result.rows[0]);
   } catch (error) {

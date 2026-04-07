@@ -1079,6 +1079,11 @@ export interface DashboardStats {
     rechazados_hoy: number;
     monto_confirmado_hoy: number;
   };
+  facturacion: {
+    facturacion_confirmada: number;
+    facturacion_pendiente: number;
+    efectivo_periodo: number;
+  };
   remitos: {
     procesando: number;
     listos: number;
@@ -1100,8 +1105,12 @@ export interface DashboardStats {
   };
 }
 
-export async function fetchDashboardStats(): Promise<DashboardStats> {
-  const response = await authFetch(`${API_BASE_URL}/dashboard/stats`);
+export async function fetchDashboardStats(fechaDesde?: string, fechaHasta?: string): Promise<DashboardStats> {
+  const params = new URLSearchParams();
+  if (fechaDesde) params.set('fecha_desde', fechaDesde);
+  if (fechaHasta) params.set('fecha_hasta', fechaHasta);
+  const qs = params.toString();
+  const response = await authFetch(`${API_BASE_URL}/dashboard/stats${qs ? `?${qs}` : ''}`);
 
   const data = await response.json();
 
