@@ -3947,6 +3947,22 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     const montoDetectado = datosClaude.monto;
 
     /* ===============================
+       4.5️⃣ CONVERTIR PDF A JPG
+    ================================ */
+    const fileExt = path.extname(file.path).toLowerCase();
+    const fileBuf = fs.readFileSync(file.path);
+    const isPdf = fileExt === '.pdf' || (fileBuf[0] === 0x25 && fileBuf[1] === 0x50);
+    if (isPdf) {
+      const jpgPath = file.path.replace(/\.pdf$/i, '') + '.jpg';
+      await sharp(file.path, { pages: 0 }).jpeg({ quality: 90 }).toFile(jpgPath);
+      fs.unlinkSync(file.path);
+      file.path = jpgPath;
+      file.mimetype = 'image/jpeg';
+      file.originalname = file.originalname.replace(/\.pdf$/i, '.jpg');
+      console.log('📄→🖼️ PDF convertido a JPG:', jpgPath);
+    }
+
+    /* ===============================
        5️⃣ PREPARAR URL DE STORAGE
     ================================ */
     // Sanitizar nombre de archivo (remover caracteres especiales y espacios)

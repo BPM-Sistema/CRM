@@ -5,6 +5,7 @@ FROM node:18-slim
 # Instalar dependencias del sistema para sharp
 RUN apt-get update && apt-get install -y \
     libvips-dev \
+    libpoppler-glib-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Crear directorio de trabajo
