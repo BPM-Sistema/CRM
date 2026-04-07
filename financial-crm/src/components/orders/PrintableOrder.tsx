@@ -29,7 +29,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
             @media print {
               @page {
                 size: A4;
-                margin: 15mm 10mm 15mm 10mm;
+                margin: 15mm 10mm;
               }
               body {
                 -webkit-print-color-adjust: exact;
@@ -103,27 +103,26 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
           </div>
 
           <div className="border border-gray-400 p-2">
-            <h2 className="font-bold text-gray-500 uppercase mb-1">Envío</h2>
+            <h2 className="font-bold text-gray-500 uppercase mb-1">
+              {data.shipping.pickup_type === 'pickup' ? 'Retiro' : 'Envío'}
+            </h2>
+            {/* Tipo de envío destacado */}
+            <p className="font-bold text-[20px] mb-1 border-b border-gray-300 pb-1">
+              {data.shipping.type || 'No especificado'}
+            </p>
             {data.shipping_address ? (
               <>
                 <p>{data.shipping_address.address} {data.shipping_address.number}{data.shipping_address.floor && `, ${data.shipping_address.floor}`}</p>
-                <p>{data.shipping_address.locality}, {data.shipping_address.city}</p>
+                <p>{data.shipping_address.locality}{data.shipping_address.locality !== data.shipping_address.city ? `, ${data.shipping_address.city}` : ''}</p>
                 <p>{data.shipping_address.province} - CP {data.shipping_address.zipcode}</p>
                 {data.shipping_address.phone && <p>Tel: {data.shipping_address.phone}</p>}
               </>
+            ) : data.shipping.pickup_type === 'pickup' ? (
+              <p className="text-gray-600">Retira en local</p>
             ) : (
-              <p className="font-semibold">RETIRO EN LOCAL</p>
+              <p className="text-gray-600 italic">Sin dirección cargada</p>
             )}
           </div>
-        </div>
-
-        {/* Método de envío */}
-        <div className="mb-3 py-1 px-2 bg-gray-100 text-[10px]">
-          {data.shipping.pickup_type === 'pickup' ? (
-            <span className="font-semibold">RETIRO</span>
-          ) : (
-            <span className="font-semibold">ENVÍO: {data.shipping.type}</span>
-          )}
         </div>
 
         {/* Tabla de productos */}
