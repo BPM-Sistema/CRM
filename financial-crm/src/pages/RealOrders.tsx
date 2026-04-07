@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUrlFilters } from '../hooks';
-import { RefreshCw, AlertCircle, Printer, Calendar, Search, ChevronLeft, ChevronRight, CheckSquare, X, Truck, Tag } from 'lucide-react';
+import { RefreshCw, AlertCircle, Printer, Calendar, Search, ChevronLeft, ChevronRight, CheckSquare, X, Truck } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card, PaymentStatusBadge, OrderStatusBadge, Modal } from '../components/ui';
 import { AccessDenied } from '../components/AccessDenied';
@@ -105,6 +105,21 @@ export function RealOrders() {
 
   // Estado para etiquetas Envío Nube
   const [isLoadingLabels, setIsLoadingLabels] = useState(false);
+
+  // Contar pedidos Envío Nube seleccionados (pendientes de imprimir)
+  const { selectedEnvioNubeCount, selectedEnvioNubePrintedCount } = useMemo(() => {
+    if (selectedOrderNumbers.size === 0) return { selectedEnvioNubeCount: 0, selectedEnvioNubePrintedCount: 0 };
+    const envioNubeOrders = orders.filter(o => {
+      if (!selectedOrderNumbers.has(o.order_number)) return false;
+      const shippingType = (o.shipping_type || '').toLowerCase();
+      return shippingType.includes('envío nube') || shippingType.includes('envio nube');
+    });
+    const printed = envioNubeOrders.filter(o => o.envio_nube_label_printed_at).length;
+    return {
+      selectedEnvioNubeCount: envioNubeOrders.length - printed,
+      selectedEnvioNubePrintedCount: printed
+    };
+  }, [orders, selectedOrderNumbers]);
 
   // Cargar conteos de impresión desde el backend (independiente de filtros)
   const loadPrintCounts = async () => {
@@ -228,6 +243,8 @@ export function RealOrders() {
     parcial: 'orders.view_parcial',
     total: 'orders.view_total',
     rechazado: 'orders.view_rechazado',
+    anulado: 'orders.view_anulado',
+    reembolsado: 'orders.view_reembolsado',
   };
 
   const orderStatusPermissions: Record<OrderStatus, string> = {
@@ -338,17 +355,34 @@ export function RealOrders() {
         return;
       }
 
+      // Contar cuántos ya tienen etiqueta impresa
+      const alreadyPrintedCount = envioNubeOrders.filter(o => o.envio_nube_label_printed_at).length;
+      const pendingCount = envioNubeOrders.length - alreadyPrintedCount;
+
+      if (pendingCount === 0) {
+        alert(`Todas las ${alreadyPrintedCount} etiquetas ya fueron impresas.\nPara re-imprimir, entrá al detalle de cada pedido.`);
+        return;
+      }
+
       const orderNumbers = envioNubeOrders.map(o => o.order_number);
       const result = await getEnvioNubeLabels(orderNumbers);
 
       // Abrir PDF en nueva pestaña para imprimir
       window.open(result.url, '_blank');
 
-      if (result.failed > 0) {
-        alert(`Se obtuvieron ${result.success} etiquetas. ${result.failed} fallaron.`);
+      // Mostrar resumen
+      const messages = [];
+      if (result.success > 0) messages.push(`${result.success} nuevas`);
+      if (result.alreadyPrinted > 0) messages.push(`${result.alreadyPrinted} ya impresas (omitidas)`);
+      if (result.failed > 0) messages.push(`${result.failed} fallaron`);
+
+      if (result.alreadyPrinted > 0 || result.failed > 0) {
+        alert(`Etiquetas: ${messages.join(', ')}`);
       }
 
       clearSelection();
+      // Recargar para actualizar el estado de las etiquetas
+      loadOrders();
     } catch (err) {
       console.error('Error al obtener etiquetas:', err);
       alert(err instanceof Error ? err.message : 'Error al obtener etiquetas de Envío Nube');
@@ -439,13 +473,18 @@ export function RealOrders() {
                   Imprimir ({selectedOrderNumbers.size})
                 </Button>
                 <Button
-                  variant="secondary"
+                  variant={selectedEnvioNubeCount > 0 ? 'primary' : 'secondary'}
                   size="sm"
-                  leftIcon={<Tag size={16} />}
+                  leftIcon={<Truck size={16} />}
                   onClick={printEnvioNubeLabels}
-                  disabled={selectedOrderNumbers.size === 0 || isLoadingLabels}
+                  disabled={(selectedEnvioNubeCount === 0 && selectedEnvioNubePrintedCount === 0) || isLoadingLabels}
+                  className={selectedEnvioNubeCount > 0 ? 'bg-cyan-600 hover:bg-cyan-700' : ''}
+                  title={selectedEnvioNubePrintedCount > 0 ? `${selectedEnvioNubePrintedCount} ya impresas (se omitirán)` : undefined}
                 >
-                  {isLoadingLabels ? 'Cargando...' : 'Etiquetas Envío Nube'}
+                  {isLoadingLabels
+                    ? `Generando ${selectedEnvioNubeCount} etiquetas...`
+                    : `Etiquetas Envío Nube${selectedEnvioNubeCount > 0 ? ` (${selectedEnvioNubeCount})` : ''}`
+                  }
                 </Button>
                 <Button
                   variant="secondary"
@@ -783,36 +822,53 @@ export function RealOrders() {
 
                     {/* Pago */}
                     <TableCell>
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-1.5">
-                          <PaymentStatusBadge status={mapEstadoPago(order.estado_pago)} size="md" />
-                          {order.pending_receipts_count > 0 && (
-                            <span
-                              className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800"
-                              title={`${order.pending_receipts_count} comprobante(s) pendiente(s) de revisión`}
-                            >
-                              {order.pending_receipts_count} pend.
-                            </span>
-                          )}
-                        </div>
-                        {order.estado_pedido === 'cancelado' && (
-                          <div>
-                            <OrderStatusBadge status="cancelado" size="md" />
-                          </div>
+                      <div className="flex flex-col gap-1.5">
+                        <PaymentStatusBadge status={mapEstadoPago(order.estado_pago)} size="md" />
+                        {order.tn_payment_status && (
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
+                            order.tn_payment_status === 'paid' ? 'bg-emerald-100 text-emerald-700' :
+                            order.tn_payment_status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                            'bg-neutral-100 text-neutral-600'
+                          }`}>
+                            <span className="text-[10px]">{order.tn_payment_status === 'paid' ? '\u2601' : '\u2601'}</span>
+                            {order.tn_payment_status === 'paid' ? 'TN Pagado' : order.tn_payment_status === 'pending' ? 'TN Pendiente' : `TN ${order.tn_payment_status}`}
+                          </span>
                         )}
-                        <span className="text-xs text-neutral-400">
-                          Personalizado - A convenir
-                        </span>
+                        {order.pending_receipts_count > 0 && (
+                          <span
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800"
+                            title={`${order.pending_receipts_count} comprobante(s) pendiente(s)`}
+                          >
+                            {order.pending_receipts_count} comp. pend.
+                          </span>
+                        )}
+                        {order.estado_pedido === 'cancelado' && (
+                          <OrderStatusBadge status="cancelado" size="md" />
+                        )}
                       </div>
                     </TableCell>
 
                     {/* Envío */}
                     <TableCell>
                       {order.estado_pedido !== 'cancelado' && (
-                        <div className="flex flex-col gap-1">
-                          <div>
-                            <OrderStatusBadge status={mapEstadoPedido(order.estado_pedido)} size="md" />
-                          </div>
+                        <div className="flex flex-col gap-1.5">
+                          <OrderStatusBadge status={mapEstadoPedido(order.estado_pedido)} size="md" />
+                          {order.tn_shipping_status && (
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
+                              order.tn_shipping_status === 'shipped' ? 'bg-blue-100 text-blue-700' :
+                              order.tn_shipping_status === 'unshipped' ? 'bg-orange-100 text-orange-700' :
+                              order.tn_shipping_status === 'unpacked' ? 'bg-neutral-100 text-neutral-600' :
+                              'bg-neutral-100 text-neutral-600'
+                            }`}>
+                              <span className="text-[10px]">{'\u2601'}</span>
+                              {
+                                order.tn_shipping_status === 'shipped' ? 'TN Enviado' :
+                                order.tn_shipping_status === 'unshipped' ? 'TN Por enviar' :
+                                order.tn_shipping_status === 'unpacked' ? 'TN Por empaquetar' :
+                                `TN ${order.tn_shipping_status}`
+                              }
+                            </span>
+                          )}
                           <span className="text-xs text-neutral-500 truncate max-w-[220px]" title={order.shipping_type || ''}>
                             {order.shipping_type || '-'}
                           </span>

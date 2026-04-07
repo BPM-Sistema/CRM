@@ -131,6 +131,8 @@ export function RealOrderDetail() {
     try {
       const url = await getEnvioNubeLabel(orderNumber);
       window.open(url, '_blank');
+      // Recargar datos después de unos segundos para actualizar el estado de impresión
+      setTimeout(loadOrder, 2000);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error al obtener etiqueta de Envío Nube');
     } finally {
@@ -314,9 +316,43 @@ export function RealOrderDetail() {
             <Card>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-base font-semibold text-neutral-900">Resumen del Pedido</h3>
-                <div className="flex gap-2">
-                  <PaymentStatusBadge status={paymentStatus} />
-                  <OrderStatusBadge status={orderStatus} />
+                <div className="flex flex-col gap-2 items-end">
+                  {/* Estados BPM */}
+                  <div className="flex gap-2">
+                    <PaymentStatusBadge status={paymentStatus} />
+                    <OrderStatusBadge status={orderStatus} />
+                  </div>
+                  {/* Estados Tiendanube */}
+                  {(order.tn_payment_status || order.tn_shipping_status) && (
+                    <div className="flex gap-2">
+                      {order.tn_payment_status && (
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
+                          order.tn_payment_status === 'paid' ? 'bg-emerald-100 text-emerald-700' :
+                          order.tn_payment_status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                          'bg-neutral-100 text-neutral-600'
+                        }`}>
+                          <span className="text-[10px]">{'\u2601'}</span>
+                          {order.tn_payment_status === 'paid' ? 'TN Pagado' : order.tn_payment_status === 'pending' ? 'TN Pendiente' : `TN ${order.tn_payment_status}`}
+                        </span>
+                      )}
+                      {order.tn_shipping_status && (
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
+                          order.tn_shipping_status === 'shipped' ? 'bg-blue-100 text-blue-700' :
+                          order.tn_shipping_status === 'unshipped' ? 'bg-orange-100 text-orange-700' :
+                          order.tn_shipping_status === 'unpacked' ? 'bg-neutral-100 text-neutral-600' :
+                          'bg-neutral-100 text-neutral-600'
+                        }`}>
+                          <span className="text-[10px]">{'\u2601'}</span>
+                          {
+                            order.tn_shipping_status === 'shipped' ? 'TN Enviado' :
+                            order.tn_shipping_status === 'unshipped' ? 'TN Por enviar' :
+                            order.tn_shipping_status === 'unpacked' ? 'TN Por empaquetar' :
+                            `TN ${order.tn_shipping_status}`
+                          }
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -897,6 +933,17 @@ export function RealOrderDetail() {
                       Etiqueta generada por Tiendanube
                     </p>
                   </div>
+                  {order.envio_nube_label_printed_at && (
+                    <div className="p-3 bg-emerald-50 rounded-lg text-sm border border-emerald-100">
+                      <div className="flex items-center gap-2 text-emerald-700">
+                        <CheckCircle size={16} />
+                        <span className="font-medium">Etiqueta impresa</span>
+                      </div>
+                      <p className="text-xs text-emerald-600 mt-1">
+                        {formatDistanceToNow(new Date(order.envio_nube_label_printed_at), { addSuffix: true, locale: es })}
+                      </p>
+                    </div>
+                  )}
                   <Button
                     variant="primary"
                     className="w-full bg-sky-600 hover:bg-sky-700"
@@ -911,7 +958,7 @@ export function RealOrderDetail() {
                     ) : (
                       <>
                         <Tag size={16} className="mr-2" />
-                        Descargar Etiqueta Envío Nube
+                        {order.envio_nube_label_printed_at ? 'Re-imprimir Etiqueta' : 'Descargar Etiqueta Envío Nube'}
                       </>
                     )}
                   </Button>
