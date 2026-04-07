@@ -58,7 +58,7 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
 }
 
 // Tipos de estado
-export type PaymentStatus = 'pendiente' | 'a_confirmar' | 'parcial' | 'total' | 'rechazado';
+export type PaymentStatus = 'pendiente' | 'a_confirmar' | 'parcial' | 'total' | 'rechazado' | 'anulado' | 'reembolsado';
 export type OrderStatus = 'pendiente_pago' | 'a_imprimir' | 'hoja_impresa' | 'armado' | 'retirado' | 'en_calle' | 'enviado' | 'cancelado';
 
 // Tipos para las respuestas de la API
@@ -84,6 +84,11 @@ export interface ApiOrder {
   shipping_type: string | null;
   requires_shipping_form: boolean;
   has_shipping_data: boolean;
+  // Estados de Tiendanube
+  tn_payment_status: string | null;
+  tn_shipping_status: string | null;
+  // Etiqueta Envío Nube
+  envio_nube_label_printed_at: string | null;
 }
 
 export interface ApiComprobante {
@@ -278,7 +283,7 @@ export interface ApiOrderPrintData {
 }
 
 // Mapear estado de pago de la API a nuestro PaymentStatus
-export function mapEstadoPago(estadoPago: string | null): 'pendiente' | 'a_confirmar' | 'parcial' | 'total' | 'rechazado' {
+export function mapEstadoPago(estadoPago: string | null): 'pendiente' | 'a_confirmar' | 'parcial' | 'total' | 'rechazado' | 'anulado' | 'reembolsado' {
   if (!estadoPago) return 'pendiente';
 
   switch (estadoPago) {
@@ -292,6 +297,10 @@ export function mapEstadoPago(estadoPago: string | null): 'pendiente' | 'a_confi
       return 'total'; // Si está a favor, está pagado
     case 'rechazado':
       return 'rechazado';
+    case 'anulado':
+      return 'anulado';
+    case 'reembolsado':
+      return 'reembolsado';
     case 'pendiente':
     default:
       return 'pendiente';
@@ -1626,6 +1635,7 @@ export async function getEnvioNubeLabels(orders: string[]): Promise<{
   url: string;
   success: number;
   failed: number;
+  alreadyPrinted: number;
 }> {
   const response = await authFetch(`${API_BASE_URL}/orders/envio-nube-labels`, {
     method: 'POST',
@@ -1639,12 +1649,14 @@ export async function getEnvioNubeLabels(orders: string[]): Promise<{
 
   const success = parseInt(response.headers.get('X-Labels-Success') || '0');
   const failed = parseInt(response.headers.get('X-Labels-Failed') || '0');
+  const alreadyPrinted = parseInt(response.headers.get('X-Labels-Already-Printed') || '0');
 
   const blob = await response.blob();
   return {
     url: URL.createObjectURL(blob),
     success,
-    failed
+    failed,
+    alreadyPrinted
   };
 }
 

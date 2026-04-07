@@ -15,6 +15,8 @@ const receiptStatusPermissions: Record<PaymentStatus, string> = {
   parcial: 'receipts.view_parcial',
   total: 'receipts.view_total',
   rechazado: 'receipts.view_rechazado',
+  anulado: 'receipts.view_anulado',
+  reembolsado: 'receipts.view_reembolsado',
 };
 
 const statusFilters: { value: PaymentStatus | 'all'; label: string; color: string; permission?: string }[] = [

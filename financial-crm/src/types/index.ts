@@ -1,5 +1,5 @@
 // Estados de pago
-export type PaymentStatus = 'pendiente' | 'a_confirmar' | 'parcial' | 'total' | 'rechazado';
+export type PaymentStatus = 'pendiente' | 'a_confirmar' | 'parcial' | 'total' | 'rechazado' | 'anulado' | 'reembolsado';
 
 // Estados del pedido (flujo de trabajo)
 // Flujo retiro: pendiente_pago → a_imprimir → hoja_impresa → armado → retirado

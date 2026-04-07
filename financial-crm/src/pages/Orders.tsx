@@ -14,6 +14,8 @@ const paymentStatusPermissions: Record<PaymentStatus, string> = {
   parcial: 'orders.view_parcial',
   total: 'orders.view_total',
   rechazado: 'orders.view_rechazado',
+  anulado: 'orders.view_anulado',
+  reembolsado: 'orders.view_reembolsado',
 };
 
 const orderStatusPermissions: Record<OrderStatus, string> = {

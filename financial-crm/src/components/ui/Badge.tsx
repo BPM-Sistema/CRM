@@ -49,6 +49,8 @@ const paymentStatusVariants: Record<PaymentStatus, BadgeVariant> = {
   parcial: 'purple',
   total: 'success',
   rechazado: 'danger',
+  anulado: 'default',
+  reembolsado: 'cyan',
 };
 
 const paymentStatusConfig: Record<PaymentStatus, { icon: string; label: string }> = {
@@ -57,6 +59,8 @@ const paymentStatusConfig: Record<PaymentStatus, { icon: string; label: string }
   parcial: { icon: '', label: 'Parcial' },
   total: { icon: '', label: 'Recibido' },
   rechazado: { icon: '', label: 'Rechazado' },
+  anulado: { icon: '', label: 'Anulado' },
+  reembolsado: { icon: '', label: 'Reembolsado' },
 };
 
 interface PaymentStatusBadgeProps {
@@ -77,25 +81,25 @@ export function PaymentStatusBadge({ status, size = 'md', className }: PaymentSt
 
 // ============ ESTADO DEL PEDIDO ============
 const orderStatusVariants: Record<OrderStatus, BadgeVariant> = {
-  pendiente_pago: 'default',
-  a_imprimir: 'default',
-  hoja_impresa: 'default',
+  pendiente_pago: 'warning',
+  a_imprimir: 'info',
+  hoja_impresa: 'purple',
   armado: 'cyan',
-  retirado: 'success',
+  retirado: 'purple',
   en_calle: 'warning',
   enviado: 'success',
   cancelado: 'danger',
 };
 
 const orderStatusConfig: Record<OrderStatus, { icon: string; label: string }> = {
-  pendiente_pago: { icon: '\u{1F4E6}', label: 'Por empaquetar' },
-  a_imprimir: { icon: '\u{1F4E6}', label: 'Por empaquetar' },
-  hoja_impresa: { icon: '\u{1F4E6}', label: 'Por empaquetar' },
-  armado: { icon: '\u{1F4E6}', label: 'Empaquetado' },
-  retirado: { icon: '\u{1F3E0}', label: 'Retirada' },
-  en_calle: { icon: '\u{1F69A}', label: 'En camino' },
-  enviado: { icon: '\u{1F4E8}', label: 'Enviada' },
-  cancelado: { icon: '\u{26D4}', label: 'Cancelada' },
+  pendiente_pago: { icon: '\u{1F4B3}', label: 'Pend. Pago' },
+  a_imprimir: { icon: '\u{1F5A8}', label: 'A Imprimir' },
+  hoja_impresa: { icon: '\u{1F4C4}', label: 'Hoja Impresa' },
+  armado: { icon: '\u{1F4E6}', label: 'Armado' },
+  retirado: { icon: '\u{1F3E0}', label: 'Retirado' },
+  en_calle: { icon: '\u{1F69A}', label: 'En Calle' },
+  enviado: { icon: '\u{1F4E8}', label: 'Enviado' },
+  cancelado: { icon: '\u{26D4}', label: 'Cancelado' },
 };
 
 interface OrderStatusBadgeProps {
