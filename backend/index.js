@@ -1598,12 +1598,33 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
       const comprobante = compRes.rows.find(r => !usedComprobanteIds.has(r.id));
 
       if (!comprobante) {
+        // Buscar posible match con mismo monto pero fecha distinta
+        const posibleRes = await pool.query(
+          `SELECT c.id, c.order_number, c.monto, c.created_at,
+                  ov.customer_name
+           FROM comprobantes c
+           LEFT JOIN orders_validated ov ON ov.order_number = c.order_number
+           WHERE c.estado IN ('pendiente', 'a_confirmar')
+             AND c.monto = $1
+             AND c.created_at::date != $2::date
+           ORDER BY c.created_at DESC
+           LIMIT 1`,
+          [importe, fechaBanco]
+        );
+        const posible = posibleRes.rows[0] || null;
+
         unmatched.push({
           banco_id: mov.ID,
           importe,
           fecha: fechaBanco,
           hora: horaBanco,
-          nombre: nombreOrigen
+          nombre: nombreOrigen,
+          posible_match: posible ? {
+            comprobante_id: posible.id,
+            order_number: posible.order_number,
+            nombre_cliente: posible.customer_name || '',
+            fecha_comprobante: posible.created_at
+          } : null
         });
         continue;
       }

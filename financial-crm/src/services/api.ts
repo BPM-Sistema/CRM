@@ -2073,6 +2073,12 @@ export interface ConciliacionUnmatched {
   fecha: string;
   hora: string;
   nombre: string;
+  posible_match: {
+    comprobante_id: number;
+    order_number: string;
+    nombre_cliente: string;
+    fecha_comprobante: string;
+  } | null;
 }
 
 export interface ConciliacionPreviewResult {

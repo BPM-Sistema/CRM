@@ -658,13 +658,20 @@ export function RealReceipts() {
                     )}
 
                     {bankPreview.unmatched.length > 0 && (
-                      <div className="bg-amber-50 rounded-lg p-3 max-h-40 overflow-y-auto">
-                        <p className="text-xs font-medium text-amber-800 mb-1">Sin coincidencia:</p>
-                        <div className="space-y-1">
+                      <div className="bg-amber-50 rounded-lg p-3 max-h-60 overflow-y-auto">
+                        <p className="text-xs font-medium text-amber-800 mb-1">Sin coincidencia ({bankPreview.unmatched.length}):</p>
+                        <div className="space-y-2">
                           {bankPreview.unmatched.map((u) => (
-                            <p key={u.banco_id} className="text-xs text-amber-700">
-                              ${u.importe.toLocaleString('es-AR')} — {u.fecha} {u.hora} — {u.nombre}
-                            </p>
+                            <div key={u.banco_id} className="text-xs text-amber-700">
+                              <p>${u.importe.toLocaleString('es-AR')} — {u.fecha} {u.hora} — {u.nombre}</p>
+                              {u.posible_match && (
+                                <p className="text-orange-600 font-medium ml-2 mt-0.5">
+                                  Posible match: Pedido #{u.posible_match.order_number}
+                                  {u.posible_match.nombre_cliente && ` (${u.posible_match.nombre_cliente})`}
+                                  {' '}— subido {format(new Date(u.posible_match.fecha_comprobante), 'dd/MM')}
+                                </p>
+                              )}
+                            </div>
                           ))}
                         </div>
                       </div>
