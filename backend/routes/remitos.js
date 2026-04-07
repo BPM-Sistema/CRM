@@ -314,17 +314,17 @@ router.post('/:id/confirm',
         return res.status(404).json({ error: 'Pedido no encontrado' });
       }
 
-      // Verificar que el pedido tiene datos de envío
-      const shippingRes = await pool.query(
-        'SELECT id FROM shipping_requests WHERE order_number = $1',
-        [confirmedOrder]
-      );
-
-      if (shippingRes.rowCount === 0) {
-        return res.status(400).json({
-          error: 'El pedido no tiene datos de envío. El cliente debe completar el formulario de envío primero.'
-        });
-      }
+      // TEMPORALMENTE DESHABILITADO - permitir confirmar sin formulario de envío
+      // const shippingRes = await pool.query(
+      //   'SELECT id FROM shipping_requests WHERE order_number = $1',
+      //   [confirmedOrder]
+      // );
+      //
+      // if (shippingRes.rowCount === 0) {
+      //   return res.status(400).json({
+      //     error: 'El pedido no tiene datos de envío. El cliente debe completar el formulario de envío primero.'
+      //   });
+      // }
 
       // Confirmar
       await pool.query(`
