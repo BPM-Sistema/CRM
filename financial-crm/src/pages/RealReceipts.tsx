@@ -668,6 +668,7 @@ export function RealReceipts() {
                                 <span className={m.tipo === 'posible' ? 'text-orange-500' : 'text-blue-500'}>
                                   Comprobante: {format(new Date(m.fecha_comprobante), 'dd/MM/yyyy HH:mm')}
                                   {m.nombre_banco !== m.nombre_cliente && m.nombre_banco && ` | Remitente: ${m.nombre_banco}`}
+                                  {m.numero_operacion && ` | Op: ${m.numero_operacion}`}
                                 </span>
                               </span>
                             </label>

@@ -1600,7 +1600,7 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
 
       // Buscar comprobante pendiente con monto exacto y misma fecha (sin lockear)
       const compRes = await pool.query(
-        `SELECT c.id, c.order_number, c.monto, c.estado, c.created_at,
+        `SELECT c.id, c.order_number, c.monto, c.estado, c.created_at, c.numero_operacion,
                 ov.customer_name, ov.monto_tiendanube
          FROM comprobantes c
          LEFT JOIN orders_validated ov ON ov.order_number = c.order_number
@@ -1652,6 +1652,7 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
             fecha_banco: fechaBanco,
             hora_banco: horaBanco,
             fecha_comprobante: posible.created_at,
+            numero_operacion: posible.numero_operacion || null,
             tipo: 'posible',
             diff: diffTexto
           });
@@ -1686,6 +1687,7 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
         fecha_banco: fechaBanco,
         hora_banco: horaBanco,
         fecha_comprobante: comprobante.created_at,
+        numero_operacion: comprobante.numero_operacion || null,
         tipo: 'exacto'
       });
     }
@@ -4180,22 +4182,35 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     console.log('✅ Cuenta destino válida:', destinoValidation.cuenta?.alias || destinoValidation.cuenta?.cbu);
 
     /* ===============================
-       3️⃣ HASH (DUPLICADOS)
+       3️⃣ DUPLICADOS (hash + número de operación)
     ================================ */
     const hash = hashText(textoOcr);
+    const numeroOperacion = datosClaude.numeroOperacion || null;
 
-    const dup = await pool.query(
+    // Chequear por hash (imagen idéntica)
+    const dupHash = await pool.query(
       'select id from comprobantes where hash_ocr = $1',
       [hash]
     );
 
-    if (dup.rows.length > 0) {
+    // Chequear por número de operación (mismo comprobante, distinta imagen)
+    let dupOp = { rows: [] };
+    if (numeroOperacion) {
+      dupOp = await pool.query(
+        'select id from comprobantes where numero_operacion = $1',
+        [numeroOperacion]
+      );
+    }
+
+    if (dupHash.rows.length > 0 || dupOp.rows.length > 0) {
+      const dupId = dupHash.rows[0]?.id || dupOp.rows[0]?.id;
+      const dupTipo = dupHash.rows.length > 0 ? 'hash' : 'numero_operacion';
       await logEvento({
         orderNumber,
         accion: 'comprobante_duplicado',
         origen: 'sistema'
       });
-      console.log(`⚠️ Comprobante duplicado detectado - Order: ${orderNumber}, Hash: ${hash}, Original ID: ${dup.rows[0].id}`);
+      console.log(`⚠️ Comprobante duplicado (${dupTipo}) - Order: ${orderNumber}, Original ID: ${dupId}`);
 
       fs.unlinkSync(file.path);
       return res.status(409).json({ error: 'Comprobante duplicado' });
@@ -4225,8 +4240,8 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
 
     const insert = await pool.query(
       `insert into comprobantes
-       (order_number, hash_ocr, texto_ocr, monto, monto_tiendanube, file_url, estado, financiera_id)
-       values ($1,$2,$3,$4,$5,$6,'a_confirmar',$7)
+       (order_number, hash_ocr, texto_ocr, monto, monto_tiendanube, file_url, estado, financiera_id, numero_operacion)
+       values ($1,$2,$3,$4,$5,$6,'a_confirmar',$7,$8)
        returning id`,
       [
         orderNumber,
@@ -4235,7 +4250,8 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
         montoDetectado,
         montoTiendanube,
         fileUrl,
-        financieraId
+        financieraId,
+        numeroOperacion
       ]
     );
 

@@ -2078,6 +2078,7 @@ export interface ConciliacionMatch {
   fecha_banco: string;
   hora_banco: string;
   fecha_comprobante: string;
+  numero_operacion: string | null;
   tipo: 'exacto' | 'posible';
   diff?: string;
 }
