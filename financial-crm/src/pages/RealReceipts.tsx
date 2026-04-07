@@ -260,7 +260,12 @@ export function RealReceipts() {
       setBankApplyResult(null);
       const result = await conciliacionPreview(movimientos);
       setBankPreview(result);
-      setBankSelectedMatches(new Set(result.matched.map((_: ConciliacionMatch, i: number) => i)));
+      // Seleccionar solo los exactos por defecto, posibles vienen deseleccionados
+      const selected = new Set<number>();
+      result.matched.forEach((m: ConciliacionMatch, i: number) => {
+        if (m.tipo === 'exacto') selected.add(i);
+      });
+      setBankSelectedMatches(selected);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error procesando archivo');
     } finally {
@@ -636,7 +641,10 @@ export function RealReceipts() {
                         </div>
                         <div className="space-y-1 max-h-60 overflow-y-auto">
                           {bankPreview.matched.map((m: ConciliacionMatch, i: number) => (
-                            <label key={m.banco_id} className="flex items-start gap-2 text-xs text-blue-700 cursor-pointer hover:bg-blue-100 rounded p-1 -mx-1">
+                            <label key={m.banco_id} className={clsx(
+                              'flex items-start gap-2 text-xs cursor-pointer rounded p-1.5 -mx-1 transition-colors',
+                              m.tipo === 'posible' ? 'text-orange-700 bg-orange-50 hover:bg-orange-100' : 'text-blue-700 hover:bg-blue-100'
+                            )}>
                               <input
                                 type="checkbox"
                                 checked={bankSelectedMatches.has(i)}
@@ -649,9 +657,12 @@ export function RealReceipts() {
                               />
                               <span>
                                 <strong>Pedido #{m.order_number}</strong> — ${m.monto.toLocaleString('es-AR')}
+                                {m.tipo === 'posible' && <span className="ml-1 text-[10px] font-medium bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-full">fecha distinta</span>}
                                 <br />
-                                <span className="text-blue-500">Banco: {m.nombre_banco} ({m.hora_banco})</span>
-                                {m.nombre_cliente && <span className="text-blue-500"> | CRM: {m.nombre_cliente}</span>}
+                                <span className={m.tipo === 'posible' ? 'text-orange-500' : 'text-blue-500'}>Banco: {m.nombre_banco} ({m.hora_banco})</span>
+                                {m.nombre_cliente && <span className={m.tipo === 'posible' ? 'text-orange-500' : 'text-blue-500'}> | CRM: {m.nombre_cliente}</span>}
+                                {m.motivo && <br />}
+                                {m.motivo && <span className="text-orange-500 italic">{m.motivo}</span>}
                               </span>
                             </label>
                           ))}
@@ -669,17 +680,11 @@ export function RealReceipts() {
                     {bankPreview.unmatched.length > 0 && (
                       <div className="bg-amber-50 rounded-lg p-3 max-h-60 overflow-y-auto">
                         <p className="text-xs font-medium text-amber-800 mb-1">Sin coincidencia ({bankPreview.unmatched.length}):</p>
-                        <div className="space-y-2">
+                        <div className="space-y-1">
                           {bankPreview.unmatched.map((u) => (
-                            <div key={u.banco_id} className="text-xs text-amber-700">
-                              <p>${u.importe.toLocaleString('es-AR')} — {u.fecha} {u.hora} — {u.nombre}</p>
-                              {u.posible_match && (
-                                <p className="text-orange-600 font-medium ml-2 mt-0.5">
-                                  Posible match: Pedido #{u.posible_match.order_number}
-                                  {u.posible_match.nombre_cliente && ` (${u.posible_match.nombre_cliente})`}
-                                  {' '}— subido {format(new Date(u.posible_match.fecha_comprobante), 'dd/MM')}
-                                </p>
-                              )}
+                            <div key={u.banco_id} className="text-xs text-amber-700 p-1">
+                              <p>${u.importe.toLocaleString('es-AR')} — {u.nombre} — {u.fecha} {u.hora}</p>
+                              <p className="text-amber-500 italic text-[11px]">{u.motivo}</p>
                             </div>
                           ))}
                         </div>

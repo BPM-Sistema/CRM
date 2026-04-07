@@ -1627,19 +1627,37 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
         );
         const posible = posibleRes.rows[0] || null;
 
-        unmatched.push({
-          banco_id: mov.ID,
-          importe,
-          fecha: fechaBanco,
-          hora: horaBanco,
-          nombre: nombreOrigen,
-          posible_match: posible ? {
+        if (posible && !usedComprobanteIds.has(posible.id)) {
+          // Posible match → va a la lista de matched pero con tipo 'posible'
+          usedComprobanteIds.add(posible.id);
+          matched.push({
+            banco_id: mov.ID,
             comprobante_id: posible.id,
             order_number: posible.order_number,
+            monto: importe,
+            nombre_banco: nombreOrigen,
             nombre_cliente: posible.customer_name || '',
-            fecha_comprobante: posible.created_at
-          } : null
-        });
+            fecha_banco: fechaBanco,
+            hora_banco: horaBanco,
+            fecha_comprobante: posible.created_at,
+            tipo: 'posible',
+            motivo: 'Fechas distintas (banco: ' + fechaBanco + ', comprobante: ' + posible.created_at.toISOString().split('T')[0] + ')'
+          });
+        } else {
+          // Sin match → motivo claro
+          let motivo = 'No hay comprobante pendiente por $' + importe.toLocaleString('es-AR');
+          if (posible) {
+            motivo = 'Comprobante por este monto ya asignado a otro movimiento';
+          }
+          unmatched.push({
+            banco_id: mov.ID,
+            importe,
+            fecha: fechaBanco,
+            hora: horaBanco,
+            nombre: nombreOrigen,
+            motivo
+          });
+        }
         continue;
       }
 
@@ -1654,7 +1672,8 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
         nombre_cliente: comprobante.customer_name || '',
         fecha_banco: fechaBanco,
         hora_banco: horaBanco,
-        fecha_comprobante: comprobante.created_at
+        fecha_comprobante: comprobante.created_at,
+        tipo: 'exacto'
       });
     }
 

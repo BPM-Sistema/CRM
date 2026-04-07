@@ -2065,6 +2065,8 @@ export interface ConciliacionMatch {
   fecha_banco: string;
   hora_banco: string;
   fecha_comprobante: string;
+  tipo: 'exacto' | 'posible';
+  motivo?: string;
 }
 
 export interface ConciliacionUnmatched {
@@ -2073,12 +2075,7 @@ export interface ConciliacionUnmatched {
   fecha: string;
   hora: string;
   nombre: string;
-  posible_match: {
-    comprobante_id: number;
-    order_number: string;
-    nombre_cliente: string;
-    fecha_comprobante: string;
-  } | null;
+  motivo: string;
 }
 
 export interface ConciliacionPreviewResult {
