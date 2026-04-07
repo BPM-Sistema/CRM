@@ -41,7 +41,7 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
       - run: node -e "const vm = require('vm'); const fs = require('fs'); new vm.Script(fs.readFileSync('index.js','utf8')); console.log('Syntax OK')"
-      - run: npm test -- --passWithNoFailures
+      - run: npm test
         env:
           NODE_ENV: test
           JWT_SECRET: test-secret-key-ci
