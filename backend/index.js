@@ -3885,6 +3885,23 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     );
 
     /* ===============================
+       1.5️⃣ CONVERTIR PDF A JPG (antes de análisis)
+    ================================ */
+    const fileBufPre = fs.readFileSync(file.path);
+    const isPdfPre = path.extname(file.path).toLowerCase() === '.pdf' || (fileBufPre[0] === 0x25 && fileBufPre[1] === 0x50);
+    if (isPdfPre) {
+      const ppmPrefix = file.path.replace(/\.pdf$/i, '');
+      const { execSync } = require('child_process');
+      execSync(`pdftoppm -jpeg -r 200 -singlefile "${file.path}" "${ppmPrefix}"`);
+      const jpgPath = ppmPrefix + '.jpg';
+      fs.unlinkSync(file.path);
+      file.path = jpgPath;
+      file.mimetype = 'image/jpeg';
+      file.originalname = file.originalname.replace(/\.pdf$/i, '.jpg');
+      console.log('📄→🖼️ PDF convertido a JPG (pre-análisis):', jpgPath);
+    }
+
+    /* ===============================
        2️⃣ ANÁLISIS CON CLAUDE VISION
     ================================ */
     const datosClaudeRaw = await analizarComprobante(file.path);
@@ -3945,23 +3962,6 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
        4️⃣ MONTO DESDE CLAUDE
     ================================ */
     const montoDetectado = datosClaude.monto;
-
-    /* ===============================
-       4.5️⃣ CONVERTIR PDF A JPG
-    ================================ */
-    const fileBuf = fs.readFileSync(file.path);
-    const isPdf = path.extname(file.path).toLowerCase() === '.pdf' || (fileBuf[0] === 0x25 && fileBuf[1] === 0x50);
-    if (isPdf) {
-      const ppmPrefix = file.path.replace(/\.pdf$/i, '');
-      const { execSync } = require('child_process');
-      execSync(`pdftoppm -jpeg -r 200 -singlefile "${file.path}" "${ppmPrefix}"`);
-      const jpgPath = ppmPrefix + '.jpg';
-      fs.unlinkSync(file.path);
-      file.path = jpgPath;
-      file.mimetype = 'image/jpeg';
-      file.originalname = file.originalname.replace(/\.pdf$/i, '.jpg');
-      console.log('📄→🖼️ PDF convertido a JPG:', jpgPath);
-    }
 
     /* ===============================
        5️⃣ PREPARAR URL DE STORAGE
