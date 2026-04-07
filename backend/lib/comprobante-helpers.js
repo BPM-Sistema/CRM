@@ -16,6 +16,14 @@ const { hashText } = require('../hash');
    Aplica marca de agua al comprobante con datos del pedido.
 ===================================================== */
 async function watermarkReceipt(filePath, { id, orderNumber }) {
+  // Sharp no soporta PDFs — saltear watermark
+  const ext = require('path').extname(filePath).toLowerCase();
+  const buf = require('fs').readFileSync(filePath, { encoding: null, flag: 'r' });
+  if (ext === '.pdf' || (buf[0] === 0x25 && buf[1] === 0x50)) {
+    console.log('🏷️ Watermark skipped (PDF):', filePath);
+    return;
+  }
+
   const image = sharp(filePath);
   const metadata = await image.metadata();
 
