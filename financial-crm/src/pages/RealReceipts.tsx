@@ -224,7 +224,6 @@ export function RealReceipts() {
   const [selectionMode, setSelectionMode] = useState(false);
 
   // Conciliación bancaria (2 pasos: preview + confirmar)
-  const [showBankPanel, setShowBankPanel] = useState(false);
   const [bankProcessing, setBankProcessing] = useState(false);
   const [bankPreview, setBankPreview] = useState<ConciliacionPreviewResult | null>(null);
   const [bankApplyResult, setBankApplyResult] = useState<ConciliacionAplicarResult | null>(null);
@@ -546,19 +545,11 @@ export function RealReceipts() {
         {/* Conciliación Bancaria */}
         {hasPermission('receipts.confirm') && (
           <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
-            <button
-              onClick={() => { setShowBankPanel(!showBankPanel); setBankPreview(null); setBankApplyResult(null); }}
-              className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-neutral-50 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <Banknote size={18} className="text-neutral-600" />
-                <span className="font-semibold text-neutral-900 text-sm">Conciliacion Bancaria</span>
-              </div>
-              <span className="text-xs text-neutral-400">{showBankPanel ? '▲' : '▼'}</span>
-            </button>
-
-            {showBankPanel && (
-              <div className="px-5 pb-4 space-y-3">
+            <div className="flex items-center gap-2 px-5 py-3">
+              <Banknote size={18} className="text-neutral-600" />
+              <span className="font-semibold text-neutral-900 text-sm">Conciliacion Bancaria</span>
+            </div>
+            <div className="px-5 pb-4 space-y-3">
                 <div
                   onDragOver={(e) => { e.preventDefault(); setBankDragging(true); }}
                   onDragLeave={() => setBankDragging(false)}
@@ -741,7 +732,6 @@ export function RealReceipts() {
                   </div>
                 )}
               </div>
-            )}
           </div>
         )}
 
