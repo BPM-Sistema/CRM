@@ -3888,10 +3888,7 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
        1.5️⃣ CONVERTIR PDF A JPG (antes de análisis)
     ================================ */
     const fileBufPre = fs.readFileSync(file.path);
-    const extPre = path.extname(file.path).toLowerCase();
-    const magicPdf = fileBufPre.length > 1 && fileBufPre[0] === 0x25 && fileBufPre[1] === 0x50;
-    const isPdfPre = extPre === '.pdf' || magicPdf;
-    console.log(`📋 PDF check: path="${file.path}" ext="${extPre}" magic=${magicPdf} isPdf=${isPdfPre} size=${fileBufPre.length}`);
+    const isPdfPre = path.extname(file.path).toLowerCase() === '.pdf' || (fileBufPre.length > 1 && fileBufPre[0] === 0x25 && fileBufPre[1] === 0x50);
     if (isPdfPre) {
       const ppmPrefix = file.path.replace(/\.pdf$/i, '') + '_converted';
       const { execSync } = require('child_process');
