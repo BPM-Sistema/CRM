@@ -1556,7 +1556,9 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
    Matchea transferencias entrantes contra comprobantes pendientes
    por monto exacto + misma fecha
 ===================================================== */
-app.post('/comprobantes/auto-confirmar-banco', authenticate, requirePermission('receipts.confirm'), async (req, res) => {
+
+/* ── PASO 1: PREVIEW — cruza movimientos vs comprobantes, NO aplica nada ── */
+app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('receipts.confirm'), async (req, res) => {
   try {
     const { movimientos } = req.body;
 
@@ -1564,63 +1566,189 @@ app.post('/comprobantes/auto-confirmar-banco', authenticate, requirePermission('
       return res.status(400).json({ error: 'Se requiere un array de movimientos' });
     }
 
-    // Filtrar solo transferencias entrantes ejecutadas con importe positivo
-    const entrantes = movimientos.filter(m =>
+    // Leer última fecha procesada para filtrar movimientos viejos
+    const configRes = await pool.query(
+      `SELECT metadata->>'value' as value FROM integration_config WHERE key = 'conciliacion_ultima_fecha'`
+    );
+    const ultimaFecha = configRes.rows[0]?.value || null;
+
+    const todosEntrantes = movimientos.filter(m =>
       m.Tipo === 'Transferencia entrante' &&
       m.Estado === 'Ejecutado' &&
       parseFloat(m.Importe) > 0
     );
 
-    log.info({ total: movimientos.length, entrantes: entrantes.length }, 'Auto-confirmar banco: inicio');
+    // Filtrar solo movimientos nuevos (posteriores a la última fecha procesada)
+    let entrantes = todosEntrantes;
+    let filtrados = 0;
+    if (ultimaFecha) {
+      entrantes = todosEntrantes.filter(m => m['Fecha/Hora'] > ultimaFecha);
+      filtrados = todosEntrantes.length - entrantes.length;
+    }
+
+    log.info({ total: movimientos.length, entrantes: entrantes.length, filtrados, ultimaFecha }, 'Conciliación preview: inicio');
 
     const matched = [];
     const unmatched = [];
-    const errors = [];
+    const usedComprobanteIds = new Set();
 
     for (const mov of entrantes) {
       const importe = Math.round(parseFloat(mov.Importe));
-      const fechaBanco = mov['Fecha/Hora'].split(' ')[0]; // "2026-03-17"
+      const fechaBanco = mov['Fecha/Hora'].split(' ')[0];
+      const horaBanco = mov['Fecha/Hora'].split(' ')[1] || '';
       const nombreOrigen = (mov['Nombre Destino'] || '').trim();
+
+      // Buscar comprobante pendiente con monto exacto y misma fecha (sin lockear)
+      const compRes = await pool.query(
+        `SELECT c.id, c.order_number, c.monto, c.estado, c.created_at,
+                ov.customer_name
+         FROM comprobantes c
+         LEFT JOIN orders_validated ov ON ov.order_number = c.order_number
+         WHERE c.estado IN ('pendiente', 'a_confirmar')
+           AND c.monto = $1
+           AND c.created_at::date = $2::date
+         ORDER BY c.created_at ASC`,
+        [importe, fechaBanco]
+      );
+
+      // Tomar el primer comprobante que no haya sido usado en otro match
+      const comprobante = compRes.rows.find(r => !usedComprobanteIds.has(r.id));
+
+      if (!comprobante) {
+        // Buscar posible match con mismo monto pero fecha distinta
+        const posibleRes = await pool.query(
+          `SELECT c.id, c.order_number, c.monto, c.created_at,
+                  ov.customer_name
+           FROM comprobantes c
+           LEFT JOIN orders_validated ov ON ov.order_number = c.order_number
+           WHERE c.estado IN ('pendiente', 'a_confirmar')
+             AND c.monto = $1
+             AND c.created_at::date != $2::date
+           ORDER BY c.created_at DESC
+           LIMIT 1`,
+          [importe, fechaBanco]
+        );
+        const posible = posibleRes.rows[0] || null;
+
+        if (posible && !usedComprobanteIds.has(posible.id)) {
+          // Posible match → va a la lista de matched pero con tipo 'posible'
+          usedComprobanteIds.add(posible.id);
+          matched.push({
+            banco_id: mov.ID,
+            comprobante_id: posible.id,
+            order_number: posible.order_number,
+            monto: importe,
+            nombre_banco: nombreOrigen,
+            nombre_cliente: posible.customer_name || '',
+            fecha_banco: fechaBanco,
+            hora_banco: horaBanco,
+            fecha_comprobante: posible.created_at,
+            tipo: 'posible',
+            motivo: 'Fechas distintas (banco: ' + fechaBanco + ', comprobante: ' + posible.created_at.toISOString().split('T')[0] + ')'
+          });
+        } else {
+          // Sin match → motivo claro
+          let motivo = 'No hay comprobante pendiente por $' + importe.toLocaleString('es-AR');
+          if (posible) {
+            motivo = 'Comprobante por este monto ya asignado a otro movimiento';
+          }
+          unmatched.push({
+            banco_id: mov.ID,
+            importe,
+            fecha: fechaBanco,
+            hora: horaBanco,
+            nombre: nombreOrigen,
+            motivo
+          });
+        }
+        continue;
+      }
+
+      usedComprobanteIds.add(comprobante.id);
+
+      matched.push({
+        banco_id: mov.ID,
+        comprobante_id: comprobante.id,
+        order_number: comprobante.order_number,
+        monto: importe,
+        nombre_banco: nombreOrigen,
+        nombre_cliente: comprobante.customer_name || '',
+        fecha_banco: fechaBanco,
+        hora_banco: horaBanco,
+        fecha_comprobante: comprobante.created_at,
+        tipo: 'exacto'
+      });
+    }
+
+    log.info({ matched: matched.length, unmatched: unmatched.length }, 'Conciliación preview: fin');
+
+    res.json({
+      ok: true,
+      preview: true,
+      summary: {
+        total_movimientos: movimientos.length,
+        transferencias_entrantes: todosEntrantes.length,
+        nuevos: entrantes.length,
+        filtrados,
+        ultima_fecha_procesada: ultimaFecha,
+        matched: matched.length,
+        unmatched: unmatched.length
+      },
+      matched,
+      unmatched
+    });
+
+  } catch (error) {
+    log.error({ err: error }, '/comprobantes/conciliacion-preview error');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/* ── PASO 2: APLICAR — confirma solo los comprobantes seleccionados ── */
+app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('receipts.confirm'), async (req, res) => {
+  try {
+    const { matches, fecha_max } = req.body;
+
+    if (!Array.isArray(matches) || matches.length === 0) {
+      return res.status(400).json({ error: 'Se requiere un array de matches a confirmar' });
+    }
+
+    log.info({ count: matches.length }, 'Conciliación aplicar: inicio');
+
+    const confirmed = [];
+    const errors = [];
+
+    for (const match of matches) {
+      const { comprobante_id, banco_id } = match;
 
       try {
         const client = await pool.connect();
         try {
           await client.query('BEGIN');
 
-          // Buscar comprobante pendiente con monto exacto y misma fecha
+          // Verificar que el comprobante sigue pendiente
           const compRes = await client.query(
             `SELECT id, order_number, monto, estado
              FROM comprobantes
-             WHERE estado IN ('pendiente', 'a_confirmar')
-               AND monto = $1
-               AND created_at::date = $2::date
-             FOR UPDATE SKIP LOCKED
-             LIMIT 1`,
-            [importe, fechaBanco]
+             WHERE id = $1 AND estado IN ('pendiente', 'a_confirmar')
+             FOR UPDATE`,
+            [comprobante_id]
           );
 
           if (compRes.rowCount === 0) {
             await client.query('ROLLBACK');
-            unmatched.push({
-              banco_id: mov.ID,
-              importe,
-              fecha: fechaBanco,
-              nombre: nombreOrigen
-            });
+            errors.push({ comprobante_id, banco_id, error: 'Comprobante ya no está pendiente' });
             continue;
           }
 
           const comprobante = compRes.rows[0];
 
-          // Confirmar comprobante
+          // Confirmar
           await client.query(`UPDATE comprobantes SET estado = 'confirmado', confirmed_at = NOW() WHERE id = $1`, [comprobante.id]);
 
-          // Recalcular pagos (centralizado: pago_online_tn + comprobantes + efectivo)
           const pagoResult = await recalcularPagos(client, comprobante.order_number);
-          const { totalPagado, saldo, estadoPago } = pagoResult;
-          const nuevoEstadoPedido = pagoResult.estadoPedido;
+          const { estadoPago } = pagoResult;
 
-          // Obtener datos del pedido para post-commit actions
           const orderRes = await client.query(
             `SELECT monto_tiendanube, estado_pedido, customer_name, customer_phone, shipping_type, tn_order_id
              FROM orders_validated WHERE order_number = $1`,
@@ -1630,8 +1758,8 @@ app.post('/comprobantes/auto-confirmar-banco', authenticate, requirePermission('
 
           await client.query('COMMIT');
 
-          // Post-commit: TN sync, log, WhatsApp (fire and forget)
-          if (estadoPago === 'confirmado_total' && orderData.tn_order_id) {
+          // Post-commit actions
+          if (estadoPago === 'confirmado_total' && orderData?.tn_order_id) {
             marcarPagadoEnTiendanube(orderData.tn_order_id, comprobante.order_number);
           }
 
@@ -1639,12 +1767,12 @@ app.post('/comprobantes/auto-confirmar-banco', authenticate, requirePermission('
             comprobanteId: comprobante.id,
             orderNumber: comprobante.order_number,
             accion: 'comprobante_confirmado',
-            origen: 'auto_banco',
+            origen: 'conciliacion_banco',
             userId: req.user?.id,
             username: req.user?.name
           });
 
-          if (orderData.customer_phone) {
+          if (orderData?.customer_phone) {
             queueWhatsApp({
               telefono: orderData.customer_phone,
               plantilla: 'comprobante_confirmado',
@@ -1667,43 +1795,51 @@ app.post('/comprobantes/auto-confirmar-banco', authenticate, requirePermission('
             }
           }
 
-          matched.push({
-            banco_id: mov.ID,
+          console.log(`✅ Conciliación: comprobante #${comprobante.id} (pedido #${comprobante.order_number}) confirmado — banco ID ${banco_id}`);
+
+          confirmed.push({
+            banco_id,
             comprobante_id: comprobante.id,
             order_number: comprobante.order_number,
-            monto: importe,
-            nombre: nombreOrigen
+            monto: comprobante.monto
           });
 
         } catch (txErr) {
           await client.query('ROLLBACK').catch(() => {});
-          errors.push({ banco_id: mov.ID, error: txErr.message });
+          console.error(`❌ Conciliación error: comprobante #${comprobante_id} — ${txErr.message}`);
+          errors.push({ comprobante_id, banco_id, error: txErr.message });
         } finally {
           client.release();
         }
       } catch (connErr) {
-        errors.push({ banco_id: mov.ID, error: connErr.message });
+        errors.push({ comprobante_id, banco_id, error: connErr.message });
       }
     }
 
-    log.info({ matched: matched.length, unmatched: unmatched.length, errors: errors.length }, 'Auto-confirmar banco: fin');
+    // Guardar la fecha más reciente del JSON para filtrar en la próxima conciliación
+    if (fecha_max && confirmed.length > 0) {
+      await pool.query(`
+        INSERT INTO integration_config (key, enabled, description, category, metadata)
+        VALUES ('conciliacion_ultima_fecha', true, 'Última fecha/hora procesada en conciliación bancaria', 'conciliacion', $1::jsonb)
+        ON CONFLICT (key) DO UPDATE SET metadata = $1::jsonb
+      `, [JSON.stringify({ value: fecha_max })]);
+      console.log(`📅 Conciliación: última fecha guardada: ${fecha_max}`);
+    }
+
+    log.info({ confirmed: confirmed.length, errors: errors.length }, 'Conciliación aplicar: fin');
 
     res.json({
       ok: true,
       summary: {
-        total_movimientos: movimientos.length,
-        transferencias_entrantes: entrantes.length,
-        matched: matched.length,
-        unmatched: unmatched.length,
+        confirmed: confirmed.length,
         errors: errors.length
       },
-      matched,
-      unmatched,
+      confirmed,
       errors
     });
 
   } catch (error) {
-    log.error({ err: error }, '/comprobantes/auto-confirmar-banco error');
+    log.error({ err: error }, '/comprobantes/conciliacion-aplicar error');
     res.status(500).json({ error: error.message });
   }
 });
@@ -3972,6 +4108,31 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
       `,
       [orderNumber, montoTiendanube, currency, customerName, customerEmail, customerPhone]
     );
+
+    /* ===============================
+       1.5️⃣ CONVERTIR PDF A JPG (antes de análisis)
+    ================================ */
+    const fileBufPre = fs.readFileSync(file.path);
+    const isPdfPre = path.extname(file.path).toLowerCase() === '.pdf' || (fileBufPre.length > 1 && fileBufPre[0] === 0x25 && fileBufPre[1] === 0x50);
+    if (isPdfPre) {
+      const ppmPrefix = file.path.replace(/\.pdf$/i, '') + '_converted';
+      const { execSync } = require('child_process');
+      try {
+        execSync(`pdftoppm -jpeg -r 200 -singlefile "${file.path}" "${ppmPrefix}"`);
+        const jpgPath = ppmPrefix + '.jpg';
+        if (fs.existsSync(jpgPath) && fs.statSync(jpgPath).size > 0) {
+          fs.unlinkSync(file.path);
+          file.path = jpgPath;
+          file.mimetype = 'image/jpeg';
+          file.originalname = file.originalname.replace(/\.pdf$/i, '.jpg');
+          console.log('📄→🖼️ PDF convertido a JPG (pre-análisis):', jpgPath);
+        } else {
+          console.error('❌ pdftoppm no generó JPG válido');
+        }
+      } catch (pdfErr) {
+        console.error('❌ pdftoppm falló:', pdfErr.message);
+      }
+    }
 
     /* ===============================
        2️⃣ ANÁLISIS CON CLAUDE VISION

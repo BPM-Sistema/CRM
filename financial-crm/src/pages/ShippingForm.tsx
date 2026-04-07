@@ -178,8 +178,8 @@ export function ShippingForm() {
           <p className="text-neutral-600 mb-6">
             Cualquier consulta o duda que tengas no dudes en hablarnos al WhatsApp 🤗
             <br />
-            <a href="https://wa.me/5491154865530" className="font-semibold text-emerald-600 hover:underline">
-              11-5486-5530
+            <a href="https://wa.me/541136914124" className="font-semibold text-emerald-600 hover:underline">
+              11-3691-4124
             </a>
           </p>
           <p className="text-sm text-neutral-500">

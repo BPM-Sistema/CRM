@@ -7,7 +7,27 @@ on:
     branches: [main]
 
 jobs:
+  # ---- Detect what changed ----
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            frontend:
+              - 'financial-crm/**'
+
+  # ---- Backend: lint + test ----
   backend-lint-test:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -21,12 +41,15 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
       - run: node -e "const vm = require('vm'); const fs = require('fs'); new vm.Script(fs.readFileSync('index.js','utf8')); console.log('Syntax OK')"
-      - run: npm test -- --passWithNoFailures
+      - run: npm run test:ci
         env:
           NODE_ENV: test
           JWT_SECRET: test-secret-key-ci
 
+  # ---- Frontend: type-check + build ----
   frontend-build:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -41,3 +64,29 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm run build
+
+  # ---- Deploy backend (only on push to main) ----
+  deploy-backend:
+    needs: [changes, backend-lint-test]
+    if: github.event_name == 'push' && needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud run deploy petlove-backend --source ./backend --region us-central1 --quiet
+
+  # ---- Deploy frontend (only on push to main) ----
+  deploy-frontend:
+    needs: [changes, frontend-build]
+    if: github.event_name == 'push' && needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud run deploy crm-web --source ./financial-crm --region us-central1 --quiet

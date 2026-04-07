@@ -1,7 +1,7 @@
 const pino = require('pino');
 const crypto = require('crypto');
 
-const isDev = process.env.NODE_ENV !== 'production';
+const isDev = !['production', 'test'].includes(process.env.NODE_ENV);
 
 const logger = pino({
   level: process.env.LOG_LEVEL || 'info',

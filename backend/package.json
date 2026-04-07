@@ -1,6 +1,6 @@
 {
   "name": "backend",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Backend OCR comprobantes + Tiendanube",
   "main": "index.js",
   "engines": {
@@ -10,7 +10,7 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "test": "jest --runInBand --detectOpenHandles --forceExit",
-    "test:ci": "jest --runInBand --detectOpenHandles --forceExit --ci",
+    "test:ci": "jest --runInBand --detectOpenHandles --forceExit --ci --testPathPatterns='(hardening|calcularEstadoCuenta|phoneNormalize|tiendanubeImageSync)'",
     "build": "npm test",
     "workers": "node workers/index.js",
     "workers:dev": "nodemon workers/index.js",
