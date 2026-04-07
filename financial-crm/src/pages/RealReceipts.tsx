@@ -656,13 +656,19 @@ export function RealReceipts() {
                                 className="mt-0.5"
                               />
                               <span>
-                                <strong>Pedido #{m.order_number}</strong> — ${m.monto.toLocaleString('es-AR')}
-                                {m.tipo === 'posible' && <span className="ml-1 text-[10px] font-medium bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-full">fecha distinta</span>}
+                                <strong>{m.nombre_cliente || m.nombre_banco}</strong> — Pedido #{m.order_number}
+                                {m.tipo === 'posible' && <span className="ml-1 text-[10px] font-medium bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-full">{m.diff}</span>}
                                 <br />
-                                <span className={m.tipo === 'posible' ? 'text-orange-500' : 'text-blue-500'}>Banco: {m.nombre_banco} ({m.hora_banco})</span>
-                                {m.nombre_cliente && <span className={m.tipo === 'posible' ? 'text-orange-500' : 'text-blue-500'}> | CRM: {m.nombre_cliente}</span>}
-                                {m.motivo && <br />}
-                                {m.motivo && <span className="text-orange-500 italic">{m.motivo}</span>}
+                                <span className={m.tipo === 'posible' ? 'text-orange-500' : 'text-blue-500'}>
+                                  Transferencia: ${m.monto.toLocaleString('es-AR')} ({m.fecha_banco} {m.hora_banco})
+                                  {m.monto_pedido && m.monto_pedido !== m.monto && ` | Pedido: $${m.monto_pedido.toLocaleString('es-AR')}`}
+                                  {m.monto_pedido && m.monto_pedido === m.monto && ' | Monto exacto'}
+                                </span>
+                                <br />
+                                <span className={m.tipo === 'posible' ? 'text-orange-500' : 'text-blue-500'}>
+                                  Comprobante: {format(new Date(m.fecha_comprobante), 'dd/MM/yyyy HH:mm')}
+                                  {m.nombre_banco !== m.nombre_cliente && m.nombre_banco && ` | Remitente: ${m.nombre_banco}`}
+                                </span>
                               </span>
                             </label>
                           ))}

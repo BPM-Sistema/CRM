@@ -1601,7 +1601,7 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
       // Buscar comprobante pendiente con monto exacto y misma fecha (sin lockear)
       const compRes = await pool.query(
         `SELECT c.id, c.order_number, c.monto, c.estado, c.created_at,
-                ov.customer_name
+                ov.customer_name, ov.monto_tiendanube
          FROM comprobantes c
          LEFT JOIN orders_validated ov ON ov.order_number = c.order_number
          WHERE c.estado IN ('pendiente', 'a_confirmar')
@@ -1618,7 +1618,7 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
         // Buscar posible match con mismo monto pero fecha distinta
         const posibleRes = await pool.query(
           `SELECT c.id, c.order_number, c.monto, c.created_at,
-                  ov.customer_name
+                  ov.customer_name, ov.monto_tiendanube
            FROM comprobantes c
            LEFT JOIN orders_validated ov ON ov.order_number = c.order_number
            WHERE c.estado IN ('pendiente', 'a_confirmar')
@@ -1633,18 +1633,27 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
         if (posible && !usedComprobanteIds.has(posible.id)) {
           // Posible match → va a la lista de matched pero con tipo 'posible'
           usedComprobanteIds.add(posible.id);
+
+          // Calcular diferencia de tiempo
+          const fechaBancoDate = new Date(mov['Fecha/Hora']);
+          const fechaCompDate = new Date(posible.created_at);
+          const diffMs = Math.abs(fechaBancoDate - fechaCompDate);
+          const diffHoras = Math.round(diffMs / (1000 * 60 * 60));
+          const diffTexto = diffHoras < 24 ? `${diffHoras}h de diferencia` : `${Math.round(diffHoras / 24)}d de diferencia`;
+
           matched.push({
             banco_id: mov.ID,
             comprobante_id: posible.id,
             order_number: posible.order_number,
             monto: importe,
+            monto_pedido: posible.monto_tiendanube || null,
             nombre_banco: nombreOrigen,
             nombre_cliente: posible.customer_name || '',
             fecha_banco: fechaBanco,
             hora_banco: horaBanco,
             fecha_comprobante: posible.created_at,
             tipo: 'posible',
-            motivo: 'Fechas distintas (banco: ' + fechaBanco + ', comprobante: ' + posible.created_at.toISOString().split('T')[0] + ')'
+            diff: diffTexto
           });
         } else {
           // Sin match → motivo claro
@@ -1671,6 +1680,7 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
         comprobante_id: comprobante.id,
         order_number: comprobante.order_number,
         monto: importe,
+        monto_pedido: comprobante.monto_tiendanube || null,
         nombre_banco: nombreOrigen,
         nombre_cliente: comprobante.customer_name || '',
         fecha_banco: fechaBanco,

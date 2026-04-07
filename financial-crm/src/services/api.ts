@@ -2072,13 +2072,14 @@ export interface ConciliacionMatch {
   comprobante_id: number;
   order_number: string;
   monto: number;
+  monto_pedido: number | null;
   nombre_banco: string;
   nombre_cliente: string;
   fecha_banco: string;
   hora_banco: string;
   fecha_comprobante: string;
   tipo: 'exacto' | 'posible';
-  motivo?: string;
+  diff?: string;
 }
 
 export interface ConciliacionUnmatched {
