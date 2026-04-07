@@ -3888,17 +3888,28 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
        1.5️⃣ CONVERTIR PDF A JPG (antes de análisis)
     ================================ */
     const fileBufPre = fs.readFileSync(file.path);
-    const isPdfPre = path.extname(file.path).toLowerCase() === '.pdf' || (fileBufPre[0] === 0x25 && fileBufPre[1] === 0x50);
+    const extPre = path.extname(file.path).toLowerCase();
+    const magicPdf = fileBufPre.length > 1 && fileBufPre[0] === 0x25 && fileBufPre[1] === 0x50;
+    const isPdfPre = extPre === '.pdf' || magicPdf;
+    console.log(`📋 PDF check: path="${file.path}" ext="${extPre}" magic=${magicPdf} isPdf=${isPdfPre} size=${fileBufPre.length}`);
     if (isPdfPre) {
-      const ppmPrefix = file.path.replace(/\.pdf$/i, '');
+      const ppmPrefix = file.path.replace(/\.pdf$/i, '') + '_converted';
       const { execSync } = require('child_process');
-      execSync(`pdftoppm -jpeg -r 200 -singlefile "${file.path}" "${ppmPrefix}"`);
-      const jpgPath = ppmPrefix + '.jpg';
-      fs.unlinkSync(file.path);
-      file.path = jpgPath;
-      file.mimetype = 'image/jpeg';
-      file.originalname = file.originalname.replace(/\.pdf$/i, '.jpg');
-      console.log('📄→🖼️ PDF convertido a JPG (pre-análisis):', jpgPath);
+      try {
+        execSync(`pdftoppm -jpeg -r 200 -singlefile "${file.path}" "${ppmPrefix}"`);
+        const jpgPath = ppmPrefix + '.jpg';
+        if (fs.existsSync(jpgPath) && fs.statSync(jpgPath).size > 0) {
+          fs.unlinkSync(file.path);
+          file.path = jpgPath;
+          file.mimetype = 'image/jpeg';
+          file.originalname = file.originalname.replace(/\.pdf$/i, '.jpg');
+          console.log('📄→🖼️ PDF convertido a JPG (pre-análisis):', jpgPath);
+        } else {
+          console.error('❌ pdftoppm no generó JPG válido');
+        }
+      } catch (pdfErr) {
+        console.error('❌ pdftoppm falló:', pdfErr.message);
+      }
     }
 
     /* ===============================
