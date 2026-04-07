@@ -52,7 +52,7 @@ const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, normali
 const { recalcularPagos } = require('./lib/recalcularPagos');
 const { watermarkReceipt, isValidDestination, detectarFinancieraDesdeOCR } = require('./lib/comprobante-helpers');
 const { buildDivergenceReport, saveDivergences, applyAutoFixes, getBpmOrderForComparison } = require('./lib/divergence-detector');
-const { hashPaymentChange, hashProductChange, markEventProcessed } = require('./lib/webhookDedup');
+const { hashPaymentChange, hashProductChange, hashShippingChange, markEventProcessed } = require('./lib/webhookDedup');
 const customerSync = require('./services/customerSync');
 const customerMetrics = require('./services/customerMetrics');
 const customerSegmentation = require('./services/customerSegmentation');
@@ -263,8 +263,8 @@ async function obtenerEtiquetasEnvioNube(tnOrderId) {
     for (const fo of envioNubeFOs) {
       console.log(`📦 FO ${fo.id} - status: ${fo.status}, labels: ${fo.labels?.length || 0}`);
 
-      // 3. Verificar si ya hay labels READY_TO_USE
-      let readyLabel = fo.labels?.find(l => l.status === 'READY_TO_USE');
+      // 3. Verificar si ya hay labels listos (READY_TO_USE o DOWNLOADED)
+      let readyLabel = fo.labels?.find(l => l.status === 'READY_TO_USE' || l.status === 'DOWNLOADED');
 
       // 4. Si no hay label, solicitar generación
       if (!readyLabel) {
@@ -299,7 +299,7 @@ async function obtenerEtiquetasEnvioNube(tnOrderId) {
             });
 
             const updatedFO = checkRes.data.find(f => f.id === fo.id);
-            readyLabel = updatedFO?.labels?.find(l => l.status === 'READY_TO_USE');
+            readyLabel = updatedFO?.labels?.find(l => l.status === 'READY_TO_USE' || l.status === 'DOWNLOADED');
 
             if (readyLabel) {
               console.log(`✅ Label listo después de ${attempt + 1} intentos`);
@@ -1217,6 +1217,9 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
         o.packed_at,
         o.shipped_at,
         o.shipping_type,
+        o.tn_payment_status,
+        o.tn_shipping_status,
+        o.envio_nube_label_printed_at,
         COUNT(c.id) as comprobantes_count,
         COUNT(c.id) FILTER (WHERE c.estado IN ('a_confirmar', 'pendiente')) as pending_receipts_count,
         (SELECT COALESCE(SUM(op.quantity), 0) FROM order_products op WHERE op.order_number = o.order_number)::int as productos_count,
@@ -1231,7 +1234,7 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
       LEFT JOIN comprobantes c ON o.order_number = c.order_number
       LEFT JOIN shipping_requests sr ON o.order_number = sr.order_number
       ${whereClause}
-      GROUP BY o.order_number, o.monto_tiendanube, o.total_pagado, o.saldo, o.estado_pago, o.estado_pedido, o.currency, o.tn_created_at, o.created_at, o.customer_name, o.customer_email, o.customer_phone, o.printed_at, o.packed_at, o.shipped_at, o.shipping_type, sr.order_number
+      GROUP BY o.order_number, o.monto_tiendanube, o.total_pagado, o.saldo, o.estado_pago, o.estado_pedido, o.currency, o.tn_created_at, o.created_at, o.customer_name, o.customer_email, o.customer_phone, o.printed_at, o.packed_at, o.shipped_at, o.shipping_type, o.tn_payment_status, o.tn_shipping_status, o.envio_nube_label_printed_at, sr.order_number
       ORDER BY CAST(NULLIF(REGEXP_REPLACE(o.order_number, '[^0-9]', '', 'g'), '') AS BIGINT) DESC NULLS LAST
       LIMIT $${paramIndex++} OFFSET $${paramIndex}
     `, [...params, limit, offset]);
@@ -1987,7 +1990,10 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
         packed_at,
         shipped_at,
         shipping_type,
-        monto_original
+        monto_original,
+        tn_payment_status,
+        tn_shipping_status,
+        envio_nube_label_printed_at
       FROM orders_validated
       WHERE order_number = $1
     `, [orderNumber]);
@@ -2884,6 +2890,7 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
       const ESTADO_TN_MAP = {
         'armado':    { tnStatus: 'packed',    configKey: 'tiendanube_sync_estado_armado',    label: 'empaquetada' },
         'enviado':   { tnStatus: 'fulfilled', configKey: 'tiendanube_sync_estado_enviado',   label: 'despachada' },
+        'retirado':  { tnStatus: 'fulfilled', configKey: 'tiendanube_sync_estado_enviado',   label: 'despachada' }, // Retirado = fulfilled en TN
         'cancelado': { tnStatus: 'cancelled', configKey: 'tiendanube_sync_estado_cancelado', label: 'cancelada' },
       };
 
@@ -3123,14 +3130,17 @@ app.post('/webhook/tiendanube', async (req, res) => {
         } else if (cancelPaymentStatus === 'voided') {
           cancelUpdateFields.push(`estado_pago = 'anulado'`);
           cancelUpdateFields.push(`pago_online_tn = 0`);
+        } else if (cancelPaymentStatus === 'pending' || !cancelPaymentStatus) {
+          // Pedido cancelado sin pago → anular para no esperar pago que nunca llegará
+          cancelUpdateFields.push(`estado_pago = 'anulado'`);
         }
         await pool.query(
           `UPDATE orders_validated SET ${cancelUpdateFields.join(', ')} WHERE order_number = $1`,
           cancelParams
         );
 
-        // Recalcular pagos si se anuló/reembolsó
-        if (cancelPaymentStatus === 'refunded' || cancelPaymentStatus === 'voided') {
+        // Recalcular pagos si cambió el estado de pago
+        if (cancelPaymentStatus === 'refunded' || cancelPaymentStatus === 'voided' || cancelPaymentStatus === 'pending' || !cancelPaymentStatus) {
           await recalcularPagos(pool, orderNumber);
         }
 
@@ -3392,7 +3402,30 @@ app.post('/webhook/tiendanube', async (req, res) => {
           // IMPORTANTE: NO actualizar si el pedido ya está confirmado_total por pagos locales
           // (evita duplicar cuando nosotros marcamos pagado en TN y TN envía webhook de vuelta)
           const yaConfirmadoLocal = db.estado_pago === 'confirmado_total' && Number(db.total_pagado) >= Number(db.monto_tiendanube);
-          if ((cambioPaymentStatus || cambioPaidAt || event === 'order/paid') && !yaConfirmadoLocal) {
+
+          // ANTI-DUPLICACIÓN: Verificar si ya hay comprobantes confirmados por monto similar
+          // (previene race condition cuando operador confirma y webhook llega casi simultáneo)
+          let tieneComprobantesSimilares = false;
+          if (tnTotalPaid > 0) {
+            const compCheck = await pool.query(`
+              SELECT COALESCE(SUM(monto), 0) as total_comp
+              FROM comprobantes
+              WHERE order_number = $1 AND estado = 'confirmado'
+            `, [String(pedido.number)]);
+            const totalComp = Number(compCheck.rows[0]?.total_comp || 0);
+            // Si comprobantes confirmados ≈ pago de TN (tolerancia 5%), es el mismo pago
+            if (totalComp > 0) {
+              const diff = Math.abs(totalComp - tnTotalPaid);
+              const pctDiff = diff / Math.max(totalComp, tnTotalPaid);
+              tieneComprobantesSimilares = pctDiff < 0.05;
+              if (tieneComprobantesSimilares) {
+                log.info({ orderNumber: String(pedido.number), tnTotalPaid, totalComp, pctDiff },
+                  'Skipping pago_online_tn — comprobantes confirmados ya cubren este monto');
+              }
+            }
+          }
+
+          if ((cambioPaymentStatus || cambioPaidAt || event === 'order/paid') && !yaConfirmadoLocal && !tieneComprobantesSimilares) {
             let pagoOnline = 0;
             if (paymentStatusNuevo === 'partially_paid' && tnTotalPaid > 0) {
               pagoOnline = tnTotalPaid;
@@ -3556,48 +3589,104 @@ app.post('/webhook/tiendanube', async (req, res) => {
             ? `Pago parcial en TiendaNube ($${tnTotalPaid.toLocaleString('es-AR')})`
             : `Estado de pago cambiado a: ${paymentStatusNuevo}`;
           await logEvento({ orderNumber: orderNum, accion: pagoMsg, origen: 'webhook_tiendanube' });
+
+          // WhatsApp automático cuando TN marca como pagado (misma plantilla que comprobante_confirmado)
+          if (paymentStatusNuevo === 'paid') {
+            const clientePagoRes = await pool.query(
+              `SELECT customer_name, customer_phone, monto_tiendanube, shipping_type FROM orders_validated WHERE order_number = $1`,
+              [orderNum]
+            );
+            const clientePago = clientePagoRes.rows[0];
+
+            if (clientePago?.customer_phone) {
+              const montoFormateado = Number(clientePago.monto_tiendanube || tnTotalPaid).toLocaleString('es-AR');
+              queueWhatsApp({
+                telefono: clientePago.customer_phone,
+                plantilla: 'comprobante_confirmado',
+                variables: {
+                  '1': clientePago.customer_name || 'Cliente',
+                  '2': montoFormateado,
+                  '3': orderNum
+                },
+                orderNumber: orderNum
+              }).then(() => log.info({ orderNumber: orderNum }, 'WhatsApp comprobante_confirmado sent from TN payment webhook'))
+                .catch(err => log.error({ err, orderNumber: orderNum }, 'Error WhatsApp comprobante_confirmado from TN payment webhook'));
+
+              // Enviar datos__envio si requiere formulario de envío y no existe shipping_request
+              if (requiresShippingForm(clientePago.shipping_type)) {
+                const shippingReqRes = await pool.query(
+                  `SELECT 1 FROM shipping_requests WHERE order_number = $1 LIMIT 1`,
+                  [orderNum]
+                );
+                if (shippingReqRes.rows.length === 0) {
+                  queueWhatsApp({
+                    telefono: clientePago.customer_phone,
+                    plantilla: 'datos__envio',
+                    variables: { '1': clientePago.customer_name || 'Cliente', '2': orderNum },
+                    orderNumber: orderNum
+                  }).then(() => log.info({ orderNumber: orderNum }, 'WhatsApp datos__envio sent from TN payment webhook'))
+                    .catch(err => log.error({ err, orderNumber: orderNum }, 'Error WhatsApp datos__envio from TN payment webhook'));
+                } else {
+                  log.info({ orderNumber: orderNum }, 'Skipping datos__envio - shipping_request already exists');
+                }
+              }
+            }
+          }
         } else {
           log.info({ orderNumber: orderNum, paymentStatus: paymentStatusNuevo }, 'Skipping duplicate payment log (already processed)');
         }
       }
 
-      // Log cambio de envío
+      // Log cambio de envío (con deduplicación para evitar logs duplicados por order/updated + order/fulfilled)
       if (cambioShipping && syncShipping) {
-        await logEvento({ orderNumber: orderNum, accion: `Estado envío TN: ${shippingStatusAnterior || 'N/A'} → ${shippingStatusNuevo}`, origen: 'webhook_tiendanube' });
-        if (shippingDerivedEstado) {
-          await logEvento({ orderNumber: orderNum, accion: `Estado pedido actualizado a "${shippingDerivedEstado}" (sync envío TN)`, origen: 'webhook_tiendanube' });
-        }
+        const shippingHash = hashShippingChange(orderId, shippingStatusNuevo);
+        const isNewShippingEvent = await markEventProcessed({
+          eventHash: shippingHash,
+          eventType: event.replace('/', '_'),
+          orderId: String(orderId),
+          orderNumber: orderNum,
+          changeType: 'shipping'
+        });
 
-        // WhatsApp automático cuando TN marca como "enviado" (Envío Nube)
-        if (shippingDerivedEstado === 'enviado') {
-          const shippingTypeLower = (db.shipping_type || '').toLowerCase();
-          const esEnvioNube = shippingTypeLower.includes('envío nube') || shippingTypeLower.includes('envio nube');
+        if (isNewShippingEvent) {
+          await logEvento({ orderNumber: orderNum, accion: `Estado envío TN: ${shippingStatusAnterior || 'N/A'} → ${shippingStatusNuevo}`, origen: 'webhook_tiendanube' });
+          if (shippingDerivedEstado) {
+            await logEvento({ orderNumber: orderNum, accion: `Estado pedido actualizado a "${shippingDerivedEstado}" (sync envío TN)`, origen: 'webhook_tiendanube' });
+          }
 
-          if (esEnvioNube) {
-            // Obtener datos del cliente para WhatsApp
-            const clienteWebhookRes = await pool.query(
-              `SELECT customer_name, customer_phone, tn_order_id, tn_order_token FROM orders_validated WHERE order_number = $1`,
-              [orderNum]
-            );
-            const clienteWebhook = clienteWebhookRes.rows[0];
+          // WhatsApp automático cuando TN marca como "enviado" (Envío Nube)
+          if (shippingDerivedEstado === 'enviado') {
+            const shippingTypeLower = (db.shipping_type || '').toLowerCase();
+            const esEnvioNube = shippingTypeLower.includes('envío nube') || shippingTypeLower.includes('envio nube');
 
-            if (clienteWebhook?.customer_phone && clienteWebhook.tn_order_id && clienteWebhook.tn_order_token) {
-              const trackingParam = `${clienteWebhook.tn_order_id}/${clienteWebhook.tn_order_token}`;
-              queueWhatsApp({
-                telefono: clienteWebhook.customer_phone,
-                plantilla: 'enviado_env_nube',
-                variables: {
-                  '1': clienteWebhook.customer_name || 'Cliente',
-                  '2': orderNum,
-                  '3': trackingParam
-                },
-                orderNumber: orderNum
-              }).then(() => log.info({ orderNumber: orderNum }, 'WhatsApp enviado_env_nube sent from webhook'))
-                .catch(err => log.error({ err, orderNumber: orderNum }, 'Error WhatsApp enviado_env_nube from webhook'));
-            } else {
-              log.warn({ orderNumber: orderNum, hasPhone: !!clienteWebhook?.customer_phone, hasOrderId: !!clienteWebhook?.tn_order_id, hasToken: !!clienteWebhook?.tn_order_token }, 'WhatsApp enviado_env_nube skipped - missing data');
+            if (esEnvioNube) {
+              // Obtener datos del cliente para WhatsApp
+              const clienteWebhookRes = await pool.query(
+                `SELECT customer_name, customer_phone, tn_order_id, tn_order_token FROM orders_validated WHERE order_number = $1`,
+                [orderNum]
+              );
+              const clienteWebhook = clienteWebhookRes.rows[0];
+
+              if (clienteWebhook?.customer_phone && clienteWebhook.tn_order_id && clienteWebhook.tn_order_token) {
+                const trackingParam = `${clienteWebhook.tn_order_id}/${clienteWebhook.tn_order_token}`;
+                queueWhatsApp({
+                  telefono: clienteWebhook.customer_phone,
+                  plantilla: 'enviado_env_nube',
+                  variables: {
+                    '1': clienteWebhook.customer_name || 'Cliente',
+                    '2': orderNum,
+                    '3': trackingParam
+                  },
+                  orderNumber: orderNum
+                }).then(() => log.info({ orderNumber: orderNum }, 'WhatsApp enviado_env_nube sent from webhook'))
+                  .catch(err => log.error({ err, orderNumber: orderNum }, 'Error WhatsApp enviado_env_nube from webhook'));
+              } else {
+                log.warn({ orderNumber: orderNum, hasPhone: !!clienteWebhook?.customer_phone, hasOrderId: !!clienteWebhook?.tn_order_id, hasToken: !!clienteWebhook?.tn_order_token }, 'WhatsApp enviado_env_nube skipped - missing data');
+              }
             }
           }
+        } else {
+          log.info({ orderNumber: orderNum, shippingStatus: shippingStatusNuevo }, 'Skipping duplicate shipping log (already processed)');
         }
       }
 
@@ -4376,16 +4465,51 @@ async function sincronizarEstadoTiendanube(tnOrderId, orderNumber, tnStatus, lab
     return false;
   }
 
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authentication': `bearer ${token}`,
+    'User-Agent': 'BPM Administrador (netubpm@gmail.com)'
+  };
+
+  // Para 'paid', usar PUT con { status: 'paid' } (funciona en TN API)
+  if (tnStatus === 'paid') {
+    try {
+      await callTiendanube({
+        method: 'put',
+        url: `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}`,
+        data: { status: 'paid' },
+        headers
+      });
+      console.log(`✅ [Orden ${orderNumber}] Marcada como ${labelEs} en Tiendanube (tn_order_id: ${tnOrderId})`);
+      return true;
+    } catch (err) {
+      console.error(`❌ [Orden ${orderNumber}] Error marcando ${labelEs} en Tiendanube: ${err.response?.status} ${JSON.stringify(err.response?.data || err.message)}`);
+      return false;
+    }
+  }
+
+  // Tiendanube usa endpoints POST específicos para cambios de estado de fulfillment
+  // packed -> POST /orders/{id}/pack
+  // fulfilled -> POST /orders/{id}/fulfill
+  // cancelled -> POST /orders/{id}/close (cierra el pedido)
+  const ENDPOINT_MAP = {
+    'packed': 'pack',
+    'fulfilled': 'fulfill',
+    'cancelled': 'close'
+  };
+
+  const action = ENDPOINT_MAP[tnStatus];
+  if (!action) {
+    console.log(`⚠️ [Orden ${orderNumber}] Estado ${tnStatus} no tiene endpoint de sync en Tiendanube`);
+    return false;
+  }
+
   try {
     await callTiendanube({
-      method: 'put',
-      url: `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}`,
-      data: { status: tnStatus },
-      headers: {
-        'Content-Type': 'application/json',
-        'Authentication': `bearer ${token}`,
-        'User-Agent': 'BPM Administrador (netubpm@gmail.com)'
-      }
+      method: 'post',
+      url: `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}/${action}`,
+      data: {},
+      headers
     });
     console.log(`✅ [Orden ${orderNumber}] Marcada como ${labelEs} en Tiendanube (tn_order_id: ${tnOrderId})`);
     return true;
@@ -5972,6 +6096,13 @@ app.get('/orders/:orderNumber/envio-nube-label', authenticate, async (req, res) 
       username: req.user?.name
     });
 
+    // Marcar como impresa
+    await pool.query(`
+      UPDATE orders_validated
+      SET envio_nube_label_printed_at = NOW()
+      WHERE order_number = $1
+    `, [orderNumber]);
+
     console.log(`🏷️ Etiqueta Envío Nube descargada para pedido #${orderNumber}`);
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -6006,14 +6137,16 @@ app.post('/orders/envio-nube-labels', authenticate, async (req, res) => {
 
     // 1. Obtener tn_order_id de todos los pedidos
     const orderRes = await pool.query(`
-      SELECT order_number, tn_order_id, shipping_type, customer_name
+      SELECT order_number, tn_order_id, shipping_type, customer_name, envio_nube_label_printed_at
       FROM orders_validated
       WHERE order_number = ANY($1)
     `, [orders]);
 
     const ordersMap = new Map(orderRes.rows.map(o => [o.order_number, o]));
 
-    // 2. Procesar cada pedido
+    // 2. Filtrar pedidos válidos primero
+    const validOrders = [];
+    const alreadyPrinted = [];
     const results = {
       success: [],
       failed: [],
@@ -6039,43 +6172,73 @@ app.post('/orders/envio-nube-labels', authenticate, async (req, res) => {
         continue;
       }
 
-      try {
-        // Obtener etiquetas
-        const labelResult = await obtenerEtiquetasEnvioNube(order.tn_order_id);
-
-        if (!labelResult.ok) {
-          results.failed.push({ order: orderNumber, error: labelResult.error });
-          continue;
-        }
-
-        // Descargar el PDF
-        const labelUrl = labelResult.labels[0].url;
-        const pdfResponse = await axios.get(labelUrl, {
-          responseType: 'arraybuffer',
-          timeout: 30000
-        });
-
-        results.pdfBuffers.push({
-          orderNumber,
-          buffer: pdfResponse.data
-        });
-
-        results.success.push({
-          order: orderNumber,
-          customer: order.customer_name,
-          tracking: labelResult.labels[0].tracking_code
-        });
-
-      } catch (err) {
-        results.failed.push({ order: orderNumber, error: err.message });
+      // Skip already printed labels in bulk mode
+      if (order.envio_nube_label_printed_at) {
+        alreadyPrinted.push({ order: orderNumber, customer: order.customer_name, printed_at: order.envio_nube_label_printed_at });
+        continue;
       }
+
+      validOrders.push({ orderNumber, order });
     }
 
-    // 3. Si no hay PDFs exitosos, retornar error
+    // 3. Procesar en paralelo (batches de 5 para no saturar TN API)
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < validOrders.length; i += BATCH_SIZE) {
+      const batch = validOrders.slice(i, i + BATCH_SIZE);
+
+      const batchResults = await Promise.all(batch.map(async ({ orderNumber, order }) => {
+        try {
+          // Obtener etiquetas
+          const labelResult = await obtenerEtiquetasEnvioNube(order.tn_order_id);
+
+          if (!labelResult.ok) {
+            return { success: false, orderNumber, error: labelResult.error };
+          }
+
+          // Descargar el PDF
+          const labelUrl = labelResult.labels[0].url;
+          const pdfResponse = await axios.get(labelUrl, {
+            responseType: 'arraybuffer',
+            timeout: 30000
+          });
+
+          return {
+            success: true,
+            orderNumber,
+            buffer: pdfResponse.data,
+            customer: order.customer_name,
+            tracking: labelResult.labels[0].tracking_code
+          };
+        } catch (err) {
+          return { success: false, orderNumber, error: err.message };
+        }
+      }));
+
+      // Agregar resultados del batch
+      for (const result of batchResults) {
+        if (result.success) {
+          results.pdfBuffers.push({ orderNumber: result.orderNumber, buffer: result.buffer });
+          results.success.push({ order: result.orderNumber, customer: result.customer, tracking: result.tracking });
+        } else {
+          results.failed.push({ order: result.orderNumber, error: result.error });
+        }
+      }
+
+      console.log(`📦 Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(validOrders.length / BATCH_SIZE)} procesado`);
+    }
+
+    // 4. Si no hay PDFs exitosos, retornar error
     if (results.pdfBuffers.length === 0) {
+      if (alreadyPrinted.length > 0 && results.failed.length === 0) {
+        return res.status(400).json({
+          error: `Todas las etiquetas ya fueron impresas (${alreadyPrinted.length})`,
+          alreadyPrinted
+        });
+      }
       return res.status(400).json({
         error: 'No se pudo obtener ninguna etiqueta',
-        failed: results.failed
+        failed: results.failed,
+        alreadyPrinted
       });
     }
 
@@ -6094,7 +6257,9 @@ app.post('/orders/envio-nube-labels', authenticate, async (req, res) => {
 
     const mergedPdfBytes = await mergedPdf.save();
 
-    // 5. Registrar en logs
+    // 5. Registrar en logs y marcar como impresos
+    const printedOrderNumbers = results.success.map(s => s.order);
+
     for (const { order } of results.success) {
       await logEvento({
         orderNumber: order,
@@ -6105,13 +6270,23 @@ app.post('/orders/envio-nube-labels', authenticate, async (req, res) => {
       });
     }
 
-    console.log(`🏷️ ${results.success.length} etiquetas Envío Nube combinadas (${results.failed.length} fallidas)`);
+    // Marcar etiquetas como impresas
+    if (printedOrderNumbers.length > 0) {
+      await pool.query(`
+        UPDATE orders_validated
+        SET envio_nube_label_printed_at = NOW()
+        WHERE order_number = ANY($1)
+      `, [printedOrderNumbers]);
+    }
+
+    console.log(`🏷️ ${results.success.length} etiquetas Envío Nube combinadas (${results.failed.length} fallidas, ${alreadyPrinted.length} ya impresas)`);
 
     // 6. Retornar PDF combinado
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=etiquetas-envio-nube-${Date.now()}.pdf`);
     res.setHeader('X-Labels-Success', results.success.length);
     res.setHeader('X-Labels-Failed', results.failed.length);
+    res.setHeader('X-Labels-Already-Printed', alreadyPrinted.length);
     res.send(Buffer.from(mergedPdfBytes));
 
   } catch (error) {
