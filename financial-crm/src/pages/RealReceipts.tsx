@@ -189,7 +189,7 @@ function ComprobanteCard({ comp, onClick, selectionMode, isSelected, onToggleSel
         </div>
         <div className="flex items-center justify-between">
           <span className="text-xs text-neutral-500">
-            {format(new Date(comp.created_at), 'dd/MM/yyyy')}
+            {format(new Date(comp.created_at), 'dd/MM/yyyy HH:mm')}
           </span>
           <span className="text-xs font-mono text-neutral-400">
             #{comp.order_number}
