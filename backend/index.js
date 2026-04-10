@@ -6162,8 +6162,6 @@ app.get('/orders/:orderNumber/shipping-label', authenticate, async (req, res) =>
         });
       }
 
-      // === FOOTER ===
-      doc.text('BPM Administrador - www.bpmadministrador.com', 40, 780, { align: 'center' });
     }
 
     doc.end();
