@@ -232,7 +232,6 @@ export function RealReceipts() {
   const [bankDragging, setBankDragging] = useState(false);
   const bankFileRef = useRef<HTMLInputElement>(null);
 
-  const [bankFechaMax, setBankFechaMax] = useState<string | null>(null);
 
   const handleBankFile = useCallback(async (file: File) => {
     try {
@@ -242,18 +241,19 @@ export function RealReceipts() {
         alert('El archivo no contiene un array de movimientos');
         return;
       }
+      const ahora = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
+      ahora.setDate(ahora.getDate() - 6);
+      const corte = ahora.toISOString().slice(0, 10);
+
       const entrantes = movimientos.filter((m: { Tipo?: string; Importe?: string; 'Fecha/Hora'?: string }) =>
-        m.Tipo === 'Transferencia entrante' && parseFloat(m.Importe || '0') > 0
+        m.Tipo === 'Transferencia entrante' &&
+        parseFloat(m.Importe || '0') > 0 &&
+        (m['Fecha/Hora'] || '') >= corte
       );
       if (entrantes.length === 0) {
-        alert('No se encontraron transferencias entrantes en el archivo');
+        alert('No se encontraron transferencias entrantes de los últimos 7 días');
         return;
       }
-
-      // Calcular fecha máxima del JSON para guardar después
-      const fechas = entrantes.map((m: { 'Fecha/Hora': string }) => m['Fecha/Hora']).filter(Boolean);
-      const maxFecha = fechas.length > 0 ? fechas.sort().pop() || null : null;
-      setBankFechaMax(maxFecha);
 
       setBankProcessing(true);
       setBankPreview(null);
@@ -285,8 +285,7 @@ export function RealReceipts() {
     setBankApplying(true);
     try {
       const result = await conciliacionAplicar(
-        selectedMatches.map((m: ConciliacionMatch) => ({ comprobante_id: m.comprobante_id, banco_id: m.banco_id })),
-        bankFechaMax
+        selectedMatches.map((m: ConciliacionMatch) => ({ comprobante_id: m.comprobante_id, banco_id: m.banco_id }))
       );
       setBankApplyResult(result);
       setBankPreview(null);

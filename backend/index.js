@@ -1599,27 +1599,13 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
       return res.status(400).json({ error: 'Se requiere un array de movimientos' });
     }
 
-    // Leer última fecha procesada para filtrar movimientos viejos
-    const configRes = await pool.query(
-      `SELECT metadata->>'value' as value FROM integration_config WHERE key = 'conciliacion_ultima_fecha'`
-    );
-    const ultimaFecha = configRes.rows[0]?.value || null;
-
-    const todosEntrantes = movimientos.filter(m =>
+    const entrantes = movimientos.filter(m =>
       m.Tipo === 'Transferencia entrante' &&
       m.Estado === 'Ejecutado' &&
       parseFloat(m.Importe) > 0
     );
 
-    // Filtrar solo movimientos nuevos (posteriores a la última fecha procesada)
-    let entrantes = todosEntrantes;
-    let filtrados = 0;
-    if (ultimaFecha) {
-      entrantes = todosEntrantes.filter(m => m['Fecha/Hora'] > ultimaFecha);
-      filtrados = todosEntrantes.length - entrantes.length;
-    }
-
-    log.info({ total: movimientos.length, entrantes: entrantes.length, filtrados, ultimaFecha }, 'Conciliación preview: inicio');
+    log.info({ total: movimientos.length, entrantes: entrantes.length }, 'Conciliación preview: inicio');
 
     const matched = [];
     const unmatched = [];
@@ -1732,10 +1718,7 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
       preview: true,
       summary: {
         total_movimientos: movimientos.length,
-        transferencias_entrantes: todosEntrantes.length,
-        nuevos: entrantes.length,
-        filtrados,
-        ultima_fecha_procesada: ultimaFecha,
+        transferencias_entrantes: entrantes.length,
         matched: matched.length,
         unmatched: unmatched.length
       },
@@ -1860,16 +1843,6 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
       } catch (connErr) {
         errors.push({ comprobante_id, banco_id, error: connErr.message });
       }
-    }
-
-    // Guardar la fecha más reciente del JSON para filtrar en la próxima conciliación
-    if (fecha_max && confirmed.length > 0) {
-      await pool.query(`
-        INSERT INTO integration_config (key, enabled, description, category, metadata)
-        VALUES ('conciliacion_ultima_fecha', true, 'Última fecha/hora procesada en conciliación bancaria', 'conciliacion', $1::jsonb)
-        ON CONFLICT (key) DO UPDATE SET metadata = $1::jsonb
-      `, [JSON.stringify({ value: fecha_max })]);
-      console.log(`📅 Conciliación: última fecha guardada: ${fecha_max}`);
     }
 
     log.info({ confirmed: confirmed.length, errors: errors.length }, 'Conciliación aplicar: fin');
