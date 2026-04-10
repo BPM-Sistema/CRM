@@ -808,7 +808,7 @@ app.get('/activity-log', authenticate, requirePermission('activity.view'), async
     );
     const total = Number(countRes.rows[0].count);
 
-    // Obtener logs con paginación (timestamps convertidos a hora Argentina)
+    // Obtener logs con paginación (to_char devuelve string sin Z - valor ya está en hora Argentina)
     const logsRes = await pool.query(`
       SELECT
         l.id,
@@ -818,7 +818,7 @@ app.get('/activity-log', authenticate, requirePermission('activity.view'), async
         l.origen,
         l.user_id,
         l.username,
-        (l.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/Argentina/Buenos_Aires' as created_at,
+        to_char(l.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') as created_at,
         u.name as user_name,
         u.email as user_email
       FROM logs l
@@ -1378,8 +1378,8 @@ app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async
         'transferencia' as tipo,
         c.file_url,
         NULL as registrado_por,
-        (c.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/Argentina/Buenos_Aires' as created_at,
-        (c.confirmed_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/Argentina/Buenos_Aires' as confirmed_at,
+        to_char(c.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') as created_at,
+        to_char(c.confirmed_at, 'YYYY-MM-DD"T"HH24:MI:SS') as confirmed_at,
         c.financiera_id,
         f.nombre as financiera_nombre,
         o.customer_name,
@@ -1428,7 +1428,7 @@ app.get('/comprobantes/:id', authenticate, requirePermission('receipts.view'), a
         c.file_url,
         c.texto_ocr,
         NULL as registrado_por,
-        (c.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/Argentina/Buenos_Aires' as created_at,
+        to_char(c.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') as created_at,
         c.financiera_id,
         f.nombre as financiera_nombre,
         o.customer_name,
@@ -1448,10 +1448,10 @@ app.get('/comprobantes/:id', authenticate, requirePermission('receipts.view'), a
       return res.status(404).json({ error: 'Comprobante no encontrado' });
     }
 
-    // Obtener logs del comprobante (timestamps convertidos a hora Argentina)
+    // Obtener logs del comprobante (to_char sin Z - valor ya está en hora Argentina)
     const logsRes = await pool.query(`
       SELECT id, accion, origen,
-        (created_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/Argentina/Buenos_Aires' as created_at
+        to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS') as created_at
       FROM logs
       WHERE comprobante_id = $1
       ORDER BY created_at DESC
@@ -2256,7 +2256,7 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
 
     // Obtener logs del pedido (por comprobante O por order_number directo)
     // Usando UNION (sin ALL) para eliminar duplicados cuando un log tiene ambos comprobante_id y order_number
-    // Convertimos UTC a hora Argentina para mostrar correctamente en el frontend
+    // to_char() devuelve string sin Z - el valor ya está en hora Argentina
     const logsRes = await pool.query(`
       SELECT id, accion, origen, username, created_at FROM (
         -- Logs vinculados a comprobantes del pedido
@@ -2265,7 +2265,7 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
           l.accion,
           l.origen,
           l.username,
-          (l.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/Argentina/Buenos_Aires' as created_at
+          to_char(l.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') as created_at
         FROM logs l
         JOIN comprobantes c ON l.comprobante_id = c.id
         WHERE c.order_number = $1
@@ -2278,7 +2278,7 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
           l.accion,
           l.origen,
           l.username,
-          (l.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'America/Argentina/Buenos_Aires' as created_at
+          to_char(l.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') as created_at
         FROM logs l
         WHERE l.order_number = $1
       ) combined
