@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUrlFilters } from '../hooks';
-import { RefreshCw, AlertCircle, Eye, Banknote, FileText, Download, Calendar, CheckSquare, Square, X, Search, ChevronLeft, ChevronRight, Building2, Upload, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { RefreshCw, AlertCircle, Eye, Banknote, FileText, Download, Calendar, CheckSquare, Square, X, Search, ChevronLeft, ChevronRight, Building2, Upload, CheckCircle2 } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
 import { AccessDenied } from '../components/AccessDenied';
