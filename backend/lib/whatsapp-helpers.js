@@ -16,6 +16,30 @@ const { apiLogger: log } = require('./logger');
 const { getPlantillaFinal, getPlantillaTipos } = require('./plantilla-resolver');
 
 /**
+ * Normaliza número de teléfono argentino para WhatsApp
+ * Argentina móvil requiere +549 seguido del código de área (sin 0) y número (sin 15)
+ * Ejemplo: +541144094585 → +5491144094585
+ */
+function normalizeArgentinaPhone(phone) {
+  if (!phone) return phone;
+
+  // Si ya tiene +549, está correcto
+  if (phone.startsWith('+549')) {
+    return phone;
+  }
+
+  // Si tiene +54 pero no +549, insertar el 9
+  if (phone.startsWith('+54')) {
+    const normalized = '+549' + phone.slice(3);
+    console.log(`📱 Normalizando teléfono AR: ${phone} → ${normalized}`);
+    return normalized;
+  }
+
+  // Otros países o formatos, no tocar
+  return phone;
+}
+
+/**
  * Derive the integration config key from plantilla key
  * No hardcoded mapping - convention based: plantilla_key -> whatsapp_tpl_plantilla_key
  */
@@ -59,6 +83,9 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNu
     console.log(`🧪 WhatsApp testing: redirigiendo de ${telefono} → ${testingPhone}`);
     telefono = testingPhone;
   }
+
+  // Normalizar número argentino (agregar 9 si falta)
+  telefono = normalizeArgentinaPhone(telefono);
 
   // Resolve template name using catalog-based system
   // No hardcoded logic - uses explicit mappings from database
@@ -118,4 +145,5 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNu
 module.exports = {
   enviarWhatsAppPlantilla,
   getConfigKey,
+  normalizeArgentinaPhone,
 };

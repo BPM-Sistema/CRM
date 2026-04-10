@@ -13,7 +13,7 @@ const { callBotmaker } = require('../lib/circuitBreaker');
 const pool = require('../db');
 const { workerLogger: log } = require('../lib/logger');
 const { whatsapp: waConfig, isEnabled: isIntegrationEnabled } = require('../services/integrationConfig');
-const { getConfigKey } = require('../lib/whatsapp-helpers');
+const { getConfigKey, normalizeArgentinaPhone } = require('../lib/whatsapp-helpers');
 const { getPlantillaFinal, getPlantillaTipos } = require('../lib/plantilla-resolver');
 
 /**
@@ -63,6 +63,13 @@ async function processWhatsAppJob(job) {
     }
     jobLog.info({ from: telefono, to: testingPhone }, 'Testing: redirigiendo telefono');
     telefono = testingPhone;
+  }
+
+  // Normalizar número argentino (agregar 9 si falta)
+  const telefonoNormalizado = normalizeArgentinaPhone(telefono);
+  if (telefonoNormalizado !== telefono) {
+    jobLog.info({ from: telefono, to: telefonoNormalizado }, 'Normalizando telefono AR');
+    telefono = telefonoNormalizado;
   }
 
   // 2.5 Prevenir duplicados en retry: si ya enviamos este mensaje, no reenviar
