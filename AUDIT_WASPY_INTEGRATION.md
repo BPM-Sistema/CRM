@@ -16,7 +16,7 @@
 | UI | Tailwind CSS 3 (componentes custom, NO shadcn/MUI) |
 | Routing | React Router DOM 6 |
 | Backend | Express.js (JavaScript puro, no TypeScript) |
-| Base de datos | PostgreSQL (Supabase) |
+| Base de datos | PostgreSQL (Cloud SQL) |
 | ORM | Queries SQL directas con `pg` pool |
 | Auth | JWT (jsonwebtoken) + bcrypt |
 
@@ -64,7 +64,7 @@ CRM/
 ### Servicios externos
 
 - **Tienda Nube API** — Pedidos, productos, webhooks
-- **Supabase** — PostgreSQL hosted
+- **Cloud SQL** — PostgreSQL hosted (GCP)
 - **No hay Redis, no hay BullMQ, no hay WebSocket**
 
 ---

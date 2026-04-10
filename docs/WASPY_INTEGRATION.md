@@ -123,7 +123,7 @@ Archivo: `backend/routes/waspy.js`. Todas las rutas requieren `authenticate`.
 ### Backend (`backend/.env`)
 
 > Las variables `WASPY_*` ya **no se usan**. Todo viene de la tabla `waspy_config`.
-> Solo se necesitan las variables estándar del CRM (DB, Supabase, TiendaNube, etc).
+> Solo se necesitan las variables estándar del CRM (DB, TiendaNube, etc).
 
 ---
 
