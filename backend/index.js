@@ -57,6 +57,7 @@ const customerSync = require('./services/customerSync');
 const customerMetrics = require('./services/customerMetrics');
 const customerSegmentation = require('./services/customerSegmentation');
 const app = express();
+app.set('trust proxy', true);
 const PORT = process.env.PORT || 3000;
 
 // Desactivar ETag globalmente para evitar respuestas 304
