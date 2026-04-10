@@ -80,15 +80,17 @@ git log origin/[BRANCH]..HEAD --oneline
 ## Paso 3: Verificar GitHub Actions activos
 
 ```bash
-gh run list --repo [REPO] --branch [BRANCH] --status in_progress --limit 5
-gh run list --repo [REPO] --branch [BRANCH] --status queued --limit 5
+gh run list --repo [REPO] --branch [BRANCH] --status in_progress --limit 5 --json databaseId,name,status,headBranch,actor,createdAt
+gh run list --repo [REPO] --branch [BRANCH] --status queued --limit 5 --json databaseId,name,status,headBranch,actor,createdAt
 ```
+
+Extraer el campo `actor.login` de cada run para saber quién lo disparó.
 
 Si hay workflows en `in_progress` o `queued`:
 1. Informar al usuario:
    ```
    Hay deploy(s) activo(s):
-   - [workflow_name] (run_id) — [status] — iniciado [time]
+   - [workflow_name] (run_id) — [status] — por [actor] — iniciado [time]
    
    Esperando a que terminen antes de pushear...
    ```
