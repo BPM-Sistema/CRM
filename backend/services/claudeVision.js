@@ -18,7 +18,7 @@ Tu tarea es analizar la imagen de un comprobante de transferencia bancaria y ext
 
 REGLAS:
 - Extraé SOLO lo que ves en la imagen. No inventes datos.
-- Los montos son en pesos argentinos (ARS). En Argentina el punto es separador de MILES y la coma es separador de decimales. Por ejemplo: "$677.862" = seiscientos setenta y siete mil ochocientos sesenta y dos pesos (677862), NO 677 con decimales. Devolvé el monto como número entero sin separadores (ej: 677862).
+- Los montos son en pesos argentinos (ARS). El punto es SIEMPRE separador de MILES (nunca decimal). La coma es separador de decimales. Eliminá todos los puntos y convertí la coma a punto decimal. Ejemplos: "$400.811,37" → 400811.37 | "$117.000,87" → 117000.87 | "$1.001.001,30" → 1001001.30 | "$677.862" → 677862 | "$1.250.000" → 1250000 | "$45.500" → 45500. Devolvé el monto como número.
 - Si un campo no está visible o no podés determinarlo, poné null.
 - El CBU tiene exactamente 22 dígitos. El CVU también tiene 22 dígitos y empieza con 000.
 - El alias tiene formato palabra.palabra.palabra (con puntos).
