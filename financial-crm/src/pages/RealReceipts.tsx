@@ -258,7 +258,7 @@ export function RealReceipts() {
       setBankProcessing(true);
       setBankPreview(null);
       setBankApplyResult(null);
-      const result = await conciliacionPreview(movimientos);
+      const result = await conciliacionPreview(entrantes);
       setBankPreview(result);
       // Seleccionar solo los exactos por defecto, posibles vienen deseleccionados
       const selected = new Set<number>();
