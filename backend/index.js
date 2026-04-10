@@ -2048,20 +2048,31 @@ app.get('/orders/:orderNumber/print', authenticate, requirePermission('orders.pr
 
     const shippingRequest = shippingReqRes.rows[0] || null;
 
+    // Determinar si requiere formulario de envío (Via Cargo, Expreso a elección)
+    const needsShippingForm = requiresShippingForm(order.shipping_type);
+
+    // Si requiere formulario y no lo tiene → BLOQUEAR
+    if (needsShippingForm && !shippingRequest) {
+      return res.status(400).json({
+        error: 'No se puede imprimir: el cliente no completó el formulario de datos de envío',
+        code: 'MISSING_SHIPPING_DATA'
+      });
+    }
+
     // Determinar shipping_address: prioridad a shipping_requests, fallback a orders_validated
     let shippingAddress = null;
     if (shippingRequest) {
-      // Mapear campos de shipping_requests a la estructura esperada
+      // Usar datos del formulario /envio
       const empresaEnvio = shippingRequest.empresa_envio === 'OTRO'
         ? shippingRequest.empresa_envio_otro
         : 'Via Cargo';
       shippingAddress = {
         name: shippingRequest.nombre_apellido,
         address: shippingRequest.direccion_entrega,
-        number: '',  // No tenemos este campo separado en shipping_requests
+        number: '',
         floor: shippingRequest.destino_tipo === 'SUCURSAL' ? `Sucursal ${empresaEnvio}` : null,
         locality: shippingRequest.localidad,
-        city: shippingRequest.localidad,  // Usamos localidad como city
+        city: shippingRequest.localidad,
         province: shippingRequest.provincia,
         zipcode: shippingRequest.codigo_postal,
         phone: shippingRequest.telefono,
@@ -2070,8 +2081,9 @@ app.get('/orders/:orderNumber/print', authenticate, requirePermission('orders.pr
       };
       console.log(`   📦 Usando datos de /envio para pedido #${orderNumber}`);
     } else if (order.shipping_address) {
-      // Fallback: usar datos de Tiendanube
+      // Fallback: usar datos de Tiendanube (para Envío Nube, Retiro, etc.)
       shippingAddress = order.shipping_address;
+      console.log(`   📦 Usando datos de Tiendanube para pedido #${orderNumber}`);
     }
 
     // 3️⃣ Estructurar respuesta
@@ -6588,6 +6600,129 @@ app.post('/orders/envio-nube-labels/preview', authenticate, async (req, res) => 
 
   } catch (error) {
     console.error('❌ POST /orders/envio-nube-labels/preview error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/* =====================================================
+   WHATSAPP ACCIONES - Envío masivo de plantillas
+===================================================== */
+
+/**
+ * POST /whatsapp/bulk-send
+ * Enviar plantilla de WhatsApp a múltiples pedidos
+ * Body: { template: string, orderNumbers: string[] }
+ */
+app.post('/whatsapp/bulk-send', authenticate, requirePermission('whatsapp.send_bulk'), async (req, res) => {
+  try {
+    const { template, orderNumbers } = req.body;
+
+    if (!template || typeof template !== 'string') {
+      return res.status(400).json({ error: 'template is required' });
+    }
+
+    if (!orderNumbers || !Array.isArray(orderNumbers) || orderNumbers.length === 0) {
+      return res.status(400).json({ error: 'orderNumbers array is required' });
+    }
+
+    if (orderNumbers.length > 100) {
+      return res.status(400).json({ error: 'Maximum 100 orders per request' });
+    }
+
+    console.log(`📤 WhatsApp bulk send: ${template} to ${orderNumbers.length} orders`);
+
+    const results = {
+      sent: [],
+      failed: [],
+      skipped: []
+    };
+
+    for (const orderNumber of orderNumbers) {
+      const cleanOrderNumber = orderNumber.toString().replace('#', '').trim();
+
+      try {
+        // Buscar el pedido y obtener teléfono
+        const orderResult = await pool.query(
+          'SELECT order_number, customer_name, customer_phone FROM orders_validated WHERE order_number = $1',
+          [cleanOrderNumber]
+        );
+
+        if (orderResult.rows.length === 0) {
+          results.failed.push({ orderNumber: cleanOrderNumber, error: 'Pedido no encontrado' });
+          continue;
+        }
+
+        const order = orderResult.rows[0];
+        const phone = order.customer_phone;
+
+        if (!phone) {
+          results.failed.push({ orderNumber: cleanOrderNumber, error: 'Sin teléfono' });
+          continue;
+        }
+
+        // Enviar WhatsApp
+        const response = await enviarWhatsAppPlantilla({
+          telefono: phone,
+          plantilla: template,
+          variables: { '1': cleanOrderNumber },
+          orderNumber: cleanOrderNumber
+        });
+
+        if (response.data?.skipped) {
+          results.skipped.push({
+            orderNumber: cleanOrderNumber,
+            reason: response.data.reason,
+            customerName: order.customer_name
+          });
+        } else {
+          results.sent.push({
+            orderNumber: cleanOrderNumber,
+            customerName: order.customer_name,
+            phone: phone.slice(-4) // últimos 4 dígitos por privacidad
+          });
+        }
+
+        // Pequeña pausa para no saturar Botmaker
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+      } catch (err) {
+        console.error(`❌ Error enviando WhatsApp a ${cleanOrderNumber}:`, err.message);
+        results.failed.push({ orderNumber: cleanOrderNumber, error: err.message });
+      }
+    }
+
+    console.log(`✅ WhatsApp bulk send complete: ${results.sent.length} sent, ${results.failed.length} failed, ${results.skipped.length} skipped`);
+
+    res.json({
+      ok: true,
+      template,
+      total: orderNumbers.length,
+      sent: results.sent.length,
+      failed: results.failed.length,
+      skipped: results.skipped.length,
+      results
+    });
+
+  } catch (error) {
+    console.error('❌ POST /whatsapp/bulk-send error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /whatsapp/templates
+ * Listar plantillas disponibles para envío manual
+ */
+app.get('/whatsapp/templates', authenticate, requirePermission('whatsapp.send_bulk'), async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT key, nombre, descripcion
+      FROM plantilla_tipos
+      ORDER BY nombre
+    `);
+    res.json({ ok: true, templates: result.rows });
+  } catch (error) {
+    console.error('❌ GET /whatsapp/templates error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
