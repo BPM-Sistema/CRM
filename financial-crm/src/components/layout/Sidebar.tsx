@@ -18,6 +18,7 @@ import {
   Settings,
   Monitor,
   UserCheck,
+  Send,
   // Bot, // PAUSADO — Bot IA
   MoreHorizontal,
   X,
@@ -90,7 +91,8 @@ const adminItems = [
   { to: '/admin/financieras', icon: <Landmark size={20} />, label: 'Financieras', permissions: ['financieras.view'] },
   { to: '/admin/activity', icon: <Activity size={20} />, label: 'Actividad', permissions: ['activity.view'] },
   { to: '/admin/sync-queue', icon: <RefreshCw size={20} />, label: 'Sincronización', permissions: ['activity.view'] },
-  { to: '/admin/whatsapp', icon: <Smartphone size={20} />, label: 'WhatsApp', permissions: ['whatsapp.connect'] },
+  { to: '/admin/whatsapp', icon: <Smartphone size={20} />, label: 'WhatsApp Config', permissions: ['whatsapp.connect'] },
+  { to: '/admin/whatsapp-actions', icon: <Send size={20} />, label: 'WhatsApp Envíos', permissions: ['whatsapp.send_bulk'] },
   { to: '/admin/image-sync', icon: <ImageIcon size={20} />, label: 'Sync Imagenes', permissions: ['activity.view'] },
   { to: '/admin/integrations', icon: <Settings size={20} />, label: 'Integraciones', permissions: ['integrations.view'] },
   { to: '/system-status', icon: <Monitor size={20} />, label: 'Estado Sistema', permissions: ['integrations.view'] },

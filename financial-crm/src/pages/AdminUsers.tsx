@@ -20,6 +20,7 @@ import {
   Landmark,
   Truck,
   Settings,
+  Send,
 } from 'lucide-react';
 import {
   fetchUsers,
@@ -82,6 +83,8 @@ const PERMISSION_LABELS: Record<string, string> = {
   'customers.view': 'Ver clientes',
   'customers.sync': 'Sincronizar clientes',
   'customers.segment': 'Gestionar segmentos',
+  'whatsapp.send_bulk': 'Enviar WhatsApp masivo',
+  'whatsapp.connect': 'Configurar WhatsApp',
 };
 
 const SECTIONS = [
@@ -167,6 +170,15 @@ const SECTIONS = [
     color: 'bg-indigo-50 text-indigo-600',
     subsections: [
       { title: 'Gestión', permissions: ['integrations.view', 'integrations.update'] }
+    ]
+  },
+  {
+    id: 'whatsapp',
+    title: 'WhatsApp',
+    icon: Send,
+    color: 'bg-green-50 text-green-600',
+    subsections: [
+      { title: 'Acciones', permissions: ['whatsapp.send_bulk', 'whatsapp.connect'] }
     ]
   }
 ];
