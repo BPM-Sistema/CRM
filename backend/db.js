@@ -31,7 +31,8 @@ if (isCloudSQL) {
 const pool = new Pool(poolConfig);
 
 const dbLabel = isCloudSQL ? 'CLOUD SQL' : 'TCP';
-pool.on('connect', () => {
+pool.on('connect', (client) => {
+  client.query("SET timezone = 'America/Argentina/Buenos_Aires'");
   console.log(`[DB] Connected to PostgreSQL (${dbLabel})`);
 });
 

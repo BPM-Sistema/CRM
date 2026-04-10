@@ -67,7 +67,7 @@ export function Dashboard() {
     try {
       const [statsRes, activityRes] = await Promise.all([
         fetchDashboardStats(dateRange.desde, dateRange.hasta),
-        fetchActivityLog(1, 15)
+        fetchActivityLog(1, 100)
       ]);
       setStats(statsRes);
       setActivityLogs(activityRes.logs);
@@ -112,7 +112,7 @@ export function Dashboard() {
   }, [stats, dateRange]);
 
   const actividadReciente: SystemActivity[] = useMemo(() => {
-    return activityLogs.slice(0, 10).map(log => ({
+    return activityLogs.map(log => ({
       id: log.id,
       orderNumber: log.order_number,
       accion: log.accion,
