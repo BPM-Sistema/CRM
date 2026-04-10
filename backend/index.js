@@ -1266,7 +1266,7 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
       LEFT JOIN comprobantes c ON o.order_number = c.order_number
       LEFT JOIN shipping_requests sr ON o.order_number = sr.order_number
       ${whereClause}
-      GROUP BY o.order_number, o.monto_tiendanube, o.total_pagado, o.saldo, o.estado_pago, o.estado_pedido, o.currency, o.tn_created_at, o.created_at, o.customer_name, o.customer_email, o.customer_phone, o.printed_at, o.packed_at, o.shipped_at, o.shipping_type, o.tn_payment_status, o.tn_shipping_status, o.envio_nube_label_printed_at, sr.order_number
+      GROUP BY o.order_number, o.order_number_int, o.monto_tiendanube, o.total_pagado, o.saldo, o.estado_pago, o.estado_pedido, o.currency, o.tn_created_at, o.created_at, o.customer_name, o.customer_email, o.customer_phone, o.printed_at, o.packed_at, o.shipped_at, o.shipping_type, o.tn_payment_status, o.tn_shipping_status, o.envio_nube_label_printed_at, sr.order_number
       ORDER BY o.order_number_int DESC NULLS LAST
       LIMIT $${paramIndex++} OFFSET $${paramIndex}
     `, [...params, limit, offset]);
