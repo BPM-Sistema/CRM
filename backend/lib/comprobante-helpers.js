@@ -350,6 +350,12 @@ function extractDestinationAccount(textoOcr) {
 async function isValidDestination(account, textoOcr) {
   const { alias, cbu, cvu, titular, nombres = [] } = account;
 
+  // Si Claude Vision no pudo extraer ningún dato de destino, permitir sin asignar financiera
+  if (!alias && !cbu && !cvu && !titular && nombres.length === 0) {
+    console.log('⚠️ Sin datos de destino extraídos, permitiendo sin financiera');
+    return { valid: true, reason: 'no_destination_extracted', cuenta: null };
+  }
+
   // Obtener TODAS las financieras activas de la DB
   const result = await pool.query(`
     SELECT id, nombre, alias, cbu, titular_principal, palabras_clave
