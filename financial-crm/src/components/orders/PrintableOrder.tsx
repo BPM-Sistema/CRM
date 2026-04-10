@@ -29,7 +29,11 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
             @media print {
               @page {
                 size: A4;
-                margin: 15mm 10mm;
+                margin: 0;
+              }
+              /* Compensar con padding en el body para que el contenido no quede pegado al borde */
+              body {
+                padding: 10mm !important;
               }
               body {
                 -webkit-print-color-adjust: exact;

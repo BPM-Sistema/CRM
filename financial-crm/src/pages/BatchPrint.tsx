@@ -164,11 +164,12 @@ export default function BatchPrint() {
             @media print {
               @page {
                 size: A4;
-                margin: 8mm;
+                margin: 0;
               }
               body {
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
+                padding: 8mm !important;
               }
               .page-break {
                 page-break-after: always;
