@@ -2101,6 +2101,16 @@ export interface ConciliacionUnmatched {
   motivo: string;
 }
 
+export interface ComprobanteSinConciliar {
+  comprobante_id: number;
+  order_number: string;
+  monto: number;
+  estado: string;
+  cliente: string;
+  fecha: string;
+  numero_operacion: string | null;
+}
+
 export interface ConciliacionPreviewResult {
   ok: boolean;
   preview: true;
@@ -2112,9 +2122,11 @@ export interface ConciliacionPreviewResult {
     ultima_fecha_procesada: string | null;
     matched: number;
     unmatched: number;
+    sin_conciliar: number;
   };
   matched: ConciliacionMatch[];
   unmatched: ConciliacionUnmatched[];
+  sin_conciliar: ComprobanteSinConciliar[];
 }
 
 export interface ConciliacionAplicarResult {

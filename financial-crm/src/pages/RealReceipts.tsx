@@ -6,7 +6,7 @@ import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
 import { AccessDenied } from '../components/AccessDenied';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchComprobantes, fetchFinancieras, ApiComprobanteList, PaginationInfo, Financiera, ComprobantesFilters, conciliacionPreview, conciliacionAplicar, ConciliacionPreviewResult, ConciliacionAplicarResult, ConciliacionMatch } from '../services/api';
+import { fetchComprobantes, fetchFinancieras, ApiComprobanteList, PaginationInfo, Financiera, ComprobantesFilters, conciliacionPreview, conciliacionAplicar, ConciliacionPreviewResult, ConciliacionAplicarResult, ConciliacionMatch, ComprobanteSinConciliar } from '../services/api';
 import { format } from 'date-fns';
 import { clsx } from 'clsx';
 import JSZip from 'jszip';
@@ -612,6 +612,12 @@ export function RealReceipts() {
                         <AlertTriangle size={14} />
                         {bankPreview.summary.unmatched} sin match
                       </span>
+                      {bankPreview.summary.sin_conciliar > 0 && (
+                        <span className="flex items-center gap-1 text-red-700">
+                          <AlertCircle size={14} />
+                          {bankPreview.summary.sin_conciliar} comprobantes sin conciliar
+                        </span>
+                      )}
                     </div>
                     {bankPreview.summary.filtrados > 0 && (
                       <p className="text-xs text-neutral-400">
@@ -691,6 +697,24 @@ export function RealReceipts() {
                             <div key={u.banco_id} className="text-xs text-amber-700 p-1">
                               <p>${u.importe.toLocaleString('es-AR')} — {u.nombre} — {u.fecha} {u.hora}</p>
                               <p className="text-amber-500 italic text-[11px]">{u.motivo}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {bankPreview.sin_conciliar?.length > 0 && (
+                      <div className="bg-red-50 rounded-lg p-3 max-h-60 overflow-y-auto">
+                        <p className="text-xs font-medium text-red-800 mb-1">Comprobantes pendientes sin conciliar ({bankPreview.sin_conciliar.length}):</p>
+                        <div className="space-y-1">
+                          {bankPreview.sin_conciliar.map((c: ComprobanteSinConciliar) => (
+                            <div key={c.comprobante_id} className="text-xs text-red-700 p-1">
+                              <p>
+                                <strong>#{c.order_number}</strong> — ${c.monto.toLocaleString('es-AR')} — {c.cliente}
+                              </p>
+                              <p className="text-red-500 text-[11px]">
+                                Comprobante #{c.comprobante_id} · {format(new Date(c.fecha), 'dd/MM/yyyy HH:mm')} · {c.estado}
+                              </p>
                             </div>
                           ))}
                         </div>

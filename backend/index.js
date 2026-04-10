@@ -1631,7 +1631,7 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
     const usedComprobanteIds = new Set();
 
     for (const mov of entrantes) {
-      const importe = Math.round(parseFloat(mov.Importe));
+      const importe = Math.floor(parseFloat(mov.Importe));
       const fechaBanco = mov['Fecha/Hora'].split(' ')[0];
       const horaBanco = mov['Fecha/Hora'].split(' ')[1] || '';
       const nombreOrigen = (mov['Nombre Destino'] || '').trim();
@@ -1730,7 +1730,30 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
       });
     }
 
-    log.info({ matched: matched.length, unmatched: unmatched.length }, 'Conciliación preview: fin');
+    // Comprobantes pendientes que no conciliaron con ningún movimiento
+    const usedIds = Array.from(usedComprobanteIds);
+    const sinConciliarRes = await pool.query(
+      `SELECT c.id, c.order_number, c.monto, c.estado, c.created_at, c.numero_operacion,
+              ov.customer_name
+       FROM comprobantes c
+       LEFT JOIN orders_validated ov ON ov.order_number = c.order_number
+       WHERE c.estado IN ('pendiente', 'a_confirmar')
+         ${usedIds.length > 0 ? `AND c.id NOT IN (${usedIds.map((_, i) => `$${i + 1}`).join(',')})` : ''}
+       ORDER BY c.created_at DESC`,
+      usedIds.length > 0 ? usedIds : []
+    );
+
+    const sin_conciliar = sinConciliarRes.rows.map(c => ({
+      comprobante_id: c.id,
+      order_number: c.order_number,
+      monto: Number(c.monto),
+      estado: c.estado,
+      cliente: c.customer_name || '',
+      fecha: c.created_at,
+      numero_operacion: c.numero_operacion || null
+    }));
+
+    log.info({ matched: matched.length, unmatched: unmatched.length, sin_conciliar: sin_conciliar.length }, 'Conciliación preview: fin');
 
     res.json({
       ok: true,
@@ -1739,10 +1762,12 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
         total_movimientos: movimientos.length,
         transferencias_entrantes: entrantes.length,
         matched: matched.length,
-        unmatched: unmatched.length
+        unmatched: unmatched.length,
+        sin_conciliar: sin_conciliar.length
       },
       matched,
-      unmatched
+      unmatched,
+      sin_conciliar
     });
 
   } catch (error) {
