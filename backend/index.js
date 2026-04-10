@@ -655,7 +655,24 @@ async function guardarPedidoCompleto(pedido) {
  * Queue a WhatsApp message via BullMQ if available, otherwise send directly.
  * Testing mode filter is applied in worker/helper (NOT here).
  */
+const _recentWhatsApp = new Map();
 async function queueWhatsApp({ telefono, plantilla, variables, orderNumber }) {
+  // Deduplicar: misma plantilla + pedido en los últimos 5 minutos → skip
+  if (orderNumber) {
+    const dedupeKey = `${orderNumber}:${plantilla}`;
+    const lastSent = _recentWhatsApp.get(dedupeKey);
+    if (lastSent && Date.now() - lastSent < 5 * 60 * 1000) {
+      log.info({ orderNumber, plantilla }, 'WhatsApp skipped — duplicate within 5min');
+      return;
+    }
+    _recentWhatsApp.set(dedupeKey, Date.now());
+    // Limpiar entradas viejas cada 100 entries
+    if (_recentWhatsApp.size > 500) {
+      const cutoff = Date.now() - 5 * 60 * 1000;
+      for (const [k, v] of _recentWhatsApp) { if (v < cutoff) _recentWhatsApp.delete(k); }
+    }
+  }
+
   log.info({ orderNumber, plantilla }, '[WHATSAPP] Encolando mensaje');
 
   const { whatsappQueue } = require('./lib/queues');
@@ -1825,6 +1842,11 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
           }
 
           console.log(`✅ Conciliación: comprobante #${comprobante.id} (pedido #${comprobante.order_number}) confirmado — banco ID ${banco_id}`);
+
+          // Delay entre mensajes de WhatsApp para no enviar todos de golpe
+          if (orderData?.customer_phone) {
+            await new Promise(r => setTimeout(r, 5000));
+          }
 
           confirmed.push({
             banco_id,
