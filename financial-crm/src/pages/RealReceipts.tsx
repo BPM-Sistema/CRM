@@ -608,10 +608,6 @@ export function RealReceipts() {
                         <Eye size={14} />
                         {bankPreview.summary.matched} matches
                       </span>
-                      <span className="flex items-center gap-1 text-amber-700">
-                        <AlertTriangle size={14} />
-                        {bankPreview.summary.unmatched} sin match
-                      </span>
                       {bankPreview.summary.sin_conciliar > 0 && (
                         <span className="flex items-center gap-1 text-red-700">
                           <AlertCircle size={14} />
@@ -689,19 +685,6 @@ export function RealReceipts() {
                       </div>
                     )}
 
-                    {bankPreview.unmatched.length > 0 && (
-                      <div className="bg-amber-50 rounded-lg p-3 max-h-60 overflow-y-auto">
-                        <p className="text-xs font-medium text-amber-800 mb-1">Sin coincidencia ({bankPreview.unmatched.length}):</p>
-                        <div className="space-y-1">
-                          {bankPreview.unmatched.map((u) => (
-                            <div key={u.banco_id} className="text-xs text-amber-700 p-1">
-                              <p>${u.importe.toLocaleString('es-AR')} — {u.nombre} — {u.fecha} {u.hora}</p>
-                              <p className="text-amber-500 italic text-[11px]">{u.motivo}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
 
                     {bankPreview.sin_conciliar?.length > 0 && (
                       <div className="bg-red-50 rounded-lg p-3 max-h-60 overflow-y-auto">
