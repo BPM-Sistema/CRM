@@ -1554,7 +1554,8 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
           queueWhatsApp({
             telefono: customerPhone,
             plantilla: 'datos__envio',
-            variables: { '1': customerName, '2': comprobante.order_number }
+            variables: { '1': customerName, '2': comprobante.order_number },
+            orderNumber: comprobante.order_number
           }).catch(err => log.error({ err, requestId, comprobanteId: id, orderNumber: comprobante.order_number }, 'Error WhatsApp datos__envio'));
         }
       }
@@ -1833,8 +1834,9 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
                 queueWhatsApp({
                   telefono: orderData.customer_phone,
                   plantilla: 'datos__envio',
-                  variables: { '1': orderData.customer_name || 'Cliente', '2': comprobante.order_number }
-                }).catch(() => {});
+                  variables: { '1': orderData.customer_name || 'Cliente', '2': comprobante.order_number },
+                  orderNumber: comprobante.order_number
+                }).catch(err => console.error(`❌ Error WhatsApp datos__envio (conciliación) pedido #${comprobante.order_number}:`, err.message));
               }
             }
           }
