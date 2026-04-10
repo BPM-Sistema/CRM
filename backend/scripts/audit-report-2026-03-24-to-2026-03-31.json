@@ -1,0 +1,6131 @@
+{
+  "montos": {
+    "ok": [
+      {
+        "order_number": "29120",
+        "monto_excel": 631700,
+        "monto_pagado_bpm": 631710,
+        "monto_tn": 631710
+      },
+      {
+        "order_number": "29340",
+        "monto_excel": 98160,
+        "monto_pagado_bpm": 98160,
+        "monto_tn": 98160
+      },
+      {
+        "order_number": "29359",
+        "monto_excel": 134440,
+        "monto_pagado_bpm": 134500,
+        "monto_tn": 134500
+      },
+      {
+        "order_number": "29467",
+        "monto_excel": 531220,
+        "monto_pagado_bpm": 531221,
+        "monto_tn": 531220.52
+      },
+      {
+        "order_number": "29757",
+        "monto_excel": 90950,
+        "monto_pagado_bpm": 90950,
+        "monto_tn": 90950
+      },
+      {
+        "order_number": "29516",
+        "monto_excel": 122710,
+        "monto_pagado_bpm": 122710,
+        "monto_tn": 122710
+      },
+      {
+        "order_number": "29746",
+        "monto_excel": 78300,
+        "monto_pagado_bpm": 78300,
+        "monto_tn": 78300
+      },
+      {
+        "order_number": "29774",
+        "monto_excel": 17300,
+        "monto_pagado_bpm": 17300,
+        "monto_tn": 17300
+      },
+      {
+        "order_number": "29731",
+        "monto_excel": 93000,
+        "monto_pagado_bpm": 93000,
+        "monto_tn": 93000
+      },
+      {
+        "order_number": "29732",
+        "monto_excel": 117498,
+        "monto_pagado_bpm": 117498,
+        "monto_tn": 117497.88
+      },
+      {
+        "order_number": "29742",
+        "monto_excel": 284320,
+        "monto_pagado_bpm": 284320,
+        "monto_tn": 284320
+      },
+      {
+        "order_number": "29741",
+        "monto_excel": 135194,
+        "monto_pagado_bpm": 135195,
+        "monto_tn": 135194.8
+      },
+      {
+        "order_number": "29846",
+        "monto_excel": 196788,
+        "monto_pagado_bpm": 196788,
+        "monto_tn": 196787.88
+      },
+      {
+        "order_number": "29755",
+        "monto_excel": 129897,
+        "monto_pagado_bpm": 129897,
+        "monto_tn": 129897
+      },
+      {
+        "order_number": "29850",
+        "monto_excel": 136250,
+        "monto_pagado_bpm": 136250,
+        "monto_tn": 136250
+      },
+      {
+        "order_number": "29825",
+        "monto_excel": 381694,
+        "monto_pagado_bpm": 381695,
+        "monto_tn": 381694.8
+      },
+      {
+        "order_number": "29844",
+        "monto_excel": 110300,
+        "monto_pagado_bpm": 110298,
+        "monto_tn": 110297.88
+      },
+      {
+        "order_number": "29765",
+        "monto_excel": 109047,
+        "monto_pagado_bpm": 109048,
+        "monto_tn": 109047.88
+      },
+      {
+        "order_number": "29740",
+        "monto_excel": 274366,
+        "monto_pagado_bpm": 274367,
+        "monto_tn": 274926.76
+      },
+      {
+        "order_number": "29851",
+        "monto_excel": 112897,
+        "monto_pagado_bpm": 112898,
+        "monto_tn": 112897.88
+      },
+      {
+        "order_number": "29861",
+        "monto_excel": 282356,
+        "monto_pagado_bpm": 282357,
+        "monto_tn": 282356.76
+      },
+      {
+        "order_number": "29814",
+        "monto_excel": 146590,
+        "monto_pagado_bpm": 146590,
+        "monto_tn": 146590
+      },
+      {
+        "order_number": "29822",
+        "monto_excel": 182107,
+        "monto_pagado_bpm": 182108,
+        "monto_tn": 182107.88
+      },
+      {
+        "order_number": "29477",
+        "monto_excel": 141824,
+        "monto_pagado_bpm": 141825,
+        "monto_tn": 141824.96
+      },
+      {
+        "order_number": "29862",
+        "monto_excel": 187661,
+        "monto_pagado_bpm": 187662,
+        "monto_tn": 187661.96
+      },
+      {
+        "order_number": "29778",
+        "monto_excel": 385702,
+        "monto_pagado_bpm": 385703,
+        "monto_tn": 385702.52
+      },
+      {
+        "order_number": "29806",
+        "monto_excel": 232274,
+        "monto_pagado_bpm": 232275,
+        "monto_tn": 232274.96
+      },
+      {
+        "order_number": "29864",
+        "monto_excel": 166895,
+        "monto_pagado_bpm": 166895,
+        "monto_tn": 166894.96
+      },
+      {
+        "order_number": "29773",
+        "monto_excel": 110738,
+        "monto_pagado_bpm": 110738,
+        "monto_tn": 110737.92
+      },
+      {
+        "order_number": "29789",
+        "monto_excel": 151747,
+        "monto_pagado_bpm": 151748,
+        "monto_tn": 151747.88
+      },
+      {
+        "order_number": "29830",
+        "monto_excel": 255000,
+        "monto_pagado_bpm": 254962,
+        "monto_tn": 254962.4
+      },
+      {
+        "order_number": "29759",
+        "monto_excel": 202774,
+        "monto_pagado_bpm": 202774,
+        "monto_tn": 202774.36
+      },
+      {
+        "order_number": "29859",
+        "monto_excel": 110324,
+        "monto_pagado_bpm": 110325,
+        "monto_tn": 110324.8
+      },
+      {
+        "order_number": "29780",
+        "monto_excel": 128674,
+        "monto_pagado_bpm": 128675,
+        "monto_tn": 128674.8
+      },
+      {
+        "order_number": "29833",
+        "monto_excel": 437962,
+        "monto_pagado_bpm": 437962,
+        "monto_tn": 437962.4
+      },
+      {
+        "order_number": "29858",
+        "monto_excel": 104590,
+        "monto_pagado_bpm": 104590,
+        "monto_tn": 104590
+      },
+      {
+        "order_number": "29827",
+        "monto_excel": 112500,
+        "monto_pagado_bpm": 112500,
+        "monto_tn": 112500
+      },
+      {
+        "order_number": "29695",
+        "monto_excel": 115000,
+        "monto_pagado_bpm": 115000,
+        "monto_tn": 115000
+      },
+      {
+        "order_number": "29750",
+        "monto_excel": 248523,
+        "monto_pagado_bpm": 248533,
+        "monto_tn": 248532.52
+      },
+      {
+        "order_number": "29798",
+        "monto_excel": 258530,
+        "monto_pagado_bpm": 258530,
+        "monto_tn": 258530
+      },
+      {
+        "order_number": "29870",
+        "monto_excel": 117403,
+        "monto_pagado_bpm": 117402,
+        "monto_tn": 117402.4
+      },
+      {
+        "order_number": "29854",
+        "monto_excel": 101320,
+        "monto_pagado_bpm": 101320,
+        "monto_tn": 101320
+      },
+      {
+        "order_number": "29868",
+        "monto_excel": 169945,
+        "monto_pagado_bpm": 169945,
+        "monto_tn": 169944.96
+      },
+      {
+        "order_number": "29788",
+        "monto_excel": 130960,
+        "monto_pagado_bpm": 130960,
+        "monto_tn": 130960.36
+      },
+      {
+        "order_number": "29856",
+        "monto_excel": 115730,
+        "monto_pagado_bpm": 115730,
+        "monto_tn": 115730
+      },
+      {
+        "order_number": "29781",
+        "monto_excel": 94050,
+        "monto_pagado_bpm": 94050,
+        "monto_tn": 94050
+      },
+      {
+        "order_number": "29831",
+        "monto_excel": 388904,
+        "monto_pagado_bpm": 388905,
+        "monto_tn": 388904.68
+      },
+      {
+        "order_number": "29865",
+        "monto_excel": 95040,
+        "monto_pagado_bpm": 95040,
+        "monto_tn": 95040
+      },
+      {
+        "order_number": "29811",
+        "monto_excel": 153762,
+        "monto_pagado_bpm": 153762,
+        "monto_tn": 153762.4
+      },
+      {
+        "order_number": "29837",
+        "monto_excel": 113308,
+        "monto_pagado_bpm": 113309,
+        "monto_tn": 113308.92
+      },
+      {
+        "order_number": "29875",
+        "monto_excel": 100650,
+        "monto_pagado_bpm": 100650,
+        "monto_tn": 100650
+      },
+      {
+        "order_number": "29872",
+        "monto_excel": 121500,
+        "monto_pagado_bpm": 121500,
+        "monto_tn": 121500
+      },
+      {
+        "order_number": "29794",
+        "monto_excel": 94620,
+        "monto_pagado_bpm": 94620,
+        "monto_tn": 94620
+      },
+      {
+        "order_number": "29845",
+        "monto_excel": 90750,
+        "monto_pagado_bpm": 90750,
+        "monto_tn": 90750
+      },
+      {
+        "order_number": "29843",
+        "monto_excel": 132858,
+        "monto_pagado_bpm": 132859,
+        "monto_tn": 132858.88
+      },
+      {
+        "order_number": "29540",
+        "monto_excel": 284680,
+        "monto_pagado_bpm": 284680,
+        "monto_tn": 284680
+      },
+      {
+        "order_number": "29883",
+        "monto_excel": 252610,
+        "monto_pagado_bpm": 252610,
+        "monto_tn": 252610
+      },
+      {
+        "order_number": "29885",
+        "monto_excel": 102100,
+        "monto_pagado_bpm": 102100,
+        "monto_tn": 102100
+      },
+      {
+        "order_number": "29793",
+        "monto_excel": 123464,
+        "monto_pagado_bpm": 123465,
+        "monto_tn": 123464.96
+      },
+      {
+        "order_number": "29752",
+        "monto_excel": 163843,
+        "monto_pagado_bpm": 163843,
+        "monto_tn": 163843.4
+      },
+      {
+        "order_number": "29747",
+        "monto_excel": 209463,
+        "monto_pagado_bpm": 209462,
+        "monto_tn": 209462.4
+      },
+      {
+        "order_number": "29869",
+        "monto_excel": 125450,
+        "monto_pagado_bpm": 125450,
+        "monto_tn": 125450
+      },
+      {
+        "order_number": "29829",
+        "monto_excel": 251450,
+        "monto_pagado_bpm": 251450,
+        "monto_tn": 251450
+      },
+      {
+        "order_number": "29719",
+        "monto_excel": 127160,
+        "monto_pagado_bpm": 127160,
+        "monto_tn": 127160
+      },
+      {
+        "order_number": "29808",
+        "monto_excel": 117800,
+        "monto_pagado_bpm": 117800,
+        "monto_tn": 117800
+      },
+      {
+        "order_number": "29891",
+        "monto_excel": 264358,
+        "monto_pagado_bpm": 264359,
+        "monto_tn": 265925.68
+      },
+      {
+        "order_number": "29878",
+        "monto_excel": 307776,
+        "monto_pagado_bpm": 307776,
+        "monto_tn": 307776
+      },
+      {
+        "order_number": "29873",
+        "monto_excel": 126715,
+        "monto_pagado_bpm": 126715,
+        "monto_tn": 126714.96
+      },
+      {
+        "order_number": "29848",
+        "monto_excel": 142322,
+        "monto_pagado_bpm": 142322,
+        "monto_tn": 142322.4
+      },
+      {
+        "order_number": "29899",
+        "monto_excel": 173500,
+        "monto_pagado_bpm": 173406,
+        "monto_tn": 173405.76
+      },
+      {
+        "order_number": "29815",
+        "monto_excel": 210552,
+        "monto_pagado_bpm": 210552,
+        "monto_tn": 210552.4
+      },
+      {
+        "order_number": "29331",
+        "monto_excel": 173847,
+        "monto_pagado_bpm": 173848,
+        "monto_tn": 173847.88
+      },
+      {
+        "order_number": "29748",
+        "monto_excel": 138400,
+        "monto_pagado_bpm": 138400,
+        "monto_tn": 138400
+      },
+      {
+        "order_number": "29767",
+        "monto_excel": 345917,
+        "monto_pagado_bpm": 345918,
+        "monto_tn": 345917.88
+      },
+      {
+        "order_number": "29754",
+        "monto_excel": 157547,
+        "monto_pagado_bpm": 157548,
+        "monto_tn": 157547.88
+      },
+      {
+        "order_number": "29910",
+        "monto_excel": 170600,
+        "monto_pagado_bpm": 170600,
+        "monto_tn": 170600
+      },
+      {
+        "order_number": "29896",
+        "monto_excel": 92700,
+        "monto_pagado_bpm": 92770,
+        "monto_tn": 92770
+      },
+      {
+        "order_number": "29890",
+        "monto_excel": 436227,
+        "monto_pagado_bpm": 436227,
+        "monto_tn": 436227
+      },
+      {
+        "order_number": "29877",
+        "monto_excel": 113844,
+        "monto_pagado_bpm": 113849,
+        "monto_tn": 113849
+      },
+      {
+        "order_number": "29879",
+        "monto_excel": 115000,
+        "monto_pagado_bpm": 115000,
+        "monto_tn": 115000
+      },
+      {
+        "order_number": "29876",
+        "monto_excel": 316030,
+        "monto_pagado_bpm": 316030,
+        "monto_tn": 316030
+      },
+      {
+        "order_number": "29874",
+        "monto_excel": 172470,
+        "monto_pagado_bpm": 172470,
+        "monto_tn": 172470
+      },
+      {
+        "order_number": "29867",
+        "monto_excel": 20900,
+        "monto_pagado_bpm": 20880,
+        "monto_tn": 20880
+      },
+      {
+        "order_number": "29760",
+        "monto_excel": 140070,
+        "monto_pagado_bpm": 140070,
+        "monto_tn": 140070
+      },
+      {
+        "order_number": "29753",
+        "monto_excel": 114894,
+        "monto_pagado_bpm": 114895,
+        "monto_tn": 114894.8
+      },
+      {
+        "order_number": "29902",
+        "monto_excel": 100360,
+        "monto_pagado_bpm": 100360,
+        "monto_tn": 100360
+      },
+      {
+        "order_number": "29903",
+        "monto_excel": 696730,
+        "monto_pagado_bpm": 696730,
+        "monto_tn": 696730
+      },
+      {
+        "order_number": "29758",
+        "monto_excel": 197548,
+        "monto_pagado_bpm": 197548,
+        "monto_tn": 197547.88
+      },
+      {
+        "order_number": "29898",
+        "monto_excel": 114660,
+        "monto_pagado_bpm": 114661,
+        "monto_tn": 114660.8
+      },
+      {
+        "order_number": "29907",
+        "monto_excel": 283691,
+        "monto_pagado_bpm": 283692,
+        "monto_tn": 283691.76
+      },
+      {
+        "order_number": "29887",
+        "monto_excel": 162020,
+        "monto_pagado_bpm": 162020,
+        "monto_tn": 162020
+      },
+      {
+        "order_number": "29909",
+        "monto_excel": 252983,
+        "monto_pagado_bpm": 252982,
+        "monto_tn": 252982.4
+      },
+      {
+        "order_number": "29901",
+        "monto_excel": 194912,
+        "monto_pagado_bpm": 194912,
+        "monto_tn": 194912.4
+      },
+      {
+        "order_number": "29797",
+        "monto_excel": 374307,
+        "monto_pagado_bpm": 374308,
+        "monto_tn": 374307.52
+      },
+      {
+        "order_number": "29911",
+        "monto_excel": 90200,
+        "monto_pagado_bpm": 90200,
+        "monto_tn": 90200
+      },
+      {
+        "order_number": "29904",
+        "monto_excel": 308714,
+        "monto_pagado_bpm": 308715,
+        "monto_tn": 308714.8
+      },
+      {
+        "order_number": "29913",
+        "monto_excel": 17300,
+        "monto_pagado_bpm": 17300,
+        "monto_tn": 17300
+      },
+      {
+        "order_number": "29790",
+        "monto_excel": 531709,
+        "monto_pagado_bpm": 531710,
+        "monto_tn": 531709.72
+      },
+      {
+        "order_number": "29916",
+        "monto_excel": 174205,
+        "monto_pagado_bpm": 174205,
+        "monto_tn": 174204.8
+      },
+      {
+        "order_number": "29802",
+        "monto_excel": 111991,
+        "monto_pagado_bpm": 111991,
+        "monto_tn": 111991
+      },
+      {
+        "order_number": "29918",
+        "monto_excel": 576620,
+        "monto_pagado_bpm": 576620,
+        "monto_tn": 576620
+      },
+      {
+        "order_number": "29917",
+        "monto_excel": 90060,
+        "monto_pagado_bpm": 90060,
+        "monto_tn": 90060
+      },
+      {
+        "order_number": "29923",
+        "monto_excel": 194867,
+        "monto_pagado_bpm": 194867,
+        "monto_tn": 194867.08
+      },
+      {
+        "order_number": "29927",
+        "monto_excel": 135038,
+        "monto_pagado_bpm": 135038,
+        "monto_tn": 135037.88
+      },
+      {
+        "order_number": "29936",
+        "monto_excel": 228844,
+        "monto_pagado_bpm": 228845,
+        "monto_tn": 228844.8
+      },
+      {
+        "order_number": "29941",
+        "monto_excel": 1874531,
+        "monto_pagado_bpm": 1874532,
+        "monto_tn": 1874531.56
+      },
+      {
+        "order_number": "29942",
+        "monto_excel": 232040,
+        "monto_pagado_bpm": 232040,
+        "monto_tn": 232040.48
+      },
+      {
+        "order_number": "29914",
+        "monto_excel": 107670,
+        "monto_pagado_bpm": 107671,
+        "monto_tn": 107670.68
+      },
+      {
+        "order_number": "29925",
+        "monto_excel": 130894,
+        "monto_pagado_bpm": 130894,
+        "monto_tn": 130894.24
+      },
+      {
+        "order_number": "29930",
+        "monto_excel": 252484,
+        "monto_pagado_bpm": 252485,
+        "monto_tn": 252484.96
+      },
+      {
+        "order_number": "29934",
+        "monto_excel": 273781,
+        "monto_pagado_bpm": 273782,
+        "monto_tn": 273781.52
+      },
+      {
+        "order_number": "29906",
+        "monto_excel": 93820,
+        "monto_pagado_bpm": 93820,
+        "monto_tn": 93820
+      },
+      {
+        "order_number": "29946",
+        "monto_excel": 204635,
+        "monto_pagado_bpm": 204635,
+        "monto_tn": 204635.08
+      },
+      {
+        "order_number": "29940",
+        "monto_excel": 151129,
+        "monto_pagado_bpm": 151129,
+        "monto_tn": 151128.88
+      },
+      {
+        "order_number": "29928",
+        "monto_excel": 93729,
+        "monto_pagado_bpm": 93729,
+        "monto_tn": 93729
+      },
+      {
+        "order_number": "29926",
+        "monto_excel": 400140,
+        "monto_pagado_bpm": 400140,
+        "monto_tn": 400140.28
+      },
+      {
+        "order_number": "29929",
+        "monto_excel": 177023,
+        "monto_pagado_bpm": 177023,
+        "monto_tn": 177022.52
+      },
+      {
+        "order_number": "29947",
+        "monto_excel": 247646,
+        "monto_pagado_bpm": 247647,
+        "monto_tn": 247646.88
+      },
+      {
+        "order_number": "29948",
+        "monto_excel": 134937,
+        "monto_pagado_bpm": 134938,
+        "monto_tn": 134937.88
+      },
+      {
+        "order_number": "29924",
+        "monto_excel": 204649,
+        "monto_pagado_bpm": 204650,
+        "monto_tn": 204649.72
+      },
+      {
+        "order_number": "29945",
+        "monto_excel": 426133,
+        "monto_pagado_bpm": 426133,
+        "monto_tn": 426133.28
+      },
+      {
+        "order_number": "29782",
+        "monto_excel": 120767,
+        "monto_pagado_bpm": 120768,
+        "monto_tn": 120767.88
+      },
+      {
+        "order_number": "29796",
+        "monto_excel": 150920,
+        "monto_pagado_bpm": 150920,
+        "monto_tn": 150920
+      },
+      {
+        "order_number": "29866",
+        "monto_excel": 173060,
+        "monto_pagado_bpm": 173060,
+        "monto_tn": 173060
+      },
+      {
+        "order_number": "29895",
+        "monto_excel": 154363,
+        "monto_pagado_bpm": 154362,
+        "monto_tn": 154362.4
+      },
+      {
+        "order_number": "29841",
+        "monto_excel": 139500,
+        "monto_pagado_bpm": 139500,
+        "monto_tn": 139500
+      },
+      {
+        "order_number": "29944",
+        "monto_excel": 120264,
+        "monto_pagado_bpm": 120265,
+        "monto_tn": 120264.96
+      },
+      {
+        "order_number": "29820",
+        "monto_excel": 217800,
+        "monto_pagado_bpm": 217768,
+        "monto_tn": 217767.88
+      },
+      {
+        "order_number": "29834",
+        "monto_excel": 197939,
+        "monto_pagado_bpm": 197939,
+        "monto_tn": 197939.24
+      },
+      {
+        "order_number": "29958",
+        "monto_excel": 244364,
+        "monto_pagado_bpm": 244365,
+        "monto_tn": 244364.96
+      },
+      {
+        "order_number": "29963",
+        "monto_excel": 108237,
+        "monto_pagado_bpm": 108238,
+        "monto_tn": 108237.88
+      },
+      {
+        "order_number": "29966",
+        "monto_excel": 144194,
+        "monto_pagado_bpm": 144195,
+        "monto_tn": 144194.96
+      },
+      {
+        "order_number": "29766",
+        "monto_excel": 110405,
+        "monto_pagado_bpm": 110406,
+        "monto_tn": 110405.76
+      },
+      {
+        "order_number": "29804",
+        "monto_excel": 105359,
+        "monto_pagado_bpm": 105359,
+        "monto_tn": 105358.88
+      },
+      {
+        "order_number": "29973",
+        "monto_excel": 417862,
+        "monto_pagado_bpm": 417862,
+        "monto_tn": 417862.4
+      },
+      {
+        "order_number": "29738",
+        "monto_excel": 166100,
+        "monto_pagado_bpm": 166100,
+        "monto_tn": 166100
+      },
+      {
+        "order_number": "29976",
+        "monto_excel": 135380,
+        "monto_pagado_bpm": 135378,
+        "monto_tn": 136577.88
+      },
+      {
+        "order_number": "29786",
+        "monto_excel": 234967,
+        "monto_pagado_bpm": 234968,
+        "monto_tn": 234967.88
+      },
+      {
+        "order_number": "29968",
+        "monto_excel": 151403,
+        "monto_pagado_bpm": 151402,
+        "monto_tn": 152402.4
+      },
+      {
+        "order_number": "29982",
+        "monto_excel": 306152,
+        "monto_pagado_bpm": 306153,
+        "monto_tn": 306152.52
+      },
+      {
+        "order_number": "29980",
+        "monto_excel": 146699,
+        "monto_pagado_bpm": 146699,
+        "monto_tn": 146699
+      },
+      {
+        "order_number": "29812",
+        "monto_excel": 340636,
+        "monto_pagado_bpm": 340636,
+        "monto_tn": 340636
+      },
+      {
+        "order_number": "29984",
+        "monto_excel": 117955,
+        "monto_pagado_bpm": 117955,
+        "monto_tn": 118255.08
+      },
+      {
+        "order_number": "29987",
+        "monto_excel": 254100,
+        "monto_pagado_bpm": 254100,
+        "monto_tn": 254100
+      },
+      {
+        "order_number": "29809",
+        "monto_excel": 456060,
+        "monto_pagado_bpm": 456060,
+        "monto_tn": 456060
+      },
+      {
+        "order_number": "29816",
+        "monto_excel": 107148,
+        "monto_pagado_bpm": 107149,
+        "monto_tn": 107148.88
+      },
+      {
+        "order_number": "29988",
+        "monto_excel": 110235,
+        "monto_pagado_bpm": 110233,
+        "monto_tn": 110233.4
+      },
+      {
+        "order_number": "29990",
+        "monto_excel": 122700,
+        "monto_pagado_bpm": 122691,
+        "monto_tn": 122690.68
+      },
+      {
+        "order_number": "29993",
+        "monto_excel": 122867,
+        "monto_pagado_bpm": 122868,
+        "monto_tn": 122867.88
+      },
+      {
+        "order_number": "29970",
+        "monto_excel": 161820,
+        "monto_pagado_bpm": 161820,
+        "monto_tn": 161820.4
+      },
+      {
+        "order_number": "29995",
+        "monto_excel": 111320,
+        "monto_pagado_bpm": 111320,
+        "monto_tn": 111320
+      },
+      {
+        "order_number": "29810",
+        "monto_excel": 114428,
+        "monto_pagado_bpm": 114428,
+        "monto_tn": 114427.88
+      },
+      {
+        "order_number": "29997",
+        "monto_excel": 115197,
+        "monto_pagado_bpm": 115197,
+        "monto_tn": 115197.36
+      },
+      {
+        "order_number": "29692",
+        "monto_excel": 91810,
+        "monto_pagado_bpm": 91810,
+        "monto_tn": 91810
+      },
+      {
+        "order_number": "29994",
+        "monto_excel": 139400,
+        "monto_pagado_bpm": 139399,
+        "monto_tn": 139399
+      },
+      {
+        "order_number": "29978",
+        "monto_excel": 276260,
+        "monto_pagado_bpm": 276260,
+        "monto_tn": 276260
+      },
+      {
+        "order_number": "29971",
+        "monto_excel": 268040,
+        "monto_pagado_bpm": 268040,
+        "monto_tn": 268040
+      },
+      {
+        "order_number": "29969",
+        "monto_excel": 5300,
+        "monto_pagado_bpm": 5300,
+        "monto_tn": 5300
+      },
+      {
+        "order_number": "29962",
+        "monto_excel": 168630,
+        "monto_pagado_bpm": 168630,
+        "monto_tn": 168630
+      },
+      {
+        "order_number": "29959",
+        "monto_excel": 142700,
+        "monto_pagado_bpm": 142720,
+        "monto_tn": 142720
+      },
+      {
+        "order_number": "29957",
+        "monto_excel": 140080,
+        "monto_pagado_bpm": 140080,
+        "monto_tn": 140080
+      },
+      {
+        "order_number": "29955",
+        "monto_excel": 132500,
+        "monto_pagado_bpm": 132500,
+        "monto_tn": 132500
+      },
+      {
+        "order_number": "29953",
+        "monto_excel": 159000,
+        "monto_pagado_bpm": 159058,
+        "monto_tn": 159058
+      },
+      {
+        "order_number": "29952",
+        "monto_excel": 424258,
+        "monto_pagado_bpm": 424258,
+        "monto_tn": 424258
+      },
+      {
+        "order_number": "29800",
+        "monto_excel": 152537,
+        "monto_pagado_bpm": 152538,
+        "monto_tn": 152537.88
+      },
+      {
+        "order_number": "29986",
+        "monto_excel": 248353,
+        "monto_pagado_bpm": 248354,
+        "monto_tn": 248353.96
+      },
+      {
+        "order_number": "29998",
+        "monto_excel": 137300,
+        "monto_pagado_bpm": 137208,
+        "monto_tn": 137207.88
+      },
+      {
+        "order_number": "30000",
+        "monto_excel": 305557,
+        "monto_pagado_bpm": 305558,
+        "monto_tn": 305557.88
+      },
+      {
+        "order_number": "30001",
+        "monto_excel": 304434,
+        "monto_pagado_bpm": 304435,
+        "monto_tn": 304434.96
+      },
+      {
+        "order_number": "30002",
+        "monto_excel": 155674,
+        "monto_pagado_bpm": 155675,
+        "monto_tn": 155674.96
+      },
+      {
+        "order_number": "29647",
+        "monto_excel": 402472,
+        "monto_pagado_bpm": 402472,
+        "monto_tn": 402472.4
+      },
+      {
+        "order_number": "29839",
+        "monto_excel": 109424,
+        "monto_pagado_bpm": 109425,
+        "monto_tn": 109424.96
+      },
+      {
+        "order_number": "29787",
+        "monto_excel": 109064,
+        "monto_pagado_bpm": 109065,
+        "monto_tn": 109064.96
+      },
+      {
+        "order_number": "30006",
+        "monto_excel": 171884,
+        "monto_pagado_bpm": 171884,
+        "monto_tn": 171884.12
+      },
+      {
+        "order_number": "30009",
+        "monto_excel": 228700,
+        "monto_pagado_bpm": 228700,
+        "monto_tn": 228890
+      },
+      {
+        "order_number": "30007",
+        "monto_excel": 142824,
+        "monto_pagado_bpm": 142824,
+        "monto_tn": 142824.24
+      },
+      {
+        "order_number": "30013",
+        "monto_excel": 220262,
+        "monto_pagado_bpm": 220262,
+        "monto_tn": 220262.4
+      },
+      {
+        "order_number": "30016",
+        "monto_excel": 138844,
+        "monto_pagado_bpm": 138845,
+        "monto_tn": 138844.96
+      },
+      {
+        "order_number": "30017",
+        "monto_excel": 108285,
+        "monto_pagado_bpm": 108286,
+        "monto_tn": 108285.88
+      },
+      {
+        "order_number": "29985",
+        "monto_excel": 118395,
+        "monto_pagado_bpm": 118395,
+        "monto_tn": 118394.96
+      },
+      {
+        "order_number": "30020",
+        "monto_excel": 344945,
+        "monto_pagado_bpm": 344945,
+        "monto_tn": 344945.08
+      },
+      {
+        "order_number": "29922",
+        "monto_excel": 257800,
+        "monto_pagado_bpm": 257800,
+        "monto_tn": 257800
+      },
+      {
+        "order_number": "30026",
+        "monto_excel": 121066,
+        "monto_pagado_bpm": 121067,
+        "monto_tn": 121066.88
+      },
+      {
+        "order_number": "30034",
+        "monto_excel": 224567,
+        "monto_pagado_bpm": 224568,
+        "monto_tn": 224567.88
+      },
+      {
+        "order_number": "30035",
+        "monto_excel": 324874,
+        "monto_pagado_bpm": 324875,
+        "monto_tn": 324874.8
+      },
+      {
+        "order_number": "30028",
+        "monto_excel": 356488,
+        "monto_pagado_bpm": 356488,
+        "monto_tn": 356488
+      },
+      {
+        "order_number": "30031",
+        "monto_excel": 969500,
+        "monto_pagado_bpm": 969421,
+        "monto_tn": 969421.24
+      },
+      {
+        "order_number": "30033",
+        "monto_excel": 160514,
+        "monto_pagado_bpm": 160514,
+        "monto_tn": 160514.24
+      },
+      {
+        "order_number": "30036",
+        "monto_excel": 103330,
+        "monto_pagado_bpm": 103330,
+        "monto_tn": 103330
+      },
+      {
+        "order_number": "30040",
+        "monto_excel": 258800,
+        "monto_pagado_bpm": 258800,
+        "monto_tn": 258800
+      },
+      {
+        "order_number": "30023",
+        "monto_excel": 213990,
+        "monto_pagado_bpm": 213990,
+        "monto_tn": 209540
+      },
+      {
+        "order_number": "29813",
+        "monto_excel": 109995,
+        "monto_pagado_bpm": 109995,
+        "monto_tn": 109994.8
+      },
+      {
+        "order_number": "29989",
+        "monto_excel": 179847,
+        "monto_pagado_bpm": 179848,
+        "monto_tn": 179847.88
+      },
+      {
+        "order_number": "29975",
+        "monto_excel": 140447,
+        "monto_pagado_bpm": 140448,
+        "monto_tn": 140447.88
+      },
+      {
+        "order_number": "30041",
+        "monto_excel": 207677,
+        "monto_pagado_bpm": 207678,
+        "monto_tn": 207677.88
+      },
+      {
+        "order_number": "30046",
+        "monto_excel": 110460,
+        "monto_pagado_bpm": 110460,
+        "monto_tn": 110460
+      },
+      {
+        "order_number": "29665",
+        "monto_excel": 258880,
+        "monto_pagado_bpm": 258880,
+        "monto_tn": 258880
+      },
+      {
+        "order_number": "30051",
+        "monto_excel": 373363,
+        "monto_pagado_bpm": 373362,
+        "monto_tn": 373362.4
+      },
+      {
+        "order_number": "30048",
+        "monto_excel": 263747,
+        "monto_pagado_bpm": 263748,
+        "monto_tn": 263747.88
+      },
+      {
+        "order_number": "30052",
+        "monto_excel": 192690,
+        "monto_pagado_bpm": 192690,
+        "monto_tn": 192690
+      },
+      {
+        "order_number": "30053",
+        "monto_excel": 115637,
+        "monto_pagado_bpm": 115638,
+        "monto_tn": 115637.88
+      },
+      {
+        "order_number": "30003",
+        "monto_excel": 480733,
+        "monto_pagado_bpm": 480733,
+        "monto_tn": 480733.28
+      },
+      {
+        "order_number": "30042",
+        "monto_excel": 161354,
+        "monto_pagado_bpm": 161355,
+        "monto_tn": 161354.92
+      },
+      {
+        "order_number": "30082",
+        "monto_excel": 234060,
+        "monto_pagado_bpm": 234060,
+        "monto_tn": 234060
+      },
+      {
+        "order_number": "30071",
+        "monto_excel": 11300,
+        "monto_pagado_bpm": 11300,
+        "monto_tn": 11300
+      },
+      {
+        "order_number": "30073",
+        "monto_excel": 148400,
+        "monto_pagado_bpm": 148400,
+        "monto_tn": 148400
+      },
+      {
+        "order_number": "29678",
+        "monto_excel": 94078,
+        "monto_pagado_bpm": 94078,
+        "monto_tn": 94078
+      },
+      {
+        "order_number": "29803",
+        "monto_excel": 162710,
+        "monto_pagado_bpm": 162710,
+        "monto_tn": 162710
+      },
+      {
+        "order_number": "30069",
+        "monto_excel": 183660,
+        "monto_pagado_bpm": 183660,
+        "monto_tn": 183660
+      },
+      {
+        "order_number": "30067",
+        "monto_excel": 97720,
+        "monto_pagado_bpm": 97720,
+        "monto_tn": 97720
+      },
+      {
+        "order_number": "30064",
+        "monto_excel": 386760,
+        "monto_pagado_bpm": 386760,
+        "monto_tn": 386760
+      },
+      {
+        "order_number": "30062",
+        "monto_excel": 39150,
+        "monto_pagado_bpm": 39150,
+        "monto_tn": 39150
+      },
+      {
+        "order_number": "30055",
+        "monto_excel": 29000,
+        "monto_pagado_bpm": 29030,
+        "monto_tn": 29030
+      },
+      {
+        "order_number": "30045",
+        "monto_excel": 201300,
+        "monto_pagado_bpm": 201315,
+        "monto_tn": 201315
+      },
+      {
+        "order_number": "30043",
+        "monto_excel": 60330,
+        "monto_pagado_bpm": 60330,
+        "monto_tn": 60330
+      },
+      {
+        "order_number": "30032",
+        "monto_excel": 37500,
+        "monto_pagado_bpm": 37500,
+        "monto_tn": 37500
+      },
+      {
+        "order_number": "30056",
+        "monto_excel": 200980,
+        "monto_pagado_bpm": 200980,
+        "monto_tn": 200980
+      },
+      {
+        "order_number": "30065",
+        "monto_excel": 202062,
+        "monto_pagado_bpm": 202063,
+        "monto_tn": 202062.52
+      },
+      {
+        "order_number": "30029",
+        "monto_excel": 422088,
+        "monto_pagado_bpm": 422088,
+        "monto_tn": 422087.88
+      },
+      {
+        "order_number": "30072",
+        "monto_excel": 208650,
+        "monto_pagado_bpm": 208650,
+        "monto_tn": 208650
+      },
+      {
+        "order_number": "29900",
+        "monto_excel": 115830,
+        "monto_pagado_bpm": 115830,
+        "monto_tn": 115830
+      },
+      {
+        "order_number": "30097",
+        "monto_excel": 124193,
+        "monto_pagado_bpm": 124193,
+        "monto_tn": 124193.12
+      },
+      {
+        "order_number": "29838",
+        "monto_excel": 166455,
+        "monto_pagado_bpm": 166455,
+        "monto_tn": 166455.08
+      },
+      {
+        "order_number": "30106",
+        "monto_excel": 752520,
+        "monto_pagado_bpm": 752511,
+        "monto_tn": 752510.52
+      },
+      {
+        "order_number": "30109",
+        "monto_excel": 224774,
+        "monto_pagado_bpm": 224775,
+        "monto_tn": 224774.8
+      },
+      {
+        "order_number": "30108",
+        "monto_excel": 166768,
+        "monto_pagado_bpm": 166769,
+        "monto_tn": 166768.88
+      },
+      {
+        "order_number": "30111",
+        "monto_excel": 291374,
+        "monto_pagado_bpm": 291375,
+        "monto_tn": 291374.6
+      },
+      {
+        "order_number": "30022",
+        "monto_excel": 200878,
+        "monto_pagado_bpm": 200878,
+        "monto_tn": 200878
+      },
+      {
+        "order_number": "30118",
+        "monto_excel": 287822,
+        "monto_pagado_bpm": 287823,
+        "monto_tn": 287822.52
+      },
+      {
+        "order_number": "29933",
+        "monto_excel": 108834,
+        "monto_pagado_bpm": 108835,
+        "monto_tn": 108834.96
+      },
+      {
+        "order_number": "30096",
+        "monto_excel": 196208,
+        "monto_pagado_bpm": 196208,
+        "monto_tn": 195879
+      },
+      {
+        "order_number": "30121",
+        "monto_excel": 765107,
+        "monto_pagado_bpm": 765107,
+        "monto_tn": 765106.76
+      },
+      {
+        "order_number": "30099",
+        "monto_excel": 414750,
+        "monto_pagado_bpm": 414750,
+        "monto_tn": 414750
+      },
+      {
+        "order_number": "30122",
+        "monto_excel": 250620,
+        "monto_pagado_bpm": 250620,
+        "monto_tn": 250620
+      },
+      {
+        "order_number": "30126",
+        "monto_excel": 158530,
+        "monto_pagado_bpm": 158530,
+        "monto_tn": 158530
+      },
+      {
+        "order_number": "30103",
+        "monto_excel": 179447,
+        "monto_pagado_bpm": 179448,
+        "monto_tn": 179447.88
+      },
+      {
+        "order_number": "30132",
+        "monto_excel": 377847,
+        "monto_pagado_bpm": 377848,
+        "monto_tn": 377847.88
+      },
+      {
+        "order_number": "30127",
+        "monto_excel": 126019,
+        "monto_pagado_bpm": 126019,
+        "monto_tn": 126019
+      },
+      {
+        "order_number": "30135",
+        "monto_excel": 155394,
+        "monto_pagado_bpm": 155394,
+        "monto_tn": 155394.36
+      },
+      {
+        "order_number": "30136",
+        "monto_excel": 130654,
+        "monto_pagado_bpm": 130655,
+        "monto_tn": 130654.96
+      },
+      {
+        "order_number": "30145",
+        "monto_excel": 315190,
+        "monto_pagado_bpm": 315190,
+        "monto_tn": 315190
+      },
+      {
+        "order_number": "30153",
+        "monto_excel": 304600,
+        "monto_pagado_bpm": 304600,
+        "monto_tn": 304600
+      },
+      {
+        "order_number": "30157",
+        "monto_excel": 130077,
+        "monto_pagado_bpm": 130077,
+        "monto_tn": 130077
+      },
+      {
+        "order_number": "30160",
+        "monto_excel": 169515,
+        "monto_pagado_bpm": 169515,
+        "monto_tn": 169515
+      },
+      {
+        "order_number": "30154",
+        "monto_excel": 125080,
+        "monto_pagado_bpm": 125080,
+        "monto_tn": 125080
+      },
+      {
+        "order_number": "30164",
+        "monto_excel": 272680,
+        "monto_pagado_bpm": 272680,
+        "monto_tn": 272680
+      },
+      {
+        "order_number": "30098",
+        "monto_excel": 230485,
+        "monto_pagado_bpm": 230486,
+        "monto_tn": 230485.88
+      },
+      {
+        "order_number": "30131",
+        "monto_excel": 91000,
+        "monto_pagado_bpm": 91000,
+        "monto_tn": 91000
+      },
+      {
+        "order_number": "30086",
+        "monto_excel": 229858,
+        "monto_pagado_bpm": 229858,
+        "monto_tn": 229858.4
+      },
+      {
+        "order_number": "30117",
+        "monto_excel": 213125,
+        "monto_pagado_bpm": 213126,
+        "monto_tn": 213125.76
+      },
+      {
+        "order_number": "30143",
+        "monto_excel": 306525,
+        "monto_pagado_bpm": 306525,
+        "monto_tn": 306525
+      },
+      {
+        "order_number": "30191",
+        "monto_excel": 18090,
+        "monto_pagado_bpm": 18090,
+        "monto_tn": 18090
+      },
+      {
+        "order_number": "30129",
+        "monto_excel": 151507,
+        "monto_pagado_bpm": 151508,
+        "monto_tn": 151507.88
+      },
+      {
+        "order_number": "30130",
+        "monto_excel": 114227,
+        "monto_pagado_bpm": 114227,
+        "monto_tn": 114227.08
+      },
+      {
+        "order_number": "30125",
+        "monto_excel": 94330,
+        "monto_pagado_bpm": 94330,
+        "monto_tn": 94330
+      },
+      {
+        "order_number": "30142",
+        "monto_excel": 127917,
+        "monto_pagado_bpm": 127918,
+        "monto_tn": 127917.88
+      },
+      {
+        "order_number": "30140",
+        "monto_excel": 205200,
+        "monto_pagado_bpm": 205200,
+        "monto_tn": 205200
+      },
+      {
+        "order_number": "30139",
+        "monto_excel": 505600,
+        "monto_pagado_bpm": 505599,
+        "monto_tn": 505599.24
+      },
+      {
+        "order_number": "30150",
+        "monto_excel": 103880,
+        "monto_pagado_bpm": 103880,
+        "monto_tn": 103880
+      },
+      {
+        "order_number": "30166",
+        "monto_excel": 130352,
+        "monto_pagado_bpm": 130353,
+        "monto_tn": 130352.52
+      },
+      {
+        "order_number": "30083",
+        "monto_excel": 120347,
+        "monto_pagado_bpm": 120348,
+        "monto_tn": 120347.88
+      },
+      {
+        "order_number": "30167",
+        "monto_excel": 198554,
+        "monto_pagado_bpm": 198555,
+        "monto_tn": 198554.96
+      },
+      {
+        "order_number": "30101",
+        "monto_excel": 125790,
+        "monto_pagado_bpm": 125791,
+        "monto_tn": 125790.68
+      },
+      {
+        "order_number": "30011",
+        "monto_excel": 131844,
+        "monto_pagado_bpm": 131845,
+        "monto_tn": 131844.8
+      },
+      {
+        "order_number": "30123",
+        "monto_excel": 142305,
+        "monto_pagado_bpm": 142305,
+        "monto_tn": 142305.08
+      },
+      {
+        "order_number": "30169",
+        "monto_excel": 113958,
+        "monto_pagado_bpm": 113959,
+        "monto_tn": 113958.88
+      },
+      {
+        "order_number": "30144",
+        "monto_excel": 109300,
+        "monto_pagado_bpm": 109300,
+        "monto_tn": 109300
+      },
+      {
+        "order_number": "30112",
+        "monto_excel": 109307,
+        "monto_pagado_bpm": 109308,
+        "monto_tn": 109307.88
+      },
+      {
+        "order_number": "30173",
+        "monto_excel": 174494,
+        "monto_pagado_bpm": 174495,
+        "monto_tn": 174494.92
+      },
+      {
+        "order_number": "30163",
+        "monto_excel": 141408,
+        "monto_pagado_bpm": 141409,
+        "monto_tn": 141408.92
+      },
+      {
+        "order_number": "30174",
+        "monto_excel": 184464,
+        "monto_pagado_bpm": 184465,
+        "monto_tn": 184464.96
+      },
+      {
+        "order_number": "30155",
+        "monto_excel": 164892,
+        "monto_pagado_bpm": 164892,
+        "monto_tn": 164892.4
+      },
+      {
+        "order_number": "30110",
+        "monto_excel": 204700,
+        "monto_pagado_bpm": 204700,
+        "monto_tn": 204700
+      },
+      {
+        "order_number": "30137",
+        "monto_excel": 129407,
+        "monto_pagado_bpm": 129408,
+        "monto_tn": 129407.92
+      },
+      {
+        "order_number": "30162",
+        "monto_excel": 112368,
+        "monto_pagado_bpm": 112368,
+        "monto_tn": 112368
+      },
+      {
+        "order_number": "30141",
+        "monto_excel": 146457,
+        "monto_pagado_bpm": 146458,
+        "monto_tn": 146457.88
+      },
+      {
+        "order_number": "30165",
+        "monto_excel": 333277,
+        "monto_pagado_bpm": 333278,
+        "monto_tn": 333277.88
+      },
+      {
+        "order_number": "30178",
+        "monto_excel": 99750,
+        "monto_pagado_bpm": 99750,
+        "monto_tn": 99750
+      },
+      {
+        "order_number": "30170",
+        "monto_excel": 109734,
+        "monto_pagado_bpm": 109735,
+        "monto_tn": 109734.8
+      },
+      {
+        "order_number": "30090",
+        "monto_excel": 119053,
+        "monto_pagado_bpm": 119053,
+        "monto_tn": 119053.4
+      },
+      {
+        "order_number": "30180",
+        "monto_excel": 153124,
+        "monto_pagado_bpm": 153125,
+        "monto_tn": 153124.96
+      },
+      {
+        "order_number": "29711",
+        "monto_excel": 211644,
+        "monto_pagado_bpm": 211645,
+        "monto_tn": 211644.96
+      },
+      {
+        "order_number": "30171",
+        "monto_excel": 143800,
+        "monto_pagado_bpm": 143800,
+        "monto_tn": 143800
+      },
+      {
+        "order_number": "30183",
+        "monto_excel": 118100,
+        "monto_pagado_bpm": 118040,
+        "monto_tn": 118040
+      },
+      {
+        "order_number": "30185",
+        "monto_excel": 237022,
+        "monto_pagado_bpm": 237022,
+        "monto_tn": 237022.4
+      },
+      {
+        "order_number": "30177",
+        "monto_excel": 215552,
+        "monto_pagado_bpm": 215552,
+        "monto_tn": 215552.36
+      },
+      {
+        "order_number": "30168",
+        "monto_excel": 382252,
+        "monto_pagado_bpm": 382253,
+        "monto_tn": 382252.52
+      },
+      {
+        "order_number": "30188",
+        "monto_excel": 175770,
+        "monto_pagado_bpm": 175770,
+        "monto_tn": 175770
+      },
+      {
+        "order_number": "30189",
+        "monto_excel": 240247,
+        "monto_pagado_bpm": 240248,
+        "monto_tn": 240247.88
+      },
+      {
+        "order_number": "30156",
+        "monto_excel": 180100,
+        "monto_pagado_bpm": 180100,
+        "monto_tn": 180100
+      },
+      {
+        "order_number": "30158",
+        "monto_excel": 190022,
+        "monto_pagado_bpm": 190022,
+        "monto_tn": 190022.4
+      },
+      {
+        "order_number": "30194",
+        "monto_excel": 132400,
+        "monto_pagado_bpm": 132400,
+        "monto_tn": 132400
+      },
+      {
+        "order_number": "30195",
+        "monto_excel": 177614,
+        "monto_pagado_bpm": 177615,
+        "monto_tn": 177614.96
+      },
+      {
+        "order_number": "30200",
+        "monto_excel": 104350,
+        "monto_pagado_bpm": 104350,
+        "monto_tn": 104350
+      },
+      {
+        "order_number": "29919",
+        "monto_excel": 255300,
+        "monto_pagado_bpm": 255300,
+        "monto_tn": 255300
+      },
+      {
+        "order_number": "30100",
+        "monto_excel": 894780,
+        "monto_pagado_bpm": 894780,
+        "monto_tn": 894780
+      },
+      {
+        "order_number": "30209",
+        "monto_excel": 258870,
+        "monto_pagado_bpm": 258870,
+        "monto_tn": 258870
+      },
+      {
+        "order_number": "30201",
+        "monto_excel": 51100,
+        "monto_pagado_bpm": 51100,
+        "monto_tn": 51100
+      },
+      {
+        "order_number": "30192",
+        "monto_excel": 542360,
+        "monto_pagado_bpm": 542360,
+        "monto_tn": 542360
+      },
+      {
+        "order_number": "30199",
+        "monto_excel": 100660,
+        "monto_pagado_bpm": 100660,
+        "monto_tn": 100660
+      },
+      {
+        "order_number": "30196",
+        "monto_excel": 156810,
+        "monto_pagado_bpm": 156810,
+        "monto_tn": 156810
+      },
+      {
+        "order_number": "30182",
+        "monto_excel": 224725,
+        "monto_pagado_bpm": 224725,
+        "monto_tn": 224725
+      },
+      {
+        "order_number": "30176",
+        "monto_excel": 198500,
+        "monto_pagado_bpm": 198500,
+        "monto_tn": 198500
+      },
+      {
+        "order_number": "30172",
+        "monto_excel": 371070,
+        "monto_pagado_bpm": 371070,
+        "monto_tn": 371070
+      },
+      {
+        "order_number": "30217",
+        "monto_excel": 262900,
+        "monto_pagado_bpm": 262920,
+        "monto_tn": 262920
+      },
+      {
+        "order_number": "30203",
+        "monto_excel": 108938,
+        "monto_pagado_bpm": 108938,
+        "monto_tn": 108937.88
+      },
+      {
+        "order_number": "30205",
+        "monto_excel": 187047,
+        "monto_pagado_bpm": 187048,
+        "monto_tn": 187047.88
+      },
+      {
+        "order_number": "30212",
+        "monto_excel": 344560,
+        "monto_pagado_bpm": 344561,
+        "monto_tn": 344560.52
+      },
+      {
+        "order_number": "30214",
+        "monto_excel": 176006,
+        "monto_pagado_bpm": 176006,
+        "monto_tn": 176006
+      },
+      {
+        "order_number": "30211",
+        "monto_excel": 192850,
+        "monto_pagado_bpm": 192841,
+        "monto_tn": 192840.68
+      },
+      {
+        "order_number": "30151",
+        "monto_excel": 328843,
+        "monto_pagado_bpm": 328844,
+        "monto_tn": 328843.96
+      },
+      {
+        "order_number": "30152",
+        "monto_excel": 220951,
+        "monto_pagado_bpm": 220951,
+        "monto_tn": 220950.68
+      }
+    ],
+    "diferencias": [
+      {
+        "order_number": "28363",
+        "excel": {
+          "monto": 415038,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 397038,
+          "total_pagado": 397038,
+          "saldo": 0,
+          "estado": "confirmado_total"
+        },
+        "tn": {
+          "monto": 397038,
+          "status": "paid"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 18000,
+          "excel_vs_total_tn": 18000,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "29088",
+        "excel": {
+          "monto": 220000,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 200000,
+          "total_pagado": 200000,
+          "saldo": 0,
+          "estado": "confirmado_total"
+        },
+        "tn": {
+          "monto": 200000,
+          "status": "paid"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 20000,
+          "excel_vs_total_tn": 20000,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "29441",
+        "excel": {
+          "monto": 287748,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 287759,
+          "total_pagado": 261749,
+          "saldo": 26010,
+          "estado": "confirmado_parcial"
+        },
+        "tn": {
+          "monto": 287758.88,
+          "status": "paid"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 25999,
+          "excel_vs_total_tn": -10.880000000004657,
+          "bpm_vs_tn": 0.11999999999534339
+        }
+      },
+      {
+        "order_number": "29473",
+        "excel": {
+          "monto": 58520,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 358520,
+          "total_pagado": 0,
+          "saldo": 358520,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 358520,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 58520,
+          "excel_vs_total_tn": -300000,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "29853",
+        "excel": {
+          "monto": 129295,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 113270,
+          "total_pagado": 113270,
+          "saldo": 0,
+          "estado": "confirmado_total"
+        },
+        "tn": {
+          "monto": 113270,
+          "status": "paid"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 16025,
+          "excel_vs_total_tn": 16025,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "29762",
+        "excel": {
+          "monto": 202000,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 202755,
+          "total_pagado": 202755,
+          "saldo": 0,
+          "estado": "confirmado_total"
+        },
+        "tn": {
+          "monto": 202754.8,
+          "status": "paid"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": -755,
+          "excel_vs_total_tn": -754.7999999999884,
+          "bpm_vs_tn": 0.20000000001164153
+        }
+      },
+      {
+        "order_number": "29860",
+        "excel": {
+          "monto": 20000,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 114550,
+          "total_pagado": 0,
+          "saldo": 114550,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 114550,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 20000,
+          "excel_vs_total_tn": -94550,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "29522",
+        "excel": {
+          "monto": 174190,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 158190,
+          "total_pagado": 158190,
+          "saldo": 0,
+          "estado": "confirmado_total"
+        },
+        "tn": {
+          "monto": 158190,
+          "status": "paid"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 16000,
+          "excel_vs_total_tn": 16000,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "29979",
+        "excel": {
+          "monto": 155164,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 156865,
+          "total_pagado": 156165,
+          "saldo": 700,
+          "estado": "confirmado_total"
+        },
+        "tn": {
+          "monto": 156864.76,
+          "status": "paid"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": -1001,
+          "excel_vs_total_tn": -1700.7600000000093,
+          "bpm_vs_tn": 0.23999999999068677
+        }
+      },
+      {
+        "order_number": "29488",
+        "excel": {
+          "monto": 168264,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 168705,
+          "total_pagado": 168705,
+          "saldo": 0,
+          "estado": "confirmado_total"
+        },
+        "tn": {
+          "monto": 168704.96,
+          "status": "paid"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": -441,
+          "excel_vs_total_tn": -440.95999999999185,
+          "bpm_vs_tn": 0.04000000000814907
+        }
+      },
+      {
+        "order_number": "29996",
+        "excel": {
+          "monto": 998747,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 998748,
+          "total_pagado": 0,
+          "saldo": 998748,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 998747.56,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 998747,
+          "excel_vs_total_tn": -0.5600000000558794,
+          "bpm_vs_tn": 0.43999999994412065
+        }
+      },
+      {
+        "order_number": "30024",
+        "excel": {
+          "monto": 767974,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 767974,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 767974,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 767974,
+          "excel_vs_total_tn": 0,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "30078",
+        "excel": {
+          "monto": 9900,
+          "cuenta": "EFECTIVO"
+        },
+        "bpm": {
+          "monto_total": 8600,
+          "total_pagado": 8600,
+          "saldo": 0,
+          "estado": "confirmado_total"
+        },
+        "tn": {
+          "monto": 8600,
+          "status": "paid"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 1300,
+          "excel_vs_total_tn": 1300,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "30077",
+        "excel": {
+          "monto": 16600,
+          "cuenta": "EFECTIVO"
+        },
+        "bpm": {
+          "monto_total": 14430,
+          "total_pagado": 14430,
+          "saldo": 0,
+          "estado": "confirmado_total"
+        },
+        "tn": {
+          "monto": 14430,
+          "status": "paid"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 2170,
+          "excel_vs_total_tn": 2170,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "30115",
+        "excel": {
+          "monto": 487000,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 486023,
+          "total_pagado": 486023,
+          "saldo": 0,
+          "estado": "confirmado_total"
+        },
+        "tn": {
+          "monto": 486022.52,
+          "status": "paid"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 977,
+          "excel_vs_total_tn": 977.4799999999814,
+          "bpm_vs_tn": 0.47999999998137355
+        }
+      },
+      {
+        "order_number": "30124",
+        "excel": {
+          "monto": 96190,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 94150,
+          "total_pagado": 94150,
+          "saldo": 0,
+          "estado": "confirmado_total"
+        },
+        "tn": {
+          "monto": 94150,
+          "status": "paid"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 2040,
+          "excel_vs_total_tn": 2040,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "30149",
+        "excel": {
+          "monto": 119000,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 118648,
+          "total_pagado": 118648,
+          "saldo": 0,
+          "estado": "confirmado_total"
+        },
+        "tn": {
+          "monto": 118647.88,
+          "status": "paid"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 352,
+          "excel_vs_total_tn": 352.11999999999534,
+          "bpm_vs_tn": 0.11999999999534339
+        }
+      },
+      {
+        "order_number": "30175",
+        "excel": {
+          "monto": 234848,
+          "cuenta": "MP IAIR"
+        },
+        "bpm": {
+          "monto_total": 156729,
+          "total_pagado": 156729,
+          "saldo": 0,
+          "estado": "confirmado_total"
+        },
+        "tn": {
+          "monto": 156729,
+          "status": "paid"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 78119,
+          "excel_vs_total_tn": 78119,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "30213",
+        "excel": {
+          "monto": 128380,
+          "cuenta": "MP IAIR"
+        },
+        "bpm": {
+          "monto_total": 114480,
+          "total_pagado": 114480,
+          "saldo": 0,
+          "estado": "confirmado_total"
+        },
+        "tn": {
+          "monto": 114480,
+          "status": "paid"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 13900,
+          "excel_vs_total_tn": 13900,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "30184",
+        "excel": {
+          "monto": 209000,
+          "cuenta": "EFECTIVO"
+        },
+        "bpm": {
+          "monto_total": 209270,
+          "total_pagado": 209270,
+          "saldo": 0,
+          "estado": "confirmado_total"
+        },
+        "tn": {
+          "monto": 209270,
+          "status": "paid"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": -270,
+          "excel_vs_total_tn": -270,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "30221",
+        "excel": {
+          "monto": 22300,
+          "cuenta": "EFECTIVO"
+        },
+        "bpm": {
+          "monto_total": 22300,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 22300,
+          "status": "paid"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 22300,
+          "excel_vs_total_tn": 0,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "29992",
+        "excel": {
+          "monto": 677862,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 677863,
+          "total_pagado": 0,
+          "saldo": 677863,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 677862.52,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 677862,
+          "excel_vs_total_tn": -0.5200000000186265,
+          "bpm_vs_tn": 0.47999999998137355
+        }
+      },
+      {
+        "order_number": "30219",
+        "excel": {
+          "monto": 142964,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 142965,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 142964.96,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 142964,
+          "excel_vs_total_tn": -0.9599999999918509,
+          "bpm_vs_tn": 0.04000000000814907
+        }
+      },
+      {
+        "order_number": "30226",
+        "excel": {
+          "monto": 252029,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 252030,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 252029.68,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 252029,
+          "excel_vs_total_tn": -0.6799999999930151,
+          "bpm_vs_tn": 0.3200000000069849
+        }
+      },
+      {
+        "order_number": "30019",
+        "excel": {
+          "monto": 137177,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 137178,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 137177.88,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 137177,
+          "excel_vs_total_tn": -0.8800000000046566,
+          "bpm_vs_tn": 0.11999999999534339
+        }
+      },
+      {
+        "order_number": "30228",
+        "excel": {
+          "monto": 191954,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 191955,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 191954.8,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 191954,
+          "excel_vs_total_tn": -0.7999999999883585,
+          "bpm_vs_tn": 0.20000000001164153
+        }
+      },
+      {
+        "order_number": "30224",
+        "excel": {
+          "monto": 159094,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 159095,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 159094.8,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 159094,
+          "excel_vs_total_tn": -0.7999999999883585,
+          "bpm_vs_tn": 0.20000000001164153
+        }
+      },
+      {
+        "order_number": "30233",
+        "excel": {
+          "monto": 127290,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 127268,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 127267.88,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 127290,
+          "excel_vs_total_tn": 22.119999999995343,
+          "bpm_vs_tn": 0.11999999999534339
+        }
+      },
+      {
+        "order_number": "30237",
+        "excel": {
+          "monto": 146997,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 146997,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 146997,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 146997,
+          "excel_vs_total_tn": 0,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "30240",
+        "excel": {
+          "monto": 234946,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 234947,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 234946.88,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 234946,
+          "excel_vs_total_tn": -0.8800000000046566,
+          "bpm_vs_tn": 0.11999999999534339
+        }
+      },
+      {
+        "order_number": "30239",
+        "excel": {
+          "monto": 110891,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 110892,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 110891.64,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 110891,
+          "excel_vs_total_tn": -0.6399999999994179,
+          "bpm_vs_tn": 0.3600000000005821
+        }
+      },
+      {
+        "order_number": "30241",
+        "excel": {
+          "monto": 374450,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 374450,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 374450,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 374450,
+          "excel_vs_total_tn": 0,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "30243",
+        "excel": {
+          "monto": 329372,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 329373,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 329372.52,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 329372,
+          "excel_vs_total_tn": -0.5200000000186265,
+          "bpm_vs_tn": 0.47999999998137355
+        }
+      },
+      {
+        "order_number": "30236",
+        "excel": {
+          "monto": 238675,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 238675,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 238675.08,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 238675,
+          "excel_vs_total_tn": -0.07999999998719431,
+          "bpm_vs_tn": -0.07999999998719431
+        }
+      },
+      {
+        "order_number": "30030",
+        "excel": {
+          "monto": 143164,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 143165,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 143164.96,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 143164,
+          "excel_vs_total_tn": -0.9599999999918509,
+          "bpm_vs_tn": 0.04000000000814907
+        }
+      },
+      {
+        "order_number": "30227",
+        "excel": {
+          "monto": 107000,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 107360,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 107360,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 107000,
+          "excel_vs_total_tn": -360,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "30215",
+        "excel": {
+          "monto": 93560,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 93550,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 93550,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 93560,
+          "excel_vs_total_tn": 10,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "30223",
+        "excel": {
+          "monto": 263210,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 263210,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 263210,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 263210,
+          "excel_vs_total_tn": 0,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "30229",
+        "excel": {
+          "monto": 412296,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 412296,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 412296,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 412296,
+          "excel_vs_total_tn": 0,
+          "bpm_vs_tn": 0
+        }
+      },
+      {
+        "order_number": "30230",
+        "excel": {
+          "monto": 286479,
+          "cuenta": "KIESEL"
+        },
+        "bpm": {
+          "monto_total": 286479,
+          "total_pagado": 0,
+          "saldo": 0,
+          "estado": "pendiente"
+        },
+        "tn": {
+          "monto": 286479,
+          "status": "pending"
+        },
+        "diff": {
+          "excel_vs_pagado_bpm": 286479,
+          "excel_vs_total_tn": 0,
+          "bpm_vs_tn": 0
+        }
+      }
+    ]
+  },
+  "estados": {
+    "ok": [
+      {
+        "order_number": "28363",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 415038,
+        "pagado_bpm": 397038
+      },
+      {
+        "order_number": "29088",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 220000,
+        "pagado_bpm": 200000
+      },
+      {
+        "order_number": "29120",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 631700,
+        "pagado_bpm": 631710
+      },
+      {
+        "order_number": "29340",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 98160,
+        "pagado_bpm": 98160
+      },
+      {
+        "order_number": "29359",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 134440,
+        "pagado_bpm": 134500
+      },
+      {
+        "order_number": "29467",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 531220,
+        "pagado_bpm": 531221
+      },
+      {
+        "order_number": "29757",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 90950,
+        "pagado_bpm": 90950
+      },
+      {
+        "order_number": "29516",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 122710,
+        "pagado_bpm": 122710
+      },
+      {
+        "order_number": "29746",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 78300,
+        "pagado_bpm": 78300
+      },
+      {
+        "order_number": "29774",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 17300,
+        "pagado_bpm": 17300
+      },
+      {
+        "order_number": "29731",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 93000,
+        "pagado_bpm": 93000
+      },
+      {
+        "order_number": "29732",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 117498,
+        "pagado_bpm": 117498
+      },
+      {
+        "order_number": "29742",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 284320,
+        "pagado_bpm": 284320
+      },
+      {
+        "order_number": "29741",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 135194,
+        "pagado_bpm": 135195
+      },
+      {
+        "order_number": "29846",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 196788,
+        "pagado_bpm": 196788
+      },
+      {
+        "order_number": "29755",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 129897,
+        "pagado_bpm": 129897
+      },
+      {
+        "order_number": "29850",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 136250,
+        "pagado_bpm": 136250
+      },
+      {
+        "order_number": "29825",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 381694,
+        "pagado_bpm": 381695
+      },
+      {
+        "order_number": "29844",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 110300,
+        "pagado_bpm": 110298
+      },
+      {
+        "order_number": "29765",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 109047,
+        "pagado_bpm": 109048
+      },
+      {
+        "order_number": "29740",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 274366,
+        "pagado_bpm": 274367
+      },
+      {
+        "order_number": "29851",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 112897,
+        "pagado_bpm": 112898
+      },
+      {
+        "order_number": "29861",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 282356,
+        "pagado_bpm": 282357
+      },
+      {
+        "order_number": "29814",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 146590,
+        "pagado_bpm": 146590
+      },
+      {
+        "order_number": "29822",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 182107,
+        "pagado_bpm": 182108
+      },
+      {
+        "order_number": "29477",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 141824,
+        "pagado_bpm": 141825
+      },
+      {
+        "order_number": "29853",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 129295,
+        "pagado_bpm": 113270
+      },
+      {
+        "order_number": "29862",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 187661,
+        "pagado_bpm": 187662
+      },
+      {
+        "order_number": "29778",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 385702,
+        "pagado_bpm": 385703
+      },
+      {
+        "order_number": "29806",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 232274,
+        "pagado_bpm": 232275
+      },
+      {
+        "order_number": "29864",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 166895,
+        "pagado_bpm": 166895
+      },
+      {
+        "order_number": "29773",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 110738,
+        "pagado_bpm": 110738
+      },
+      {
+        "order_number": "29789",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 151747,
+        "pagado_bpm": 151748
+      },
+      {
+        "order_number": "29830",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 255000,
+        "pagado_bpm": 254962
+      },
+      {
+        "order_number": "29759",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 202774,
+        "pagado_bpm": 202774
+      },
+      {
+        "order_number": "29859",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 110324,
+        "pagado_bpm": 110325
+      },
+      {
+        "order_number": "29780",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 128674,
+        "pagado_bpm": 128675
+      },
+      {
+        "order_number": "29833",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 437962,
+        "pagado_bpm": 437962
+      },
+      {
+        "order_number": "29858",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 104590,
+        "pagado_bpm": 104590
+      },
+      {
+        "order_number": "29762",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 202000,
+        "pagado_bpm": 202755
+      },
+      {
+        "order_number": "29827",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 112500,
+        "pagado_bpm": 112500
+      },
+      {
+        "order_number": "29695",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 115000,
+        "pagado_bpm": 115000
+      },
+      {
+        "order_number": "29750",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 248523,
+        "pagado_bpm": 248533
+      },
+      {
+        "order_number": "29798",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 258530,
+        "pagado_bpm": 258530
+      },
+      {
+        "order_number": "29870",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 117403,
+        "pagado_bpm": 117402
+      },
+      {
+        "order_number": "29854",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 101320,
+        "pagado_bpm": 101320
+      },
+      {
+        "order_number": "29868",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 169945,
+        "pagado_bpm": 169945
+      },
+      {
+        "order_number": "29788",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 130960,
+        "pagado_bpm": 130960
+      },
+      {
+        "order_number": "29856",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 115730,
+        "pagado_bpm": 115730
+      },
+      {
+        "order_number": "29781",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 94050,
+        "pagado_bpm": 94050
+      },
+      {
+        "order_number": "29831",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 388904,
+        "pagado_bpm": 388905
+      },
+      {
+        "order_number": "29865",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 95040,
+        "pagado_bpm": 95040
+      },
+      {
+        "order_number": "29811",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 153762,
+        "pagado_bpm": 153762
+      },
+      {
+        "order_number": "29837",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 113308,
+        "pagado_bpm": 113309
+      },
+      {
+        "order_number": "29875",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 100650,
+        "pagado_bpm": 100650
+      },
+      {
+        "order_number": "29872",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 121500,
+        "pagado_bpm": 121500
+      },
+      {
+        "order_number": "29794",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 94620,
+        "pagado_bpm": 94620
+      },
+      {
+        "order_number": "29845",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 90750,
+        "pagado_bpm": 90750
+      },
+      {
+        "order_number": "29843",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 132858,
+        "pagado_bpm": 132859
+      },
+      {
+        "order_number": "29540",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 284680,
+        "pagado_bpm": 284680
+      },
+      {
+        "order_number": "29883",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 252610,
+        "pagado_bpm": 252610
+      },
+      {
+        "order_number": "29885",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 102100,
+        "pagado_bpm": 102100
+      },
+      {
+        "order_number": "29793",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 123464,
+        "pagado_bpm": 123465
+      },
+      {
+        "order_number": "29752",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 163843,
+        "pagado_bpm": 163843
+      },
+      {
+        "order_number": "29747",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 209463,
+        "pagado_bpm": 209462
+      },
+      {
+        "order_number": "29869",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 125450,
+        "pagado_bpm": 125450
+      },
+      {
+        "order_number": "29829",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 251450,
+        "pagado_bpm": 251450
+      },
+      {
+        "order_number": "29719",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 127160,
+        "pagado_bpm": 127160
+      },
+      {
+        "order_number": "29808",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 117800,
+        "pagado_bpm": 117800
+      },
+      {
+        "order_number": "29878",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 307776,
+        "pagado_bpm": 307776
+      },
+      {
+        "order_number": "29873",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 126715,
+        "pagado_bpm": 126715
+      },
+      {
+        "order_number": "29848",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 142322,
+        "pagado_bpm": 142322
+      },
+      {
+        "order_number": "29899",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 173500,
+        "pagado_bpm": 173406
+      },
+      {
+        "order_number": "29815",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 210552,
+        "pagado_bpm": 210552
+      },
+      {
+        "order_number": "29331",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 173847,
+        "pagado_bpm": 173848
+      },
+      {
+        "order_number": "29748",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 138400,
+        "pagado_bpm": 138400
+      },
+      {
+        "order_number": "29522",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 174190,
+        "pagado_bpm": 158190
+      },
+      {
+        "order_number": "29767",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 345917,
+        "pagado_bpm": 345918
+      },
+      {
+        "order_number": "29754",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 157547,
+        "pagado_bpm": 157548
+      },
+      {
+        "order_number": "29910",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 170600,
+        "pagado_bpm": 170600
+      },
+      {
+        "order_number": "29896",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 92700,
+        "pagado_bpm": 92770
+      },
+      {
+        "order_number": "29890",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 436227,
+        "pagado_bpm": 436227
+      },
+      {
+        "order_number": "29877",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 113844,
+        "pagado_bpm": 113849
+      },
+      {
+        "order_number": "29879",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 115000,
+        "pagado_bpm": 115000
+      },
+      {
+        "order_number": "29876",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 316030,
+        "pagado_bpm": 316030
+      },
+      {
+        "order_number": "29874",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 172470,
+        "pagado_bpm": 172470
+      },
+      {
+        "order_number": "29867",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 20900,
+        "pagado_bpm": 20880
+      },
+      {
+        "order_number": "29760",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 140070,
+        "pagado_bpm": 140070
+      },
+      {
+        "order_number": "29753",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 114894,
+        "pagado_bpm": 114895
+      },
+      {
+        "order_number": "29902",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 100360,
+        "pagado_bpm": 100360
+      },
+      {
+        "order_number": "29903",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 696730,
+        "pagado_bpm": 696730
+      },
+      {
+        "order_number": "29758",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 197548,
+        "pagado_bpm": 197548
+      },
+      {
+        "order_number": "29898",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 114660,
+        "pagado_bpm": 114661
+      },
+      {
+        "order_number": "29907",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 283691,
+        "pagado_bpm": 283692
+      },
+      {
+        "order_number": "29887",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 162020,
+        "pagado_bpm": 162020
+      },
+      {
+        "order_number": "29909",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 252983,
+        "pagado_bpm": 252982
+      },
+      {
+        "order_number": "29901",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 194912,
+        "pagado_bpm": 194912
+      },
+      {
+        "order_number": "29797",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 374307,
+        "pagado_bpm": 374308
+      },
+      {
+        "order_number": "29911",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 90200,
+        "pagado_bpm": 90200
+      },
+      {
+        "order_number": "29904",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 308714,
+        "pagado_bpm": 308715
+      },
+      {
+        "order_number": "29913",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 17300,
+        "pagado_bpm": 17300
+      },
+      {
+        "order_number": "29790",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 531709,
+        "pagado_bpm": 531710
+      },
+      {
+        "order_number": "29916",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 174205,
+        "pagado_bpm": 174205
+      },
+      {
+        "order_number": "29802",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 111991,
+        "pagado_bpm": 111991
+      },
+      {
+        "order_number": "29918",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 576620,
+        "pagado_bpm": 576620
+      },
+      {
+        "order_number": "29917",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 90060,
+        "pagado_bpm": 90060
+      },
+      {
+        "order_number": "29923",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 194867,
+        "pagado_bpm": 194867
+      },
+      {
+        "order_number": "29927",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 135038,
+        "pagado_bpm": 135038
+      },
+      {
+        "order_number": "29936",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 228844,
+        "pagado_bpm": 228845
+      },
+      {
+        "order_number": "29941",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 1874531,
+        "pagado_bpm": 1874532
+      },
+      {
+        "order_number": "29942",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 232040,
+        "pagado_bpm": 232040
+      },
+      {
+        "order_number": "29914",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 107670,
+        "pagado_bpm": 107671
+      },
+      {
+        "order_number": "29925",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 130894,
+        "pagado_bpm": 130894
+      },
+      {
+        "order_number": "29930",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 252484,
+        "pagado_bpm": 252485
+      },
+      {
+        "order_number": "29934",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 273781,
+        "pagado_bpm": 273782
+      },
+      {
+        "order_number": "29906",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 93820,
+        "pagado_bpm": 93820
+      },
+      {
+        "order_number": "29946",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 204635,
+        "pagado_bpm": 204635
+      },
+      {
+        "order_number": "29940",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 151129,
+        "pagado_bpm": 151129
+      },
+      {
+        "order_number": "29928",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 93729,
+        "pagado_bpm": 93729
+      },
+      {
+        "order_number": "29926",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 400140,
+        "pagado_bpm": 400140
+      },
+      {
+        "order_number": "29929",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 177023,
+        "pagado_bpm": 177023
+      },
+      {
+        "order_number": "29947",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 247646,
+        "pagado_bpm": 247647
+      },
+      {
+        "order_number": "29948",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 134937,
+        "pagado_bpm": 134938
+      },
+      {
+        "order_number": "29924",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 204649,
+        "pagado_bpm": 204650
+      },
+      {
+        "order_number": "29945",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 426133,
+        "pagado_bpm": 426133
+      },
+      {
+        "order_number": "29782",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 120767,
+        "pagado_bpm": 120768
+      },
+      {
+        "order_number": "29796",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 150920,
+        "pagado_bpm": 150920
+      },
+      {
+        "order_number": "29866",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 173060,
+        "pagado_bpm": 173060
+      },
+      {
+        "order_number": "29895",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 154363,
+        "pagado_bpm": 154362
+      },
+      {
+        "order_number": "29841",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 139500,
+        "pagado_bpm": 139500
+      },
+      {
+        "order_number": "29944",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 120264,
+        "pagado_bpm": 120265
+      },
+      {
+        "order_number": "29820",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 217800,
+        "pagado_bpm": 217768
+      },
+      {
+        "order_number": "29834",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 197939,
+        "pagado_bpm": 197939
+      },
+      {
+        "order_number": "29958",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 244364,
+        "pagado_bpm": 244365
+      },
+      {
+        "order_number": "29963",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 108237,
+        "pagado_bpm": 108238
+      },
+      {
+        "order_number": "29966",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 144194,
+        "pagado_bpm": 144195
+      },
+      {
+        "order_number": "29766",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 110405,
+        "pagado_bpm": 110406
+      },
+      {
+        "order_number": "29804",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 105359,
+        "pagado_bpm": 105359
+      },
+      {
+        "order_number": "29973",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 417862,
+        "pagado_bpm": 417862
+      },
+      {
+        "order_number": "29738",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 166100,
+        "pagado_bpm": 166100
+      },
+      {
+        "order_number": "29979",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 155164,
+        "pagado_bpm": 156165
+      },
+      {
+        "order_number": "29786",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 234967,
+        "pagado_bpm": 234968
+      },
+      {
+        "order_number": "29968",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 151403,
+        "pagado_bpm": 151402
+      },
+      {
+        "order_number": "29982",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 306152,
+        "pagado_bpm": 306153
+      },
+      {
+        "order_number": "29980",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 146699,
+        "pagado_bpm": 146699
+      },
+      {
+        "order_number": "29812",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 340636,
+        "pagado_bpm": 340636
+      },
+      {
+        "order_number": "29984",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 117955,
+        "pagado_bpm": 117955
+      },
+      {
+        "order_number": "29987",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 254100,
+        "pagado_bpm": 254100
+      },
+      {
+        "order_number": "29809",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 456060,
+        "pagado_bpm": 456060
+      },
+      {
+        "order_number": "29488",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 168264,
+        "pagado_bpm": 168705
+      },
+      {
+        "order_number": "29816",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 107148,
+        "pagado_bpm": 107149
+      },
+      {
+        "order_number": "29988",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 110235,
+        "pagado_bpm": 110233
+      },
+      {
+        "order_number": "29990",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 122700,
+        "pagado_bpm": 122691
+      },
+      {
+        "order_number": "29993",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 122867,
+        "pagado_bpm": 122868
+      },
+      {
+        "order_number": "29970",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 161820,
+        "pagado_bpm": 161820
+      },
+      {
+        "order_number": "29995",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 111320,
+        "pagado_bpm": 111320
+      },
+      {
+        "order_number": "29810",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 114428,
+        "pagado_bpm": 114428
+      },
+      {
+        "order_number": "29997",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 115197,
+        "pagado_bpm": 115197
+      },
+      {
+        "order_number": "29692",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 91810,
+        "pagado_bpm": 91810
+      },
+      {
+        "order_number": "29994",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 139400,
+        "pagado_bpm": 139399
+      },
+      {
+        "order_number": "29978",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 276260,
+        "pagado_bpm": 276260
+      },
+      {
+        "order_number": "29971",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 268040,
+        "pagado_bpm": 268040
+      },
+      {
+        "order_number": "29969",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 5300,
+        "pagado_bpm": 5300
+      },
+      {
+        "order_number": "29962",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 168630,
+        "pagado_bpm": 168630
+      },
+      {
+        "order_number": "29959",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 142700,
+        "pagado_bpm": 142720
+      },
+      {
+        "order_number": "29957",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 140080,
+        "pagado_bpm": 140080
+      },
+      {
+        "order_number": "29955",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 132500,
+        "pagado_bpm": 132500
+      },
+      {
+        "order_number": "29953",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 159000,
+        "pagado_bpm": 159058
+      },
+      {
+        "order_number": "29952",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 424258,
+        "pagado_bpm": 424258
+      },
+      {
+        "order_number": "29800",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 152537,
+        "pagado_bpm": 152538
+      },
+      {
+        "order_number": "29986",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 248353,
+        "pagado_bpm": 248354
+      },
+      {
+        "order_number": "29998",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 137300,
+        "pagado_bpm": 137208
+      },
+      {
+        "order_number": "30000",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 305557,
+        "pagado_bpm": 305558
+      },
+      {
+        "order_number": "30001",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 304434,
+        "pagado_bpm": 304435
+      },
+      {
+        "order_number": "30002",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 155674,
+        "pagado_bpm": 155675
+      },
+      {
+        "order_number": "29647",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 402472,
+        "pagado_bpm": 402472
+      },
+      {
+        "order_number": "29839",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 109424,
+        "pagado_bpm": 109425
+      },
+      {
+        "order_number": "29787",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 109064,
+        "pagado_bpm": 109065
+      },
+      {
+        "order_number": "30006",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 171884,
+        "pagado_bpm": 171884
+      },
+      {
+        "order_number": "30009",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 228700,
+        "pagado_bpm": 228700
+      },
+      {
+        "order_number": "30007",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 142824,
+        "pagado_bpm": 142824
+      },
+      {
+        "order_number": "30013",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 220262,
+        "pagado_bpm": 220262
+      },
+      {
+        "order_number": "30016",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 138844,
+        "pagado_bpm": 138845
+      },
+      {
+        "order_number": "30017",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 108285,
+        "pagado_bpm": 108286
+      },
+      {
+        "order_number": "29985",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 118395,
+        "pagado_bpm": 118395
+      },
+      {
+        "order_number": "30020",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 344945,
+        "pagado_bpm": 344945
+      },
+      {
+        "order_number": "29922",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 257800,
+        "pagado_bpm": 257800
+      },
+      {
+        "order_number": "30026",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 121066,
+        "pagado_bpm": 121067
+      },
+      {
+        "order_number": "30034",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 224567,
+        "pagado_bpm": 224568
+      },
+      {
+        "order_number": "30035",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 324874,
+        "pagado_bpm": 324875
+      },
+      {
+        "order_number": "30028",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 356488,
+        "pagado_bpm": 356488
+      },
+      {
+        "order_number": "30031",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 969500,
+        "pagado_bpm": 969421
+      },
+      {
+        "order_number": "30033",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 160514,
+        "pagado_bpm": 160514
+      },
+      {
+        "order_number": "30036",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 103330,
+        "pagado_bpm": 103330
+      },
+      {
+        "order_number": "30040",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 258800,
+        "pagado_bpm": 258800
+      },
+      {
+        "order_number": "30023",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 213990,
+        "pagado_bpm": 213990
+      },
+      {
+        "order_number": "29813",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 109995,
+        "pagado_bpm": 109995
+      },
+      {
+        "order_number": "29989",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 179847,
+        "pagado_bpm": 179848
+      },
+      {
+        "order_number": "29975",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 140447,
+        "pagado_bpm": 140448
+      },
+      {
+        "order_number": "30041",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 207677,
+        "pagado_bpm": 207678
+      },
+      {
+        "order_number": "30046",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 110460,
+        "pagado_bpm": 110460
+      },
+      {
+        "order_number": "29665",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 258880,
+        "pagado_bpm": 258880
+      },
+      {
+        "order_number": "30051",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 373363,
+        "pagado_bpm": 373362
+      },
+      {
+        "order_number": "30048",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 263747,
+        "pagado_bpm": 263748
+      },
+      {
+        "order_number": "30052",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 192690,
+        "pagado_bpm": 192690
+      },
+      {
+        "order_number": "30053",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 115637,
+        "pagado_bpm": 115638
+      },
+      {
+        "order_number": "30003",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 480733,
+        "pagado_bpm": 480733
+      },
+      {
+        "order_number": "30042",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 161354,
+        "pagado_bpm": 161355
+      },
+      {
+        "order_number": "30082",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 234060,
+        "pagado_bpm": 234060
+      },
+      {
+        "order_number": "30078",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 9900,
+        "pagado_bpm": 8600
+      },
+      {
+        "order_number": "30077",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 16600,
+        "pagado_bpm": 14430
+      },
+      {
+        "order_number": "30071",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 11300,
+        "pagado_bpm": 11300
+      },
+      {
+        "order_number": "30073",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 148400,
+        "pagado_bpm": 148400
+      },
+      {
+        "order_number": "29678",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 94078,
+        "pagado_bpm": 94078
+      },
+      {
+        "order_number": "29803",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 162710,
+        "pagado_bpm": 162710
+      },
+      {
+        "order_number": "30069",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 183660,
+        "pagado_bpm": 183660
+      },
+      {
+        "order_number": "30067",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 97720,
+        "pagado_bpm": 97720
+      },
+      {
+        "order_number": "30064",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 386760,
+        "pagado_bpm": 386760
+      },
+      {
+        "order_number": "30062",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 39150,
+        "pagado_bpm": 39150
+      },
+      {
+        "order_number": "30055",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 29000,
+        "pagado_bpm": 29030
+      },
+      {
+        "order_number": "30045",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 201300,
+        "pagado_bpm": 201315
+      },
+      {
+        "order_number": "30043",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 60330,
+        "pagado_bpm": 60330
+      },
+      {
+        "order_number": "30032",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 37500,
+        "pagado_bpm": 37500
+      },
+      {
+        "order_number": "30056",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 200980,
+        "pagado_bpm": 200980
+      },
+      {
+        "order_number": "30065",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 202062,
+        "pagado_bpm": 202063
+      },
+      {
+        "order_number": "30029",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 422088,
+        "pagado_bpm": 422088
+      },
+      {
+        "order_number": "30072",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 208650,
+        "pagado_bpm": 208650
+      },
+      {
+        "order_number": "29900",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 115830,
+        "pagado_bpm": 115830
+      },
+      {
+        "order_number": "30097",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 124193,
+        "pagado_bpm": 124193
+      },
+      {
+        "order_number": "29838",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 166455,
+        "pagado_bpm": 166455
+      },
+      {
+        "order_number": "30106",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 752520,
+        "pagado_bpm": 752511
+      },
+      {
+        "order_number": "30109",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 224774,
+        "pagado_bpm": 224775
+      },
+      {
+        "order_number": "30108",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 166768,
+        "pagado_bpm": 166769
+      },
+      {
+        "order_number": "30111",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 291374,
+        "pagado_bpm": 291375
+      },
+      {
+        "order_number": "30022",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 200878,
+        "pagado_bpm": 200878
+      },
+      {
+        "order_number": "30118",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 287822,
+        "pagado_bpm": 287823
+      },
+      {
+        "order_number": "29933",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 108834,
+        "pagado_bpm": 108835
+      },
+      {
+        "order_number": "30096",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 196208,
+        "pagado_bpm": 196208
+      },
+      {
+        "order_number": "30121",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 765107,
+        "pagado_bpm": 765107
+      },
+      {
+        "order_number": "30099",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 414750,
+        "pagado_bpm": 414750
+      },
+      {
+        "order_number": "30122",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 250620,
+        "pagado_bpm": 250620
+      },
+      {
+        "order_number": "30126",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 158530,
+        "pagado_bpm": 158530
+      },
+      {
+        "order_number": "30103",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 179447,
+        "pagado_bpm": 179448
+      },
+      {
+        "order_number": "30132",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 377847,
+        "pagado_bpm": 377848
+      },
+      {
+        "order_number": "30115",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 487000,
+        "pagado_bpm": 486023
+      },
+      {
+        "order_number": "30127",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 126019,
+        "pagado_bpm": 126019
+      },
+      {
+        "order_number": "30135",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 155394,
+        "pagado_bpm": 155394
+      },
+      {
+        "order_number": "30136",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 130654,
+        "pagado_bpm": 130655
+      },
+      {
+        "order_number": "30145",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 315190,
+        "pagado_bpm": 315190
+      },
+      {
+        "order_number": "30124",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 96190,
+        "pagado_bpm": 94150
+      },
+      {
+        "order_number": "30153",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 304600,
+        "pagado_bpm": 304600
+      },
+      {
+        "order_number": "30157",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 130077,
+        "pagado_bpm": 130077
+      },
+      {
+        "order_number": "30160",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 169515,
+        "pagado_bpm": 169515
+      },
+      {
+        "order_number": "30154",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 125080,
+        "pagado_bpm": 125080
+      },
+      {
+        "order_number": "30164",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 272680,
+        "pagado_bpm": 272680
+      },
+      {
+        "order_number": "30098",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 230485,
+        "pagado_bpm": 230486
+      },
+      {
+        "order_number": "30149",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 119000,
+        "pagado_bpm": 118648
+      },
+      {
+        "order_number": "30131",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 91000,
+        "pagado_bpm": 91000
+      },
+      {
+        "order_number": "30086",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 229858,
+        "pagado_bpm": 229858
+      },
+      {
+        "order_number": "30117",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 213125,
+        "pagado_bpm": 213126
+      },
+      {
+        "order_number": "30143",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 306525,
+        "pagado_bpm": 306525
+      },
+      {
+        "order_number": "30191",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 18090,
+        "pagado_bpm": 18090
+      },
+      {
+        "order_number": "30129",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 151507,
+        "pagado_bpm": 151508
+      },
+      {
+        "order_number": "30130",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 114227,
+        "pagado_bpm": 114227
+      },
+      {
+        "order_number": "30125",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 94330,
+        "pagado_bpm": 94330
+      },
+      {
+        "order_number": "30142",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 127917,
+        "pagado_bpm": 127918
+      },
+      {
+        "order_number": "30140",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 205200,
+        "pagado_bpm": 205200
+      },
+      {
+        "order_number": "30139",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 505600,
+        "pagado_bpm": 505599
+      },
+      {
+        "order_number": "30150",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 103880,
+        "pagado_bpm": 103880
+      },
+      {
+        "order_number": "30166",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 130352,
+        "pagado_bpm": 130353
+      },
+      {
+        "order_number": "30083",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 120347,
+        "pagado_bpm": 120348
+      },
+      {
+        "order_number": "30167",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 198554,
+        "pagado_bpm": 198555
+      },
+      {
+        "order_number": "30101",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 125790,
+        "pagado_bpm": 125791
+      },
+      {
+        "order_number": "30011",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 131844,
+        "pagado_bpm": 131845
+      },
+      {
+        "order_number": "30123",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 142305,
+        "pagado_bpm": 142305
+      },
+      {
+        "order_number": "30169",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 113958,
+        "pagado_bpm": 113959
+      },
+      {
+        "order_number": "30144",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 109300,
+        "pagado_bpm": 109300
+      },
+      {
+        "order_number": "30112",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 109307,
+        "pagado_bpm": 109308
+      },
+      {
+        "order_number": "30173",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 174494,
+        "pagado_bpm": 174495
+      },
+      {
+        "order_number": "30163",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 141408,
+        "pagado_bpm": 141409
+      },
+      {
+        "order_number": "30174",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 184464,
+        "pagado_bpm": 184465
+      },
+      {
+        "order_number": "30155",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 164892,
+        "pagado_bpm": 164892
+      },
+      {
+        "order_number": "30110",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 204700,
+        "pagado_bpm": 204700
+      },
+      {
+        "order_number": "30137",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 129407,
+        "pagado_bpm": 129408
+      },
+      {
+        "order_number": "30162",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 112368,
+        "pagado_bpm": 112368
+      },
+      {
+        "order_number": "30141",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 146457,
+        "pagado_bpm": 146458
+      },
+      {
+        "order_number": "30165",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 333277,
+        "pagado_bpm": 333278
+      },
+      {
+        "order_number": "30178",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 99750,
+        "pagado_bpm": 99750
+      },
+      {
+        "order_number": "30170",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 109734,
+        "pagado_bpm": 109735
+      },
+      {
+        "order_number": "30090",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 119053,
+        "pagado_bpm": 119053
+      },
+      {
+        "order_number": "30180",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 153124,
+        "pagado_bpm": 153125
+      },
+      {
+        "order_number": "29711",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 211644,
+        "pagado_bpm": 211645
+      },
+      {
+        "order_number": "30171",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 143800,
+        "pagado_bpm": 143800
+      },
+      {
+        "order_number": "30183",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 118100,
+        "pagado_bpm": 118040
+      },
+      {
+        "order_number": "30185",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 237022,
+        "pagado_bpm": 237022
+      },
+      {
+        "order_number": "30177",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 215552,
+        "pagado_bpm": 215552
+      },
+      {
+        "order_number": "30168",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 382252,
+        "pagado_bpm": 382253
+      },
+      {
+        "order_number": "30188",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 175770,
+        "pagado_bpm": 175770
+      },
+      {
+        "order_number": "30189",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 240247,
+        "pagado_bpm": 240248
+      },
+      {
+        "order_number": "30175",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 234848,
+        "pagado_bpm": 156729
+      },
+      {
+        "order_number": "30156",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 180100,
+        "pagado_bpm": 180100
+      },
+      {
+        "order_number": "30158",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 190022,
+        "pagado_bpm": 190022
+      },
+      {
+        "order_number": "30194",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 132400,
+        "pagado_bpm": 132400
+      },
+      {
+        "order_number": "30195",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 177614,
+        "pagado_bpm": 177615
+      },
+      {
+        "order_number": "30200",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 104350,
+        "pagado_bpm": 104350
+      },
+      {
+        "order_number": "29919",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 255300,
+        "pagado_bpm": 255300
+      },
+      {
+        "order_number": "30100",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 894780,
+        "pagado_bpm": 894780
+      },
+      {
+        "order_number": "30213",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 128380,
+        "pagado_bpm": 114480
+      },
+      {
+        "order_number": "30209",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 258870,
+        "pagado_bpm": 258870
+      },
+      {
+        "order_number": "30201",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 51100,
+        "pagado_bpm": 51100
+      },
+      {
+        "order_number": "30192",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 542360,
+        "pagado_bpm": 542360
+      },
+      {
+        "order_number": "30199",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 100660,
+        "pagado_bpm": 100660
+      },
+      {
+        "order_number": "30196",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 156810,
+        "pagado_bpm": 156810
+      },
+      {
+        "order_number": "30184",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 209000,
+        "pagado_bpm": 209270
+      },
+      {
+        "order_number": "30182",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 224725,
+        "pagado_bpm": 224725
+      },
+      {
+        "order_number": "30176",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 198500,
+        "pagado_bpm": 198500
+      },
+      {
+        "order_number": "30172",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 371070,
+        "pagado_bpm": 371070
+      },
+      {
+        "order_number": "30217",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 262900,
+        "pagado_bpm": 262920
+      },
+      {
+        "order_number": "30203",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 108938,
+        "pagado_bpm": 108938
+      },
+      {
+        "order_number": "30205",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 187047,
+        "pagado_bpm": 187048
+      },
+      {
+        "order_number": "30212",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 344560,
+        "pagado_bpm": 344561
+      },
+      {
+        "order_number": "30214",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 176006,
+        "pagado_bpm": 176006
+      },
+      {
+        "order_number": "30211",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 192850,
+        "pagado_bpm": 192841
+      },
+      {
+        "order_number": "30151",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 328843,
+        "pagado_bpm": 328844
+      },
+      {
+        "order_number": "30152",
+        "estado_bpm": "confirmado_total",
+        "monto_excel": 220951,
+        "pagado_bpm": 220951
+      }
+    ],
+    "excel_pagado_bpm_no": [
+      {
+        "order_number": "29473",
+        "estado_bpm": "pendiente",
+        "monto_excel": 58520,
+        "pagado_bpm": 0,
+        "saldo_bpm": 358520
+      },
+      {
+        "order_number": "29860",
+        "estado_bpm": "pendiente",
+        "monto_excel": 20000,
+        "pagado_bpm": 0,
+        "saldo_bpm": 114550
+      },
+      {
+        "order_number": "29996",
+        "estado_bpm": "pendiente",
+        "monto_excel": 998747,
+        "pagado_bpm": 0,
+        "saldo_bpm": 998748
+      },
+      {
+        "order_number": "30024",
+        "estado_bpm": "pendiente",
+        "monto_excel": 767974,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "30221",
+        "estado_bpm": "pendiente",
+        "monto_excel": 22300,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "29992",
+        "estado_bpm": "pendiente",
+        "monto_excel": 677862,
+        "pagado_bpm": 0,
+        "saldo_bpm": 677863
+      },
+      {
+        "order_number": "30219",
+        "estado_bpm": "pendiente",
+        "monto_excel": 142964,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "30226",
+        "estado_bpm": "pendiente",
+        "monto_excel": 252029,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "30019",
+        "estado_bpm": "pendiente",
+        "monto_excel": 137177,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "30228",
+        "estado_bpm": "pendiente",
+        "monto_excel": 191954,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "30224",
+        "estado_bpm": "pendiente",
+        "monto_excel": 159094,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "30233",
+        "estado_bpm": "pendiente",
+        "monto_excel": 127290,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "30237",
+        "estado_bpm": "pendiente",
+        "monto_excel": 146997,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "30240",
+        "estado_bpm": "pendiente",
+        "monto_excel": 234946,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "30239",
+        "estado_bpm": "pendiente",
+        "monto_excel": 110891,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "30241",
+        "estado_bpm": "pendiente",
+        "monto_excel": 374450,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "30243",
+        "estado_bpm": "pendiente",
+        "monto_excel": 329372,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "30236",
+        "estado_bpm": "pendiente",
+        "monto_excel": 238675,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "30030",
+        "estado_bpm": "pendiente",
+        "monto_excel": 143164,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "30227",
+        "estado_bpm": "pendiente",
+        "monto_excel": 107000,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "30215",
+        "estado_bpm": "pendiente",
+        "monto_excel": 93560,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "30223",
+        "estado_bpm": "pendiente",
+        "monto_excel": 263210,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "30229",
+        "estado_bpm": "pendiente",
+        "monto_excel": 412296,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      },
+      {
+        "order_number": "30230",
+        "estado_bpm": "pendiente",
+        "monto_excel": 286479,
+        "pagado_bpm": 0,
+        "saldo_bpm": 0
+      }
+    ],
+    "excel_pagado_bpm_parcial": [
+      {
+        "order_number": "29441",
+        "estado_bpm": "confirmado_parcial",
+        "monto_excel": 287748,
+        "pagado_bpm": 261749,
+        "saldo_bpm": 26010,
+        "diferencia": 25999
+      },
+      {
+        "order_number": "29891",
+        "estado_bpm": "confirmado_parcial",
+        "monto_excel": 264358,
+        "pagado_bpm": 264359,
+        "saldo_bpm": 1567,
+        "diferencia": -1
+      },
+      {
+        "order_number": "29976",
+        "estado_bpm": "confirmado_parcial",
+        "monto_excel": 135380,
+        "pagado_bpm": 135378,
+        "saldo_bpm": 1200,
+        "diferencia": 2
+      }
+    ]
+  },
+  "faltantes": {
+    "no_en_bpm": [
+      {
+        "order_number": "4174",
+        "monto_excel": 328400,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-06T03:00:00.000Z"
+      },
+      {
+        "order_number": "4223",
+        "monto_excel": 272640,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-08T03:00:00.000Z"
+      },
+      {
+        "order_number": "4220",
+        "monto_excel": 240041,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-06T03:00:00.000Z"
+      },
+      {
+        "order_number": "4227",
+        "monto_excel": 236392,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-06T03:00:00.000Z"
+      },
+      {
+        "order_number": "4282",
+        "monto_excel": 276158,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-07T03:00:00.000Z"
+      },
+      {
+        "order_number": "4176",
+        "monto_excel": 210910,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-07T03:00:00.000Z"
+      },
+      {
+        "order_number": "4358",
+        "monto_excel": 184998,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-08T03:00:00.000Z"
+      },
+      {
+        "order_number": "4371",
+        "monto_excel": 191737,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-08T03:00:00.000Z"
+      },
+      {
+        "order_number": "4395",
+        "monto_excel": 201720,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-08T03:00:00.000Z"
+      },
+      {
+        "order_number": "4434",
+        "monto_excel": 183627,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-10T03:00:00.000Z"
+      },
+      {
+        "order_number": "4254",
+        "monto_excel": 270182,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-10T03:00:00.000Z"
+      },
+      {
+        "order_number": "4363",
+        "monto_excel": 247407,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-08T03:00:00.000Z"
+      },
+      {
+        "order_number": "4400",
+        "monto_excel": 385195,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-08T03:00:00.000Z"
+      },
+      {
+        "order_number": "4348",
+        "monto_excel": 319848,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-08T03:00:00.000Z"
+      },
+      {
+        "order_number": "4467",
+        "monto_excel": 261806,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-12T03:00:00.000Z"
+      },
+      {
+        "order_number": "4499",
+        "monto_excel": 206128,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-12T03:00:00.000Z"
+      },
+      {
+        "order_number": "4518",
+        "monto_excel": 626256,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4520",
+        "monto_excel": 436008,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4522",
+        "monto_excel": 200816,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4525",
+        "monto_excel": 269386,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4526",
+        "monto_excel": 250760,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4540",
+        "monto_excel": 245389,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4547",
+        "monto_excel": 225927,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4536",
+        "monto_excel": 193207,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4537",
+        "monto_excel": 240824,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4552",
+        "monto_excel": 201626,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4549",
+        "monto_excel": 236960,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4556",
+        "monto_excel": 535607,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4558",
+        "monto_excel": 191963,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4560",
+        "monto_excel": 188833,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4557",
+        "monto_excel": 200685,
+        "cuenta": "EFECTIVO",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4551",
+        "monto_excel": 259989,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4566",
+        "monto_excel": 192281,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4563",
+        "monto_excel": 172735,
+        "cuenta": "EFECTIVO",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4561",
+        "monto_excel": 205587,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4548",
+        "monto_excel": 183030,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4570",
+        "monto_excel": 379175,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4582",
+        "monto_excel": 279619,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-14T03:00:00.000Z"
+      },
+      {
+        "order_number": "4569",
+        "monto_excel": 230848,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-13T03:00:00.000Z"
+      },
+      {
+        "order_number": "4587",
+        "monto_excel": 470045,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-14T03:00:00.000Z"
+      },
+      {
+        "order_number": "4586",
+        "monto_excel": 175075,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-14T03:00:00.000Z"
+      },
+      {
+        "order_number": "4593",
+        "monto_excel": 210523,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-14T03:00:00.000Z"
+      },
+      {
+        "order_number": "4594",
+        "monto_excel": 324828,
+        "cuenta": "MP IAIR",
+        "fecha": "2026-07-14T03:00:00.000Z"
+      },
+      {
+        "order_number": "4606",
+        "monto_excel": 307748,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-14T03:00:00.000Z"
+      },
+      {
+        "order_number": "4618",
+        "monto_excel": 204585,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-15T03:00:00.000Z"
+      },
+      {
+        "order_number": "4623",
+        "monto_excel": 535291,
+        "cuenta": "EFECTIVO",
+        "fecha": "2026-07-15T03:00:00.000Z"
+      },
+      {
+        "order_number": "4624",
+        "monto_excel": 387041,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-15T03:00:00.000Z"
+      },
+      {
+        "order_number": "4627",
+        "monto_excel": 253997,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-15T03:00:00.000Z"
+      },
+      {
+        "order_number": "4609",
+        "monto_excel": 384467,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-14T03:00:00.000Z"
+      },
+      {
+        "order_number": "4632",
+        "monto_excel": 308188,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-15T03:00:00.000Z"
+      },
+      {
+        "order_number": "4598",
+        "monto_excel": 228582,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-15T03:00:00.000Z"
+      },
+      {
+        "order_number": "4622",
+        "monto_excel": 197462,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-15T03:00:00.000Z"
+      },
+      {
+        "order_number": "4634",
+        "monto_excel": 173159,
+        "cuenta": "MP IAIR",
+        "fecha": "2026-07-15T03:00:00.000Z"
+      },
+      {
+        "order_number": "4635",
+        "monto_excel": 273597,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-16T03:00:00.000Z"
+      },
+      {
+        "order_number": "4639",
+        "monto_excel": 442238,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-15T03:00:00.000Z"
+      },
+      {
+        "order_number": "4638",
+        "monto_excel": 413245,
+        "cuenta": "EFECTIVO",
+        "fecha": "2026-07-18T03:00:00.000Z"
+      },
+      {
+        "order_number": "4641",
+        "monto_excel": 365528,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-15T03:00:00.000Z"
+      },
+      {
+        "order_number": "4572",
+        "monto_excel": 191998,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-15T03:00:00.000Z"
+      },
+      {
+        "order_number": "4602",
+        "monto_excel": 331271,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-14T03:00:00.000Z"
+      },
+      {
+        "order_number": "4643",
+        "monto_excel": 132036,
+        "cuenta": "EFECTIVO",
+        "fecha": "2026-07-16T03:00:00.000Z"
+      },
+      {
+        "order_number": "4644",
+        "monto_excel": 148360,
+        "cuenta": "MP IAIR",
+        "fecha": "2026-07-15T03:00:00.000Z"
+      },
+      {
+        "order_number": "4649",
+        "monto_excel": 261159,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-15T03:00:00.000Z"
+      },
+      {
+        "order_number": "4653",
+        "monto_excel": 431934,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-15T03:00:00.000Z"
+      },
+      {
+        "order_number": "4656",
+        "monto_excel": 231813,
+        "cuenta": "MP IAIR",
+        "fecha": "2026-07-16T03:00:00.000Z"
+      },
+      {
+        "order_number": "4658",
+        "monto_excel": 366038,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-16T03:00:00.000Z"
+      },
+      {
+        "order_number": "4669",
+        "monto_excel": 385380,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-16T03:00:00.000Z"
+      },
+      {
+        "order_number": "4667",
+        "monto_excel": 219949,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-16T03:00:00.000Z"
+      },
+      {
+        "order_number": "4670",
+        "monto_excel": 254651,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-16T03:00:00.000Z"
+      },
+      {
+        "order_number": "4674",
+        "monto_excel": 169112,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-16T03:00:00.000Z"
+      },
+      {
+        "order_number": "4675",
+        "monto_excel": 329866,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-16T03:00:00.000Z"
+      },
+      {
+        "order_number": "4673",
+        "monto_excel": 189773,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-16T03:00:00.000Z"
+      },
+      {
+        "order_number": "4677",
+        "monto_excel": 257300,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-16T03:00:00.000Z"
+      },
+      {
+        "order_number": "4701",
+        "monto_excel": 163967,
+        "cuenta": "EFECTIVO",
+        "fecha": "2026-07-17T03:00:00.000Z"
+      },
+      {
+        "order_number": "4686",
+        "monto_excel": 199905,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-16T03:00:00.000Z"
+      },
+      {
+        "order_number": "4690",
+        "monto_excel": 192815,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-16T03:00:00.000Z"
+      },
+      {
+        "order_number": "4691",
+        "monto_excel": 176850,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-16T03:00:00.000Z"
+      },
+      {
+        "order_number": "4688",
+        "monto_excel": 240669,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-16T03:00:00.000Z"
+      },
+      {
+        "order_number": "4694",
+        "monto_excel": 251955,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-16T03:00:00.000Z"
+      },
+      {
+        "order_number": "4683",
+        "monto_excel": 29636,
+        "cuenta": "EFECTIVO",
+        "fecha": "2026-07-16T03:00:00.000Z"
+      },
+      {
+        "order_number": "4702",
+        "monto_excel": 179600,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-17T03:00:00.000Z"
+      },
+      {
+        "order_number": "4707",
+        "monto_excel": 186197,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-17T03:00:00.000Z"
+      },
+      {
+        "order_number": "4705",
+        "monto_excel": 256079,
+        "cuenta": "MP IAIR",
+        "fecha": "2026-07-17T03:00:00.000Z"
+      },
+      {
+        "order_number": "4685",
+        "monto_excel": 206047,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-16T03:00:00.000Z"
+      },
+      {
+        "order_number": "4715",
+        "monto_excel": 191000,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-17T03:00:00.000Z"
+      },
+      {
+        "order_number": "4720",
+        "monto_excel": 232350,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-17T03:00:00.000Z"
+      },
+      {
+        "order_number": "4718",
+        "monto_excel": 236869,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-17T03:00:00.000Z"
+      },
+      {
+        "order_number": "4716",
+        "monto_excel": 218559,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-17T03:00:00.000Z"
+      },
+      {
+        "order_number": "4723",
+        "monto_excel": 177023,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-17T03:00:00.000Z"
+      },
+      {
+        "order_number": "4725",
+        "monto_excel": 216449,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-17T03:00:00.000Z"
+      },
+      {
+        "order_number": "4727",
+        "monto_excel": 286380,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-17T03:00:00.000Z"
+      },
+      {
+        "order_number": "4731",
+        "monto_excel": 333259,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-17T03:00:00.000Z"
+      },
+      {
+        "order_number": "4732",
+        "monto_excel": 195442,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-17T03:00:00.000Z"
+      },
+      {
+        "order_number": "4730",
+        "monto_excel": 209041,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-17T03:00:00.000Z"
+      },
+      {
+        "order_number": "4740",
+        "monto_excel": 315915,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-17T03:00:00.000Z"
+      },
+      {
+        "order_number": "4744",
+        "monto_excel": 384049,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-17T03:00:00.000Z"
+      },
+      {
+        "order_number": "4750",
+        "monto_excel": 273635,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-17T03:00:00.000Z"
+      },
+      {
+        "order_number": "4768",
+        "monto_excel": 421045,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-18T03:00:00.000Z"
+      },
+      {
+        "order_number": "4769",
+        "monto_excel": 379429,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-18T03:00:00.000Z"
+      },
+      {
+        "order_number": "4735",
+        "monto_excel": 187393,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-18T03:00:00.000Z"
+      },
+      {
+        "order_number": "4780",
+        "monto_excel": 238395,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-18T03:00:00.000Z"
+      },
+      {
+        "order_number": "4756",
+        "monto_excel": 238720,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-18T03:00:00.000Z"
+      },
+      {
+        "order_number": "4706",
+        "monto_excel": 359161,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-17T03:00:00.000Z"
+      },
+      {
+        "order_number": "4785",
+        "monto_excel": 192767,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-18T03:00:00.000Z"
+      },
+      {
+        "order_number": "4790",
+        "monto_excel": 491877,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-18T03:00:00.000Z"
+      },
+      {
+        "order_number": "4760",
+        "monto_excel": 236416,
+        "cuenta": "WANDA",
+        "fecha": "2026-07-18T03:00:00.000Z"
+      },
+      {
+        "order_number": "3914",
+        "monto_excel": 193228,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "3994",
+        "monto_excel": 169235,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4025",
+        "monto_excel": 270510,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-24T03:00:00.000Z"
+      },
+      {
+        "order_number": "4038",
+        "monto_excel": 290740,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4199",
+        "monto_excel": 571600,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4200",
+        "monto_excel": 174583,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4235",
+        "monto_excel": 420540,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4297",
+        "monto_excel": 183680,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4301",
+        "monto_excel": 171610,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4373",
+        "monto_excel": 177585,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-29T03:00:00.000Z"
+      },
+      {
+        "order_number": "4384",
+        "monto_excel": 188100,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-26T03:00:00.000Z"
+      },
+      {
+        "order_number": "4498",
+        "monto_excel": 362900,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4517",
+        "monto_excel": 1091413,
+        "cuenta": "WANDA",
+        "fecha": "2026-04-04T03:00:00.000Z"
+      },
+      {
+        "order_number": "4524",
+        "monto_excel": 174000,
+        "cuenta": "EFECTIVO",
+        "fecha": "2026-03-24T03:00:00.000Z"
+      },
+      {
+        "order_number": "4519",
+        "monto_excel": 237800,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4543",
+        "monto_excel": 246000,
+        "cuenta": "EFECTIVO",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4527",
+        "monto_excel": 255330,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-24T03:00:00.000Z"
+      },
+      {
+        "order_number": "4542",
+        "monto_excel": 154500,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4510",
+        "monto_excel": 153155,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4535",
+        "monto_excel": 204520,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4545",
+        "monto_excel": 154500,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4530",
+        "monto_excel": 180913,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-24T03:00:00.000Z"
+      },
+      {
+        "order_number": "4528",
+        "monto_excel": 154728,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4529",
+        "monto_excel": 204890,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4554",
+        "monto_excel": 182338,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4565",
+        "monto_excel": 151603,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4567",
+        "monto_excel": 290803,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4568",
+        "monto_excel": 157000,
+        "cuenta": "EFECTIVO",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4571",
+        "monto_excel": 172670,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4553",
+        "monto_excel": 230800,
+        "cuenta": "WANDA",
+        "fecha": "2026-04-04T03:00:00.000Z"
+      },
+      {
+        "order_number": "4580",
+        "monto_excel": 167240,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4576",
+        "monto_excel": 315710,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-26T03:00:00.000Z"
+      },
+      {
+        "order_number": "4581",
+        "monto_excel": 151340,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-26T03:00:00.000Z"
+      },
+      {
+        "order_number": "4584",
+        "monto_excel": 346600,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-26T03:00:00.000Z"
+      },
+      {
+        "order_number": "4573",
+        "monto_excel": 151328,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-25T03:00:00.000Z"
+      },
+      {
+        "order_number": "4585",
+        "monto_excel": 153450,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-26T03:00:00.000Z"
+      },
+      {
+        "order_number": "4575",
+        "monto_excel": 357568,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-26T03:00:00.000Z"
+      },
+      {
+        "order_number": "4597",
+        "monto_excel": 159720,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-26T03:00:00.000Z"
+      },
+      {
+        "order_number": "4600",
+        "monto_excel": 295100,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-26T03:00:00.000Z"
+      },
+      {
+        "order_number": "4603",
+        "monto_excel": 206780,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-31T03:00:00.000Z"
+      },
+      {
+        "order_number": "4604",
+        "monto_excel": 152805,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-26T03:00:00.000Z"
+      },
+      {
+        "order_number": "4626",
+        "monto_excel": 651000,
+        "cuenta": "EFECTIVO",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4628",
+        "monto_excel": 161000,
+        "cuenta": "EFECTIVO",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4588",
+        "monto_excel": 179460,
+        "cuenta": "WANDA",
+        "fecha": "2026-04-08T03:00:00.000Z"
+      },
+      {
+        "order_number": "4617",
+        "monto_excel": 180000,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4611",
+        "monto_excel": 179230,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-26T03:00:00.000Z"
+      },
+      {
+        "order_number": "4621",
+        "monto_excel": 180535,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-31T03:00:00.000Z"
+      },
+      {
+        "order_number": "4610",
+        "monto_excel": 162745,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-26T03:00:00.000Z"
+      },
+      {
+        "order_number": "4620",
+        "monto_excel": 174120,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4631",
+        "monto_excel": 166570,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4630",
+        "monto_excel": 151485,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4640",
+        "monto_excel": 181673,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4601",
+        "monto_excel": 226940,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4642",
+        "monto_excel": 164900,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4652",
+        "monto_excel": 208693,
+        "cuenta": "EFECTIVO",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4648",
+        "monto_excel": 210000,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4646",
+        "monto_excel": 349280,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4647",
+        "monto_excel": 454278,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-31T03:00:00.000Z"
+      },
+      {
+        "order_number": "4650",
+        "monto_excel": 151530,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4684",
+        "monto_excel": 37695,
+        "cuenta": "MP IAIR",
+        "fecha": "2026-03-28T03:00:00.000Z"
+      },
+      {
+        "order_number": "4625",
+        "monto_excel": 199198,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4655",
+        "monto_excel": 150988,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4659",
+        "monto_excel": 206193,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4687",
+        "monto_excel": 154600,
+        "cuenta": "EFECTIVO",
+        "fecha": "2026-03-28T03:00:00.000Z"
+      },
+      {
+        "order_number": "4663",
+        "monto_excel": 153890,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4614",
+        "monto_excel": 229170,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-31T03:00:00.000Z"
+      },
+      {
+        "order_number": "4668",
+        "monto_excel": 155063,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-27T03:00:00.000Z"
+      },
+      {
+        "order_number": "4676",
+        "monto_excel": 176028,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-28T03:00:00.000Z"
+      },
+      {
+        "order_number": "4697",
+        "monto_excel": 82900,
+        "cuenta": "EFECTIVO",
+        "fecha": "2026-03-28T03:00:00.000Z"
+      },
+      {
+        "order_number": "4619",
+        "monto_excel": 925440,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-28T03:00:00.000Z"
+      },
+      {
+        "order_number": "4698",
+        "monto_excel": 200565,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-28T03:00:00.000Z"
+      },
+      {
+        "order_number": "4699",
+        "monto_excel": 273583,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-28T03:00:00.000Z"
+      },
+      {
+        "order_number": "4700",
+        "monto_excel": 155143,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-28T03:00:00.000Z"
+      },
+      {
+        "order_number": "4696",
+        "monto_excel": 158745,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-28T03:00:00.000Z"
+      },
+      {
+        "order_number": "4703",
+        "monto_excel": 210840,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-28T03:00:00.000Z"
+      },
+      {
+        "order_number": "4704",
+        "monto_excel": 206380,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-28T03:00:00.000Z"
+      },
+      {
+        "order_number": "4719",
+        "monto_excel": 205610,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-28T03:00:00.000Z"
+      },
+      {
+        "order_number": "4679",
+        "monto_excel": 190260,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-28T03:00:00.000Z"
+      },
+      {
+        "order_number": "4708",
+        "monto_excel": 177040,
+        "cuenta": "WANDA",
+        "fecha": "2026-04-07T03:00:00.000Z"
+      },
+      {
+        "order_number": "4741",
+        "monto_excel": 244728,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-29T03:00:00.000Z"
+      },
+      {
+        "order_number": "4742",
+        "monto_excel": 249748,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-29T03:00:00.000Z"
+      },
+      {
+        "order_number": "4745",
+        "monto_excel": 297360,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-29T03:00:00.000Z"
+      },
+      {
+        "order_number": "4747",
+        "monto_excel": 163565,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-29T03:00:00.000Z"
+      },
+      {
+        "order_number": "4752",
+        "monto_excel": 488700,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-30T03:00:00.000Z"
+      },
+      {
+        "order_number": "4695",
+        "monto_excel": 153510,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-28T03:00:00.000Z"
+      },
+      {
+        "order_number": "4761",
+        "monto_excel": 163218,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-30T03:00:00.000Z"
+      },
+      {
+        "order_number": "4743",
+        "monto_excel": 262780,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-29T03:00:00.000Z"
+      },
+      {
+        "order_number": "4771",
+        "monto_excel": 257800,
+        "cuenta": "WANDA",
+        "fecha": "2026-04-01T03:00:00.000Z"
+      },
+      {
+        "order_number": "4772",
+        "monto_excel": 155740,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-30T03:00:00.000Z"
+      },
+      {
+        "order_number": "4777",
+        "monto_excel": 206685,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-30T03:00:00.000Z"
+      },
+      {
+        "order_number": "4782",
+        "monto_excel": 164668,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-30T03:00:00.000Z"
+      },
+      {
+        "order_number": "4786",
+        "monto_excel": 183600,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-30T03:00:00.000Z"
+      },
+      {
+        "order_number": "4774",
+        "monto_excel": 184750,
+        "cuenta": "WANDA",
+        "fecha": "2026-03-30T03:00:00.000Z"
+      },
+      {
+        "order_number": "4759",
+        "monto_excel": 198280,
+        "cuenta": "WANDA",
+        "fecha": "2026-04-04T03:00:00.000Z"
+      },
+      {
+        "order_number": "29764",
+        "monto_excel": 119800,
+        "cuenta": "KIESEL",
+        "fecha": "2026-03-24T03:00:00.000Z"
+      },
+      {
+        "order_number": "29772",
+        "monto_excel": 430843,
+        "cuenta": "KIESEL",
+        "fecha": "2026-03-24T03:00:00.000Z"
+      }
+    ],
+    "no_en_tn": []
+  },
+  "resumen": {
+    "total_excel": 553,
+    "encontrados_bpm": 352,
+    "encontrados_tn": 553,
+    "montos_ok": 312,
+    "montos_diff": 40,
+    "estados_ok": 325,
+    "estados_parcial": 3,
+    "estados_no_pagado": 24
+  }
+}
