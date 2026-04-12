@@ -72,17 +72,27 @@ INSERT INTO permissions (key, module) VALUES
   ('bank.view', 'bank')
 ON CONFLICT (key) DO NOTHING;
 
--- Admin: recibe automáticamente (ya tiene SELECT r, p WHERE r.name = 'admin')
--- Asignar a admin explícitamente por si acaso
+-- Asignar a role_permissions (template para nuevos usuarios)
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM roles r, permissions p
 WHERE r.name = 'admin' AND p.key = 'bank.view'
 ON CONFLICT DO NOTHING;
 
--- Operador y caja también pueden ver
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM roles r, permissions p
 WHERE r.name IN ('operador', 'caja') AND p.key = 'bank.view'
+ON CONFLICT DO NOTHING;
+
+-- Asignar a user_permissions para usuarios EXISTENTES con roles admin/operador/caja
+-- (el auth middleware lee de user_permissions, no de role_permissions)
+INSERT INTO user_permissions (user_id, permission_id)
+SELECT u.id, p.id
+FROM users u
+JOIN roles r ON u.role_id = r.id
+CROSS JOIN permissions p
+WHERE r.name IN ('admin', 'operador', 'caja')
+  AND p.key = 'bank.view'
+  AND u.is_active = true
 ON CONFLICT DO NOTHING;
