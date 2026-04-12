@@ -7,6 +7,7 @@ const bcrypt = require('bcrypt');
 const pool = require('../db');
 const { generateToken, authenticate } = require('../middleware/auth');
 const { loginLimiter } = require('../middleware/rateLimit');
+const { logEvento } = require('../utils/logging');
 
 const router = express.Router();
 
@@ -78,6 +79,8 @@ router.post('/login', loginLimiter, async (req, res) => {
       }
     });
 
+    await logEvento({ accion: 'login', origen: 'auth', userId: user.id, username: user.email });
+
   } catch (error) {
     console.error('Error en login:', error);
     res.status(500).json({ error: 'Error al iniciar sesión' });
@@ -143,6 +146,8 @@ router.post('/change-password', authenticate, async (req, res) => {
     );
 
     res.json({ ok: true, message: 'Contraseña actualizada' });
+
+    await logEvento({ accion: 'password_changed', origen: 'auth', userId: req.user.id, username: req.user.email });
 
   } catch (error) {
     console.error('Error en change-password:', error);

@@ -6,6 +6,7 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const pool = require('../db');
 const { authenticate, requirePermission } = require('../middleware/auth');
+const { logEvento } = require('../utils/logging');
 
 const router = express.Router();
 
@@ -155,6 +156,8 @@ router.post('/', requirePermission('users.create'), async (req, res) => {
       }
     });
 
+    await logEvento({ accion: `usuario_creado: ${name}`, origen: 'admin', userId: req.user.id, username: req.user.name });
+
   } catch (error) {
     console.error('Error en POST /users:', error);
     res.status(500).json({ error: 'Error al crear usuario' });
@@ -230,6 +233,8 @@ router.patch('/:id', requirePermission('users.edit'), async (req, res) => {
       }
     });
 
+    await logEvento({ accion: `usuario_editado: ${result.rows[0].name}`, origen: 'admin', userId: req.user.id, username: req.user.name });
+
   } catch (error) {
     console.error('Error en PATCH /users/:id:', error);
     res.status(500).json({ error: 'Error al actualizar usuario' });
@@ -275,6 +280,8 @@ router.patch('/:id/disable', requirePermission('users.disable'), async (req, res
         permissions: permissionsResult.rows.map(p => p.key)
       }
     });
+
+    await logEvento({ accion: `usuario_${is_active ? 'activado' : 'desactivado'}: ${result.rows[0].email}`, origen: 'admin', userId: req.user.id, username: req.user.name });
 
   } catch (error) {
     console.error('Error en PATCH /users/:id/disable:', error);
@@ -332,6 +339,8 @@ router.patch('/:id/permissions', requirePermission('users.assign_role'), async (
       }
     });
 
+    await logEvento({ accion: `permisos_actualizados: ${result.rows[0].email}`, origen: 'admin', userId: req.user.id, username: req.user.name });
+
   } catch (error) {
     console.error('Error en PATCH /users/:id/permissions:', error);
     res.status(500).json({ error: 'Error al actualizar permisos' });
@@ -369,6 +378,8 @@ router.delete('/:id', requirePermission('users.disable'), async (req, res) => {
       ok: true,
       message: 'Usuario eliminado correctamente'
     });
+
+    await logEvento({ accion: `usuario_eliminado: ${userExists.rows[0].email}`, origen: 'admin', userId: req.user.id, username: req.user.name });
 
   } catch (error) {
     console.error('Error en DELETE /users/:id:', error);

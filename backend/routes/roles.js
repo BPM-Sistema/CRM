@@ -5,6 +5,7 @@
 const express = require('express');
 const pool = require('../db');
 const { authenticate, requirePermission } = require('../middleware/auth');
+const { logEvento } = require('../utils/logging');
 
 const router = express.Router();
 
@@ -198,6 +199,8 @@ router.patch('/:id/permissions', requirePermission('users.assign_role'), async (
         permissions: updatedPermissions.rows.map(p => p.key)
       }
     });
+
+    await logEvento({ accion: `permisos_rol_actualizados: ${roleExists.rows[0].name}`, origen: 'admin', userId: req.user.id, username: req.user.name });
 
   } catch (error) {
     console.error('Error en PATCH /roles/:id/permissions:', error);

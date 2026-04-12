@@ -20,18 +20,7 @@ const { analizarRemito } = require('../services/claudeVision');
 const { enviarWhatsAppPlantilla } = require('../lib/whatsapp-helpers');
 const { uploadFile } = require('../lib/storage');
 
-// Función para loguear eventos (misma estructura que index.js)
-async function logEvento({ orderNumber, accion, origen, userId, username }) {
-  try {
-    await pool.query(
-      `INSERT INTO logs (comprobante_id, order_number, accion, origen, user_id, username)
-       VALUES (NULL, $1, $2, $3, $4, $5)`,
-      [orderNumber || null, accion, origen, userId || null, username || null]
-    );
-  } catch (err) {
-    console.error('❌ Error guardando log remito:', err.message);
-  }
-}
+const { logEvento } = require('../utils/logging');
 
 // Configurar multer para uploads temporales
 const upload = multer({
@@ -425,6 +414,8 @@ router.delete('/:id',
       console.log(`🗑️ Remito ${id} eliminado`);
 
       res.json({ ok: true, remito_id: id });
+
+      await logEvento({ accion: 'remito_eliminado', origen: 'operador', userId: req.user.id, username: req.user.name });
 
     } catch (error) {
       console.error('❌ DELETE /remitos/:id error:', error.message);

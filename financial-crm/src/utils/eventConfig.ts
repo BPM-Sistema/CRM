@@ -29,6 +29,13 @@ const EVENT_CONFIG: Record<string, EventConfig> = {
     color: 'bg-amber-100'
   },
 
+  // Pedidos
+  'pedido_creado': {
+    emoji: '🛒',
+    label: 'Pedido creado',
+    color: 'bg-emerald-100'
+  },
+
   // Estados de pedido
   'hoja_impresa': {
     emoji: '🖨️',
@@ -91,6 +98,72 @@ const EVENT_CONFIG: Record<string, EventConfig> = {
     label: 'Remito confirmado',
     color: 'bg-green-100'
   },
+  'remito_eliminado': {
+    emoji: '🗑️',
+    label: 'Remito eliminado',
+    color: 'bg-red-100'
+  },
+
+  // Auth & Usuarios
+  'login': {
+    emoji: '🔑',
+    label: 'Login',
+    color: 'bg-blue-100'
+  },
+  'password_changed': {
+    emoji: '🔒',
+    label: 'Contraseña cambiada',
+    color: 'bg-amber-100'
+  },
+  'usuario_creado': {
+    emoji: '👤',
+    label: 'Usuario creado',
+    color: 'bg-emerald-100'
+  },
+  'usuario_editado': {
+    emoji: '✏️',
+    label: 'Usuario editado',
+    color: 'bg-blue-100'
+  },
+  'usuario_eliminado': {
+    emoji: '🗑️',
+    label: 'Usuario eliminado',
+    color: 'bg-red-100'
+  },
+  'usuario_activado': {
+    emoji: '✅',
+    label: 'Usuario activado',
+    color: 'bg-green-100'
+  },
+  'usuario_desactivado': {
+    emoji: '⛔',
+    label: 'Usuario desactivado',
+    color: 'bg-red-100'
+  },
+  'permisos_actualizados': {
+    emoji: '🛡️',
+    label: 'Permisos actualizados',
+    color: 'bg-violet-100'
+  },
+  'permisos_rol_actualizados': {
+    emoji: '🛡️',
+    label: 'Permisos de rol actualizados',
+    color: 'bg-violet-100'
+  },
+
+  // Envío
+  'datos_envio_registrados': {
+    emoji: '📦',
+    label: 'Datos de envío registrados',
+    color: 'bg-cyan-100'
+  },
+
+  // WhatsApp masivo
+  'whatsapp_masivo': {
+    emoji: '📢',
+    label: 'WhatsApp masivo',
+    color: 'bg-green-100'
+  },
 
   // Etiquetas
   'etiqueta_impresa': {
@@ -131,6 +204,10 @@ const DYNAMIC_PATTERNS: Array<{ pattern: RegExp; config: EventConfig }> = [
   {
     pattern: /etiqueta_impresa_\d+_bultos/i,
     config: { emoji: '🏷️', label: 'Etiqueta impresa', color: 'bg-violet-100' }
+  },
+  {
+    pattern: /whatsapp_enviado/i,
+    config: { emoji: '💬', label: 'WhatsApp enviado', color: 'bg-green-100' }
   },
 ];
 

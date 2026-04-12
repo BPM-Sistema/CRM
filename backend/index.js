@@ -134,17 +134,7 @@ app.get('/leads', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'leads.html'));
 });
 
-async function logEvento({ comprobanteId, orderNumber, accion, origen, userId, username }) {
-  try {
-    await pool.query(
-      `INSERT INTO logs (comprobante_id, order_number, accion, origen, user_id, username)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [comprobanteId || null, orderNumber || null, accion, origen, userId || null, username || null]
-    );
-  } catch (err) {
-    log.error({ err, orderNumber, accion }, 'Error guardando log de actividad');
-  }
-}
+const { logEvento } = require('./utils/logging');
 
 /* =====================================================
    UTIL — SIGNED ACTION TOKENS (para links /confirmar /rechazar)
@@ -686,6 +676,9 @@ async function queueWhatsApp({ telefono, plantilla, variables, orderNumber }) {
       backoff: { type: 'exponential', delay: 10000 }
     });
     log.info({ orderNumber, plantilla }, 'WhatsApp message enqueued');
+    if (orderNumber) {
+      await logEvento({ orderNumber: String(orderNumber), accion: `whatsapp_enviado: ${plantilla}`, origen: 'sistema' });
+    }
     return;
   }
   // Fallback to direct send
@@ -3947,6 +3940,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
     // order/created: Guardar pedido completo (datos + productos)
     await guardarPedidoCompleto(pedido);
     log.info({ orderNumber: String(pedido.number), orderId }, 'Order saved in DB (order/created)');
+    await logEvento({ orderNumber: String(pedido.number), accion: 'pedido_creado', origen: 'webhook_tiendanube' });
 
     // 🔍 Verificar consistencia con TiendaNube
     await verificarConsistencia(String(pedido.number), pedido);
@@ -5924,6 +5918,8 @@ app.post('/shipping-data', shippingFormLimiter, async (req, res) => {
 
     console.log(`📦 Datos de envío registrados para pedido ${sanitizedOrderNumber}`);
 
+    await logEvento({ orderNumber: sanitizedOrderNumber, accion: 'datos_envio_registrados', origen: 'cliente' });
+
     res.json({
       ok: true,
       id: result.rows[0].id,
@@ -6734,6 +6730,8 @@ app.post('/whatsapp/bulk-send', authenticate, requirePermission('whatsapp.send_b
     }
 
     console.log(`✅ WhatsApp bulk send complete: ${results.sent.length} sent, ${results.failed.length} failed, ${results.skipped.length} skipped`);
+
+    await logEvento({ accion: `whatsapp_masivo: ${template} (${results.sent.length} enviados)`, origen: 'admin', userId: req.user.id, username: req.user.name });
 
     res.json({
       ok: true,
