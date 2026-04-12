@@ -67,7 +67,7 @@ async function authenticate(req, res, next) {
       FROM permissions p
       LEFT JOIN user_permissions up ON p.id = up.permission_id AND up.user_id = $1
       LEFT JOIN role_permissions rp ON p.id = rp.permission_id AND rp.role_id = $2
-      WHERE up.id IS NOT NULL OR rp.id IS NOT NULL
+      WHERE up.user_id IS NOT NULL OR rp.role_id IS NOT NULL
     `, [decoded.userId, userResult.rows[0].role_id]);
 
     const permissions = permissionsResult.rows.map(p => p.key);
@@ -171,7 +171,7 @@ async function optionalAuth(req, res, next) {
         FROM permissions p
         LEFT JOIN user_permissions up ON p.id = up.permission_id AND up.user_id = $1
         LEFT JOIN role_permissions rp ON p.id = rp.permission_id AND rp.role_id = $2
-        WHERE up.id IS NOT NULL OR rp.id IS NOT NULL
+        WHERE up.user_id IS NOT NULL OR rp.role_id IS NOT NULL
       `, [user.id, user.role_id]);
 
       req.user = {
