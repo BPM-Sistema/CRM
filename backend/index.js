@@ -1795,13 +1795,6 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
 
     log.info({ count: matches.length }, 'Conciliación aplicar: inicio');
 
-    // Persistir movimientos bancarios en Admin Banco (solo en apply, nunca en preview)
-    if (Array.isArray(movimientos_banco) && movimientos_banco.length > 0) {
-      importMovimientos(movimientos_banco, req.user?.id)
-        .then(r => log.info({ inserted: r.inserted, duplicated: r.duplicated }, 'Bank import from conciliación aplicar'))
-        .catch(err => log.error({ err: err.message }, 'Bank import from conciliación aplicar failed'));
-    }
-
     const confirmed = [];
     const errors = [];
 
@@ -1905,6 +1898,18 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
     }
 
     log.info({ confirmed: confirmed.length, errors: errors.length }, 'Conciliación aplicar: fin');
+
+    // Persistir movimientos bancarios en Admin Banco con assignments resueltos
+    if (Array.isArray(movimientos_banco) && movimientos_banco.length > 0) {
+      const resolvedMatches = confirmed.map(c => ({
+        banco_id: c.banco_id,
+        comprobante_id: c.comprobante_id,
+        order_number: c.order_number
+      }));
+      importMovimientos(movimientos_banco, req.user?.id, resolvedMatches)
+        .then(r => log.info({ inserted: r.inserted, duplicated: r.duplicated }, 'Bank import from conciliación aplicar'))
+        .catch(err => log.error({ err: err.message }, 'Bank import from conciliación aplicar failed'));
+    }
 
     res.json({
       ok: true,

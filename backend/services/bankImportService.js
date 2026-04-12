@@ -91,8 +91,14 @@ async function detectAssignment(client, amount, postedAt, senderName) {
 /**
  * Importa movimientos bancarios a bank_imports + bank_movements.
  * Solo llamar desde conciliacion-aplicar.
+ *
+ * @param {Array} movimientos - Movimientos raw del JSON bancario
+ * @param {string} userId - ID del usuario que aplica
+ * @param {Array} resolvedMatches - Matches ya resueltos por la conciliación
+ *   Cada uno: { banco_id, comprobante_id, order_number }
+ *   Si viene, se usa para asignar directamente sin detectAssignment.
  */
-async function importMovimientos(movimientos, userId) {
+async function importMovimientos(movimientos, userId, resolvedMatches) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -103,6 +109,14 @@ async function importMovimientos(movimientos, userId) {
     if (incoming.length === 0) {
       await client.query('ROLLBACK');
       return { inserted: 0, duplicated: 0 };
+    }
+
+    // Indexar matches resueltos por banco_id para lookup rápido
+    const matchByBancoId = {};
+    if (Array.isArray(resolvedMatches)) {
+      for (const m of resolvedMatches) {
+        matchByBancoId[String(m.banco_id)] = m;
+      }
     }
 
     const importRes = await client.query(
@@ -122,7 +136,12 @@ async function importMovimientos(movimientos, userId) {
       );
       if (existCheck.rows.length > 0) { duplicated++; continue; }
 
-      const assignment = await detectAssignment(client, mov.amount, mov.posted_at, mov.sender_name);
+      // Usar match resuelto de la conciliación si existe, sino unassigned
+      const resolved = matchByBancoId[String(mov.movement_uid)];
+      const assignment = resolved
+        ? { status: 'assigned', comprobante_id: resolved.comprobante_id, order_number: resolved.order_number }
+        : { status: 'unassigned', comprobante_id: null, order_number: null };
+
       await client.query(
         `INSERT INTO bank_movements
          (import_id, movement_uid, fingerprint, posted_at, amount, currency,
