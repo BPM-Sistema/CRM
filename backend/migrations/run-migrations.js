@@ -51,13 +51,6 @@ async function runMigrations() {
     const permissionsResult = await pool.query('SELECT COUNT(*) FROM permissions');
     console.log('Permisos totales:', permissionsResult.rows[0].count);
 
-    // Verificar permisos de Waspy
-    const waspyPerms = await pool.query(
-      "SELECT key FROM permissions WHERE module IN ('inbox', 'templates', 'whatsapp') ORDER BY key"
-    );
-    if (waspyPerms.rowCount > 0) {
-      console.log('Permisos Waspy:', waspyPerms.rows.map(p => p.key).join(', '));
-    }
 
     // Verificar tabla customers
     const customersExists = await pool.query(

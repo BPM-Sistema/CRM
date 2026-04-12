@@ -15,10 +15,6 @@ const navItems = [
     permissions: ['receipts.view', 'receipts.confirm', 'receipts.reject', 'receipts.download', 'receipts.upload_manual']
   },
   {
-    to: '/inbox',
-    permissions: ['inbox.view', 'inbox.send']
-  },
-  {
     to: '/analytics',
     permissions: ['dashboard.view']
   },

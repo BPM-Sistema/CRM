@@ -19,7 +19,6 @@ import {
   ShoppingBag,
   Download,
   Image,
-  MessageCircle,
   Tag,
 } from 'lucide-react';
 import { getEventConfig, formatEventLabel } from '../utils/eventConfig';
@@ -1053,24 +1052,6 @@ export function RealOrderDetail() {
               )}
             </Card>
 
-            {/* WhatsApp */}
-            {order.customer_phone && hasPermission('inbox.view') && (
-              <Card>
-                <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider mb-3">
-                  WhatsApp
-                </h3>
-                <div className="space-y-2">
-                  <Button
-                    variant="primary"
-                    className="w-full"
-                    leftIcon={<MessageCircle size={16} />}
-                    onClick={() => navigate(`/inbox?phone=${encodeURIComponent(order.customer_phone!)}`)}
-                  >
-                    Abrir Inbox
-                  </Button>
-                </div>
-              </Card>
-            )}
           </div>
         </div>
       </div>

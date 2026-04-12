@@ -89,8 +89,8 @@ async function main() {
     'shipping_requests', 'pagos_efectivo', 'logs', 'users', 'roles',
     'permissions', 'role_permissions', 'financieras', 'sync_queue',
     'whatsapp_messages', 'notifications', 'order_inconsistencies',
-    'integration_config', 'ai_bot_config', 'waspy_config',
-    'conversation_orders', 'activity_log', 'system_alerts'
+    'integration_config', 'ai_bot_config',
+    'activity_log', 'system_alerts'
   ];
   snapshot.rowCounts = {};
 

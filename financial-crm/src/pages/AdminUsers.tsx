@@ -84,7 +84,6 @@ const PERMISSION_LABELS: Record<string, string> = {
   'customers.sync': 'Sincronizar clientes',
   'customers.segment': 'Gestionar segmentos',
   'whatsapp.send_bulk': 'Enviar WhatsApp masivo',
-  'whatsapp.connect': 'Configurar WhatsApp',
 };
 
 const SECTIONS = [
@@ -178,7 +177,7 @@ const SECTIONS = [
     icon: Send,
     color: 'bg-green-50 text-green-600',
     subsections: [
-      { title: 'Acciones', permissions: ['whatsapp.send_bulk', 'whatsapp.connect'] }
+      { title: 'Acciones', permissions: ['whatsapp.send_bulk'] }
     ]
   }
 ];

@@ -103,14 +103,6 @@ async function checkAllServices() {
       // Sentry doesn't have a simple ping - just verify config
     }),
 
-    // 7. Waspy API
-    checkService('Waspy API', async () => {
-      const baseUrl = process.env.WASPY_API_URL;
-      if (!baseUrl) throw new Error('URL no configurada');
-
-      const res = await axios.get(`${baseUrl}/health`, { timeout: 5000 });
-      if (res.status !== 200) throw new Error(`Status ${res.status}`);
-    })
   ]);
 
   return checks;

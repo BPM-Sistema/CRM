@@ -12,8 +12,6 @@ import {
   Landmark,
   RefreshCw,
   Truck,
-  MessageCircle,
-  Smartphone,
   ImageIcon,
   Settings,
   Monitor,
@@ -82,7 +80,6 @@ const navItems = [
   { to: '/orders', icon: <ShoppingCart size={20} />, label: 'Pedidos', mobileIcon: <ShoppingCart size={22} />, permissions: ['orders.view', 'orders.print', 'orders.update_status', 'orders.create_cash_payment'] },
   { to: '/receipts', icon: <Receipt size={20} />, label: 'Comprobantes', mobileIcon: <Receipt size={22} />, permissions: ['receipts.view', 'receipts.confirm', 'receipts.reject', 'receipts.download', 'receipts.upload_manual'] },
   { to: '/remitos', icon: <Truck size={20} />, label: 'Remitos', mobileIcon: <Truck size={22} />, permissions: ['remitos.view', 'remitos.upload', 'remitos.confirm', 'remitos.reject'] },
-  { to: '/inbox', icon: <MessageCircle size={20} />, label: 'Inbox', mobileIcon: <MessageCircle size={22} />, permissions: ['inbox.view', 'inbox.send'] },
   { to: '/customers', icon: <UserCheck size={20} />, label: 'Clientes', mobileIcon: <UserCheck size={22} />, permissions: ['customers.view'] },
 ];
 
@@ -91,7 +88,6 @@ const adminItems = [
   { to: '/admin/financieras', icon: <Landmark size={20} />, label: 'Financieras', permissions: ['financieras.view'] },
   { to: '/admin/activity', icon: <Activity size={20} />, label: 'Actividad', permissions: ['activity.view'] },
   { to: '/admin/sync-queue', icon: <RefreshCw size={20} />, label: 'Sincronización', permissions: ['activity.view'] },
-  { to: '/admin/whatsapp', icon: <Smartphone size={20} />, label: 'WhatsApp Config', permissions: ['whatsapp.connect'] },
   { to: '/admin/whatsapp-actions', icon: <Send size={20} />, label: 'WhatsApp Envíos', permissions: ['whatsapp.send_bulk'] },
   { to: '/admin/image-sync', icon: <ImageIcon size={20} />, label: 'Sync Imagenes', permissions: ['activity.view'] },
   { to: '/admin/integrations', icon: <Settings size={20} />, label: 'Integraciones', permissions: ['integrations.view'] },

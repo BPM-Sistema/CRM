@@ -5,8 +5,6 @@ import Customers from './pages/Customers';
 import ActivityLog from './pages/ActivityLog';
 import SyncQueue from './pages/SyncQueue';
 import BatchPrint from './pages/BatchPrint';
-import { InboxPage } from './pages/InboxPage';
-import WhatsAppSettings from './pages/WhatsAppSettings';
 import { WhatsAppActions } from './pages';
 import ImageSyncStatus from './pages/ImageSyncStatus';
 import SystemStatus from './pages/SystemStatus';
@@ -49,8 +47,6 @@ function AppRoutes() {
             <Route path="/admin/activity" element={<ActivityLog />} />
             <Route path="/admin/sync-queue" element={<SyncQueue />} />
             <Route path="/admin/financieras" element={<Financieras />} />
-            <Route path="/inbox" element={<InboxPage />} />
-            <Route path="/admin/whatsapp" element={<WhatsAppSettings />} />
             <Route path="/admin/whatsapp-actions" element={<WhatsAppActions />} />
             <Route path="/admin/image-sync" element={<ImageSyncStatus />} />
             <Route path="/admin/integrations" element={<IntegrationSettings />} />
