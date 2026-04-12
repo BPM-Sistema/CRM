@@ -2156,10 +2156,10 @@ export async function conciliacionPreview(movimientos: unknown[]): Promise<Conci
   return data;
 }
 
-export async function conciliacionAplicar(matches: Array<{ comprobante_id: number; banco_id: string }>): Promise<ConciliacionAplicarResult> {
+export async function conciliacionAplicar(matches: Array<{ comprobante_id: number; banco_id: string }>, movimientos_banco?: unknown[]): Promise<ConciliacionAplicarResult> {
   const response = await authFetch(`${API_BASE_URL}/comprobantes/conciliacion-aplicar`, {
     method: 'POST',
-    body: JSON.stringify({ matches }),
+    body: JSON.stringify({ matches, movimientos_banco }),
   });
 
   const data = await response.json();

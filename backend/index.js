@@ -1631,11 +1631,6 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
 
     log.info({ total: movimientos.length, entrantes: entrantes.length }, 'Conciliación preview: inicio');
 
-    // Importar movimientos a bank_movements (async, no bloquea el preview)
-    importMovimientos(movimientos, req.user?.id, req.user?.name)
-      .then(r => r.inserted > 0 && log.info({ inserted: r.inserted, duplicated: r.duplicated }, 'Bank import from conciliación'))
-      .catch(err => log.error({ err: err.message }, 'Bank import from conciliación failed'));
-
     const matched = [];
     const unmatched = [];
     const usedComprobanteIds = new Set();
@@ -1791,13 +1786,20 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
 /* ── PASO 2: APLICAR — confirma solo los comprobantes seleccionados ── */
 app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('receipts.confirm'), async (req, res) => {
   try {
-    const { matches, fecha_max } = req.body;
+    const { matches, fecha_max, movimientos_banco } = req.body;
 
     if (!Array.isArray(matches) || matches.length === 0) {
       return res.status(400).json({ error: 'Se requiere un array de matches a confirmar' });
     }
 
     log.info({ count: matches.length }, 'Conciliación aplicar: inicio');
+
+    // Persistir movimientos bancarios en Admin Banco (solo en apply, nunca en preview)
+    if (Array.isArray(movimientos_banco) && movimientos_banco.length > 0) {
+      importMovimientos(movimientos_banco, req.user?.id)
+        .then(r => log.info({ inserted: r.inserted, duplicated: r.duplicated }, 'Bank import from conciliación aplicar'))
+        .catch(err => log.error({ err: err.message }, 'Bank import from conciliación aplicar failed'));
+    }
 
     const confirmed = [];
     const errors = [];
@@ -4970,7 +4972,7 @@ const adminStatusRoutes = require('./routes/admin-status');
 const systemAlertsRoutes = require('./routes/system-alerts');
 const adminDivergencesRoutes = require('./routes/admin-divergences');
 const bankRoutes = require('./routes/bank');
-const { importMovimientos } = require('./routes/bank');
+const { importMovimientos } = require('./services/bankImportService');
 // AI Bot routes — PAUSADO, descomentar cuando se active el bot en prod
 // let aiBotRoutes;
 // try {

@@ -238,6 +238,7 @@ export function RealReceipts() {
   const [bankSelectedMatches, setBankSelectedMatches] = useState<Set<number>>(new Set());
   const [bankApplying, setBankApplying] = useState(false);
   const [bankDragging, setBankDragging] = useState(false);
+  const [bankMovimientos, setBankMovimientos] = useState<unknown[]>([]);
   const bankFileRef = useRef<HTMLInputElement>(null);
 
 
@@ -266,6 +267,7 @@ export function RealReceipts() {
       setBankProcessing(true);
       setBankPreview(null);
       setBankApplyResult(null);
+      setBankMovimientos(movimientos);
       const result = await conciliacionPreview(entrantes);
       setBankPreview(result);
       // Seleccionar solo los exactos por defecto, posibles vienen deseleccionados
@@ -293,10 +295,12 @@ export function RealReceipts() {
     setBankApplying(true);
     try {
       const result = await conciliacionAplicar(
-        selectedMatches.map((m: ConciliacionMatch) => ({ comprobante_id: m.comprobante_id, banco_id: m.banco_id }))
+        selectedMatches.map((m: ConciliacionMatch) => ({ comprobante_id: m.comprobante_id, banco_id: m.banco_id })),
+        bankMovimientos
       );
       setBankApplyResult(result);
       setBankPreview(null);
+      setBankMovimientos([]);
       loadComprobantes();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error aplicando conciliación');
