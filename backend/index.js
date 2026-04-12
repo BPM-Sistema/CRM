@@ -1520,6 +1520,7 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
 
     const orderData = orderRes.rows[0];
     const montoPedido = Number(orderData.monto_tiendanube);
+    const estadoPedidoActual = orderData.estado_pedido;
 
     await client.query('COMMIT');
 
