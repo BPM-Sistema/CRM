@@ -1631,6 +1631,11 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
 
     log.info({ total: movimientos.length, entrantes: entrantes.length }, 'Conciliación preview: inicio');
 
+    // Importar movimientos a bank_movements (async, no bloquea el preview)
+    importMovimientos(movimientos, req.user?.id, req.user?.name)
+      .then(r => r.inserted > 0 && log.info({ inserted: r.inserted, duplicated: r.duplicated }, 'Bank import from conciliación'))
+      .catch(err => log.error({ err: err.message }, 'Bank import from conciliación failed'));
+
     const matched = [];
     const unmatched = [];
     const usedComprobanteIds = new Set();
@@ -4965,6 +4970,7 @@ const adminStatusRoutes = require('./routes/admin-status');
 const systemAlertsRoutes = require('./routes/system-alerts');
 const adminDivergencesRoutes = require('./routes/admin-divergences');
 const bankRoutes = require('./routes/bank');
+const { importMovimientos } = require('./routes/bank');
 // AI Bot routes — PAUSADO, descomentar cuando se active el bot en prod
 // let aiBotRoutes;
 // try {

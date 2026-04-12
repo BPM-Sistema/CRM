@@ -560,3 +560,65 @@ router.get('/imports/:id', authenticate, requirePermission('bank.view'), async (
 });
 
 module.exports = router;
+module.exports.importMovimientos = async function importMovimientos(movimientos, userId, username) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const parsed = movimientos.map(parseMovimiento);
+    const incoming = parsed.filter(m => m.is_incoming);
+
+    if (incoming.length === 0) {
+      await client.query('ROLLBACK');
+      return { inserted: 0, duplicated: 0 };
+    }
+
+    const importRes = await client.query(
+      `INSERT INTO bank_imports (source, filename, uploaded_by, raw_payload, total_rows, total_incoming)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      ['conciliacion', 'conciliacion.json', userId, JSON.stringify(movimientos), movimientos.length, incoming.length]
+    );
+    const importId = importRes.rows[0].id;
+
+    let inserted = 0, duplicated = 0;
+
+    for (const mov of incoming) {
+      const fp = generateFingerprint(mov);
+      const existCheck = await client.query(
+        `SELECT id FROM bank_movements WHERE fingerprint = $1`, [fp]
+      );
+      if (existCheck.rows.length > 0) { duplicated++; continue; }
+
+      const assignment = await detectAssignment(client, mov.amount, mov.posted_at, mov.sender_name);
+      await client.query(
+        `INSERT INTO bank_movements
+         (import_id, movement_uid, fingerprint, posted_at, amount, currency,
+          sender_name, sender_tax_id, sender_account, receiver_name, receiver_account,
+          description, reference, bank_name, raw_row, is_incoming,
+          assignment_status, linked_comprobante_id, linked_order_number)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+        [
+          importId, mov.movement_uid, fp, mov.posted_at, mov.amount, mov.currency,
+          mov.sender_name, mov.sender_tax_id, mov.sender_account, mov.receiver_name, mov.receiver_account,
+          mov.description, mov.reference, mov.bank_name, JSON.stringify(mov.raw_row), mov.is_incoming,
+          assignment.status, assignment.comprobante_id, assignment.order_number,
+        ]
+      );
+      inserted++;
+    }
+
+    await client.query(
+      `UPDATE bank_imports SET total_inserted = $1, total_duplicated = $2, status = 'completed' WHERE id = $3`,
+      [inserted, duplicated, importId]
+    );
+    await client.query('COMMIT');
+    return { inserted, duplicated };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('importMovimientos error:', err.message);
+    return { inserted: 0, duplicated: 0, error: err.message };
+  } finally {
+    client.release();
+  }
+};
