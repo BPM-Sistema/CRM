@@ -103,8 +103,9 @@ async function importMovimientos(movimientos, userId, resolvedMatches) {
   try {
     await client.query('BEGIN');
 
+    const CUTOFF = '2026-04-06T15:11:00';
     const parsed = movimientos.map(parseMovimiento);
-    const incoming = parsed.filter(m => m.is_incoming);
+    const incoming = parsed.filter(m => m.is_incoming && m.posted_at >= CUTOFF);
 
     if (incoming.length === 0) {
       await client.query('ROLLBACK');
