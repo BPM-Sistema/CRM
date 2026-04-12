@@ -61,13 +61,14 @@ async function authenticate(req, res, next) {
       return res.status(401).json({ error: 'Usuario no encontrado o desactivado' });
     }
 
-    // Cargar permisos directos del usuario
+    // Cargar permisos directos del usuario + permisos del rol
     const permissionsResult = await pool.query(`
-      SELECT p.key
+      SELECT DISTINCT p.key
       FROM permissions p
-      JOIN user_permissions up ON p.id = up.permission_id
-      WHERE up.user_id = $1
-    `, [decoded.userId]);
+      LEFT JOIN user_permissions up ON p.id = up.permission_id AND up.user_id = $1
+      LEFT JOIN role_permissions rp ON p.id = rp.permission_id AND rp.role_id = $2
+      WHERE up.id IS NOT NULL OR rp.id IS NOT NULL
+    `, [decoded.userId, userResult.rows[0].role_id]);
 
     const permissions = permissionsResult.rows.map(p => p.key);
     const permissionsHash = calculatePermissionsHash(permissions);
@@ -164,15 +165,17 @@ async function optionalAuth(req, res, next) {
     `, [decoded.userId]);
 
     if (userResult.rowCount > 0) {
+      const user = userResult.rows[0];
       const permissionsResult = await pool.query(`
-        SELECT p.key
+        SELECT DISTINCT p.key
         FROM permissions p
-        JOIN user_permissions up ON p.id = up.permission_id
-        WHERE up.user_id = $1
-      `, [userResult.rows[0].id]);
+        LEFT JOIN user_permissions up ON p.id = up.permission_id AND up.user_id = $1
+        LEFT JOIN role_permissions rp ON p.id = rp.permission_id AND rp.role_id = $2
+        WHERE up.id IS NOT NULL OR rp.id IS NOT NULL
+      `, [user.id, user.role_id]);
 
       req.user = {
-        ...userResult.rows[0],
+        ...user,
         permissions: permissionsResult.rows.map(p => p.key)
       };
     }

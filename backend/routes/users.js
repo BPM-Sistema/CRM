@@ -26,15 +26,18 @@ router.get('/', requirePermission('users.view'), async (req, res) => {
         u.email,
         u.is_active,
         u.created_at,
+        r.name as role_name,
         COALESCE(
           ARRAY(
-            SELECT p.key FROM permissions p
-            JOIN user_permissions up ON p.id = up.permission_id
-            WHERE up.user_id = u.id
+            SELECT DISTINCT p.key FROM permissions p
+            LEFT JOIN user_permissions up ON p.id = up.permission_id AND up.user_id = u.id
+            LEFT JOIN role_permissions rp ON p.id = rp.permission_id AND rp.role_id = u.role_id
+            WHERE up.id IS NOT NULL OR rp.id IS NOT NULL
           ),
           '{}'::text[]
         ) as permissions
       FROM users u
+      LEFT JOIN roles r ON u.role_id = r.id
       ORDER BY u.created_at DESC
     `);
 
@@ -64,15 +67,18 @@ router.get('/:id', requirePermission('users.view'), async (req, res) => {
         u.email,
         u.is_active,
         u.created_at,
+        r.name as role_name,
         COALESCE(
           ARRAY(
-            SELECT p.key FROM permissions p
-            JOIN user_permissions up ON p.id = up.permission_id
-            WHERE up.user_id = u.id
+            SELECT DISTINCT p.key FROM permissions p
+            LEFT JOIN user_permissions up ON p.id = up.permission_id AND up.user_id = u.id
+            LEFT JOIN role_permissions rp ON p.id = rp.permission_id AND rp.role_id = u.role_id
+            WHERE up.id IS NOT NULL OR rp.id IS NOT NULL
           ),
           '{}'::text[]
         ) as permissions
       FROM users u
+      LEFT JOIN roles r ON u.role_id = r.id
       WHERE u.id = $1
     `, [id]);
 
