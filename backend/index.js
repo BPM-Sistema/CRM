@@ -1870,11 +1870,6 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
 
           console.log(`✅ Conciliación: comprobante #${comprobante.id} (pedido #${comprobante.order_number}) confirmado — banco ID ${banco_id}`);
 
-          // Delay entre mensajes de WhatsApp para no enviar todos de golpe
-          if (orderData?.customer_phone) {
-            await new Promise(r => setTimeout(r, 5000));
-          }
-
           confirmed.push({
             banco_id,
             comprobante_id: comprobante.id,
