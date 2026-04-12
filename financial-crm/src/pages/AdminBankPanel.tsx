@@ -214,14 +214,7 @@ export function AdminBankPanel() {
             >
               Historial
             </Button>
-            <Button
-              variant="secondary"
-              leftIcon={<Upload size={16} />}
-              onClick={() => { setShowImport(true); setImportFile(null); setImportPreview(null); setImportResult(null); }}
-            >
-              Importar JSON
-            </Button>
-            <Button
+<Button
               variant="secondary"
               leftIcon={<RefreshCw size={16} className={loading ? 'animate-spin' : ''} />}
               onClick={loadMovements}
