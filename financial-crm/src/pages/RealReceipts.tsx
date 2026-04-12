@@ -6,7 +6,7 @@ import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
 import { AccessDenied } from '../components/AccessDenied';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchComprobantes, fetchFinancieras, ApiComprobanteList, PaginationInfo, Financiera, ComprobantesFilters, conciliacionPreview, conciliacionAplicar, ConciliacionPreviewResult, ConciliacionAplicarResult, ConciliacionMatch, ComprobanteSinConciliar } from '../services/api';
+import { fetchComprobantes, fetchFinancieras, ApiComprobanteList, PaginationInfo, Financiera, ComprobantesFilters, conciliacionPreview, conciliacionAplicar, ConciliacionPreviewResult, ConciliacionAplicarResult, ConciliacionMatch, ComprobanteSinConciliar, ComprobantesPendiente } from '../services/api';
 import { format } from 'date-fns';
 import { clsx } from 'clsx';
 import JSZip from 'jszip';
@@ -195,15 +195,10 @@ function ComprobanteCard({ comp, onClick, selectionMode, isSelected, onToggleSel
             #{comp.order_number}
           </span>
         </div>
-        {comp.monto_tiendanube != null && comp.estado !== 'confirmado' && (
+        {comp.monto_tiendanube != null && comp.monto_tiendanube - comp.monto > 1 && (
           <div className="mt-1">
-            <span className="text-[10px] text-neutral-400">
-              Factura: ${Number(comp.monto_tiendanube).toLocaleString('es-AR')}
-              {comp.monto_tiendanube - comp.monto > 1 && (
-                <span className="text-amber-500 ml-1">
-                  (pend. ${(comp.monto_tiendanube - comp.monto).toLocaleString('es-AR')})
-                </span>
-              )}
+            <span className="text-[10px] text-amber-500">
+              Pend: ${(comp.monto_tiendanube - comp.monto).toLocaleString('es-AR')}
             </span>
           </div>
         )}
@@ -233,6 +228,7 @@ export function RealReceipts() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [pendiente, setPendiente] = useState<ComprobantesPendiente | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
 
   // Conciliación bancaria (2 pasos: preview + confirmar)
@@ -358,6 +354,7 @@ export function RealReceipts() {
       const response = await fetchComprobantes(pageToLoad, ITEMS_PER_PAGE, currentFilters);
       setComprobantes(response.data);
       setPagination(response.pagination);
+      if (response.pendiente) setPendiente(response.pendiente);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar comprobantes');
     } finally {
@@ -496,7 +493,7 @@ export function RealReceipts() {
     <div className="min-h-screen">
       <Header
         title="Comprobantes"
-        subtitle={pagination ? `${pagination.total} comprobantes${estadoFilter !== 'all' ? ` (${estadoFilter === 'a_confirmar' ? 'a confirmar' : estadoFilter})` : ''}` : 'Cargando...'}
+        subtitle={pagination ? `${pagination.total} comprobantes${estadoFilter !== 'all' ? ` (${estadoFilter === 'a_confirmar' ? 'a confirmar' : estadoFilter})` : ''}${pendiente && pendiente.count > 0 ? ` · $${pendiente.total.toLocaleString('es-AR')} en ${pendiente.count} pendientes` : ''}` : 'Cargando...'}
         actions={
           <div className="flex items-center gap-2">
             {selectionMode ? (

@@ -570,11 +570,16 @@ export interface ComprobantesFilters {
 }
 
 // Obtener todos los comprobantes (con paginación y filtros server-side)
+export interface ComprobantesPendiente {
+  count: number;
+  total: number;
+}
+
 export async function fetchComprobantes(
   page = 1,
   limit = 50,
   filters?: ComprobantesFilters
-): Promise<PaginatedResponse<ApiComprobanteList>> {
+): Promise<PaginatedResponse<ApiComprobanteList> & { pendiente?: ComprobantesPendiente }> {
   const params = new URLSearchParams({
     page: page.toString(),
     limit: limit.toString()
@@ -599,7 +604,8 @@ export async function fetchComprobantes(
   const data = await response.json();
   return {
     data: data.comprobantes,
-    pagination: data.pagination
+    pagination: data.pagination,
+    pendiente: data.pendiente
   };
 }
 

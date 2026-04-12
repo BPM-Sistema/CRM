@@ -1393,6 +1393,13 @@ app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async
       LIMIT $${limitParam} OFFSET $${offsetParam}
     `, queryParams);
 
+    // Total facturación pendiente de confirmar (global, sin filtros)
+    const pendienteRes = await pool.query(
+      `SELECT COUNT(*) as count, COALESCE(SUM(monto), 0) as total
+       FROM comprobantes
+       WHERE estado IN ('a_confirmar', 'pendiente') OR estado IS NULL`
+    );
+
     res.json({
       ok: true,
       comprobantes: comprobantesRes.rows,
@@ -1401,6 +1408,10 @@ app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async
         limit,
         total,
         totalPages: Math.ceil(total / limit)
+      },
+      pendiente: {
+        count: parseInt(pendienteRes.rows[0].count),
+        total: Math.round(Number(pendienteRes.rows[0].total))
       }
     });
 
