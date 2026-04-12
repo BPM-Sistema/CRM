@@ -183,7 +183,7 @@ function ComprobanteCard({ comp, onClick, selectionMode, isSelected, onToggleSel
       <div className="p-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-neutral-900">
-            #{comp.id}
+            ${Number(comp.monto).toLocaleString('es-AR')}
           </span>
           <EstadoBadge estado={comp.estado} />
         </div>
@@ -195,6 +195,18 @@ function ComprobanteCard({ comp, onClick, selectionMode, isSelected, onToggleSel
             #{comp.order_number}
           </span>
         </div>
+        {comp.monto_tiendanube != null && comp.estado !== 'confirmado' && (
+          <div className="mt-1">
+            <span className="text-[10px] text-neutral-400">
+              Factura: ${Number(comp.monto_tiendanube).toLocaleString('es-AR')}
+              {comp.monto_tiendanube - comp.monto > 1 && (
+                <span className="text-amber-500 ml-1">
+                  (pend. ${(comp.monto_tiendanube - comp.monto).toLocaleString('es-AR')})
+                </span>
+              )}
+            </span>
+          </div>
+        )}
         {(comp.financiera_nombre || comp.confirmed_by_name) && (
           <div className="mt-2 pt-2 border-t border-neutral-100 space-y-1">
             {comp.financiera_nombre && (
