@@ -2234,3 +2234,199 @@ export async function resolveAllAlerts(): Promise<void> {
     throw new Error(data.error || 'Error al resolver alertas');
   }
 }
+
+// ============ BANK ADMIN PANEL ============
+
+export interface BankMovement {
+  id: number;
+  import_id: number;
+  movement_uid: string | null;
+  fingerprint: string;
+  posted_at: string;
+  amount: number;
+  currency: string;
+  sender_name: string | null;
+  sender_tax_id: string | null;
+  sender_account: string | null;
+  receiver_name: string | null;
+  receiver_account: string | null;
+  description: string | null;
+  reference: string | null;
+  bank_name: string | null;
+  raw_row: Record<string, unknown>;
+  is_incoming: boolean;
+  assignment_status: 'unassigned' | 'assigned' | 'duplicate' | 'review';
+  linked_comprobante_id: number | null;
+  linked_order_number: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  // joined fields
+  import_filename?: string;
+  import_uploaded_at?: string;
+  comprobante_estado?: string;
+  comprobante_file_url?: string;
+  customer_name?: string;
+  estado_pago?: string;
+}
+
+export interface BankMovementDetail extends BankMovement {
+  import_source?: string;
+  comp_id?: number;
+  comp_order_number?: string;
+  comp_monto?: number;
+  comp_estado?: string;
+  comp_file_url?: string;
+  comp_created_at?: string;
+  comp_numero_operacion?: string;
+  customer_email?: string;
+  order_total?: number;
+  estado_pedido?: string;
+  total_pagado?: number;
+  saldo?: number;
+}
+
+export interface BankImport {
+  id: number;
+  source: string;
+  filename: string;
+  uploaded_by: string;
+  uploaded_at: string;
+  raw_payload: unknown;
+  status: string;
+  total_rows: number;
+  total_incoming: number;
+  total_inserted: number;
+  total_duplicated: number;
+  notes: string | null;
+  created_at: string;
+  uploaded_by_name?: string;
+  movements?: BankMovement[];
+}
+
+export interface BankMovementsFilters {
+  fecha?: string;
+  fecha_desde?: string;
+  fecha_hasta?: string;
+  assignment_status?: string;
+  amount_min?: string;
+  amount_max?: string;
+  bank_name?: string;
+  search?: string;
+  order_number?: string;
+  comprobante_id?: string;
+  import_id?: string;
+}
+
+export interface BankMovementsResponse {
+  ok: boolean;
+  data: BankMovement[];
+  pagination: { page: number; limit: number; total: number; pages: number };
+  stats: {
+    assigned_count: string;
+    unassigned_count: string;
+    review_count: string;
+    duplicate_count: string;
+    unassigned_total: string;
+  };
+}
+
+export interface BankImportPreviewMovement {
+  movement_uid: string | null;
+  posted_at: string;
+  amount: number;
+  currency: string;
+  sender_name: string;
+  description: string;
+  reference: string;
+  bank_name: string | null;
+  fingerprint: string;
+  is_duplicate: boolean;
+  is_incoming: boolean;
+}
+
+export interface BankImportPreviewResult {
+  ok: boolean;
+  summary: {
+    total_rows: number;
+    total_incoming: number;
+    total_new: number;
+    total_duplicated: number;
+    total_outgoing: number;
+  };
+  movements: BankImportPreviewMovement[];
+}
+
+export interface BankImportApplyResult {
+  ok: boolean;
+  import_id: number;
+  summary: {
+    total_rows: number;
+    total_incoming: number;
+    total_inserted: number;
+    total_duplicated: number;
+    total_assigned: number;
+    total_unassigned: number;
+    total_review: number;
+  };
+  inserted: BankMovement[];
+  duplicated: unknown[];
+}
+
+export async function bankImportPreview(movimientos: unknown[], filename?: string): Promise<BankImportPreviewResult> {
+  const response = await authFetch(`${API_BASE_URL}/bank/imports/preview`, {
+    method: 'POST',
+    body: JSON.stringify({ movimientos, filename }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error en preview de importación');
+  return data;
+}
+
+export async function bankImportApply(movimientos: unknown[], filename?: string): Promise<BankImportApplyResult> {
+  const response = await authFetch(`${API_BASE_URL}/bank/imports/apply`, {
+    method: 'POST',
+    body: JSON.stringify({ movimientos, filename }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al aplicar importación');
+  return data;
+}
+
+export async function fetchBankMovements(
+  page = 1,
+  limit = 50,
+  filters?: BankMovementsFilters
+): Promise<BankMovementsResponse> {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (filters) {
+    Object.entries(filters).forEach(([key, val]) => {
+      if (val && val !== 'all') params.set(key, val);
+    });
+  }
+  const response = await authFetch(`${API_BASE_URL}/bank/movements?${params.toString()}`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al obtener movimientos');
+  return data;
+}
+
+export async function fetchBankMovementDetail(id: number): Promise<{ ok: boolean; data: BankMovementDetail }> {
+  const response = await authFetch(`${API_BASE_URL}/bank/movements/${id}`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al obtener detalle');
+  return data;
+}
+
+export async function fetchBankImports(page = 1, limit = 20): Promise<{ ok: boolean; data: BankImport[]; pagination: PaginationInfo }> {
+  const response = await authFetch(`${API_BASE_URL}/bank/imports?page=${page}&limit=${limit}`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al obtener imports');
+  return data;
+}
+
+export async function fetchBankImportDetail(id: number): Promise<{ ok: boolean; data: BankImport }> {
+  const response = await authFetch(`${API_BASE_URL}/bank/imports/${id}`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al obtener detalle de import');
+  return data;
+}

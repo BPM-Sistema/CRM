@@ -10,7 +10,7 @@ import WhatsAppSettings from './pages/WhatsAppSettings';
 import { WhatsAppActions } from './pages';
 import ImageSyncStatus from './pages/ImageSyncStatus';
 import SystemStatus from './pages/SystemStatus';
-import { AiBotDashboard, AiBotConfig, AiBotHistory, AiBotPromptEditor } from './pages';
+import { AiBotDashboard, AiBotConfig, AiBotHistory, AiBotPromptEditor, AdminBankPanel } from './pages';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginPage } from './pages/LoginPage';
 import { getDefaultRoute } from './utils/navigation';
@@ -41,6 +41,7 @@ function AppRoutes() {
             <Route path="/orders" element={<RealOrders />} />
             <Route path="/orders/:orderNumber" element={<RealOrderDetail />} />
             <Route path="/receipts" element={<RealReceipts />} />
+            <Route path="/receipts/admin-bank" element={<AdminBankPanel />} />
             <Route path="/receipts/:id" element={<RealReceiptDetail />} />
             <Route path="/remitos" element={<ShippingDocuments />} />
             <Route path="/customers" element={<Customers />} />

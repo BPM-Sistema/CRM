@@ -4965,6 +4965,7 @@ const healthRoutes = require('./routes/health');
 const adminStatusRoutes = require('./routes/admin-status');
 const systemAlertsRoutes = require('./routes/system-alerts');
 const adminDivergencesRoutes = require('./routes/admin-divergences');
+const bankRoutes = require('./routes/bank');
 // AI Bot routes — PAUSADO, descomentar cuando se active el bot en prod
 // let aiBotRoutes;
 // try {
@@ -4987,6 +4988,7 @@ app.use('/health', healthRoutes);
 app.use('/admin/status', adminStatusRoutes);
 app.use('/system-alerts', systemAlertsRoutes);
 app.use('/admin/divergences', adminDivergencesRoutes);
+app.use('/bank', bankRoutes);
 if (aiBotRoutes) app.use('/ai-bot', aiBotRoutes);
 app.use('/admin/queues', bullBoardAuth, bullBoardAdapter.getRouter());
 
