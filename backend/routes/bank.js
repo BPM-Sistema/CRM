@@ -418,13 +418,20 @@ router.get('/movements', authenticate, requirePermission('bank.view'), async (re
       `SELECT
          COUNT(*) FILTER (WHERE assignment_status = 'assigned') as assigned_count,
          COUNT(*) FILTER (WHERE assignment_status = 'unassigned') as unassigned_count,
-         COUNT(*) FILTER (WHERE assignment_status = 'review') as review_count,
-         COUNT(*) FILTER (WHERE assignment_status = 'duplicate') as duplicate_count,
          COALESCE(SUM(amount) FILTER (WHERE assignment_status = 'unassigned'), 0) as unassigned_total
        FROM bank_movements bm
        ${whereClause}`,
       params
     );
+
+    // Last import date
+    const lastImportRes = await pool.query(
+      `SELECT created_at FROM bank_imports ORDER BY created_at DESC LIMIT 1`
+    );
+    const stats = statsRes.rows[0] || {};
+    if (lastImportRes.rows.length > 0) {
+      stats.last_import_at = lastImportRes.rows[0].created_at;
+    }
 
     res.json({
       ok: true,
@@ -435,7 +442,7 @@ router.get('/movements', authenticate, requirePermission('bank.view'), async (re
         total,
         pages: Math.ceil(total / limitNum),
       },
-      stats: statsRes.rows[0] || {},
+      stats,
     });
   } catch (error) {
     console.error('GET /bank/movements error:', error);
