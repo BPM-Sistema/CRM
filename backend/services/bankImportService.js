@@ -127,20 +127,38 @@ async function importMovimientos(movimientos, userId, resolvedMatches) {
     );
     const importId = importRes.rows[0].id;
 
-    let inserted = 0, duplicated = 0;
+    let inserted = 0, duplicated = 0, updated = 0;
 
     for (const mov of incoming) {
       const fp = generateFingerprint(mov);
-      const existCheck = await client.query(
-        `SELECT id FROM bank_movements WHERE fingerprint = $1`, [fp]
-      );
-      if (existCheck.rows.length > 0) { duplicated++; continue; }
 
-      // Usar match resuelto de la conciliación si existe, sino unassigned
+      // Resolver assignment desde conciliación
       const resolved = matchByBancoId[String(mov.movement_uid)];
       const assignment = resolved
         ? { status: 'assigned', comprobante_id: resolved.comprobante_id, order_number: resolved.order_number }
         : { status: 'unassigned', comprobante_id: null, order_number: null };
+
+      const existCheck = await client.query(
+        `SELECT id, assignment_status FROM bank_movements WHERE fingerprint = $1`, [fp]
+      );
+
+      if (existCheck.rows.length > 0) {
+        // Ya existe: solo actualizar si el nuevo estado es assigned y el actual no lo es
+        const existing = existCheck.rows[0];
+        if (assignment.status === 'assigned' && existing.assignment_status !== 'assigned') {
+          await client.query(
+            `UPDATE bank_movements
+             SET assignment_status = 'assigned',
+                 linked_comprobante_id = $1,
+                 linked_order_number = $2
+             WHERE id = $3`,
+            [assignment.comprobante_id, assignment.order_number, existing.id]
+          );
+          updated++;
+        }
+        duplicated++;
+        continue;
+      }
 
       await client.query(
         `INSERT INTO bank_movements
@@ -164,11 +182,11 @@ async function importMovimientos(movimientos, userId, resolvedMatches) {
       [inserted, duplicated, importId]
     );
     await client.query('COMMIT');
-    return { inserted, duplicated };
+    return { inserted, duplicated, updated };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('importMovimientos error:', err.message);
-    return { inserted: 0, duplicated: 0, error: err.message };
+    return { inserted: 0, duplicated: 0, updated: 0, error: err.message };
   } finally {
     client.release();
   }
