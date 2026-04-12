@@ -23,7 +23,7 @@ import { clsx } from 'clsx';
 const STATUS_CONFIG: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'default' | 'purple' }> = {
   assigned: { label: 'Asignado', variant: 'success' },
   unassigned: { label: 'Sin asignar', variant: 'warning' },
-  review: { label: 'Revisar', variant: 'info' },
+  review: { label: 'Asignado', variant: 'success' },
   duplicate: { label: 'Duplicado', variant: 'danger' },
 };
 
@@ -271,7 +271,7 @@ export function AdminBankPanel() {
             {/* Status filter */}
             <div className="flex items-center gap-1">
               <Filter size={14} className="text-neutral-400" />
-              {['all', 'unassigned', 'assigned', 'review'].map(val => (
+              {['all', 'unassigned', 'assigned'].map(val => (
                 <button
                   key={val}
                   onClick={() => setFilters({ assignment_status: val, page: 1 })}
@@ -308,10 +308,6 @@ export function AdminBankPanel() {
             <div className="bg-white rounded-xl border border-neutral-200/60 p-4">
               <div className="text-xs text-neutral-500 mb-1">Sin asignar</div>
               <div className="text-2xl font-semibold text-amber-600">{stats.unassigned_count || 0}</div>
-            </div>
-            <div className="bg-white rounded-xl border border-neutral-200/60 p-4">
-              <div className="text-xs text-neutral-500 mb-1">Revisar</div>
-              <div className="text-2xl font-semibold text-blue-600">{stats.review_count || 0}</div>
             </div>
             <div className="bg-white rounded-xl border border-neutral-200/60 p-4">
               <div className="text-xs text-neutral-500 mb-1">Total sin asignar</div>
