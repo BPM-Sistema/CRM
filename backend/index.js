@@ -1639,12 +1639,13 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
       // Buscar comprobante pendiente con monto exacto y misma fecha (sin lockear)
       const compRes = await pool.query(
         `SELECT c.id, c.order_number, c.monto, c.estado, c.created_at, c.numero_operacion,
+                c.fecha_comprobante,
                 ov.customer_name, ov.monto_tiendanube
          FROM comprobantes c
          LEFT JOIN orders_validated ov ON ov.order_number = c.order_number
          WHERE c.estado IN ('pendiente', 'a_confirmar')
            AND c.monto = $1
-           AND c.created_at::date = $2::date
+           AND COALESCE(c.fecha_comprobante, c.created_at::date) = $2::date
          ORDER BY c.created_at ASC`,
         [importe, fechaBanco]
       );
@@ -1656,12 +1657,13 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
         // Buscar posible match con mismo monto pero fecha distinta
         const posibleRes = await pool.query(
           `SELECT c.id, c.order_number, c.monto, c.created_at,
+                  c.fecha_comprobante,
                   ov.customer_name, ov.monto_tiendanube
            FROM comprobantes c
            LEFT JOIN orders_validated ov ON ov.order_number = c.order_number
            WHERE c.estado IN ('pendiente', 'a_confirmar')
              AND c.monto = $1
-             AND c.created_at::date != $2::date
+             AND COALESCE(c.fecha_comprobante, c.created_at::date) != $2::date
            ORDER BY c.created_at DESC
            LIMIT 1`,
           [importe, fechaBanco]
@@ -4302,10 +4304,19 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     ================================ */
     const financieraId = destinoValidation.cuenta?.id || null;
 
+    // Parsear fecha del comprobante (formato DD/MM/YYYY de Claude Vision)
+    let fechaComprobante = null;
+    if (datosClaude.fecha) {
+      const parts = datosClaude.fecha.split('/');
+      if (parts.length === 3) {
+        fechaComprobante = `${parts[2]}-${parts[1]}-${parts[0]}`; // YYYY-MM-DD
+      }
+    }
+
     const insert = await pool.query(
       `insert into comprobantes
-       (order_number, hash_ocr, texto_ocr, monto, monto_tiendanube, file_url, estado, financiera_id, numero_operacion)
-       values ($1,$2,$3,$4,$5,$6,'a_confirmar',$7,$8)
+       (order_number, hash_ocr, texto_ocr, monto, monto_tiendanube, file_url, estado, financiera_id, numero_operacion, fecha_comprobante)
+       values ($1,$2,$3,$4,$5,$6,'a_confirmar',$7,$8,$9)
        returning id`,
       [
         orderNumber,
@@ -4315,7 +4326,8 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
         montoTiendanube,
         fileUrl,
         financieraId,
-        numeroOperacion
+        numeroOperacion,
+        fechaComprobante
       ]
     );
 
