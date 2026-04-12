@@ -1636,12 +1636,12 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
     const usedComprobanteIds = new Set();
 
     for (const mov of entrantes) {
-      const importe = Math.floor(parseFloat(mov.Importe));
+      const importe = Math.round(parseFloat(mov.Importe));
       const fechaBanco = mov['Fecha/Hora'].split(' ')[0];
       const horaBanco = mov['Fecha/Hora'].split(' ')[1] || '';
       const nombreOrigen = (mov['Nombre Destino'] || '').trim();
 
-      // Buscar comprobante pendiente con monto exacto y misma fecha (sin lockear)
+      // Buscar comprobante pendiente con monto ±1 (tolerancia redondeo) y misma fecha
       const compRes = await pool.query(
         `SELECT c.id, c.order_number, c.monto, c.estado, c.created_at, c.numero_operacion,
                 c.fecha_comprobante,
@@ -1649,7 +1649,7 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
          FROM comprobantes c
          LEFT JOIN orders_validated ov ON ov.order_number = c.order_number
          WHERE c.estado IN ('pendiente', 'a_confirmar')
-           AND c.monto = $1
+           AND ABS(c.monto - $1) <= 1
            AND COALESCE(c.fecha_comprobante, c.created_at::date) = $2::date
          ORDER BY c.created_at ASC`,
         [importe, fechaBanco]
@@ -1667,7 +1667,7 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
            FROM comprobantes c
            LEFT JOIN orders_validated ov ON ov.order_number = c.order_number
            WHERE c.estado IN ('pendiente', 'a_confirmar')
-             AND c.monto = $1
+             AND ABS(c.monto - $1) <= 1
              AND COALESCE(c.fecha_comprobante, c.created_at::date) != $2::date
            ORDER BY c.created_at DESC
            LIMIT 1`,
