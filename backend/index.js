@@ -64,6 +64,7 @@ const PORT = process.env.PORT || 3000;
 app.set('etag', false);
 
 app.use(express.json({
+  limit: '10mb',
   verify: (req, res, buf) => {
     req.rawBody = buf;
   }
