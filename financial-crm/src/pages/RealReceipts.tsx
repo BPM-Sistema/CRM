@@ -493,9 +493,14 @@ export function RealReceipts() {
     <div className="min-h-screen">
       <Header
         title="Comprobantes"
-        subtitle={pagination ? `${pagination.total} comprobantes${estadoFilter !== 'all' ? ` (${estadoFilter === 'a_confirmar' ? 'a confirmar' : estadoFilter})` : ''}${pendiente && pendiente.count > 0 ? ` · $${pendiente.total.toLocaleString('es-AR')} en ${pendiente.count} pendientes` : ''}` : 'Cargando...'}
+        subtitle={pagination ? `${pagination.total} comprobantes${estadoFilter !== 'all' ? ` (${estadoFilter === 'a_confirmar' ? 'a confirmar' : estadoFilter})` : ''}` : 'Cargando...'}
         actions={
           <div className="flex items-center gap-2">
+            {pendiente && pendiente.count > 0 && (
+              <div className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm font-medium">
+                ${pendiente.total.toLocaleString('es-AR')} pend. ({pendiente.count})
+              </div>
+            )}
             {selectionMode ? (
               <>
                 <Button
