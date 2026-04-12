@@ -67,7 +67,7 @@ export function Dashboard() {
     try {
       const [statsRes, activityRes] = await Promise.all([
         fetchDashboardStats(dateRange.desde, dateRange.hasta),
-        fetchActivityLog(1, 100)
+        fetchActivityLog(1, 1000, { fecha_desde: format(new Date(), 'yyyy-MM-dd') })
       ]);
       setStats(statsRes);
       setActivityLogs(activityRes.logs);
