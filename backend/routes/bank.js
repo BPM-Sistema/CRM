@@ -313,6 +313,8 @@ router.get('/movements', authenticate, requirePermission('bank.view'), async (re
       conditions.push(`bm.posted_at::date = CURRENT_DATE`);
     } else if (fecha === 'ayer') {
       conditions.push(`bm.posted_at::date = CURRENT_DATE - 1`);
+    } else if (fecha === 'anteayer') {
+      conditions.push(`bm.posted_at::date = CURRENT_DATE - 2`);
     } else if (fecha_desde) {
       paramIdx++;
       conditions.push(`bm.posted_at::date >= $${paramIdx}::date`);

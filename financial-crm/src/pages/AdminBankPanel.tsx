@@ -252,7 +252,7 @@ export function AdminBankPanel() {
             {/* Date filter */}
             <div className="flex items-center gap-1">
               <Calendar size={14} className="text-neutral-400" />
-              {['all', 'hoy', 'ayer'].map(val => (
+              {['all', 'hoy', 'ayer', 'anteayer'].map(val => (
                 <button
                   key={val}
                   onClick={() => setFilters({ fecha: val, page: 1 })}
@@ -263,7 +263,7 @@ export function AdminBankPanel() {
                       : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                   )}
                 >
-                  {val === 'all' ? 'Todos' : val === 'hoy' ? 'Hoy' : 'Ayer'}
+                  {val === 'all' ? 'Todos' : val === 'hoy' ? 'Hoy' : val === 'ayer' ? 'Ayer' : 'Antes de ayer'}
                 </button>
               ))}
             </div>
