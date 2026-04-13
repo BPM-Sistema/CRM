@@ -420,7 +420,9 @@ router.get('/movements', authenticate, requirePermission('bank.view'), async (re
       `SELECT
          COUNT(*) FILTER (WHERE assignment_status = 'assigned') as assigned_count,
          COUNT(*) FILTER (WHERE assignment_status = 'unassigned') as unassigned_count,
-         COALESCE(SUM(amount) FILTER (WHERE assignment_status = 'unassigned'), 0) as unassigned_total
+         COALESCE(SUM(amount) FILTER (WHERE assignment_status = 'assigned'), 0) as assigned_total,
+         COALESCE(SUM(amount) FILTER (WHERE assignment_status = 'unassigned'), 0) as unassigned_total,
+         COALESCE(SUM(amount), 0) as total_ingresos
        FROM bank_movements bm
        ${whereClause}`,
       params

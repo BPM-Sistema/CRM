@@ -300,10 +300,14 @@ export function AdminBankPanel() {
 
         {/* Stats cards */}
         {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div className="bg-white rounded-xl border border-neutral-200/60 p-4">
               <div className="text-xs text-neutral-500 mb-1">Asignados</div>
               <div className="text-2xl font-semibold text-emerald-600">{stats.assigned_count || 0}</div>
+            </div>
+            <div className="bg-white rounded-xl border border-neutral-200/60 p-4">
+              <div className="text-xs text-neutral-500 mb-1">Plata asignada</div>
+              <div className="text-2xl font-semibold text-emerald-600">{formatCurrency(Number(stats.assigned_total || 0))}</div>
             </div>
             <div className="bg-white rounded-xl border border-neutral-200/60 p-4">
               <div className="text-xs text-neutral-500 mb-1">Sin asignar</div>
@@ -312,6 +316,10 @@ export function AdminBankPanel() {
             <div className="bg-white rounded-xl border border-neutral-200/60 p-4">
               <div className="text-xs text-neutral-500 mb-1">Total sin asignar</div>
               <div className="text-2xl font-semibold text-amber-600">{formatCurrency(Number(stats.unassigned_total || 0))}</div>
+            </div>
+            <div className="bg-white rounded-xl border border-neutral-200/60 p-4">
+              <div className="text-xs text-neutral-500 mb-1">Total ingresos</div>
+              <div className="text-2xl font-semibold text-neutral-900">{formatCurrency(Number(stats.total_ingresos || 0))}</div>
             </div>
           </div>
         )}
