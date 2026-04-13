@@ -1108,9 +1108,8 @@ app.post('/orders/to-print', authenticate, requirePermission('orders.print'), as
       SELECT
         o.order_number,
         o.shipping_type,
-        CASE WHEN sr.id IS NOT NULL THEN true ELSE false END as has_shipping_request
+        EXISTS(SELECT 1 FROM shipping_requests WHERE order_number = o.order_number) as has_shipping_request
       FROM orders_validated o
-      LEFT JOIN shipping_requests sr ON o.order_number = sr.order_number
       WHERE o.estado_pedido = ANY($1)
       ORDER BY o.created_at ASC
     `, [statuses]);
@@ -1321,7 +1320,7 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
     );
     const total = parseInt(countRes.rows[0].total);
 
-    // Query con filtros
+    // Query con filtros (subconsultas para shipping_requests para evitar duplicados)
     const ordersRes = await pool.query(`
       SELECT
         o.order_number,
@@ -1351,13 +1350,12 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
           WHEN LOWER(COALESCE(o.shipping_type, '')) LIKE '%viacargo%' THEN true
           ELSE false
         END as requires_shipping_form,
-        CASE WHEN sr.order_number IS NOT NULL THEN true ELSE false END as has_shipping_data,
-        sr.label_printed_at as shipping_label_printed_at
+        EXISTS(SELECT 1 FROM shipping_requests WHERE order_number = o.order_number) as has_shipping_data,
+        (SELECT MAX(label_printed_at) FROM shipping_requests WHERE order_number = o.order_number) as shipping_label_printed_at
       FROM orders_validated o
       LEFT JOIN comprobantes c ON o.order_number = c.order_number
-      LEFT JOIN shipping_requests sr ON o.order_number = sr.order_number
       ${whereClause}
-      GROUP BY o.order_number, o.order_number_int, o.monto_tiendanube, o.total_pagado, o.saldo, o.estado_pago, o.estado_pedido, o.currency, o.tn_created_at, o.created_at, o.customer_name, o.customer_email, o.customer_phone, o.printed_at, o.packed_at, o.shipped_at, o.shipping_type, o.tn_payment_status, o.tn_shipping_status, o.envio_nube_label_printed_at, sr.order_number, sr.label_printed_at
+      GROUP BY o.order_number, o.order_number_int, o.monto_tiendanube, o.total_pagado, o.saldo, o.estado_pago, o.estado_pedido, o.currency, o.tn_created_at, o.created_at, o.customer_name, o.customer_email, o.customer_phone, o.printed_at, o.packed_at, o.shipped_at, o.shipping_type, o.tn_payment_status, o.tn_shipping_status, o.envio_nube_label_printed_at
       ORDER BY o.order_number_int DESC NULLS LAST
       LIMIT $${paramIndex++} OFFSET $${paramIndex}
     `, [...params, limit, offset]);
