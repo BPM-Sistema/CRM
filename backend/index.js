@@ -764,8 +764,25 @@ app.get('/botmaker/chat-by-phone/:phone', authenticate, async (req, res) => {
     const token = process.env.BOTMAKER_ACCESS_TOKEN;
     if (!token) return res.status(503).json({ error: 'Botmaker no configurado' });
 
-    const phone = req.params.phone.replace(/[^0-9]/g, '');
-    if (!phone) return res.status(400).json({ error: 'Teléfono inválido' });
+    const raw = req.params.phone.replace(/[^0-9]/g, '');
+    if (!raw) return res.status(400).json({ error: 'Teléfono inválido' });
+
+    // Generar variantes del número para buscar
+    const variants = new Set();
+    variants.add(raw);
+    // Sin 54
+    if (raw.startsWith('54')) variants.add(raw.slice(2));
+    // Sin 549
+    if (raw.startsWith('549')) variants.add(raw.slice(3));
+    // Con 54 si no lo tiene
+    if (!raw.startsWith('54')) variants.add('54' + raw);
+    // Con 549 si no lo tiene
+    if (!raw.startsWith('549')) {
+      if (raw.startsWith('54')) variants.add('549' + raw.slice(2));
+      else variants.add('549' + raw);
+    }
+    // Sin 9 después del 54 (54 9 XX -> 54 XX)
+    if (raw.startsWith('549')) variants.add('54' + raw.slice(3));
 
     let nextPage = null;
     let found = null;
@@ -776,7 +793,7 @@ app.get('/botmaker/chat-by-phone/:phone', authenticate, async (req, res) => {
       if (!resp.ok) return res.status(502).json({ error: 'Error consultando Botmaker' });
 
       const data = await resp.json();
-      found = data.items?.find(i => i.chat.contactId === phone);
+      found = data.items?.find(i => variants.has(i.chat.contactId));
       nextPage = data.nextPage;
     } while (!found && nextPage);
 
