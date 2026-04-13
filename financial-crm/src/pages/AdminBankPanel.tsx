@@ -32,7 +32,8 @@ export function AdminBankPanel() {
   const { hasPermission } = useAuth();
   const { filters, setFilter, setFilters } = useUrlFilters({
     fecha: 'all',
-    fecha_custom: '',
+    fecha_desde: '',
+    fecha_hasta: '',
     assignment_status: 'all',
     search: '',
     page: 1,
@@ -77,10 +78,8 @@ export function AdminBankPanel() {
     try {
       const apiFilters: BankMovementsFilters = {};
       if (fechaFilter !== 'all') apiFilters.fecha = fechaFilter;
-      if (filters.fecha_custom) {
-        apiFilters.fecha_desde = String(filters.fecha_custom);
-        apiFilters.fecha_hasta = String(filters.fecha_custom);
-      }
+      if (filters.fecha_desde) apiFilters.fecha_desde = String(filters.fecha_desde);
+      if (filters.fecha_hasta) apiFilters.fecha_hasta = String(filters.fecha_hasta);
       if (statusFilter !== 'all') apiFilters.assignment_status = statusFilter;
       if (filters.search) apiFilters.search = String(filters.search);
 
@@ -273,14 +272,23 @@ export function AdminBankPanel() {
                 ))}
               </div>
 
-              {/* Date picker */}
+              {/* Date range pickers */}
               {fechaFilter === 'all' && (
-                <input
-                  type="date"
-                  value={String(filters.fecha_custom || '')}
-                  onChange={e => setFilters({ fecha: 'all', fecha_custom: e.target.value, page: 1 })}
-                  className="px-2.5 py-1.5 text-xs border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-                />
+                <div className="flex items-center gap-1">
+                  <input
+                    type="date"
+                    value={String(filters.fecha_desde || '')}
+                    onChange={e => setFilters({ fecha: 'all', fecha_desde: e.target.value, page: 1 })}
+                    className="px-2 py-1.5 text-xs border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                  />
+                  <span className="text-xs text-neutral-400">a</span>
+                  <input
+                    type="date"
+                    value={String(filters.fecha_hasta || '')}
+                    onChange={e => setFilters({ fecha: 'all', fecha_hasta: e.target.value, page: 1 })}
+                    className="px-2 py-1.5 text-xs border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                  />
+                </div>
               )}
 
               {/* Status filter */}
