@@ -806,7 +806,14 @@ app.get('/botmaker/chat-by-phone/:phone', authenticate, async (req, res) => {
 
     console.log(`Botmaker lookup: scanned ${pageCount} pages, found=${!!found}`);
 
-    if (!found) return res.json({ ok: true, chatId: null });
+    if (!found) {
+      // API only returns recent chats — fallback to Botmaker search URL
+      return res.json({
+        ok: true,
+        chatId: null,
+        url: `https://go.botmaker.com/#/chats?text=${raw}`
+      });
+    }
 
     res.json({
       ok: true,
