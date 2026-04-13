@@ -140,18 +140,18 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
               {isValidNote(data.note) && (
                 <tr>
                   <th colSpan={4} className="p-0 border-0">
-                    <div className="mb-2 p-2 border border-gray-400 bg-yellow-50 text-[10px] text-left font-normal">
-                      <span className="font-bold">⚠️ Nota cliente: </span>
-                      <span>{data.note}</span>
+                    <div className="mb-2 p-2 border-2 border-black bg-yellow-50 text-[11px] text-left font-normal">
+                      <span className="font-bold uppercase">⚠️ IMPORTANTE - NO IGNORAR: </span>
+                      <span className="font-semibold">{data.note}</span>
                     </div>
                   </th>
                 </tr>
               )}
-              <tr className="bg-black text-white">
-                <th className="text-center border border-gray-400 w-8"></th>
-                <th className="text-center border border-gray-400 w-12">Cant.</th>
-                <th className="text-left border border-gray-400">Producto</th>
-                <th className="text-left border border-gray-400 w-24">SKU</th>
+              <tr className="bg-gray-100">
+                <th className="text-center border border-gray-400 w-8 font-bold"></th>
+                <th className="text-center border border-gray-400 w-12 font-bold">Cant.</th>
+                <th className="text-left border border-gray-400 font-bold">Producto</th>
+                <th className="text-left border border-gray-400 w-24 font-bold">SKU</th>
               </tr>
             </thead>
             <tbody>
