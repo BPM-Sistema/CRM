@@ -4347,9 +4347,17 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
       );
     }
 
-    if (dupHash.rows.length > 0 || dupOp.rows.length > 0) {
-      const dupId = dupHash.rows[0]?.id || dupOp.rows[0]?.id;
-      const dupTipo = dupHash.rows.length > 0 ? 'hash' : 'numero_operacion';
+    // Chequear por monto+pedido ya confirmado (mismo comprobante con distinto OCR/imagen)
+    const dupConfirmado = await pool.query(
+      `SELECT id FROM comprobantes
+       WHERE order_number = $1 AND monto = $2 AND estado = 'confirmado'
+       LIMIT 1`,
+      [orderNumber, montoDetectado]
+    );
+
+    if (dupHash.rows.length > 0 || dupOp.rows.length > 0 || dupConfirmado.rows.length > 0) {
+      const dupId = dupHash.rows[0]?.id || dupOp.rows[0]?.id || dupConfirmado.rows[0]?.id;
+      const dupTipo = dupHash.rows.length > 0 ? 'hash' : dupOp.rows.length > 0 ? 'numero_operacion' : 'monto_confirmado';
       await logEvento({
         orderNumber,
         accion: 'comprobante_duplicado',
@@ -4358,7 +4366,7 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
       console.log(`⚠️ Comprobante duplicado (${dupTipo}) - Order: ${orderNumber}, Original ID: ${dupId}`);
 
       fs.unlinkSync(file.path);
-      return res.status(409).json({ error: 'Comprobante duplicado' });
+      return res.status(409).json({ error: `Comprobante duplicado — ya existe comprobante #${dupId} confirmado por el mismo monto` });
     }
 
     /* ===============================
