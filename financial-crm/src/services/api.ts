@@ -329,7 +329,7 @@ export interface OrderFilters {
   estado_pedido?: string;
   search?: string;
   fecha?: string;
-  shipping_data?: 'pending' | 'complete';
+  shipping_data?: 'pending' | 'complete' | 'label_printed' | 'label_not_printed';
   shipping_type?: ShippingTypeFilter;
 }
 

@@ -53,7 +53,7 @@ export function RealOrders() {
     fecha: 'all' as 'all' | 'hoy' | 'custom',
     fecha_custom: '',
     search: '',
-    shipping_data: 'all' as 'all' | 'pending' | 'complete',
+    shipping_data: 'all' as 'all' | 'pending' | 'complete' | 'label_printed' | 'label_not_printed',
     shipping_type: 'all' as ShippingTypeFilter,
     page: 1,
   });
@@ -89,6 +89,14 @@ export function RealOrders() {
   // Estado para selección de pedidos
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedOrderNumbers, setSelectedOrderNumbers] = useState<Set<string>>(new Set());
+
+  // Estado para impresión de etiquetas de envío
+  const [labelBultos, setLabelBultos] = useState<Record<string, number>>({});
+  const [selectedForLabels, setSelectedForLabels] = useState<Set<string>>(new Set());
+  const [printingLabels, setPrintingLabels] = useState(false);
+
+  // Detectar si estamos en modo etiquetas (filtro "No Impresa")
+  const isLabelPrintMode = shippingDataFilter === 'label_not_printed';
 
   // Estado para modal de impresión
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
@@ -327,6 +335,82 @@ export function RealOrders() {
   const clearSelection = () => {
     setSelectedOrderNumbers(new Set());
     setSelectionMode(false);
+  };
+
+  // Funciones para etiquetas de transporte
+  const toggleLabelSelect = (orderNumber: string) => {
+    setSelectedForLabels(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(orderNumber)) {
+        newSet.delete(orderNumber);
+      } else {
+        newSet.add(orderNumber);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAllForLabels = () => {
+    const orderNumbers = filteredOrders.map(o => o.order_number);
+    setSelectedForLabels(new Set(orderNumbers));
+    // Inicializar bultos a 1 para todos si no tienen valor
+    const newBultos = { ...labelBultos };
+    orderNumbers.forEach(on => {
+      if (!newBultos[on]) newBultos[on] = 1;
+    });
+    setLabelBultos(newBultos);
+  };
+
+  const clearLabelSelection = () => {
+    setSelectedForLabels(new Set());
+  };
+
+  const updateBultos = (orderNumber: string, value: number) => {
+    setLabelBultos(prev => ({
+      ...prev,
+      [orderNumber]: Math.max(1, Math.min(10, value))
+    }));
+  };
+
+  const printShippingLabels = async () => {
+    if (selectedForLabels.size === 0) return;
+
+    setPrintingLabels(true);
+    const baseUrl = import.meta.env.VITE_API_URL || '';
+    const token = localStorage.getItem('auth_token');
+
+    // Abrir cada etiqueta en una nueva ventana usando fetch + blob
+    for (const orderNumber of selectedForLabels) {
+      const bultos = labelBultos[orderNumber] || 1;
+      const url = `${baseUrl}/orders/${orderNumber}/shipping-label?bultos=${bultos}`;
+
+      try {
+        const response = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (!response.ok) {
+          console.error(`Error al obtener etiqueta ${orderNumber}:`, response.statusText);
+          continue;
+        }
+
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, '_blank');
+      } catch (err) {
+        console.error(`Error al imprimir etiqueta ${orderNumber}:`, err);
+      }
+
+      // Pequeña pausa entre aperturas
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    setPrintingLabels(false);
+    clearLabelSelection();
+    // Recargar para actualizar estado de etiquetas impresas
+    setTimeout(() => loadOrders(), 1000);
   };
 
   const printSelectedOrders = () => {
@@ -704,9 +788,83 @@ export function RealOrders() {
               >
                 Completo
               </button>
+              <span className="text-neutral-300">|</span>
+              <button
+                onClick={() => setFilters({ shipping_data: 'label_not_printed', page: 1 })}
+                className={clsx(
+                  'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
+                  shippingDataFilter === 'label_not_printed'
+                    ? 'bg-orange-50 text-orange-700 ring-2 ring-orange-900/10'
+                    : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
+                )}
+              >
+                No Impresa
+              </button>
+              <button
+                onClick={() => setFilters({ shipping_data: 'label_printed', page: 1 })}
+                className={clsx(
+                  'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap',
+                  shippingDataFilter === 'label_printed'
+                    ? 'bg-blue-50 text-blue-700 ring-2 ring-blue-900/10'
+                    : 'bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200'
+                )}
+              >
+                Impresa
+              </button>
             </div>
           </div>
         </div>
+
+        {/* Banner de acciones para etiquetas de envío */}
+        {isLabelPrintMode && filteredOrders.length > 0 && (
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Truck className="text-orange-600" size={24} />
+              <div>
+                <p className="font-medium text-orange-900">
+                  {selectedForLabels.size > 0
+                    ? `${selectedForLabels.size} pedido(s) seleccionado(s) para imprimir`
+                    : `${filteredOrders.length} pedido(s) con etiqueta pendiente`
+                  }
+                </p>
+                <p className="text-sm text-orange-700">
+                  Seleccioná los pedidos y ajustá la cantidad de bultos para cada uno
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {selectedForLabels.size > 0 ? (
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={clearLabelSelection}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={printShippingLabels}
+                    disabled={printingLabels}
+                    leftIcon={<Printer size={16} />}
+                  >
+                    {printingLabels ? 'Imprimiendo...' : `Imprimir ${selectedForLabels.size} Etiqueta(s)`}
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={selectAllForLabels}
+                  leftIcon={<CheckSquare size={16} />}
+                >
+                  Seleccionar Todos
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Tabla */}
         {loading && orders.length === 0 ? (
@@ -736,7 +894,28 @@ export function RealOrders() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  {selectionMode && (
+                  {/* Columnas para modo etiquetas */}
+                  {isLabelPrintMode && (
+                    <>
+                      <TableHead className="w-[40px] text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedForLabels.size === filteredOrders.length && filteredOrders.length > 0}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              selectAllForLabels();
+                            } else {
+                              clearLabelSelection();
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-orange-300 text-orange-600 focus:ring-orange-500"
+                        />
+                      </TableHead>
+                      <TableHead className="w-[80px] text-center">Bultos</TableHead>
+                    </>
+                  )}
+                  {/* Columnas para modo selección normal */}
+                  {selectionMode && !isLabelPrintMode && (
                     <TableHead className="w-[40px] text-center">
                       <input
                         type="checkbox"
@@ -766,17 +945,49 @@ export function RealOrders() {
                 {filteredOrders.map((order, idx) => (
                   <TableRow
                     key={order.order_number}
-                    isClickable={!selectionMode}
+                    isClickable={!selectionMode && !isLabelPrintMode}
                     onClick={() => {
-                      if (selectionMode) {
+                      if (isLabelPrintMode) {
+                        toggleLabelSelect(order.order_number);
+                      } else if (selectionMode) {
                         toggleSelectOrder(order.order_number);
                       } else {
                         navigate(`/orders/${order.order_number}`);
                       }
                     }}
-                    className={selectedOrderNumbers.has(order.order_number) ? 'bg-blue-50' : idx % 2 === 1 ? '!bg-gray-50' : '!bg-white'}
+                    className={
+                      selectedForLabels.has(order.order_number) ? 'bg-orange-50' :
+                      selectedOrderNumbers.has(order.order_number) ? 'bg-blue-50' :
+                      idx % 2 === 1 ? '!bg-gray-50' : '!bg-white'
+                    }
                   >
-                    {selectionMode && (
+                    {/* Columnas para modo etiquetas */}
+                    {isLabelPrintMode && (
+                      <>
+                        <TableCell className="text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedForLabels.has(order.order_number)}
+                            onChange={() => toggleLabelSelect(order.order_number)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4 rounded border-orange-300 text-orange-600 focus:ring-orange-500"
+                          />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <input
+                            type="number"
+                            min="1"
+                            max="10"
+                            value={labelBultos[order.order_number] || 1}
+                            onChange={(e) => updateBultos(order.order_number, parseInt(e.target.value) || 1)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-14 px-2 py-1 text-center text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                          />
+                        </TableCell>
+                      </>
+                    )}
+                    {/* Columnas para modo selección normal */}
+                    {selectionMode && !isLabelPrintMode && (
                       <TableCell className="text-center">
                         <input
                           type="checkbox"
