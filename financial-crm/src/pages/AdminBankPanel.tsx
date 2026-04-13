@@ -76,6 +76,10 @@ export function AdminBankPanel() {
     try {
       const apiFilters: BankMovementsFilters = {};
       if (fechaFilter !== 'all') apiFilters.fecha = fechaFilter;
+      if (filters.fecha_custom) {
+        apiFilters.fecha_desde = String(filters.fecha_custom);
+        apiFilters.fecha_hasta = String(filters.fecha_custom);
+      }
       if (statusFilter !== 'all') apiFilters.assignment_status = statusFilter;
       if (filters.search) apiFilters.search = String(filters.search);
 
@@ -233,58 +237,68 @@ export function AdminBankPanel() {
         }
       />
 
-      <div className="p-6 space-y-4">
+      <div className="p-3 md:p-6 space-y-3 md:space-y-4">
         {/* Filters */}
-        <div className="bg-white rounded-xl border border-neutral-200/60 p-4">
-          <div className="flex flex-wrap items-center gap-3">
+        <div className="bg-white rounded-xl border border-neutral-200/60 p-3 md:p-4">
+          <div className="space-y-2 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-3">
             {/* Search */}
-            <div className="relative flex-1 min-w-[200px]">
+            <div className="relative flex-1 min-w-0 md:min-w-[200px]">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
               <input
                 type="text"
-                placeholder="Buscar por nombre, referencia, monto, pedido..."
+                placeholder="Buscar por nombre, monto, pedido..."
                 value={searchInput}
                 onChange={e => setSearchInput(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
               />
             </div>
 
-            {/* Date filter */}
-            <div className="flex items-center gap-1">
-              <Calendar size={14} className="text-neutral-400" />
-              {['all', 'hoy', 'ayer', 'anteayer'].map(val => (
-                <button
-                  key={val}
-                  onClick={() => setFilters({ fecha: val, page: 1 })}
-                  className={clsx(
-                    'px-3 py-1.5 text-xs font-medium rounded-lg transition-colors',
-                    fechaFilter === val
-                      ? 'bg-neutral-900 text-white'
-                      : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
-                  )}
-                >
-                  {val === 'all' ? 'Todos' : val === 'hoy' ? 'Hoy' : val === 'ayer' ? 'Ayer' : 'Antes de ayer'}
-                </button>
-              ))}
-            </div>
+            <div className="flex flex-wrap gap-2">
+              {/* Date filter */}
+              <div className="flex items-center gap-1">
+                {['all', 'hoy', 'ayer', 'anteayer'].map(val => (
+                  <button
+                    key={val}
+                    onClick={() => setFilters({ fecha: val, page: 1 })}
+                    className={clsx(
+                      'px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors',
+                      fechaFilter === val
+                        ? 'bg-neutral-900 text-white'
+                        : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                    )}
+                  >
+                    {val === 'all' ? 'Todos' : val === 'hoy' ? 'Hoy' : val === 'ayer' ? 'Ayer' : 'Anteayer'}
+                  </button>
+                ))}
+              </div>
 
-            {/* Status filter */}
-            <div className="flex items-center gap-1">
-              <Filter size={14} className="text-neutral-400" />
-              {['all', 'unassigned', 'assigned'].map(val => (
-                <button
-                  key={val}
-                  onClick={() => setFilters({ assignment_status: val, page: 1 })}
-                  className={clsx(
-                    'px-3 py-1.5 text-xs font-medium rounded-lg transition-colors',
-                    statusFilter === val
-                      ? 'bg-neutral-900 text-white'
-                      : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
-                  )}
-                >
-                  {val === 'all' ? 'Todos' : STATUS_CONFIG[val]?.label || val}
-                </button>
-              ))}
+              {/* Date picker */}
+              {fechaFilter === 'all' && (
+                <input
+                  type="date"
+                  value={String(filters.fecha_custom || '')}
+                  onChange={e => setFilters({ fecha: 'all', fecha_custom: e.target.value, page: 1 })}
+                  className="px-2.5 py-1.5 text-xs border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                />
+              )}
+
+              {/* Status filter */}
+              <div className="flex items-center gap-1">
+                {['all', 'unassigned', 'assigned'].map(val => (
+                  <button
+                    key={val}
+                    onClick={() => setFilters({ assignment_status: val, page: 1 })}
+                    className={clsx(
+                      'px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors',
+                      statusFilter === val
+                        ? 'bg-neutral-900 text-white'
+                        : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                    )}
+                  >
+                    {val === 'all' ? 'Todos' : STATUS_CONFIG[val]?.label || val}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -300,26 +314,26 @@ export function AdminBankPanel() {
 
         {/* Stats cards */}
         {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <div className="bg-white rounded-xl border border-neutral-200/60 p-4">
-              <div className="text-xs text-neutral-500 mb-1">Asignados</div>
-              <div className="text-2xl font-semibold text-emerald-600">{stats.assigned_count || 0}</div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 md:gap-3">
+            <div className="bg-white rounded-xl border border-neutral-200/60 p-3">
+              <div className="text-[10px] md:text-xs text-neutral-500 mb-1">Asignados</div>
+              <div className="text-lg md:text-2xl font-semibold text-emerald-600">{stats.assigned_count || 0}</div>
             </div>
-            <div className="bg-white rounded-xl border border-neutral-200/60 p-4">
-              <div className="text-xs text-neutral-500 mb-1">Plata asignada</div>
-              <div className="text-2xl font-semibold text-emerald-600">{formatCurrency(Number(stats.assigned_total || 0))}</div>
+            <div className="bg-white rounded-xl border border-neutral-200/60 p-3">
+              <div className="text-[10px] md:text-xs text-neutral-500 mb-1">Plata asignada</div>
+              <div className="text-lg md:text-2xl font-semibold text-emerald-600">{formatCurrency(Number(stats.assigned_total || 0))}</div>
             </div>
-            <div className="bg-white rounded-xl border border-neutral-200/60 p-4">
-              <div className="text-xs text-neutral-500 mb-1">Sin asignar</div>
-              <div className="text-2xl font-semibold text-amber-600">{stats.unassigned_count || 0}</div>
+            <div className="bg-white rounded-xl border border-neutral-200/60 p-3">
+              <div className="text-[10px] md:text-xs text-neutral-500 mb-1">Sin asignar</div>
+              <div className="text-lg md:text-2xl font-semibold text-amber-600">{stats.unassigned_count || 0}</div>
             </div>
-            <div className="bg-white rounded-xl border border-neutral-200/60 p-4">
-              <div className="text-xs text-neutral-500 mb-1">Total sin asignar</div>
-              <div className="text-2xl font-semibold text-amber-600">{formatCurrency(Number(stats.unassigned_total || 0))}</div>
+            <div className="bg-white rounded-xl border border-neutral-200/60 p-3">
+              <div className="text-[10px] md:text-xs text-neutral-500 mb-1">Total sin asignar</div>
+              <div className="text-lg md:text-2xl font-semibold text-amber-600">{formatCurrency(Number(stats.unassigned_total || 0))}</div>
             </div>
-            <div className="bg-white rounded-xl border border-neutral-200/60 p-4">
-              <div className="text-xs text-neutral-500 mb-1">Total ingresos</div>
-              <div className="text-2xl font-semibold text-neutral-900">{formatCurrency(Number(stats.total_ingresos || 0))}</div>
+            <div className="col-span-2 md:col-span-1 bg-white rounded-xl border border-neutral-200/60 p-3">
+              <div className="text-[10px] md:text-xs text-neutral-500 mb-1">Total ingresos</div>
+              <div className="text-lg md:text-2xl font-semibold text-neutral-900">{formatCurrency(Number(stats.total_ingresos || 0))}</div>
             </div>
           </div>
         )}
@@ -337,17 +351,36 @@ export function AdminBankPanel() {
               <p className="text-xs mt-1">Importa un archivo JSON para comenzar</p>
             </div>
           ) : (
-            <Table>
+            {/* Mobile: cards */}
+            <div className="md:hidden divide-y divide-neutral-100">
+              {movements.map(mov => (
+                <div key={mov.id} className="p-3 active:bg-neutral-50" onClick={() => setSelectedId(mov.id)}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-semibold">{formatCurrency(mov.amount)}</span>
+                    <Badge variant={STATUS_CONFIG[mov.assignment_status]?.variant || 'default'} size="sm">
+                      {STATUS_CONFIG[mov.assignment_status]?.label || mov.assignment_status}
+                    </Badge>
+                  </div>
+                  <div className="text-sm text-neutral-700 truncate">{mov.sender_name || '-'}</div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-xs text-neutral-400">{formatDateShort(mov.posted_at)} {format(new Date(mov.posted_at), 'HH:mm')}</span>
+                    {mov.linked_order_number && (
+                      <span className="text-xs text-blue-600 font-medium">#{mov.linked_order_number}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Desktop: table */}
+            <Table className="hidden md:table">
               <TableHeader>
                 <TableRow>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Monto</TableHead>
                   <TableHead>Ordenante</TableHead>
-                  <TableHead className="hidden md:table-cell">Referencia</TableHead>
+                  <TableHead className="hidden lg:table-cell">Referencia</TableHead>
                   <TableHead>Estado</TableHead>
-                  <TableHead className="hidden lg:table-cell">Comprobante</TableHead>
                   <TableHead className="hidden lg:table-cell">Pedido</TableHead>
-                  <TableHead className="hidden xl:table-cell">Import</TableHead>
                   <TableHead>{' '}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -364,7 +397,7 @@ export function AdminBankPanel() {
                     <TableCell>
                       <div className="max-w-[180px] truncate text-sm">{mov.sender_name || '-'}</div>
                     </TableCell>
-                    <TableCell className="hidden md:table-cell">
+                    <TableCell className="hidden lg:table-cell">
                       <div className="max-w-[140px] truncate text-xs text-neutral-500">
                         {mov.reference || mov.description || '-'}
                       </div>
@@ -375,21 +408,11 @@ export function AdminBankPanel() {
                       </Badge>
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">
-                      {mov.linked_comprobante_id ? (
-                        <span className="text-xs text-emerald-600 font-medium">#{mov.linked_comprobante_id}</span>
-                      ) : (
-                        <span className="text-xs text-neutral-300">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
                       {mov.linked_order_number ? (
-                        <span className="text-xs text-blue-600 font-medium">{mov.linked_order_number}</span>
+                        <span className="text-xs text-blue-600 font-medium">#{mov.linked_order_number}</span>
                       ) : (
                         <span className="text-xs text-neutral-300">-</span>
                       )}
-                    </TableCell>
-                    <TableCell className="hidden xl:table-cell">
-                      <span className="text-xs text-neutral-400">#{mov.import_id}</span>
                     </TableCell>
                     <TableCell>
                       <Eye size={14} className="text-neutral-400" />
