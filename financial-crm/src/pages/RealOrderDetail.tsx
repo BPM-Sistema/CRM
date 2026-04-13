@@ -631,10 +631,10 @@ export function RealOrderDetail() {
                             if (url) {
                               window.open(url, '_blank');
                             } else {
-                              window.open(`https://wa.me/${order.customer_phone!.replace(/[^0-9]/g, '')}`, '_blank');
+                              alert('No se encontró chat en Botmaker para este número');
                             }
                           } catch {
-                            window.open(`https://wa.me/${order.customer_phone!.replace(/[^0-9]/g, '')}`, '_blank');
+                            alert('Error al buscar chat en Botmaker');
                           }
                         }}
                         className="flex items-center gap-2 text-sm text-green-600 hover:text-green-800"
