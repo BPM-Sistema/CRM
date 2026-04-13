@@ -277,17 +277,27 @@ export function AdminBankPanel() {
                 <div className="flex items-center gap-1">
                   <input
                     type="date"
-                    value={String(filters.fecha_desde || '')}
-                    onChange={e => setFilters({ fecha: 'all', fecha_desde: e.target.value, page: 1 })}
+                    id="bank-fecha-desde"
+                    defaultValue={String(filters.fecha_desde || '')}
                     className="px-2 py-1.5 text-xs border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20"
                   />
                   <span className="text-xs text-neutral-400">a</span>
                   <input
                     type="date"
-                    value={String(filters.fecha_hasta || '')}
-                    onChange={e => setFilters({ fecha: 'all', fecha_hasta: e.target.value, page: 1 })}
+                    id="bank-fecha-hasta"
+                    defaultValue={String(filters.fecha_hasta || '')}
                     className="px-2 py-1.5 text-xs border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20"
                   />
+                  <button
+                    onClick={() => {
+                      const desde = (document.getElementById('bank-fecha-desde') as HTMLInputElement)?.value || '';
+                      const hasta = (document.getElementById('bank-fecha-hasta') as HTMLInputElement)?.value || '';
+                      setFilters({ fecha: 'all', fecha_desde: desde, fecha_hasta: hasta, page: 1 });
+                    }}
+                    className="px-3 py-1.5 text-xs font-medium bg-neutral-900 text-white rounded-lg"
+                  >
+                    Aplicar
+                  </button>
                 </div>
               )}
 
