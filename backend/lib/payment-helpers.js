@@ -129,8 +129,8 @@ function mapShippingToEstadoPedido(shippingStatus, shippingCarrier, shippingType
         nuevoEstado = 'armado';
         break;
       case 'unpacked':
-        // Desempaquetado en TN → revertir a a_imprimir
-        nuevoEstado = 'a_imprimir';
+        // Estado por defecto de TN para pedidos no empaquetados — NO-OP
+        // No debe cambiar estado_pedido (evita revertir hoja_impresa/armado/enviado)
         break;
     }
   }
@@ -155,11 +155,10 @@ function mapShippingToEstadoPedido(shippingStatus, shippingCarrier, shippingType
 
   if (!nuevoEstado) return null;
 
-  // Solo avanzar, nunca retroceder — excepto cuando TN desempaqueta explícitamente
+  // Solo avanzar, nunca retroceder
   const ordenActual = ESTADO_PEDIDO_ORDER[estadoPedidoActual] ?? 0;
   const ordenNuevo = ESTADO_PEDIDO_ORDER[nuevoEstado] ?? 0;
-  const esDesempaquetado = shippingStatus === 'unpacked' && nuevoEstado === 'a_imprimir';
-  if (ordenNuevo <= ordenActual && !esDesempaquetado) return null;
+  if (ordenNuevo <= ordenActual) return null;
 
   return nuevoEstado;
 }

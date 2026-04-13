@@ -65,14 +65,22 @@ export default function BatchPrint() {
 
     try {
       // Marcar todos los pedidos como impresos (estado: hoja_impresa)
+      const failed: string[] = [];
       const markPromises = orders.map(order =>
-        updateOrderStatus(order.order_number, 'hoja_impresa').catch((error: Error) => {
-          console.error(`Error marcando pedido ${order.order_number} como impreso:`, error);
+        updateOrderStatus(order.order_number, 'hoja_impresa').catch(() => {
+          failed.push(order.order_number);
         })
       );
       await Promise.all(markPromises);
 
-      // Abrir diálogo de impresión
+      if (failed.length > 0) {
+        alert(
+          `No se pudieron marcar ${failed.length} pedidos como impresos:\n${failed.join(', ')}\n\nNo se va a imprimir. Reintentá en unos segundos.`
+        );
+        return;
+      }
+
+      // Abrir diálogo de impresión solo si todos se marcaron OK
       window.print();
     } catch (error) {
       console.error('Error al imprimir:', error);
