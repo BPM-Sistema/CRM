@@ -32,6 +32,7 @@ import {
   updateOrderStatus,
   resyncOrder,
   fetchShippingRequest,
+  fetchBotmakerChat,
   fetchRemitoByOrder,
   getShippingLabelUrl,
   getEnvioNubeLabel,
@@ -623,15 +624,24 @@ export function RealOrderDetail() {
                       </a>
                     )}
                     {order.customer_phone && (
-                      <a
-                        href={`https://wa.me/${order.customer_phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola ${order.customer_name || ''} te habla Sara de blanqueriaxmayor`)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={async () => {
+                          try {
+                            const { url } = await fetchBotmakerChat(order.customer_phone!);
+                            if (url) {
+                              window.open(url, '_blank');
+                            } else {
+                              window.open(`https://wa.me/${order.customer_phone!.replace(/[^0-9]/g, '')}`, '_blank');
+                            }
+                          } catch {
+                            window.open(`https://wa.me/${order.customer_phone!.replace(/[^0-9]/g, '')}`, '_blank');
+                          }
+                        }}
                         className="flex items-center gap-2 text-sm text-green-600 hover:text-green-800"
                       >
                         <Phone size={14} />
                         {order.customer_phone}
-                      </a>
+                      </button>
                     )}
                   </div>
                 )}

@@ -757,6 +757,44 @@ app.get('/sync-queue/payments', authenticate, requirePermission('activity.view')
 
 
 /* =====================================================
+   GET — BOTMAKER CHAT LOOKUP BY PHONE
+===================================================== */
+app.get('/botmaker/chat-by-phone/:phone', authenticate, async (req, res) => {
+  try {
+    const token = process.env.BOTMAKER_ACCESS_TOKEN;
+    if (!token) return res.status(503).json({ error: 'Botmaker no configurado' });
+
+    const phone = req.params.phone.replace(/[^0-9]/g, '');
+    if (!phone) return res.status(400).json({ error: 'Teléfono inválido' });
+
+    let nextPage = null;
+    let found = null;
+
+    do {
+      const url = nextPage || 'https://api.botmaker.com/v2.0/chats/';
+      const resp = await fetch(url, { headers: { 'access-token': token } });
+      if (!resp.ok) return res.status(502).json({ error: 'Error consultando Botmaker' });
+
+      const data = await resp.json();
+      found = data.items?.find(i => i.chat.contactId === phone);
+      nextPage = data.nextPage;
+    } while (!found && nextPage);
+
+    if (!found) return res.json({ ok: true, chatId: null });
+
+    res.json({
+      ok: true,
+      chatId: found.chat.chatId,
+      url: `https://go.botmaker.com/#/chats/${found.chat.chatId}`,
+      name: `${found.firstName || ''} ${found.lastName || ''}`.trim()
+    });
+  } catch (err) {
+    console.error('Error botmaker chat lookup:', err.message);
+    res.status(500).json({ error: 'Error buscando chat' });
+  }
+});
+
+/* =====================================================
    GET — HISTORIAL DE ACTIVIDAD
 ===================================================== */
 app.get('/activity-log', authenticate, requirePermission('activity.view'), async (req, res) => {

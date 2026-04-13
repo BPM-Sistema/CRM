@@ -1074,6 +1074,14 @@ export async function fetchActivityLog(
   return data;
 }
 
+// Botmaker chat lookup
+export async function fetchBotmakerChat(phone: string): Promise<{ chatId: string | null; url: string | null }> {
+  const cleaned = phone.replace(/[^0-9]/g, '');
+  const response = await authFetch(`${API_BASE_URL}/botmaker/chat-by-phone/${cleaned}`);
+  const data = await response.json();
+  return { chatId: data.chatId || null, url: data.url || null };
+}
+
 // ============================================
 // DASHBOARD STATS - KPIs agrupados por elemento
 // ============================================
