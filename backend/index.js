@@ -2297,7 +2297,10 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
         monto_original,
         tn_payment_status,
         tn_shipping_status,
-        envio_nube_label_printed_at
+        envio_nube_label_printed_at,
+        subtotal,
+        discount,
+        shipping_cost
       FROM orders_validated
       WHERE order_number = $1
     `, [orderNumber]);
@@ -5696,13 +5699,19 @@ function startSyncScheduler() {
     });
   }, SYNC_INTERVAL);
 
-  // Image sync: reordenar imagen principal cada 1 hora
+  // Image sync: reordenar imagen principal 1 vez al día a las 3:00 AM Argentina
   const { startScheduler: startImageSyncScheduler } = require('./services/tiendanubeImageSync');
   if (process.env.TIENDANUBE_STORE_ID && process.env.TIENDANUBE_ACCESS_TOKEN) {
-    // Delay inicial de 60s para no solapar con el sync de órdenes
+    const now = new Date();
+    const argNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
+    let next3am = new Date(argNow);
+    next3am.setHours(3, 0, 0, 0);
+    if (argNow >= next3am) next3am.setDate(next3am.getDate() + 1);
+    const msUntil3am = next3am.getTime() - argNow.getTime();
+    console.log(`⏰ [ImageSync] Programado para las 3:00 AM (en ${Math.round(msUntil3am / 1000 / 60)} min)`);
     setTimeout(() => {
-      startImageSyncScheduler(5 * 60 * 60 * 1000); // cada 5 horas
-    }, 60000);
+      startImageSyncScheduler(24 * 60 * 60 * 1000); // cada 24 horas
+    }, msUntil3am);
   }
 
   // Cleanup: limpiar registros antiguos una vez al día

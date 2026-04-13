@@ -89,6 +89,10 @@ export interface ApiOrder {
   tn_shipping_status: string | null;
   // Etiqueta Envío Nube
   envio_nube_label_printed_at: string | null;
+  // Desglose de montos
+  subtotal: number | null;
+  discount: number | null;
+  shipping_cost: number | null;
 }
 
 export interface ApiComprobante {

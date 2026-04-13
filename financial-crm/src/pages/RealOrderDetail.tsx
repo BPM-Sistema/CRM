@@ -464,6 +464,28 @@ export function RealOrderDetail() {
                     </div>
                   ))}
                 </div>
+
+                {/* Resumen de montos */}
+                <div className="mt-4 pt-4 border-t border-neutral-200 space-y-2">
+                  <div className="flex justify-between text-sm text-neutral-600">
+                    <span>Subtotal</span>
+                    <span>{formatCurrency(order.subtotal ?? productos.reduce((s, p) => s + p.total, 0))}</span>
+                  </div>
+                  {(order.discount ?? 0) > 0 && (
+                    <div className="flex justify-between text-sm text-green-600">
+                      <span>Descuento</span>
+                      <span>- {formatCurrency(order.discount!)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm text-neutral-600">
+                    <span>Envío</span>
+                    <span>{order.shipping_cost ? formatCurrency(order.shipping_cost) : 'Gratis'}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-semibold text-neutral-900 pt-2 border-t border-neutral-100">
+                    <span>Total</span>
+                    <span>{formatCurrency(order.monto_tiendanube)}</span>
+                  </div>
+                </div>
               </Card>
             )}
 
