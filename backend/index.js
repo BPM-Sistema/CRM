@@ -50,6 +50,7 @@ const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crear
 const { enviarWhatsAppPlantilla } = require('./lib/whatsapp-helpers');
 const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, normalizePhoneForComparison, mapShippingToEstadoPedido } = require('./lib/payment-helpers');
 const { recalcularPagos } = require('./lib/recalcularPagos');
+const { syncEstadoToTN, sincronizarEstadoTiendanube } = require('./lib/tn-sync');
 const { watermarkReceipt, isValidDestination, detectarFinancieraDesdeOCR } = require('./lib/comprobante-helpers');
 const { buildDivergenceReport, saveDivergences, applyAutoFixes, getBpmOrderForComparison } = require('./lib/divergence-detector');
 const { hashPaymentChange, hashProductChange, hashShippingChange, markEventProcessed } = require('./lib/webhookDedup');
@@ -3191,23 +3192,7 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
 
     // Sincronizar estado hacia Tiendanube (async, no bloquea respuesta)
     if (pedido.tn_order_id) {
-      const ESTADO_TN_MAP = {
-        'armado':    { tnStatus: 'packed',    configKey: 'tiendanube_sync_estado_armado',    label: 'empaquetada' },
-        'enviado':   { tnStatus: 'fulfilled', configKey: 'tiendanube_sync_estado_enviado',   label: 'despachada' },
-        'retirado':  { tnStatus: 'fulfilled', configKey: 'tiendanube_sync_estado_enviado',   label: 'despachada' }, // Retirado = fulfilled en TN
-        'cancelado': { tnStatus: 'cancelled', configKey: 'tiendanube_sync_estado_cancelado', label: 'cancelada' },
-      };
-
-      const syncConfig = ESTADO_TN_MAP[estado_pedido];
-      if (syncConfig) {
-        isIntegrationEnabled(syncConfig.configKey, { context: `sync-estado-${estado_pedido}` })
-          .then(enabled => {
-            if (enabled) {
-              sincronizarEstadoTiendanube(pedido.tn_order_id, orderNumber, syncConfig.tnStatus, syncConfig.label);
-            }
-          })
-          .catch(err => console.error(`⚠️ Error checking sync toggle for ${estado_pedido}:`, err.message));
-      }
+      syncEstadoToTN(pedido.tn_order_id, orderNumber, estado_pedido);
     }
 
     // Obtener pedido actualizado
@@ -4806,72 +4791,7 @@ async function marcarPagadoEnTiendanube(tnOrderId, orderNumber) {
   return sincronizarEstadoTiendanube(tnOrderId, orderNumber, 'paid', 'pagada');
 }
 
-/**
- * Sincronizar un estado de pedido hacia Tiendanube
- * Mapeo: pagado→paid, armado→packed, enviado→fulfilled, cancelado→cancelled
- */
-async function sincronizarEstadoTiendanube(tnOrderId, orderNumber, tnStatus, labelEs) {
-  const storeId = process.env.TIENDANUBE_STORE_ID;
-  const token = process.env.TIENDANUBE_ACCESS_TOKEN;
-
-  if (!storeId || !token || !tnOrderId) {
-    console.log(`⚠️ [Orden ${orderNumber}] No se puede sincronizar con Tiendanube - faltan credenciales o tn_order_id`);
-    return false;
-  }
-
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authentication': `bearer ${token}`,
-    'User-Agent': 'BPM Administrador (netubpm@gmail.com)'
-  };
-
-  // Para 'paid', usar PUT con { status: 'paid' } (funciona en TN API)
-  if (tnStatus === 'paid') {
-    try {
-      await callTiendanube({
-        method: 'put',
-        url: `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}`,
-        data: { status: 'paid' },
-        headers
-      });
-      console.log(`✅ [Orden ${orderNumber}] Marcada como ${labelEs} en Tiendanube (tn_order_id: ${tnOrderId})`);
-      return true;
-    } catch (err) {
-      console.error(`❌ [Orden ${orderNumber}] Error marcando ${labelEs} en Tiendanube: ${err.response?.status} ${JSON.stringify(err.response?.data || err.message)}`);
-      return false;
-    }
-  }
-
-  // Tiendanube usa endpoints POST específicos para cambios de estado de fulfillment
-  // packed -> POST /orders/{id}/pack
-  // fulfilled -> POST /orders/{id}/fulfill
-  // cancelled -> POST /orders/{id}/close (cierra el pedido)
-  const ENDPOINT_MAP = {
-    'packed': 'pack',
-    'fulfilled': 'fulfill',
-    'cancelled': 'close'
-  };
-
-  const action = ENDPOINT_MAP[tnStatus];
-  if (!action) {
-    console.log(`⚠️ [Orden ${orderNumber}] Estado ${tnStatus} no tiene endpoint de sync en Tiendanube`);
-    return false;
-  }
-
-  try {
-    await callTiendanube({
-      method: 'post',
-      url: `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}/${action}`,
-      data: {},
-      headers
-    });
-    console.log(`✅ [Orden ${orderNumber}] Marcada como ${labelEs} en Tiendanube (tn_order_id: ${tnOrderId})`);
-    return true;
-  } catch (err) {
-    console.error(`❌ [Orden ${orderNumber}] Error marcando ${labelEs} en Tiendanube: ${err.response?.status} ${JSON.stringify(err.response?.data || err.message)}`);
-    return false;
-  }
-}
+// sincronizarEstadoTiendanube ahora vive en lib/tn-sync.js
 
 
 /* =====================================================

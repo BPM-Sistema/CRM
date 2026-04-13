@@ -21,6 +21,7 @@ const { enviarWhatsAppPlantilla } = require('../lib/whatsapp-helpers');
 const { uploadFile } = require('../lib/storage');
 
 const { logEvento } = require('../utils/logging');
+const { syncEstadoToTN } = require('../lib/tn-sync');
 
 // Configurar multer para uploads temporales
 const upload = multer({
@@ -353,6 +354,16 @@ router.post('/:id/confirm',
         userId: req.user?.id,
         username: req.user?.name
       });
+
+      // Sincronizar estado a Tiendanube (async, no bloquea respuesta)
+      const tnRes = await pool.query(
+        `SELECT tn_order_id FROM orders_validated WHERE order_number = $1`,
+        [confirmedOrder]
+      );
+      const tnOrderId = tnRes.rows[0]?.tn_order_id;
+      if (tnOrderId) {
+        syncEstadoToTN(tnOrderId, confirmedOrder, 'enviado');
+      }
 
       // Enviar WhatsApp enviado_transporte con imagen del remito
       const pedidoRes = await pool.query(
