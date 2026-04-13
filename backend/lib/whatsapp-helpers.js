@@ -23,15 +23,22 @@ const { getPlantillaFinal, getPlantillaTipos } = require('./plantilla-resolver')
 function normalizeArgentinaPhone(phone) {
   if (!phone) return phone;
 
-  // Si ya tiene +549, está correcto
-  if (phone.startsWith('+549')) {
-    return phone;
+  // Si ya tiene +549 o 549 (con o sin +), está correcto
+  if (phone.startsWith('+549') || phone.startsWith('549')) {
+    return phone.startsWith('+') ? phone : '+' + phone;
   }
 
   // Si tiene +54 pero no +549, insertar el 9
   if (phone.startsWith('+54')) {
     const normalized = '+549' + phone.slice(3);
     console.log(`📱 Normalizando teléfono AR: ${phone} → ${normalized}`);
+    return normalized;
+  }
+
+  // Sin +, ej: 541154873554 → +5491154873554
+  if (phone.startsWith('54') && !phone.startsWith('549')) {
+    const normalized = '+549' + phone.slice(2);
+    console.log(`📱 Normalizando teléfono AR (sin +): ${phone} → ${normalized}`);
     return normalized;
   }
 
