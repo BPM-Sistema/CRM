@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUrlFilters } from '../hooks';
 import {
-  ArrowLeft, Upload, RefreshCw, Search, Calendar, Filter,
+  ArrowLeft, Upload, RefreshCw, Search,
   ChevronLeft, ChevronRight, FileText, Eye, CheckCircle2,
   AlertCircle, Clock, X, ChevronDown
 } from 'lucide-react';
@@ -32,6 +32,7 @@ export function AdminBankPanel() {
   const { hasPermission } = useAuth();
   const { filters, setFilter, setFilters } = useUrlFilters({
     fecha: 'all',
+    fecha_custom: '',
     assignment_status: 'all',
     search: '',
     page: 1,
@@ -351,6 +352,7 @@ export function AdminBankPanel() {
               <p className="text-xs mt-1">Importa un archivo JSON para comenzar</p>
             </div>
           ) : (
+            <>
             {/* Mobile: cards */}
             <div className="md:hidden divide-y divide-neutral-100">
               {movements.map(mov => (
@@ -421,6 +423,7 @@ export function AdminBankPanel() {
                 ))}
               </TableBody>
             </Table>
+            </>
           )}
 
           {/* Pagination */}
