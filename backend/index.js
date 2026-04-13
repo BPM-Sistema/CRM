@@ -5984,6 +5984,9 @@ app.post('/shipping-data', shippingFormLimiter, async (req, res) => {
     // Sanitizar datos
     const sanitize = (str) => str?.trim() || null;
 
+    // Borrar registro anterior si existe (evita duplicados si el cliente envía dos veces)
+    await pool.query('DELETE FROM shipping_requests WHERE order_number = $1', [sanitizedOrderNumber]);
+
     const result = await pool.query(`
       INSERT INTO shipping_requests (
         order_number, empresa_envio, empresa_envio_otro, destino_tipo,
