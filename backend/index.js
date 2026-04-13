@@ -784,8 +784,11 @@ app.get('/botmaker/chat-by-phone/:phone', authenticate, async (req, res) => {
     // Sin 9 después del 54 (54 9 XX -> 54 XX)
     if (raw.startsWith('549')) variants.add('54' + raw.slice(3));
 
+    console.log(`Botmaker lookup: raw=${raw}, variants=${[...variants].join(', ')}`);
+
     let nextPage = null;
     let found = null;
+    let pageCount = 0;
 
     do {
       const url = nextPage || 'https://api.botmaker.com/v2.0/chats/';
@@ -793,9 +796,15 @@ app.get('/botmaker/chat-by-phone/:phone', authenticate, async (req, res) => {
       if (!resp.ok) return res.status(502).json({ error: 'Error consultando Botmaker' });
 
       const data = await resp.json();
-      found = data.items?.find(i => variants.has(i.chat.contactId));
+      pageCount++;
+      found = data.items?.find(i => {
+        const cid = (i.chat.contactId || '').replace(/[^0-9]/g, '');
+        return variants.has(cid);
+      });
       nextPage = data.nextPage;
     } while (!found && nextPage);
+
+    console.log(`Botmaker lookup: scanned ${pageCount} pages, found=${!!found}`);
 
     if (!found) return res.json({ ok: true, chatId: null });
 
