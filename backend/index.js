@@ -764,50 +764,32 @@ app.get('/botmaker/chat-by-phone/:phone', authenticate, async (req, res) => {
     const token = process.env.BOTMAKER_ACCESS_TOKEN;
     if (!token) return res.status(503).json({ error: 'Botmaker no configurado' });
 
+    const channelId = process.env.BOTMAKER_CHANNEL_ID;
+    if (!channelId) return res.status(503).json({ error: 'Botmaker channel no configurado' });
+
     const raw = req.params.phone.replace(/[^0-9]/g, '');
     if (!raw) return res.status(400).json({ error: 'Teléfono inválido' });
 
-    // Generar variantes del número para buscar
-    const variants = new Set();
-    variants.add(raw);
-    // Sin 54
-    if (raw.startsWith('54')) variants.add(raw.slice(2));
-    // Sin 549
-    if (raw.startsWith('549')) variants.add(raw.slice(3));
-    // Con 54 si no lo tiene
-    if (!raw.startsWith('54')) variants.add('54' + raw);
-    // Con 549 si no lo tiene
-    if (!raw.startsWith('549')) {
-      if (raw.startsWith('54')) variants.add('549' + raw.slice(2));
-      else variants.add('549' + raw);
-    }
-    // Sin 9 después del 54 (54 9 XX -> 54 XX)
-    if (raw.startsWith('549')) variants.add('54' + raw.slice(3));
+    // Generar variantes del número para buscar con la API
+    const variants = [raw];
+    if (raw.startsWith('54') && !raw.startsWith('549')) variants.push('549' + raw.slice(2));
+    if (raw.startsWith('549')) variants.push('54' + raw.slice(3));
+    if (!raw.startsWith('54')) { variants.push('54' + raw); variants.push('549' + raw); }
 
-    console.log(`Botmaker lookup: raw=${raw}, variants=${[...variants].join(', ')}`);
-
-    let nextPage = null;
+    // Buscar por contact-id + channel-id (endpoint filtrado de Botmaker)
     let found = null;
-    let pageCount = 0;
-
-    do {
-      const url = nextPage || 'https://api.botmaker.com/v2.0/chats/';
+    for (const variant of variants) {
+      const url = `https://api.botmaker.com/v2.0/chats/?channel-id=${encodeURIComponent(channelId)}&contact-id=${variant}`;
       const resp = await fetch(url, { headers: { 'access-token': token } });
-      if (!resp.ok) return res.status(502).json({ error: 'Error consultando Botmaker' });
-
+      if (!resp.ok) continue;
       const data = await resp.json();
-      pageCount++;
-      found = data.items?.find(i => {
-        const cid = (i.chat.contactId || '').replace(/[^0-9]/g, '');
-        return variants.has(cid);
-      });
-      nextPage = data.nextPage;
-    } while (!found && nextPage);
-
-    console.log(`Botmaker lookup: scanned ${pageCount} pages, found=${!!found}`);
+      if (data.items?.length > 0) {
+        found = data.items[0];
+        break;
+      }
+    }
 
     if (!found) {
-      // API only returns recent chats — fallback to Botmaker search URL
       return res.json({
         ok: true,
         chatId: null,
@@ -815,10 +797,11 @@ app.get('/botmaker/chat-by-phone/:phone', authenticate, async (req, res) => {
       });
     }
 
+    const chatId = found.chat?.chatId || found.chatId;
     res.json({
       ok: true,
-      chatId: found.chat.chatId,
-      url: `https://go.botmaker.com/#/chats/${found.chat.chatId}`,
+      chatId,
+      url: `https://go.botmaker.com/#/chats/${chatId}`,
       name: `${found.firstName || ''} ${found.lastName || ''}`.trim()
     });
   } catch (err) {
