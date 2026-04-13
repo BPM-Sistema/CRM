@@ -2205,8 +2205,20 @@ app.get('/orders/:orderNumber/print', authenticate, requirePermission('orders.pr
       shipping_address: shippingAddress,
 
       // Envío - inferir si es retiro o envío
+      // Si hay datos del formulario /envio, usar la empresa elegida por el cliente
       shipping: (() => {
-        const type = order.shipping_type || 'No especificado';
+        let type = order.shipping_type || 'No especificado';
+
+        // Prioridad: empresa de envío elegida en formulario /envio
+        if (shippingRequest) {
+          const empresa = shippingRequest.empresa_envio === 'OTRO'
+            ? shippingRequest.empresa_envio_otro
+            : shippingRequest.empresa_envio;
+          if (empresa) {
+            type = empresa;
+          }
+        }
+
         const typeLower = type.toLowerCase();
         const isPickup = typeLower.includes('pickup') ||
                          typeLower.includes('retiro') ||
