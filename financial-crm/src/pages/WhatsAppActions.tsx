@@ -66,7 +66,7 @@ export default function WhatsAppActions() {
 
   // Estado para tracking entries
   const [trackingEntries, setTrackingEntries] = useState<TrackingEntry[]>([
-    { orderNumber: '', totalShipments: 2, trackingCodes: {} }
+    { orderNumber: '', totalShipments: 1, trackingCodes: {} }
   ]);
 
   const isTrackingTemplate = TRACKING_TEMPLATES.includes(selectedTemplate);
@@ -148,7 +148,7 @@ export default function WhatsAppActions() {
         setError(`Falta el número de pedido en la entrada ${i + 1}`);
         return;
       }
-      for (let pos = 2; pos <= entry.totalShipments; pos++) {
+      for (let pos = 1; pos <= entry.totalShipments; pos++) {
         if (!entry.trackingCodes[pos]?.trim()) {
           setError(`Falta el código de envío #${pos} en pedido ${entry.orderNumber}`);
           return;
@@ -179,7 +179,7 @@ export default function WhatsAppActions() {
   }
 
   function addTrackingEntry() {
-    setTrackingEntries(prev => [...prev, { orderNumber: '', totalShipments: 2, trackingCodes: {} }]);
+    setTrackingEntries(prev => [...prev, { orderNumber: '', totalShipments: 1, trackingCodes: {} }]);
   }
 
   function removeTrackingEntry(index: number) {
@@ -193,7 +193,7 @@ export default function WhatsAppActions() {
       // Limpiar tracking codes que estén fuera del rango si cambia totalShipments
       if (updates.totalShipments) {
         const cleaned: Record<number, string> = {};
-        for (let pos = 2; pos <= updates.totalShipments; pos++) {
+        for (let pos = 1; pos <= updates.totalShipments; pos++) {
           if (entry.trackingCodes[pos]) cleaned[pos] = entry.trackingCodes[pos];
         }
         updated.trackingCodes = cleaned;
@@ -314,28 +314,15 @@ export default function WhatsAppActions() {
                             className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                             disabled={sending}
                           >
-                            {[2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
-                              <option key={n} value={n}>{n} envíos</option>
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                              <option key={n} value={n}>{n} {n === 1 ? 'envío' : 'envíos'}</option>
                             ))}
                           </select>
                         </div>
                       </div>
 
-                      {/* Campo 1 gris (TN automático) */}
-                      <div>
-                        <label className="text-xs font-medium text-neutral-400 mb-1 block">
-                          Envío #1 — Tiendanube (automático)
-                        </label>
-                        <input
-                          type="text"
-                          value="Se envía con la plantilla original"
-                          disabled
-                          className="w-full px-3 py-2 text-sm bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-400 cursor-not-allowed"
-                        />
-                      </div>
-
-                      {/* Campos editables para cada tracking extra */}
-                      {Array.from({ length: entry.totalShipments - 1 }, (_, i) => i + 2).map(pos => (
+                      {/* Campos editables para cada tracking */}
+                      {Array.from({ length: entry.totalShipments }, (_, i) => i + 1).map(pos => (
                         <div key={pos}>
                           <label className="text-xs font-medium text-neutral-600 mb-1 block">
                             Envío #{pos}

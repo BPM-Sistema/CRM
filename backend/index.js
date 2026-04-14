@@ -7353,9 +7353,9 @@ app.post('/whatsapp/send-tracking', authenticate, requirePermission('whatsapp.se
           continue;
         }
 
-        // Recopilar códigos de tracking (posiciones 2+)
+        // Recopilar códigos de tracking
         const codes = [];
-        for (let pos = 2; pos <= entry.totalShipments; pos++) {
+        for (let pos = 1; pos <= entry.totalShipments; pos++) {
           const code = entry.trackingCodes[pos]?.trim();
           if (!code) {
             results.failed.push({ orderNumber: cleanOrderNumber, error: `Falta código #${pos}` });
@@ -7370,7 +7370,7 @@ app.post('/whatsapp/send-tracking', authenticate, requirePermission('whatsapp.se
         }
 
         // Guardar tracking codes en DB
-        for (let pos = 2; pos <= entry.totalShipments; pos++) {
+        for (let pos = 1; pos <= entry.totalShipments; pos++) {
           const code = entry.trackingCodes[pos]?.trim();
           if (code) {
             await pool.query(
