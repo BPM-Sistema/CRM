@@ -58,7 +58,12 @@ async function claudeVisionRequest(config) {
 
 // Pre-configured breakers connected to real axios calls
 const tiendanubeBreaker = createBreaker('tiendanube', tiendanubeRequest, { timeout: 20000 });
-const botmakerBreaker = createBreaker('botmaker', botmakerRequest, { timeout: 10000 });
+const botmakerBreaker = createBreaker('botmaker', botmakerRequest, {
+  timeout: 15000,
+  volumeThreshold: 10,
+  errorThresholdPercentage: 70,
+  resetTimeout: 10000
+});
 const claudeVisionBreaker = createBreaker('claudeVision', claudeVisionRequest, { timeout: 30000 });
 
 /**

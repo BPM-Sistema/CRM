@@ -148,7 +148,11 @@ async function processWhatsAppJob(job) {
 function createWhatsAppWorker(connection) {
   const worker = new Worker('whatsapp', processWhatsAppJob, {
     connection,
-    concurrency: 5,
+    concurrency: 1,
+    limiter: {
+      max: 1,
+      duration: 3000 // 1 mensaje cada 3 segundos
+    },
     defaultJobOptions: {
       attempts: 3,
       backoff: {
