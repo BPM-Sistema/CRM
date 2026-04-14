@@ -4366,7 +4366,12 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
       console.log(`⚠️ Comprobante duplicado (${dupTipo}) - Order: ${orderNumber}, Original ID: ${dupId}`);
 
       fs.unlinkSync(file.path);
-      return res.status(409).json({ error: `Comprobante duplicado — ya existe comprobante #${dupId} confirmado por el mismo monto` });
+      const mensajes = {
+        hash: `Comprobante duplicado — ya fue subido anteriormente (comprobante #${dupId})`,
+        numero_operacion: `Comprobante duplicado — mismo número de operación que comprobante #${dupId}`,
+        monto_confirmado: `Comprobante duplicado — ya existe comprobante #${dupId} confirmado por el mismo monto`,
+      };
+      return res.status(409).json({ error: mensajes[dupTipo] });
     }
 
     /* ===============================
