@@ -7,10 +7,11 @@ import {
   ExternalLink,
   CheckCircle2,
   AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { authFetch } from '../services/api';
+import { authFetch, syncTnPayment } from '../services/api';
 
 interface SyncQueueOrder {
   order_number: string;
@@ -55,6 +56,35 @@ export default function SyncQueue() {
   const [orders, setOrders] = useState<SyncQueueOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [syncingOrders, setSyncingOrders] = useState<Set<string>>(new Set());
+  const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
+
+  const handleSync = async (orderNumber: string) => {
+    setSyncingOrders(prev => new Set(prev).add(orderNumber));
+    setSyncSuccess(null);
+    setError(null);
+
+    try {
+      const result = await syncTnPayment(orderNumber);
+
+      if (result.synced) {
+        // Quitar de la lista
+        setOrders(prev => prev.filter(o => o.order_number !== orderNumber));
+        setSyncSuccess(`Pedido #${orderNumber} sincronizado: ${result.previous} → ${result.current}`);
+      } else {
+        // Ya estaba sincronizado, refrescar
+        loadData();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al sincronizar');
+    } finally {
+      setSyncingOrders(prev => {
+        const next = new Set(prev);
+        next.delete(orderNumber);
+        return next;
+      });
+    }
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -119,6 +149,14 @@ export default function SyncQueue() {
             </div>
           </div>
         </div>
+
+        {/* Éxito */}
+        {syncSuccess && (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6 flex items-center gap-3">
+            <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
+            <p className="text-green-700">{syncSuccess}</p>
+          </div>
+        )}
 
         {/* Error */}
         {error && (
@@ -217,19 +255,36 @@ export default function SyncQueue() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        {order.tn_order_id ? (
-                          <a
-                            href={`https://blanqueriaxmayor2.mitiendanube.com/admin/orders/${order.tn_order_id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-violet-600 bg-violet-50 rounded-lg hover:bg-violet-100 transition-colors"
-                          >
-                            <ExternalLink className="w-3 h-3" />
-                            Ver en TN
-                          </a>
-                        ) : (
-                          <span className="text-xs text-gray-400">Sin ID TN</span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {order.tn_order_id && (
+                            <>
+                              <button
+                                onClick={() => handleSync(order.order_number)}
+                                disabled={syncingOrders.has(order.order_number)}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-violet-600 rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {syncingOrders.has(order.order_number) ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="w-3 h-3" />
+                                )}
+                                Sincronizar
+                              </button>
+                              <a
+                                href={`https://blanqueriaxmayor2.mitiendanube.com/admin/orders/${order.tn_order_id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-violet-600 bg-violet-50 rounded-lg hover:bg-violet-100 transition-colors"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                                Ver en TN
+                              </a>
+                            </>
+                          )}
+                          {!order.tn_order_id && (
+                            <span className="text-xs text-gray-400">Sin ID TN</span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))

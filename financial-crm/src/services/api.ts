@@ -461,6 +461,26 @@ export async function resyncOrder(orderNumber: string): Promise<{ ok: boolean; p
   return response.json();
 }
 
+// Sincronizar estado de pago desde TiendaNube (para resolver divergencias)
+export async function syncTnPayment(orderNumber: string): Promise<{
+  ok: boolean;
+  synced: boolean;
+  previous?: string;
+  current?: string;
+  message?: string;
+}> {
+  const response = await authFetch(`${API_BASE_URL}/orders/${orderNumber}/sync-tn-payment`, {
+    method: 'POST'
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Error al sincronizar pago con TN');
+  }
+
+  return response.json();
+}
+
 // Obtener datos para impresión de pedido
 export async function fetchOrderPrintData(orderNumber: string): Promise<ApiOrderPrintData> {
   const response = await authFetch(`${API_BASE_URL}/orders/${orderNumber}/print`);
