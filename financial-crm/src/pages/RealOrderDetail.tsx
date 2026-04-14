@@ -178,11 +178,9 @@ export function RealOrderDetail() {
       return;
     }
 
-    const nextPosition = (trackingData?.trackings.length || 0) + 1;
-    if (nextPosition < 2) {
-      setTrackingError('Error: posición inválida');
-      return;
-    }
+    // Position 1 es el original de TN, los extras empiezan en 2
+    const extraCount = trackingData?.trackings.filter(t => !t.is_original).length || 0;
+    const nextPosition = extraCount + 2;
 
     setIsAddingTracking(true);
     setTrackingError(null);
@@ -1166,7 +1164,7 @@ export function RealOrderDetail() {
                       </div>
                       <div>
                         <label className="text-xs font-medium text-neutral-600 mb-1 block">
-                          Código #{(trackingData?.trackings.length || 0) + 1}:
+                          Código #{(trackingData?.trackings.filter(t => !t.is_original).length || 0) + 2}:
                         </label>
                         <input
                           type="text"
