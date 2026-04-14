@@ -1329,9 +1329,10 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
     )`;
 
     if (shipping_data === 'pending') {
-      // Solo pedidos que requieren form Y no tienen datos cargados
+      // Solo pedidos que requieren form, no tienen datos cargados, Y ya tienen al menos un pago
       conditions.push(requiresFormCondition);
       conditions.push(`NOT EXISTS (SELECT 1 FROM shipping_requests sr2 WHERE sr2.order_number = o.order_number)`);
+      conditions.push(`o.estado_pago != 'pendiente'`);
     } else if (shipping_data === 'complete') {
       // Solo pedidos que requieren form Y ya tienen datos cargados
       conditions.push(requiresFormCondition);
@@ -1399,6 +1400,7 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
         COUNT(c.id) FILTER (WHERE c.estado IN ('a_confirmar', 'pendiente')) as pending_receipts_count,
         (SELECT COALESCE(SUM(op.quantity), 0) FROM order_products op WHERE op.order_number = o.order_number)::int as productos_count,
         CASE
+          WHEN o.estado_pago = 'pendiente' THEN false
           WHEN LOWER(COALESCE(o.shipping_type, '')) LIKE '%expreso%' AND LOWER(COALESCE(o.shipping_type, '')) LIKE '%elec%' THEN true
           WHEN LOWER(COALESCE(o.shipping_type, '')) LIKE '%via cargo%' THEN true
           WHEN LOWER(COALESCE(o.shipping_type, '')) LIKE '%viacargo%' THEN true
