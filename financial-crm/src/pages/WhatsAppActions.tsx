@@ -18,7 +18,7 @@ import { authFetch } from '../services/api';
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 // Plantillas que requieren variables de tracking
-const TRACKING_TEMPLATES = ['envio_extra', 'prueba_2v', 'envio_nube_extra'];
+const TRACKING_TEMPLATES = ['envio_extra'];
 
 interface Template {
   key: string;
