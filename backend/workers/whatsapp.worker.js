@@ -163,6 +163,7 @@ function createWhatsAppWorker(connection) {
   const worker = new Worker('whatsapp', processWhatsAppJob, {
     connection,
     concurrency: 1,
+    lockDuration: 60000, // 60s — Cloud SQL cold start + Botmaker API puede tardar >30s
     limiter: {
       max: 1,
       duration: 3000 // 1 mensaje cada 3 segundos
