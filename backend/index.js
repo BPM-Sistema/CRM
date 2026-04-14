@@ -6329,27 +6329,194 @@ app.get('/orders/:orderNumber/shipping-label', authenticate, async (req, res) =>
 
     doc.end();
 
-    // Registrar la impresión en shipping_requests
-    await pool.query(`
-      UPDATE shipping_requests
-      SET label_printed_at = NOW(),
-          label_bultos = COALESCE(label_bultos, 0) + $1
-      WHERE id = $2
-    `, [bultos, shipping.id]);
+    // Marcar como impresa SOLO cuando el cliente recibió el PDF completo
+    res.on('finish', async () => {
+      try {
+        await pool.query(`
+          UPDATE shipping_requests
+          SET label_printed_at = NOW(),
+              label_bultos = COALESCE(label_bultos, 0) + $1
+          WHERE id = $2
+        `, [bultos, shipping.id]);
 
-    // Registrar en logs
-    await logEvento({
-      orderNumber,
-      accion: `etiqueta_impresa_${bultos}_bultos`,
-      origen: 'crm',
-      userId: req.user?.id,
-      username: req.user?.name
+        await logEvento({
+          orderNumber,
+          accion: `etiqueta_impresa_${bultos}_bultos`,
+          origen: 'crm',
+          userId: req.user?.id,
+          username: req.user?.name
+        });
+
+        console.log(`🏷️ Etiqueta generada para pedido ${orderNumber} (${bultos} bultos)`);
+      } catch (err) {
+        console.error(`❌ Error registrando impresión de etiqueta ${orderNumber}:`, err.message);
+      }
     });
-
-    console.log(`🏷️ Etiqueta generada para pedido ${orderNumber} (${bultos} bultos)`);
 
   } catch (error) {
     console.error('❌ GET /orders/:orderNumber/shipping-label error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /orders/shipping-labels-batch
+ * Generar UN SOLO PDF con etiquetas de múltiples pedidos
+ * Body: { orders: [{ orderNumber: "31071", bultos: 1 }, ...] }
+ */
+app.post('/orders/shipping-labels-batch', authenticate, async (req, res) => {
+  try {
+    const { orders: orderList } = req.body;
+
+    if (!orderList || !Array.isArray(orderList) || orderList.length === 0) {
+      return res.status(400).json({ error: 'Se requiere un array de pedidos' });
+    }
+
+    if (orderList.length > 50) {
+      return res.status(400).json({ error: 'Máximo 50 pedidos por batch' });
+    }
+
+    // Datos del remitente (fijos)
+    const remitente = {
+      nombre: 'Blanqueriaxmayor',
+      domicilio: 'Av Gaona 2376',
+      localidad: 'Flores',
+      cel: '1134918721',
+      dni: '41823314'
+    };
+
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 40,
+      info: { Title: `Etiquetas Envío - ${orderList.length} pedidos` }
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=etiquetas-batch-${Date.now()}.pdf`);
+    doc.pipe(res);
+
+    const shippingIds = []; // Para marcar como impresas después
+    let isFirstPage = true;
+
+    for (const item of orderList) {
+      const orderNumber = item.orderNumber;
+      const bultos = Math.min(Math.max(parseInt(item.bultos) || 1, 1), 10);
+
+      const shippingRes = await pool.query(`
+        SELECT * FROM shipping_requests
+        WHERE order_number = $1
+        ORDER BY created_at DESC
+        LIMIT 1
+      `, [orderNumber]);
+
+      if (shippingRes.rows.length === 0) {
+        console.warn(`⚠️ Batch label: no shipping data for ${orderNumber}, skipping`);
+        continue;
+      }
+
+      const shipping = shippingRes.rows[0];
+      shippingIds.push({ id: shipping.id, bultos, orderNumber });
+
+      const orderRes = await pool.query(`
+        SELECT order_number, customer_name, customer_phone, monto_tiendanube
+        FROM orders_validated
+        WHERE order_number = $1
+      `, [orderNumber]);
+
+      const order = orderRes.rows[0] || {};
+
+      const empresaEnvio = shipping.empresa_envio === 'OTRO'
+        ? shipping.empresa_envio_otro
+        : 'VÍA CARGO';
+
+      for (let i = 0; i < bultos; i++) {
+        if (!isFirstPage) doc.addPage();
+        isFirstPage = false;
+
+        const y = 50;
+        doc.font('Helvetica-Bold').fontSize(16);
+
+        doc.text(`PEDIDO #${orderNumber}`, 40, y, { align: 'center' });
+        doc.text(`Bulto ${i + 1} de ${bultos}`, 40, y + 25, { align: 'center' });
+        doc.moveTo(40, y + 55).lineTo(555, y + 55).stroke();
+
+        doc.text(empresaEnvio.toUpperCase(), 40, y + 75, { align: 'center' });
+        doc.text(`Tipo: ${shipping.destino_tipo === 'SUCURSAL' ? 'Retiro en Sucursal' : 'Envío a Domicilio'}`, 40, y + 100, { align: 'center' });
+        doc.moveTo(40, y + 130).lineTo(555, y + 130).stroke();
+
+        let destY = y + 150;
+        doc.text('DESTINATARIO', 40, destY);
+        destY += 28;
+        doc.text(`Nombre: ${shipping.nombre_apellido.toUpperCase()}`, 40, destY);
+        destY += 24;
+        doc.text(`DNI: ${shipping.dni}`, 40, destY);
+        destY += 24;
+        doc.text(`Domicilio: ${shipping.direccion_entrega}`, 40, destY);
+        destY += 24;
+        doc.text(`Localidad: ${shipping.localidad}, ${shipping.provincia}`, 40, destY);
+        destY += 24;
+        doc.text(`CP: ${shipping.codigo_postal}`, 40, destY);
+        destY += 24;
+        doc.text(`Tel: ${shipping.telefono}`, 40, destY);
+        destY += 24;
+        doc.text(`Email: ${shipping.email}`, 40, destY);
+
+        destY += 35;
+        doc.moveTo(40, destY).lineTo(555, destY).stroke();
+
+        destY += 20;
+        doc.text('REMITENTE', 40, destY);
+        destY += 28;
+        doc.text(`Nombre: ${remitente.nombre}`, 40, destY);
+        destY += 24;
+        doc.text(`Domicilio: ${remitente.domicilio}`, 40, destY);
+        destY += 24;
+        doc.text(`Localidad: ${remitente.localidad}`, 40, destY);
+        destY += 24;
+        doc.text(`Cel: ${remitente.cel}`, 40, destY);
+        destY += 24;
+        doc.text(`DNI: ${remitente.dni}`, 40, destY);
+
+        if (shipping.comentarios) {
+          destY += 40;
+          doc.moveTo(40, destY).lineTo(555, destY).stroke();
+          destY += 20;
+          doc.text('COMENTARIOS', 40, destY);
+          destY += 28;
+          doc.text(shipping.comentarios, 40, destY, { width: 515, align: 'left' });
+        }
+      }
+    }
+
+    doc.end();
+
+    // Marcar como impresas SOLO cuando el cliente recibió el PDF completo
+    res.on('finish', async () => {
+      try {
+        for (const { id, bultos, orderNumber } of shippingIds) {
+          await pool.query(`
+            UPDATE shipping_requests
+            SET label_printed_at = NOW(),
+                label_bultos = COALESCE(label_bultos, 0) + $1
+            WHERE id = $2
+          `, [bultos, id]);
+
+          await logEvento({
+            orderNumber,
+            accion: `etiqueta_impresa_${bultos}_bultos`,
+            origen: 'crm',
+            userId: req.user?.id,
+            username: req.user?.name
+          });
+        }
+        console.log(`🏷️ Batch: ${shippingIds.length} etiquetas generadas`);
+      } catch (err) {
+        console.error('❌ Error registrando batch de etiquetas:', err.message);
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ POST /orders/shipping-labels-batch error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });

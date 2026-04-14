@@ -379,38 +379,39 @@ export function RealOrders() {
     const baseUrl = import.meta.env.VITE_API_URL || '';
     const token = localStorage.getItem('auth_token');
 
-    // Abrir cada etiqueta en una nueva ventana usando fetch + blob
-    for (const orderNumber of selectedForLabels) {
-      const bultos = labelBultos[orderNumber] || 1;
-      const url = `${baseUrl}/orders/${orderNumber}/shipping-label?bultos=${bultos}`;
+    try {
+      // Generar un solo PDF con todas las etiquetas
+      const ordersList = Array.from(selectedForLabels).map(orderNumber => ({
+        orderNumber,
+        bultos: labelBultos[orderNumber] || 1
+      }));
 
-      try {
-        const response = await fetch(url, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
+      const response = await fetch(`${baseUrl}/orders/shipping-labels-batch`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ orders: ordersList })
+      });
 
-        if (!response.ok) {
-          console.error(`Error al obtener etiqueta ${orderNumber}:`, response.statusText);
-          continue;
-        }
-
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        window.open(blobUrl, '_blank');
-      } catch (err) {
-        console.error(`Error al imprimir etiqueta ${orderNumber}:`, err);
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: response.statusText }));
+        alert(`Error al generar etiquetas: ${err.error}`);
+        return;
       }
 
-      // Pequeña pausa entre aperturas
-      await new Promise(r => setTimeout(r, 300));
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+    } catch (err) {
+      console.error('Error al imprimir etiquetas:', err);
+      alert('Error al generar etiquetas');
+    } finally {
+      setPrintingLabels(false);
+      clearLabelSelection();
+      setTimeout(() => loadOrders(), 1000);
     }
-
-    setPrintingLabels(false);
-    clearLabelSelection();
-    // Recargar para actualizar estado de etiquetas impresas
-    setTimeout(() => loadOrders(), 1000);
   };
 
   const printSelectedOrders = () => {
