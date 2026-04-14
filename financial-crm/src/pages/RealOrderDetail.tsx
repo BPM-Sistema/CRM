@@ -20,6 +20,10 @@ import {
   Download,
   Image,
   Tag,
+  X,
+  Plus,
+  Send,
+  RotateCcw,
 } from 'lucide-react';
 import { getEventConfig, formatEventLabel } from '../utils/eventConfig';
 import { Header } from '../components/layout';
@@ -36,10 +40,15 @@ import {
   fetchRemitoByOrder,
   getShippingLabelUrl,
   getEnvioNubeLabel,
+  fetchTrackingCodes,
+  addTrackingCode,
+  deleteTrackingCode,
+  resendTrackingWhatsapp,
   ApiOrderDetail,
   ApiOrderPrintData,
   ShippingRequest,
   Remito,
+  TrackingCodesResponse,
   mapEstadoPago,
   mapEstadoPedido,
   OrderStatus,
@@ -87,6 +96,14 @@ export function RealOrderDetail() {
 
   // Estado para etiqueta Envío Nube
   const [isLoadingEnvioNubeLabel, setIsLoadingEnvioNubeLabel] = useState(false);
+
+  // Estado para tracking codes (múltiples envíos)
+  const [trackingData, setTrackingData] = useState<TrackingCodesResponse | null>(null);
+  const [newTrackingCode, setNewTrackingCode] = useState('');
+  const [totalShipments, setTotalShipments] = useState<number>(2);
+  const [isAddingTracking, setIsAddingTracking] = useState(false);
+  const [showTrackingForm, setShowTrackingForm] = useState(false);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
 
   const loadOrder = async () => {
     if (!orderNumber) return;
@@ -140,9 +157,86 @@ export function RealOrderDetail() {
     }
   };
 
+  // Cargar tracking codes para pedidos Envío Nube
+  const loadTrackingCodes = async () => {
+    if (!orderNumber) return;
+    try {
+      const trackings = await fetchTrackingCodes(orderNumber);
+      setTrackingData(trackings);
+      // Actualizar total_shipments si ya hay trackings
+      if (trackings.total_shipments > 0) {
+        setTotalShipments(trackings.total_shipments);
+      }
+    } catch {
+      // Silenciar error si no es Envío Nube
+    }
+  };
+
+  const handleAddTracking = async () => {
+    if (!orderNumber || !newTrackingCode.trim()) {
+      setTrackingError('Ingresá un código de seguimiento');
+      return;
+    }
+
+    const nextPosition = (trackingData?.trackings.length || 0) + 1;
+    if (nextPosition < 2) {
+      setTrackingError('Error: posición inválida');
+      return;
+    }
+
+    setIsAddingTracking(true);
+    setTrackingError(null);
+
+    try {
+      await addTrackingCode(orderNumber, newTrackingCode.trim(), nextPosition, totalShipments);
+      setNewTrackingCode('');
+      setShowTrackingForm(false);
+      await loadTrackingCodes();
+    } catch (err) {
+      setTrackingError(err instanceof Error ? err.message : 'Error al agregar tracking');
+    } finally {
+      setIsAddingTracking(false);
+    }
+  };
+
+  const handleDeleteTracking = async (trackingId: number) => {
+    if (!orderNumber || !trackingId) return;
+    if (!confirm('¿Eliminar este código de seguimiento?')) return;
+
+    try {
+      await deleteTrackingCode(orderNumber, trackingId);
+      await loadTrackingCodes();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al eliminar');
+    }
+  };
+
+  const handleResendWhatsapp = async (trackingId: number) => {
+    if (!orderNumber || !trackingId) return;
+
+    try {
+      await resendTrackingWhatsapp(orderNumber, trackingId);
+      await loadTrackingCodes();
+      alert('WhatsApp enviado');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al enviar WhatsApp');
+    }
+  };
+
   useEffect(() => {
     loadOrder();
   }, [orderNumber]);
+
+  // Cargar trackings cuando cambia data y es Envío Nube
+  useEffect(() => {
+    if (data?.order) {
+      const shippingType = (data.order.shipping_type || '').toLowerCase();
+      const esEnvioNube = shippingType.includes('envío nube') || shippingType.includes('envio nube');
+      if (esEnvioNube) {
+        loadTrackingCodes();
+      }
+    }
+  }, [data?.order?.shipping_type]);
 
   const formatCurrency = (amount: number | null) => {
     if (amount === null) return '-';
@@ -993,6 +1087,139 @@ export function RealOrderDetail() {
                       </>
                     )}
                   </Button>
+                </div>
+              </Card>
+            )}
+
+            {/* Códigos de Seguimiento (múltiples envíos) */}
+            {(shippingTypeLower.includes('envío nube') || shippingTypeLower.includes('envio nube')) && (
+              <Card>
+                <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider mb-3">
+                  Códigos de Seguimiento
+                </h3>
+                <div className="space-y-3">
+                  {/* Chips de trackings existentes */}
+                  {trackingData && trackingData.trackings.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {trackingData.trackings.map((tracking, idx) => (
+                        <div
+                          key={tracking.id || `original-${idx}`}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm ${
+                            tracking.is_original
+                              ? 'bg-sky-100 text-sky-800 border border-sky-200'
+                              : 'bg-amber-100 text-amber-800 border border-amber-200'
+                          }`}
+                        >
+                          <span className="font-mono text-xs">
+                            {tracking.position}/{trackingData.total_shipments}
+                          </span>
+                          <span className="font-medium">{tracking.tracking_code}</span>
+                          {tracking.is_original && (
+                            <span className="text-[10px] uppercase font-semibold text-sky-600 ml-1">TN</span>
+                          )}
+                          {!tracking.is_original && tracking.id && (
+                            <>
+                              {tracking.whatsapp_sent_at ? (
+                                <button
+                                  onClick={() => handleResendWhatsapp(tracking.id!)}
+                                  className="ml-1 p-0.5 hover:bg-amber-200 rounded"
+                                  title="Reenviar WhatsApp"
+                                >
+                                  <RotateCcw size={12} />
+                                </button>
+                              ) : (
+                                <span className="ml-1 text-[10px] text-amber-600">pendiente</span>
+                              )}
+                              <button
+                                onClick={() => handleDeleteTracking(tracking.id!)}
+                                className="ml-0.5 p-0.5 hover:bg-red-200 hover:text-red-700 rounded"
+                                title="Eliminar"
+                              >
+                                <X size={12} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-neutral-500">
+                      Sin códigos de seguimiento adicionales
+                    </p>
+                  )}
+
+                  {/* Formulario para agregar tracking */}
+                  {showTrackingForm ? (
+                    <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-medium text-neutral-600 w-24">Total envíos:</label>
+                        <select
+                          value={totalShipments}
+                          onChange={(e) => setTotalShipments(Number(e.target.value))}
+                          className="flex-1 px-2 py-1.5 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                          disabled={isAddingTracking}
+                        >
+                          {[2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                            <option key={n} value={n}>{n} envíos</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-neutral-600 mb-1 block">
+                          Código #{(trackingData?.trackings.length || 0) + 1}:
+                        </label>
+                        <input
+                          type="text"
+                          value={newTrackingCode}
+                          onChange={(e) => setNewTrackingCode(e.target.value)}
+                          placeholder="Ej: 1234567890"
+                          className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                          disabled={isAddingTracking}
+                          onKeyDown={(e) => e.key === 'Enter' && handleAddTracking()}
+                        />
+                      </div>
+                      {trackingError && (
+                        <p className="text-xs text-red-600">{trackingError}</p>
+                      )}
+                      <div className="flex gap-2">
+                        <Button
+                          variant="primary"
+                          className="flex-1 bg-sky-600 hover:bg-sky-700"
+                          onClick={handleAddTracking}
+                          disabled={isAddingTracking || !newTrackingCode.trim()}
+                        >
+                          {isAddingTracking ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <>
+                              <Send size={14} className="mr-1" />
+                              Agregar y enviar WA
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            setShowTrackingForm(false);
+                            setNewTrackingCode('');
+                            setTrackingError(null);
+                          }}
+                          disabled={isAddingTracking}
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      className="w-full"
+                      onClick={() => setShowTrackingForm(true)}
+                    >
+                      <Plus size={16} className="mr-2" />
+                      Agregar código de seguimiento
+                    </Button>
+                  )}
                 </div>
               </Card>
             )}

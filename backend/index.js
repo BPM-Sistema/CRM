@@ -6759,6 +6759,283 @@ app.post('/orders/envio-nube-labels/preview', authenticate, async (req, res) => 
 });
 
 /* =====================================================
+   TRACKING CODES - Múltiples códigos para Envío Nube
+===================================================== */
+
+/**
+ * GET /orders/:orderNumber/tracking-codes
+ * Obtener todos los tracking codes de un pedido
+ */
+app.get('/orders/:orderNumber/tracking-codes', authenticate, requirePermission('orders.view'), async (req, res) => {
+  try {
+    const { orderNumber } = req.params;
+    const cleanOrderNumber = orderNumber.replace('#', '').trim();
+
+    // Obtener el tracking original de TN
+    const orderRes = await pool.query(
+      `SELECT shipping_tracking, shipping_type FROM orders_validated WHERE order_number = $1`,
+      [cleanOrderNumber]
+    );
+
+    if (orderRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
+
+    const order = orderRes.rows[0];
+
+    // Obtener trackings adicionales
+    const trackingsRes = await pool.query(
+      `SELECT id, tracking_code, position, total_shipments, carrier, created_at, whatsapp_sent_at
+       FROM order_tracking_codes
+       WHERE order_number = $1
+       ORDER BY position ASC`,
+      [cleanOrderNumber]
+    );
+
+    // Construir respuesta con el tracking original (position 1) + adicionales
+    const originalTracking = order.shipping_tracking;
+    const additionalTrackings = trackingsRes.rows;
+
+    // Determinar total_shipments del primer adicional (si existe)
+    const totalShipments = additionalTrackings.length > 0
+      ? additionalTrackings[0].total_shipments
+      : (originalTracking ? 1 : 0);
+
+    res.json({
+      order_number: cleanOrderNumber,
+      shipping_type: order.shipping_type,
+      total_shipments: totalShipments,
+      trackings: [
+        // Position 1: tracking original de TN (si existe)
+        ...(originalTracking ? [{
+          id: null,
+          tracking_code: originalTracking,
+          position: 1,
+          is_original: true,
+          whatsapp_sent_at: null // El original se envía con enviado_env_nube
+        }] : []),
+        // Position 2+: trackings adicionales
+        ...additionalTrackings.map(t => ({
+          ...t,
+          is_original: false
+        }))
+      ]
+    });
+
+  } catch (error) {
+    console.error('❌ GET /orders/:orderNumber/tracking-codes error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /orders/:orderNumber/tracking-codes
+ * Agregar un nuevo tracking code
+ * Body: { tracking_code: string, position: number, total_shipments: number }
+ */
+app.post('/orders/:orderNumber/tracking-codes', authenticate, requirePermission('orders.update_status'), async (req, res) => {
+  try {
+    const { orderNumber } = req.params;
+    const { tracking_code, position, total_shipments, send_whatsapp = true } = req.body;
+    const cleanOrderNumber = orderNumber.replace('#', '').trim();
+
+    // Validaciones
+    if (!tracking_code || typeof tracking_code !== 'string') {
+      return res.status(400).json({ error: 'tracking_code es requerido' });
+    }
+    if (!position || position < 2) {
+      return res.status(400).json({ error: 'position debe ser >= 2 (el 1 es el original de TN)' });
+    }
+    if (!total_shipments || total_shipments < position) {
+      return res.status(400).json({ error: 'total_shipments debe ser >= position' });
+    }
+
+    // Verificar que el pedido existe y es Envío Nube
+    const orderRes = await pool.query(
+      `SELECT order_number, customer_name, customer_phone, shipping_type, tn_order_id
+       FROM orders_validated WHERE order_number = $1`,
+      [cleanOrderNumber]
+    );
+
+    if (orderRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
+
+    const order = orderRes.rows[0];
+    const shippingType = (order.shipping_type || '').toLowerCase();
+    const esEnvioNube = shippingType.includes('envío nube') || shippingType.includes('envio nube');
+
+    if (!esEnvioNube) {
+      return res.status(400).json({ error: 'Solo se pueden agregar trackings a pedidos de Envío Nube' });
+    }
+
+    // Insertar el tracking
+    const insertRes = await pool.query(
+      `INSERT INTO order_tracking_codes (order_number, tracking_code, position, total_shipments, created_by)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (order_number, position)
+       DO UPDATE SET tracking_code = EXCLUDED.tracking_code, total_shipments = EXCLUDED.total_shipments
+       RETURNING id, tracking_code, position, total_shipments, created_at`,
+      [cleanOrderNumber, tracking_code.trim(), position, total_shipments, req.user?.id]
+    );
+
+    const newTracking = insertRes.rows[0];
+
+    // Actualizar total_shipments en todos los trackings del pedido (por consistencia)
+    await pool.query(
+      `UPDATE order_tracking_codes SET total_shipments = $1 WHERE order_number = $2`,
+      [total_shipments, cleanOrderNumber]
+    );
+
+    // Log del evento
+    await logEvento({
+      orderNumber: cleanOrderNumber,
+      accion: `tracking_agregado: ${tracking_code} (${position} de ${total_shipments})`,
+      origen: 'operador',
+      userId: req.user?.id,
+      username: req.user?.name
+    });
+
+    // Enviar WhatsApp si está habilitado
+    let whatsappResult = null;
+    if (send_whatsapp && order.customer_phone) {
+      try {
+        await queueWhatsApp({
+          telefono: order.customer_phone,
+          plantilla: 'prueba__v',
+          variables: {
+            '1': order.customer_name || 'Cliente',
+            '2': cleanOrderNumber,
+            '3': `${position} de ${total_shipments}`,
+            '4': tracking_code.trim()
+          },
+          orderNumber: cleanOrderNumber
+        });
+
+        // Marcar como enviado
+        await pool.query(
+          `UPDATE order_tracking_codes SET whatsapp_sent_at = NOW() WHERE id = $1`,
+          [newTracking.id]
+        );
+
+        whatsappResult = { sent: true };
+        console.log(`📨 WhatsApp envio_nube_extra enviado (Pedido #${cleanOrderNumber}, tracking ${position}/${total_shipments})`);
+      } catch (waErr) {
+        console.error('⚠️ Error WhatsApp envio_nube_extra:', waErr.message);
+        whatsappResult = { sent: false, error: waErr.message };
+      }
+    }
+
+    res.json({
+      ok: true,
+      tracking: newTracking,
+      whatsapp: whatsappResult
+    });
+
+  } catch (error) {
+    console.error('❌ POST /orders/:orderNumber/tracking-codes error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * DELETE /orders/:orderNumber/tracking-codes/:id
+ * Eliminar un tracking code
+ */
+app.delete('/orders/:orderNumber/tracking-codes/:id', authenticate, requirePermission('orders.update_status'), async (req, res) => {
+  try {
+    const { orderNumber, id } = req.params;
+    const cleanOrderNumber = orderNumber.replace('#', '').trim();
+
+    const result = await pool.query(
+      `DELETE FROM order_tracking_codes WHERE id = $1 AND order_number = $2 RETURNING tracking_code, position`,
+      [id, cleanOrderNumber]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Tracking no encontrado' });
+    }
+
+    const deleted = result.rows[0];
+
+    await logEvento({
+      orderNumber: cleanOrderNumber,
+      accion: `tracking_eliminado: ${deleted.tracking_code} (posición ${deleted.position})`,
+      origen: 'operador',
+      userId: req.user?.id,
+      username: req.user?.name
+    });
+
+    res.json({ ok: true, deleted });
+
+  } catch (error) {
+    console.error('❌ DELETE /orders/:orderNumber/tracking-codes/:id error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /orders/:orderNumber/tracking-codes/:id/resend-whatsapp
+ * Reenviar WhatsApp para un tracking específico
+ */
+app.post('/orders/:orderNumber/tracking-codes/:id/resend-whatsapp', authenticate, requirePermission('orders.update_status'), async (req, res) => {
+  try {
+    const { orderNumber, id } = req.params;
+    const cleanOrderNumber = orderNumber.replace('#', '').trim();
+
+    // Obtener tracking y datos del pedido
+    const result = await pool.query(
+      `SELECT t.*, o.customer_name, o.customer_phone
+       FROM order_tracking_codes t
+       JOIN orders_validated o ON o.order_number = t.order_number
+       WHERE t.id = $1 AND t.order_number = $2`,
+      [id, cleanOrderNumber]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Tracking no encontrado' });
+    }
+
+    const { tracking_code, position, total_shipments, customer_name, customer_phone } = result.rows[0];
+
+    if (!customer_phone) {
+      return res.status(400).json({ error: 'El cliente no tiene teléfono' });
+    }
+
+    await queueWhatsApp({
+      telefono: customer_phone,
+      plantilla: 'prueba__v',
+      variables: {
+        '1': customer_name || 'Cliente',
+        '2': cleanOrderNumber,
+        '3': `${position} de ${total_shipments}`,
+        '4': tracking_code
+      },
+      orderNumber: cleanOrderNumber
+    });
+
+    await pool.query(
+      `UPDATE order_tracking_codes SET whatsapp_sent_at = NOW() WHERE id = $1`,
+      [id]
+    );
+
+    await logEvento({
+      orderNumber: cleanOrderNumber,
+      accion: `whatsapp_reenviado: tracking ${position}/${total_shipments}`,
+      origen: 'operador',
+      userId: req.user?.id,
+      username: req.user?.name
+    });
+
+    res.json({ ok: true, message: 'WhatsApp enviado' });
+
+  } catch (error) {
+    console.error('❌ POST /orders/:orderNumber/tracking-codes/:id/resend-whatsapp error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/* =====================================================
    WHATSAPP ACCIONES - Envío masivo de plantillas
 ===================================================== */
 

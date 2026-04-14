@@ -2462,3 +2462,74 @@ export async function fetchBankImportDetail(id: number): Promise<{ ok: boolean; 
   if (!response.ok) throw new Error(data.error || 'Error al obtener detalle de import');
   return data;
 }
+
+// =====================================================
+// TRACKING CODES - Múltiples trackings para Envío Nube
+// =====================================================
+
+export interface TrackingCode {
+  id: number | null;
+  tracking_code: string;
+  position: number;
+  total_shipments?: number;
+  is_original: boolean;
+  whatsapp_sent_at: string | null;
+  created_at?: string;
+}
+
+export interface TrackingCodesResponse {
+  order_number: string;
+  shipping_type: string;
+  total_shipments: number;
+  trackings: TrackingCode[];
+}
+
+export async function fetchTrackingCodes(orderNumber: string): Promise<TrackingCodesResponse> {
+  const cleanOrder = orderNumber.replace('#', '').trim();
+  const response = await authFetch(`${API_BASE_URL}/orders/${cleanOrder}/tracking-codes`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al obtener trackings');
+  return data;
+}
+
+export async function addTrackingCode(
+  orderNumber: string,
+  trackingCode: string,
+  position: number,
+  totalShipments: number,
+  sendWhatsapp = true
+): Promise<{ ok: boolean; tracking: TrackingCode; whatsapp?: { sent: boolean; error?: string } }> {
+  const cleanOrder = orderNumber.replace('#', '').trim();
+  const response = await authFetch(`${API_BASE_URL}/orders/${cleanOrder}/tracking-codes`, {
+    method: 'POST',
+    body: JSON.stringify({
+      tracking_code: trackingCode,
+      position,
+      total_shipments: totalShipments,
+      send_whatsapp: sendWhatsapp
+    })
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al agregar tracking');
+  return data;
+}
+
+export async function deleteTrackingCode(orderNumber: string, trackingId: number): Promise<{ ok: boolean }> {
+  const cleanOrder = orderNumber.replace('#', '').trim();
+  const response = await authFetch(`${API_BASE_URL}/orders/${cleanOrder}/tracking-codes/${trackingId}`, {
+    method: 'DELETE'
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al eliminar tracking');
+  return data;
+}
+
+export async function resendTrackingWhatsapp(orderNumber: string, trackingId: number): Promise<{ ok: boolean }> {
+  const cleanOrder = orderNumber.replace('#', '').trim();
+  const response = await authFetch(`${API_BASE_URL}/orders/${cleanOrder}/tracking-codes/${trackingId}/resend-whatsapp`, {
+    method: 'POST'
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al reenviar WhatsApp');
+  return data;
+}
