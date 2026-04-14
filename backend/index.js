@@ -7075,7 +7075,7 @@ app.post('/orders/:orderNumber/tracking-codes', authenticate, requirePermission(
       try {
         await queueWhatsApp({
           telefono: order.customer_phone,
-          plantilla: 'prueba__v',
+          plantilla: 'prueba_2v',
           variables: {
             '1': order.customer_name || 'Cliente',
             '2': cleanOrderNumber,
@@ -7177,7 +7177,7 @@ app.post('/orders/:orderNumber/tracking-codes/:id/resend-whatsapp', authenticate
 
     await queueWhatsApp({
       telefono: customer_phone,
-      plantilla: 'prueba__v',
+      plantilla: 'prueba_2v',
       variables: {
         '1': customer_name || 'Cliente',
         '2': cleanOrderNumber,
