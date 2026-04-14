@@ -774,6 +774,23 @@ export function RealReceipts() {
                         </div>
                       </div>
                     )}
+
+                    {bankApplyResult.summary.bank_import && (
+                      <div className={`rounded-lg p-3 ${bankApplyResult.summary.bank_import.error ? 'bg-red-50' : 'bg-blue-50'}`}>
+                        <p className={`text-xs font-medium mb-1 ${bankApplyResult.summary.bank_import.error ? 'text-red-800' : 'text-blue-800'}`}>
+                          <Building2 size={12} className="inline mr-1" />
+                          Admin Banco:
+                        </p>
+                        {bankApplyResult.summary.bank_import.error ? (
+                          <p className="text-xs text-red-700">Error: {bankApplyResult.summary.bank_import.error}</p>
+                        ) : (
+                          <p className="text-xs text-blue-700">
+                            {bankApplyResult.summary.bank_import.inserted} nuevos, {bankApplyResult.summary.bank_import.duplicated} duplicados
+                            {bankApplyResult.summary.bank_import.updated > 0 && `, ${bankApplyResult.summary.bank_import.updated} actualizados`}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

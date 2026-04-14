@@ -2172,6 +2172,7 @@ export interface ConciliacionAplicarResult {
   summary: {
     confirmed: number;
     errors: number;
+    bank_import: { inserted: number; duplicated: number; updated: number; error?: string } | null;
   };
   confirmed: Array<{ banco_id: string; comprobante_id: number; order_number: string; monto: number }>;
   errors: Array<{ comprobante_id: number; banco_id: string; error: string }>;

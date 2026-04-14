@@ -2030,22 +2030,28 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
     log.info({ confirmed: confirmed.length, errors: errors.length }, 'Conciliación aplicar: fin');
 
     // Persistir movimientos bancarios en Admin Banco con assignments resueltos
+    let bankImportResult = null;
     if (Array.isArray(movimientos_banco) && movimientos_banco.length > 0) {
       const resolvedMatches = confirmed.map(c => ({
         banco_id: c.banco_id,
         comprobante_id: c.comprobante_id,
         order_number: c.order_number
       }));
-      importMovimientos(movimientos_banco, req.user?.id, resolvedMatches)
-        .then(r => log.info({ inserted: r.inserted, duplicated: r.duplicated }, 'Bank import from conciliación aplicar'))
-        .catch(err => log.error({ err: err.message }, 'Bank import from conciliación aplicar failed'));
+      try {
+        bankImportResult = await importMovimientos(movimientos_banco, req.user?.id, resolvedMatches);
+        log.info({ inserted: bankImportResult.inserted, duplicated: bankImportResult.duplicated, updated: bankImportResult.updated }, 'Bank import from conciliación aplicar');
+      } catch (err) {
+        log.error({ err: err.message }, 'Bank import from conciliación aplicar failed');
+        bankImportResult = { error: err.message };
+      }
     }
 
     res.json({
       ok: true,
       summary: {
         confirmed: confirmed.length,
-        errors: errors.length
+        errors: errors.length,
+        bank_import: bankImportResult
       },
       confirmed,
       errors
