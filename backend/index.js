@@ -758,6 +758,75 @@ app.get('/sync-queue/payments', authenticate, requirePermission('activity.view')
 
 
 /* =====================================================
+   POST — SINCRONIZAR ESTADO DE PAGO DESDE TIENDANUBE
+   Para resolver divergencias donde TN tiene paid pero BPM no recibió webhook
+===================================================== */
+app.post('/orders/:orderNumber/sync-tn-payment', authenticate, requirePermission('orders.update_status'), async (req, res) => {
+  const { orderNumber } = req.params;
+
+  try {
+    // 1. Buscar el pedido
+    const orderRes = await pool.query(
+      `SELECT order_number, tn_order_id, tn_payment_status, estado_pago
+       FROM orders_validated WHERE order_number = $1`,
+      [orderNumber]
+    );
+
+    if (orderRes.rowCount === 0) {
+      return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
+
+    const order = orderRes.rows[0];
+
+    if (!order.tn_order_id) {
+      return res.status(400).json({ error: 'Pedido sin tn_order_id, no se puede consultar TN' });
+    }
+
+    // 2. Consultar estado real en TN
+    const { getTnPaymentStatus, syncTnPaymentStatus } = require('./lib/tnPaymentDivergence');
+    const tnStatus = await getTnPaymentStatus(order.tn_order_id);
+
+    if (!tnStatus) {
+      return res.status(503).json({ error: 'No se pudo consultar Tiendanube' });
+    }
+
+    // 3. Si hay divergencia, sincronizar
+    if (tnStatus.payment_status !== order.tn_payment_status) {
+      await syncTnPaymentStatus(orderNumber, tnStatus.payment_status, tnStatus.paid_at);
+
+      await logEvento({
+        orderNumber,
+        accion: `tn_payment_status sincronizado: ${order.tn_payment_status || 'null'} → ${tnStatus.payment_status}`,
+        origen: 'operador',
+        userId: req.user?.id,
+        username: req.user?.name
+      });
+
+      return res.json({
+        ok: true,
+        synced: true,
+        previous: order.tn_payment_status,
+        current: tnStatus.payment_status,
+        tn_paid_at: tnStatus.paid_at
+      });
+    }
+
+    // Ya estaba sincronizado
+    res.json({
+      ok: true,
+      synced: false,
+      message: 'Ya estaba sincronizado',
+      tn_payment_status: tnStatus.payment_status
+    });
+
+  } catch (error) {
+    console.error('❌ /orders/:orderNumber/sync-tn-payment error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+/* =====================================================
    GET — BOTMAKER CHAT LOOKUP BY PHONE
 ===================================================== */
 app.get('/botmaker/chat-by-phone/:phone', authenticate, async (req, res) => {
@@ -5725,6 +5794,22 @@ function startSyncScheduler() {
     setTimeout(() => {
       startImageSyncScheduler(24 * 60 * 60 * 1000); // cada 24 horas
     }, msUntil3am);
+
+    // TN Payment Divergence check: también a las 3:00 AM (5 min después del image sync)
+    const { checkTnPaymentDivergences } = require('./lib/tnPaymentDivergence');
+    setTimeout(() => {
+      // Primera ejecución
+      checkTnPaymentDivergences().catch(err => {
+        console.error('[TN Divergence] Error:', err.message);
+      });
+      // Luego cada 24 horas
+      setInterval(() => {
+        checkTnPaymentDivergences().catch(err => {
+          console.error('[TN Divergence] Error:', err.message);
+        });
+      }, 24 * 60 * 60 * 1000);
+    }, msUntil3am + 5 * 60 * 1000); // 5 minutos después de las 3am
+    console.log(`⏰ [TN Divergence] Programado para las 3:05 AM`);
   }
 
   // Cleanup: limpiar registros antiguos una vez al día
