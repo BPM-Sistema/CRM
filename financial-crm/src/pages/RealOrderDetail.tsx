@@ -99,7 +99,7 @@ export function RealOrderDetail() {
 
   // Estado para tracking codes (múltiples envíos)
   const [trackingData, setTrackingData] = useState<TrackingCodesResponse | null>(null);
-  const [newTrackingCode, setNewTrackingCode] = useState('');
+  const [trackingInputs, setTrackingInputs] = useState<Record<number, string>>({});
   const [totalShipments, setTotalShipments] = useState<number>(2);
   const [isAddingTracking, setIsAddingTracking] = useState(false);
   const [showTrackingForm, setShowTrackingForm] = useState(false);
@@ -172,22 +172,38 @@ export function RealOrderDetail() {
     }
   };
 
-  const handleAddTracking = async () => {
-    if (!orderNumber || !newTrackingCode.trim()) {
-      setTrackingError('Ingresá un código de seguimiento');
-      return;
+  const handleAddAllTrackings = async () => {
+    if (!orderNumber) return;
+
+    // Validar que todos los campos estén llenos
+    const emptyPositions: number[] = [];
+    for (let pos = 2; pos <= totalShipments; pos++) {
+      // Saltar posiciones que ya existen en la DB
+      const alreadyExists = trackingData?.trackings.some(t => !t.is_original && t.position === pos);
+      if (alreadyExists) continue;
+      if (!trackingInputs[pos]?.trim()) {
+        emptyPositions.push(pos);
+      }
     }
 
-    // Position 1 es el original de TN, los extras empiezan en 2
-    const extraCount = trackingData?.trackings.filter(t => !t.is_original).length || 0;
-    const nextPosition = extraCount + 2;
+    if (emptyPositions.length > 0) {
+      setTrackingError(`Completá los códigos: ${emptyPositions.map(p => `#${p}`).join(', ')}`);
+      return;
+    }
 
     setIsAddingTracking(true);
     setTrackingError(null);
 
     try {
-      await addTrackingCode(orderNumber, newTrackingCode.trim(), nextPosition, totalShipments);
-      setNewTrackingCode('');
+      for (let pos = 2; pos <= totalShipments; pos++) {
+        const alreadyExists = trackingData?.trackings.some(t => !t.is_original && t.position === pos);
+        if (alreadyExists) continue;
+        const code = trackingInputs[pos]?.trim();
+        if (code) {
+          await addTrackingCode(orderNumber, code, pos, totalShipments);
+        }
+      }
+      setTrackingInputs({});
       setShowTrackingForm(false);
       await loadTrackingCodes();
     } catch (err) {
@@ -1146,14 +1162,18 @@ export function RealOrderDetail() {
                     </p>
                   )}
 
-                  {/* Formulario para agregar tracking */}
+                  {/* Formulario para agregar trackings */}
                   {showTrackingForm ? (
                     <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200 space-y-3">
                       <div className="flex items-center gap-2">
                         <label className="text-xs font-medium text-neutral-600 w-24">Total envíos:</label>
                         <select
                           value={totalShipments}
-                          onChange={(e) => setTotalShipments(Number(e.target.value))}
+                          onChange={(e) => {
+                            setTotalShipments(Number(e.target.value));
+                            setTrackingInputs({});
+                            setTrackingError(null);
+                          }}
                           className="flex-1 px-2 py-1.5 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                           disabled={isAddingTracking}
                         >
@@ -1162,20 +1182,66 @@ export function RealOrderDetail() {
                           ))}
                         </select>
                       </div>
-                      <div>
-                        <label className="text-xs font-medium text-neutral-600 mb-1 block">
-                          Código #{(trackingData?.trackings.filter(t => !t.is_original).length || 0) + 2}:
-                        </label>
-                        <input
-                          type="text"
-                          value={newTrackingCode}
-                          onChange={(e) => setNewTrackingCode(e.target.value)}
-                          placeholder="Ej: 1234567890"
-                          className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                          disabled={isAddingTracking}
-                          onKeyDown={(e) => e.key === 'Enter' && handleAddTracking()}
-                        />
+
+                      {/* Campos dinámicos según total de envíos */}
+                      <div className="space-y-2">
+                        {Array.from({ length: totalShipments }, (_, i) => i + 1).map(pos => {
+                          const originalTracking = trackingData?.trackings.find(t => t.is_original);
+                          const existingExtra = trackingData?.trackings.find(t => !t.is_original && t.position === pos);
+
+                          if (pos === 1) {
+                            // Posición 1: tracking original de TN (gris, no editable)
+                            return (
+                              <div key={pos}>
+                                <label className="text-xs font-medium text-neutral-400 mb-1 block">
+                                  Envío #{pos} — Tiendanube (automático)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={originalTracking?.tracking_code || 'Se completa al marcar enviado'}
+                                  disabled
+                                  className="w-full px-3 py-2 text-sm bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-400 cursor-not-allowed"
+                                />
+                              </div>
+                            );
+                          }
+
+                          if (existingExtra) {
+                            // Ya guardado en DB
+                            return (
+                              <div key={pos}>
+                                <label className="text-xs font-medium text-emerald-600 mb-1 block">
+                                  Envío #{pos} — Guardado
+                                </label>
+                                <input
+                                  type="text"
+                                  value={existingExtra.tracking_code}
+                                  disabled
+                                  className="w-full px-3 py-2 text-sm bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 cursor-not-allowed"
+                                />
+                              </div>
+                            );
+                          }
+
+                          // Campo editable
+                          return (
+                            <div key={pos}>
+                              <label className="text-xs font-medium text-neutral-600 mb-1 block">
+                                Envío #{pos}
+                              </label>
+                              <input
+                                type="text"
+                                value={trackingInputs[pos] || ''}
+                                onChange={(e) => setTrackingInputs(prev => ({ ...prev, [pos]: e.target.value }))}
+                                placeholder="Código de seguimiento"
+                                className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                                disabled={isAddingTracking}
+                              />
+                            </div>
+                          );
+                        })}
                       </div>
+
                       {trackingError && (
                         <p className="text-xs text-red-600">{trackingError}</p>
                       )}
@@ -1183,15 +1249,15 @@ export function RealOrderDetail() {
                         <Button
                           variant="primary"
                           className="flex-1 bg-sky-600 hover:bg-sky-700"
-                          onClick={handleAddTracking}
-                          disabled={isAddingTracking || !newTrackingCode.trim()}
+                          onClick={handleAddAllTrackings}
+                          disabled={isAddingTracking}
                         >
                           {isAddingTracking ? (
                             <Loader2 size={14} className="animate-spin" />
                           ) : (
                             <>
                               <Send size={14} className="mr-1" />
-                              Agregar y enviar WA
+                              Guardar y enviar WA
                             </>
                           )}
                         </Button>
@@ -1199,7 +1265,7 @@ export function RealOrderDetail() {
                           variant="secondary"
                           onClick={() => {
                             setShowTrackingForm(false);
-                            setNewTrackingCode('');
+                            setTrackingInputs({});
                             setTrackingError(null);
                           }}
                           disabled={isAddingTracking}
@@ -1215,7 +1281,7 @@ export function RealOrderDetail() {
                       onClick={() => setShowTrackingForm(true)}
                     >
                       <Plus size={16} className="mr-2" />
-                      Agregar código de seguimiento
+                      Agregar códigos de seguimiento
                     </Button>
                   )}
                 </div>
