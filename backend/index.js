@@ -652,7 +652,8 @@ const _recentWhatsApp = new Map();
 async function queueWhatsApp({ telefono, plantilla, variables, orderNumber }) {
   // Deduplicar: misma plantilla + pedido en los últimos 5 minutos → skip
   if (orderNumber) {
-    const dedupeKey = `${orderNumber}:${plantilla}`;
+    const varSuffix = variables?.['3'] ? `:${variables['3']}` : '';
+    const dedupeKey = `${orderNumber}:${plantilla}${varSuffix}`;
     const lastSent = _recentWhatsApp.get(dedupeKey);
     if (lastSent && Date.now() - lastSent < 5 * 60 * 1000) {
       log.info({ orderNumber, plantilla }, 'WhatsApp skipped — duplicate within 5min');
