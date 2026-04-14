@@ -255,13 +255,13 @@ export default function SyncQueue() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-col gap-1.5">
                           {order.tn_order_id && (
                             <>
                               <button
                                 onClick={() => handleSync(order.order_number)}
                                 disabled={syncingOrders.has(order.order_number)}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-violet-600 rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-violet-600 rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {syncingOrders.has(order.order_number) ? (
                                   <Loader2 className="w-3 h-3 animate-spin" />
@@ -274,7 +274,7 @@ export default function SyncQueue() {
                                 href={`https://blanqueriaxmayor2.mitiendanube.com/admin/orders/${order.tn_order_id}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-violet-600 bg-violet-50 rounded-lg hover:bg-violet-100 transition-colors"
+                                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
                               >
                                 <ExternalLink className="w-3 h-3" />
                                 Ver en TN
