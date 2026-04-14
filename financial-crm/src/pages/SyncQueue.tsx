@@ -141,10 +141,10 @@ export default function SyncQueue() {
           <div className="flex items-start gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
             <div>
-              <h3 className="font-medium text-amber-800">Pedidos pagados en el sistema pero no en Tiendanube</h3>
+              <h3 className="font-medium text-amber-800">Pedidos con posible divergencia de estado</h3>
               <p className="text-sm text-amber-700 mt-1">
-                Estos pedidos fueron confirmados como pagados en nuestro CRM, pero Tiendanube aún no los tiene marcados como "paid".
-                Desaparecerán automáticamente cuando Tiendanube actualice el estado de pago.
+                Estos pedidos están pagados en el CRM pero el webhook de Tiendanube no llegó.
+                Usá el botón "Sincronizar" para consultar TN y actualizar el estado.
               </p>
             </div>
           </div>
