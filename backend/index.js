@@ -7317,6 +7317,119 @@ app.post('/whatsapp/bulk-send', authenticate, requirePermission('whatsapp.send_b
 });
 
 /**
+ * POST /whatsapp/send-tracking
+ * Envía UN solo WhatsApp por pedido con todos los códigos de seguimiento concatenados
+ * Template: envio_extra — Variables: nombre, nro pedido, códigos separados por coma
+ */
+app.post('/whatsapp/send-tracking', authenticate, requirePermission('whatsapp.send_bulk'), async (req, res) => {
+  try {
+    const { entries } = req.body;
+    // entries: [{ orderNumber, totalShipments, trackingCodes: { 2: "ABC", 3: "DEF" } }]
+
+    if (!entries || !Array.isArray(entries) || entries.length === 0) {
+      return res.status(400).json({ error: 'entries array is required' });
+    }
+
+    const results = { sent: [], failed: [], skipped: [] };
+
+    for (const entry of entries) {
+      const cleanOrderNumber = entry.orderNumber.toString().replace('#', '').trim();
+
+      try {
+        // Buscar pedido
+        const orderRes = await pool.query(
+          `SELECT order_number, customer_name, customer_phone, shipping_type FROM orders_validated WHERE order_number = $1`,
+          [cleanOrderNumber]
+        );
+
+        if (orderRes.rows.length === 0) {
+          results.failed.push({ orderNumber: cleanOrderNumber, error: 'Pedido no encontrado' });
+          continue;
+        }
+
+        const order = orderRes.rows[0];
+        if (!order.customer_phone) {
+          results.failed.push({ orderNumber: cleanOrderNumber, error: 'Sin teléfono' });
+          continue;
+        }
+
+        // Recopilar códigos de tracking (posiciones 2+)
+        const codes = [];
+        for (let pos = 2; pos <= entry.totalShipments; pos++) {
+          const code = entry.trackingCodes[pos]?.trim();
+          if (!code) {
+            results.failed.push({ orderNumber: cleanOrderNumber, error: `Falta código #${pos}` });
+            continue;
+          }
+          codes.push(code);
+        }
+
+        if (codes.length === 0) {
+          results.failed.push({ orderNumber: cleanOrderNumber, error: 'Sin códigos de seguimiento' });
+          continue;
+        }
+
+        // Guardar tracking codes en DB
+        for (let pos = 2; pos <= entry.totalShipments; pos++) {
+          const code = entry.trackingCodes[pos]?.trim();
+          if (code) {
+            await pool.query(
+              `INSERT INTO order_tracking_codes (order_number, tracking_code, position, total_shipments, created_by)
+               VALUES ($1, $2, $3, $4, $5)
+               ON CONFLICT (order_number, position)
+               DO UPDATE SET tracking_code = EXCLUDED.tracking_code, total_shipments = EXCLUDED.total_shipments`,
+              [cleanOrderNumber, code, pos, entry.totalShipments, req.user?.id]
+            );
+          }
+        }
+
+        // Enviar UN solo WhatsApp con todos los códigos concatenados
+        const codesString = codes.join(', ');
+        await queueWhatsApp({
+          telefono: order.customer_phone,
+          plantilla: 'envio_extra',
+          variables: {
+            '1': order.customer_name || 'Cliente',
+            '2': cleanOrderNumber,
+            '3': codesString
+          },
+          orderNumber: cleanOrderNumber
+        });
+
+        results.sent.push({
+          orderNumber: cleanOrderNumber,
+          customerName: order.customer_name,
+          phone: order.customer_phone.slice(-4),
+          codes: codesString
+        });
+
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+      } catch (err) {
+        console.error(`❌ Error send-tracking ${cleanOrderNumber}:`, err.message);
+        results.failed.push({ orderNumber: cleanOrderNumber, error: err.message });
+      }
+    }
+
+    console.log(`✅ WhatsApp send-tracking: ${results.sent.length} sent, ${results.failed.length} failed`);
+    await logEvento({ accion: `whatsapp_tracking: envio_extra (${results.sent.length} enviados)`, origen: 'admin', userId: req.user.id, username: req.user.name });
+
+    res.json({
+      ok: true,
+      template: 'envio_extra',
+      total: entries.length,
+      sent: results.sent.length,
+      failed: results.failed.length,
+      skipped: results.skipped.length,
+      results
+    });
+  } catch (error) {
+    console.error('❌ POST /whatsapp/send-tracking error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * GET /whatsapp/templates
  * Listar plantillas disponibles para envío manual
  */

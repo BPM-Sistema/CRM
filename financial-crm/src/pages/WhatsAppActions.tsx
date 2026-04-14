@@ -18,7 +18,7 @@ import { authFetch } from '../services/api';
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 // Plantillas que requieren variables de tracking
-const TRACKING_TEMPLATES = ['prueba_2v', 'envio_nube_extra'];
+const TRACKING_TEMPLATES = ['envio_extra', 'prueba_2v', 'envio_nube_extra'];
 
 interface Template {
   key: string;
@@ -139,7 +139,7 @@ export default function WhatsAppActions() {
     }
   }
 
-  // Envío de tracking (plantillas con variables)
+  // Envío de tracking (un solo WhatsApp por pedido con códigos concatenados)
   async function handleSendTracking() {
     // Validar que todos los entries tengan datos
     for (let i = 0; i < trackingEntries.length; i++) {
@@ -160,48 +160,17 @@ export default function WhatsAppActions() {
     setResult(null);
     setSending(true);
 
-    const results = { sent: [] as SendResult[], failed: [] as SendResult[], skipped: [] as SendResult[] };
-
     try {
-      for (const entry of trackingEntries) {
-        const cleanOrder = entry.orderNumber.replace('#', '').trim();
-        for (let pos = 2; pos <= entry.totalShipments; pos++) {
-          try {
-            const response = await authFetch(`${API_BASE_URL}/orders/${cleanOrder}/tracking-codes`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                tracking_code: entry.trackingCodes[pos],
-                position: pos,
-                total_shipments: entry.totalShipments,
-                send_whatsapp: true,
-              }),
-            });
-            const data = await response.json();
-            if (!response.ok) {
-              results.failed.push({ orderNumber: `${cleanOrder} (#${pos})`, error: data.error });
-            } else {
-              results.sent.push({
-                orderNumber: `${cleanOrder} (#${pos})`,
-                customerName: data.tracking?.tracking_code,
-              });
-            }
-          } catch (err: any) {
-            results.failed.push({ orderNumber: `${cleanOrder} (#${pos})`, error: err.message });
-          }
-          await new Promise(resolve => setTimeout(resolve, 300));
-        }
-      }
-
-      setResult({
-        ok: true,
-        template: selectedTemplate,
-        total: results.sent.length + results.failed.length,
-        sent: results.sent.length,
-        failed: results.failed.length,
-        skipped: results.skipped.length,
-        results,
+      const response = await authFetch(`${API_BASE_URL}/whatsapp/send-tracking`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries: trackingEntries }),
       });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al enviar');
+      }
+      setResult(data);
     } catch (err: any) {
       setError(err.message || 'Error al enviar');
     } finally {
