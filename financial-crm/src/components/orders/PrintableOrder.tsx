@@ -93,9 +93,14 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
             <h1 className="font-bold font-mono">#{data.order_number}</h1>
             <p className="text-[10px] text-gray-600 uppercase">Hoja de Picking</p>
           </div>
-          <p className="text-[10px] text-gray-600">
-            Impreso: {format(new Date(), "dd/MM/yyyy HH:mm", { locale: es })}
-          </p>
+          <div className="text-right">
+            <p className="text-[10px] text-gray-600">
+              Pedido: {data.created_at ? format(new Date(data.created_at), "dd/MM/yyyy HH:mm", { locale: es }) : '-'}
+            </p>
+            <p className="text-[10px] text-gray-600">
+              Impreso: {format(new Date(), "dd/MM/yyyy HH:mm", { locale: es })}
+            </p>
+          </div>
         </div>
 
         {/* Cliente y Envío en línea */}
