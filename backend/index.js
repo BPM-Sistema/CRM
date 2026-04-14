@@ -4352,7 +4352,7 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
       `SELECT id FROM comprobantes
        WHERE order_number = $1 AND monto = $2 AND estado = 'confirmado'
        LIMIT 1`,
-      [orderNumber, montoDetectado]
+      [orderNumber, datosClaude.monto]
     );
 
     if (dupHash.rows.length > 0 || dupOp.rows.length > 0 || dupConfirmado.rows.length > 0) {
