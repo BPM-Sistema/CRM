@@ -72,6 +72,8 @@ export function NotificationBell() {
       navigate(`/orders/${notification.referencia_id}`);
     } else if (notification.referencia_tipo === 'comprobante' && notification.referencia_id) {
       navigate(`/receipts/${notification.referencia_id}`);
+    } else if (notification.referencia_tipo === 'divergencia_tn') {
+      navigate('/admin/sync-queue');
     }
 
     setIsOpen(false);
