@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS order_tracking_codes (
   total_shipments INTEGER NOT NULL,    -- Total de envíos del pedido
   carrier TEXT DEFAULT 'envio_nube',   -- Por si en el futuro hay otros carriers
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  created_by INTEGER,
+  created_by UUID,
   whatsapp_sent_at TIMESTAMPTZ,        -- NULL si no se envió aún
 
   UNIQUE(order_number, position)       -- No puede haber 2 trackings en la misma posición
