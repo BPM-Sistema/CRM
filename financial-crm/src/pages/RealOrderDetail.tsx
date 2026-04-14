@@ -1101,189 +1101,165 @@ export function RealOrderDetail() {
                       </>
                     )}
                   </Button>
-                </div>
-              </Card>
-            )}
+                  {/* Envío WhatsApp - Múltiples trackings */}
+                  <div className="border-t border-neutral-200 pt-3 mt-3">
+                    <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                      Envío WhatsApp
+                    </h4>
 
-            {/* Códigos de Seguimiento (múltiples envíos) */}
-            {(shippingTypeLower.includes('envío nube') || shippingTypeLower.includes('envio nube')) && (
-              <Card>
-                <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider mb-3">
-                  Códigos de Seguimiento
-                </h3>
-                <div className="space-y-3">
-                  {/* Chips de trackings existentes */}
-                  {trackingData && trackingData.trackings.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {trackingData.trackings.map((tracking, idx) => (
-                        <div
-                          key={tracking.id || `original-${idx}`}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm ${
-                            tracking.is_original
-                              ? 'bg-sky-100 text-sky-800 border border-sky-200'
-                              : 'bg-amber-100 text-amber-800 border border-amber-200'
-                          }`}
-                        >
-                          <span className="font-mono text-xs">
-                            {tracking.position}/{trackingData.total_shipments}
-                          </span>
-                          <span className="font-medium">{tracking.tracking_code}</span>
-                          {tracking.is_original && (
-                            <span className="text-[10px] uppercase font-semibold text-sky-600 ml-1">TN</span>
-                          )}
-                          {!tracking.is_original && tracking.id && (
-                            <>
-                              {tracking.whatsapp_sent_at ? (
-                                <button
-                                  onClick={() => handleResendWhatsapp(tracking.id!)}
-                                  className="ml-1 p-0.5 hover:bg-amber-200 rounded"
-                                  title="Reenviar WhatsApp"
-                                >
-                                  <RotateCcw size={12} />
-                                </button>
-                              ) : (
-                                <span className="ml-1 text-[10px] text-amber-600">pendiente</span>
-                              )}
+                    {/* Chips de trackings guardados */}
+                    {trackingData && trackingData.trackings.filter(t => !t.is_original).length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {trackingData.trackings.filter(t => !t.is_original).map(tracking => (
+                          <div
+                            key={tracking.id}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-amber-100 text-amber-800 border border-amber-200"
+                          >
+                            <span className="font-mono text-xs">
+                              {tracking.position}/{trackingData.total_shipments}
+                            </span>
+                            <span className="font-medium">{tracking.tracking_code}</span>
+                            {tracking.whatsapp_sent_at ? (
                               <button
-                                onClick={() => handleDeleteTracking(tracking.id!)}
-                                className="ml-0.5 p-0.5 hover:bg-red-200 hover:text-red-700 rounded"
-                                title="Eliminar"
+                                onClick={() => handleResendWhatsapp(tracking.id!)}
+                                className="ml-1 p-0.5 hover:bg-amber-200 rounded"
+                                title="Reenviar WhatsApp"
                               >
-                                <X size={12} />
+                                <RotateCcw size={12} />
                               </button>
-                            </>
-                          )}
+                            ) : (
+                              <span className="ml-1 text-[10px] text-amber-600">pendiente</span>
+                            )}
+                            <button
+                              onClick={() => handleDeleteTracking(tracking.id!)}
+                              className="ml-0.5 p-0.5 hover:bg-red-200 hover:text-red-700 rounded"
+                              title="Eliminar"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {showTrackingForm ? (
+                      <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs font-medium text-neutral-600 w-24">Total envíos:</label>
+                          <select
+                            value={totalShipments}
+                            onChange={(e) => {
+                              setTotalShipments(Number(e.target.value));
+                              setTrackingInputs({});
+                              setTrackingError(null);
+                            }}
+                            className="flex-1 px-2 py-1.5 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                            disabled={isAddingTracking}
+                          >
+                            {[2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                              <option key={n} value={n}>{n} envíos</option>
+                            ))}
+                          </select>
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-neutral-500">
-                      Sin códigos de seguimiento adicionales
-                    </p>
-                  )}
 
-                  {/* Formulario para agregar trackings */}
-                  {showTrackingForm ? (
-                    <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200 space-y-3">
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs font-medium text-neutral-600 w-24">Total envíos:</label>
-                        <select
-                          value={totalShipments}
-                          onChange={(e) => {
-                            setTotalShipments(Number(e.target.value));
-                            setTrackingInputs({});
-                            setTrackingError(null);
-                          }}
-                          className="flex-1 px-2 py-1.5 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                          disabled={isAddingTracking}
-                        >
-                          {[2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
-                            <option key={n} value={n}>{n} envíos</option>
-                          ))}
-                        </select>
-                      </div>
+                        <div className="space-y-2">
+                          {Array.from({ length: totalShipments }, (_, i) => i + 1).map(pos => {
+                            const originalTracking = trackingData?.trackings.find(t => t.is_original);
+                            const existingExtra = trackingData?.trackings.find(t => !t.is_original && t.position === pos);
 
-                      {/* Campos dinámicos según total de envíos */}
-                      <div className="space-y-2">
-                        {Array.from({ length: totalShipments }, (_, i) => i + 1).map(pos => {
-                          const originalTracking = trackingData?.trackings.find(t => t.is_original);
-                          const existingExtra = trackingData?.trackings.find(t => !t.is_original && t.position === pos);
+                            if (pos === 1) {
+                              return (
+                                <div key={pos}>
+                                  <label className="text-xs font-medium text-neutral-400 mb-1 block">
+                                    Envío #{pos} — Tiendanube (automático)
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={originalTracking?.tracking_code || 'Se completa al marcar enviado'}
+                                    disabled
+                                    className="w-full px-3 py-2 text-sm bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-400 cursor-not-allowed"
+                                  />
+                                </div>
+                              );
+                            }
 
-                          if (pos === 1) {
-                            // Posición 1: tracking original de TN (gris, no editable)
+                            if (existingExtra) {
+                              return (
+                                <div key={pos}>
+                                  <label className="text-xs font-medium text-emerald-600 mb-1 block">
+                                    Envío #{pos} — Guardado
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={existingExtra.tracking_code}
+                                    disabled
+                                    className="w-full px-3 py-2 text-sm bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 cursor-not-allowed"
+                                  />
+                                </div>
+                              );
+                            }
+
                             return (
                               <div key={pos}>
-                                <label className="text-xs font-medium text-neutral-400 mb-1 block">
-                                  Envío #{pos} — Tiendanube (automático)
+                                <label className="text-xs font-medium text-neutral-600 mb-1 block">
+                                  Envío #{pos}
                                 </label>
                                 <input
                                   type="text"
-                                  value={originalTracking?.tracking_code || 'Se completa al marcar enviado'}
-                                  disabled
-                                  className="w-full px-3 py-2 text-sm bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-400 cursor-not-allowed"
+                                  value={trackingInputs[pos] || ''}
+                                  onChange={(e) => setTrackingInputs(prev => ({ ...prev, [pos]: e.target.value }))}
+                                  placeholder="Código de seguimiento"
+                                  className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                                  disabled={isAddingTracking}
                                 />
                               </div>
                             );
-                          }
+                          })}
+                        </div>
 
-                          if (existingExtra) {
-                            // Ya guardado en DB
-                            return (
-                              <div key={pos}>
-                                <label className="text-xs font-medium text-emerald-600 mb-1 block">
-                                  Envío #{pos} — Guardado
-                                </label>
-                                <input
-                                  type="text"
-                                  value={existingExtra.tracking_code}
-                                  disabled
-                                  className="w-full px-3 py-2 text-sm bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 cursor-not-allowed"
-                                />
-                              </div>
-                            );
-                          }
-
-                          // Campo editable
-                          return (
-                            <div key={pos}>
-                              <label className="text-xs font-medium text-neutral-600 mb-1 block">
-                                Envío #{pos}
-                              </label>
-                              <input
-                                type="text"
-                                value={trackingInputs[pos] || ''}
-                                onChange={(e) => setTrackingInputs(prev => ({ ...prev, [pos]: e.target.value }))}
-                                placeholder="Código de seguimiento"
-                                className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                                disabled={isAddingTracking}
-                              />
-                            </div>
-                          );
-                        })}
+                        {trackingError && (
+                          <p className="text-xs text-red-600">{trackingError}</p>
+                        )}
+                        <div className="flex gap-2">
+                          <Button
+                            variant="primary"
+                            className="flex-1 bg-sky-600 hover:bg-sky-700"
+                            onClick={handleAddAllTrackings}
+                            disabled={isAddingTracking}
+                          >
+                            {isAddingTracking ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <>
+                                <Send size={14} className="mr-1" />
+                                Guardar y enviar WA
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            onClick={() => {
+                              setShowTrackingForm(false);
+                              setTrackingInputs({});
+                              setTrackingError(null);
+                            }}
+                            disabled={isAddingTracking}
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
                       </div>
-
-                      {trackingError && (
-                        <p className="text-xs text-red-600">{trackingError}</p>
-                      )}
-                      <div className="flex gap-2">
-                        <Button
-                          variant="primary"
-                          className="flex-1 bg-sky-600 hover:bg-sky-700"
-                          onClick={handleAddAllTrackings}
-                          disabled={isAddingTracking}
-                        >
-                          {isAddingTracking ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <>
-                              <Send size={14} className="mr-1" />
-                              Guardar y enviar WA
-                            </>
-                          )}
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          onClick={() => {
-                            setShowTrackingForm(false);
-                            setTrackingInputs({});
-                            setTrackingError(null);
-                          }}
-                          disabled={isAddingTracking}
-                        >
-                          Cancelar
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <Button
-                      variant="secondary"
-                      className="w-full"
-                      onClick={() => setShowTrackingForm(true)}
-                    >
-                      <Plus size={16} className="mr-2" />
-                      Agregar códigos de seguimiento
-                    </Button>
-                  )}
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        className="w-full"
+                        onClick={() => setShowTrackingForm(true)}
+                      >
+                        <Plus size={16} className="mr-2" />
+                        Envío múltiple
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </Card>
             )}

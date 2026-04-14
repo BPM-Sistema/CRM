@@ -7081,7 +7081,7 @@ app.post('/orders/:orderNumber/tracking-codes', authenticate, requirePermission(
             '1': order.customer_name || 'Cliente',
             '2': cleanOrderNumber,
             '3': `${position} de ${total_shipments}`,
-            '4': `${order.tn_order_id}/${order.tn_order_token}`
+            '4': '-'
           },
           orderNumber: cleanOrderNumber
         });
