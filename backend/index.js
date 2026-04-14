@@ -7025,7 +7025,7 @@ app.post('/orders/:orderNumber/tracking-codes', authenticate, requirePermission(
 
     // Verificar que el pedido existe y es Envío Nube
     const orderRes = await pool.query(
-      `SELECT order_number, customer_name, customer_phone, shipping_type, tn_order_id
+      `SELECT order_number, customer_name, customer_phone, shipping_type, tn_order_id, tn_order_token
        FROM orders_validated WHERE order_number = $1`,
       [cleanOrderNumber]
     );
@@ -7080,7 +7080,7 @@ app.post('/orders/:orderNumber/tracking-codes', authenticate, requirePermission(
             '1': order.customer_name || 'Cliente',
             '2': cleanOrderNumber,
             '3': `${position} de ${total_shipments}`,
-            '4': tracking_code.trim()
+            '4': `${order.tn_order_id}/${order.tn_order_token}`
           },
           orderNumber: cleanOrderNumber
         });
@@ -7158,7 +7158,7 @@ app.post('/orders/:orderNumber/tracking-codes/:id/resend-whatsapp', authenticate
 
     // Obtener tracking y datos del pedido
     const result = await pool.query(
-      `SELECT t.*, o.customer_name, o.customer_phone
+      `SELECT t.*, o.customer_name, o.customer_phone, o.tn_order_id, o.tn_order_token
        FROM order_tracking_codes t
        JOIN orders_validated o ON o.order_number = t.order_number
        WHERE t.id = $1 AND t.order_number = $2`,
@@ -7169,7 +7169,7 @@ app.post('/orders/:orderNumber/tracking-codes/:id/resend-whatsapp', authenticate
       return res.status(404).json({ error: 'Tracking no encontrado' });
     }
 
-    const { tracking_code, position, total_shipments, customer_name, customer_phone } = result.rows[0];
+    const { tracking_code, position, total_shipments, customer_name, customer_phone, tn_order_id, tn_order_token } = result.rows[0];
 
     if (!customer_phone) {
       return res.status(400).json({ error: 'El cliente no tiene teléfono' });
@@ -7182,7 +7182,7 @@ app.post('/orders/:orderNumber/tracking-codes/:id/resend-whatsapp', authenticate
         '1': customer_name || 'Cliente',
         '2': cleanOrderNumber,
         '3': `${position} de ${total_shipments}`,
-        '4': tracking_code
+        '4': `${tn_order_id}/${tn_order_token}`
       },
       orderNumber: cleanOrderNumber
     });
