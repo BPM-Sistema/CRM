@@ -78,6 +78,19 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v2
       - run: gcloud run deploy petlove-backend --source ./backend --region us-central1 --quiet
 
+  # ---- Deploy workers (only on push to main, same source as backend) ----
+  deploy-workers:
+    needs: [changes, backend-lint-test]
+    if: github.event_name == 'push' && needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud run deploy crm-workers --source ./backend --region us-central1 --quiet
+
   # ---- Deploy frontend (only on push to main) ----
   deploy-frontend:
     needs: [changes, frontend-build]

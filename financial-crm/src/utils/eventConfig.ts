@@ -183,6 +183,22 @@ const EVENT_CONFIG: Record<string, EventConfig> = {
   },
 };
 
+// WhatsApp lifecycle
+const WA_LIFECYCLE_PATTERNS: Array<{ pattern: RegExp; config: EventConfig }> = [
+  {
+    pattern: /^whatsapp_encolado/,
+    config: { emoji: '💬', label: 'WhatsApp encolado', color: 'bg-neutral-100' }
+  },
+  {
+    pattern: /^whatsapp_enviado/,
+    config: { emoji: '💬', label: 'WhatsApp enviado', color: 'bg-green-100' }
+  },
+  {
+    pattern: /^whatsapp_error/,
+    config: { emoji: '💬', label: 'WhatsApp falló', color: 'bg-red-100' }
+  },
+];
+
 // Patrones para eventos dinámicos (webhooks de TiendaNube y otros)
 const DYNAMIC_PATTERNS: Array<{ pattern: RegExp; config: EventConfig }> = [
   {
@@ -235,7 +251,14 @@ export function getEventConfig(accion: string): EventConfig {
     }
   }
 
-  // 3. Patrones dinámicos (webhooks)
+  // 3. WhatsApp lifecycle (antes de dinámicos para que no matchee el viejo patrón genérico)
+  for (const { pattern, config } of WA_LIFECYCLE_PATTERNS) {
+    if (pattern.test(accion)) {
+      return config;
+    }
+  }
+
+  // 4. Patrones dinámicos (webhooks)
   for (const { pattern, config } of DYNAMIC_PATTERNS) {
     if (pattern.test(accion)) {
       return config;
@@ -255,6 +278,17 @@ export function formatEventLabel(accion: string): string {
   if (accion.startsWith('comprobante_rechazado:')) {
     const motivo = accion.replace('comprobante_rechazado:', '').trim();
     return motivo ? `Rechazado: ${motivo}` : 'Comprobante rechazado';
+  }
+
+  // WhatsApp lifecycle: mostrar plantilla limpia
+  const waMatch = accion.match(/^(whatsapp_encolado|whatsapp_enviado|whatsapp_error):\s*(.+)/);
+  if (waMatch) {
+    const statusLabels: Record<string, string> = {
+      'whatsapp_encolado': 'WhatsApp encolado',
+      'whatsapp_enviado': 'WhatsApp enviado',
+      'whatsapp_error': 'WhatsApp falló',
+    };
+    return `${statusLabels[waMatch[1]]}: ${waMatch[2]}`;
   }
 
   // Para cambios de pedido (webhook), mostrar el texto completo

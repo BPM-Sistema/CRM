@@ -373,20 +373,20 @@ router.post('/:id/confirm',
       const pedido = pedidoRes.rows[0];
 
       if (pedido?.customer_phone) {
-        enviarWhatsAppPlantilla({
-          telefono: pedido.customer_phone,
-          plantilla: 'enviado_transporte',
-          variables: {
-            'headerImageUrl': remito.file_url,
-            '1': pedido.customer_name || 'Cliente',
-            '2': confirmedOrder
-          },
-          orderNumber: confirmedOrder
-        }).then(() => {
-          console.log(`📨 WhatsApp enviado_transporte enviado (Pedido #${confirmedOrder})`);
-        }).catch(err => {
-          console.error(`❌ Error WhatsApp enviado_transporte (Pedido #${confirmedOrder}): ${err.message}`);
-        });
+        try {
+          await enviarWhatsAppPlantilla({
+            telefono: pedido.customer_phone,
+            plantilla: 'enviado_transporte',
+            variables: {
+              'headerImageUrl': remito.file_url,
+              '1': pedido.customer_name || 'Cliente',
+              '2': confirmedOrder
+            },
+            orderNumber: confirmedOrder
+          });
+        } catch (waErr) {
+          console.error(`❌ Error WhatsApp enviado_transporte (Pedido #${confirmedOrder}): ${waErr.message}`);
+        }
       }
 
       res.json({

@@ -15,6 +15,7 @@ const { workerLogger: log } = require('../lib/logger');
 const { whatsapp: waConfig, isEnabled: isIntegrationEnabled } = require('../services/integrationConfig');
 const { getConfigKey, normalizeArgentinaPhone } = require('../lib/whatsapp-helpers');
 const { getPlantillaFinal, getPlantillaTipos } = require('../lib/plantilla-resolver');
+const { logEvento } = require('../utils/logging');
 
 /**
  * Procesador principal del job WhatsApp
@@ -72,17 +73,19 @@ async function processWhatsAppJob(job) {
     telefono = telefonoNormalizado;
   }
 
-  // 2.5 Prevenir duplicados en retry: si ya enviamos este mensaje, no reenviar
+  // 2.5 Prevenir duplicados en retry: si ya enviamos este mensaje (mismo pedido + plantilla), no reenviar
   if (job.attemptsMade > 0 && orderNumber) {
     const duplicateCheck = await pool.query(
       `SELECT 1 FROM whatsapp_messages
        WHERE order_number = $1
-       AND created_at > NOW() - INTERVAL '5 minutes'
+       AND template_key = $2
+       AND status = 'sent'
+       AND status_updated_at > NOW() - INTERVAL '5 minutes'
        LIMIT 1`,
-      [orderNumber]
+      [orderNumber, plantilla]
     );
     if (duplicateCheck.rows.length > 0) {
-      jobLog.info({ attemptsMade: job.attemptsMade }, 'Retry omitido: mensaje ya enviado para este pedido');
+      jobLog.info({ attemptsMade: job.attemptsMade }, 'Retry omitido: mensaje ya enviado para este pedido+plantilla');
       return { status: 'skipped', reason: 'duplicate_prevented' };
     }
   }
@@ -119,19 +122,30 @@ async function processWhatsAppJob(job) {
     timeout: 15000
   });
 
-  // 6. Guardar en whatsapp_messages para tracking
+  // 6. Actualizar whatsapp_messages a sent (el registro pending se creó al encolar)
   const botmakerRequestId = response.data?.requestId || requestId;
   try {
     await pool.query(
-      `INSERT INTO whatsapp_messages (request_id, order_number, template, contact_id, variables, status)
-       VALUES ($1, $2, $3, $4, $5, 'pending')
+      `UPDATE whatsapp_messages SET status = 'sent', status_updated_at = NOW(), template = $2, contact_id = $3, template_key = COALESCE(template_key, $4)
+       WHERE request_id = $1`,
+      [requestId, plantillaFinal, contactIdClean, plantilla]
+    );
+    // Si no existía (fallback directo o mensaje viejo), crear
+    await pool.query(
+      `INSERT INTO whatsapp_messages (request_id, order_number, template, template_key, contact_id, variables, status, status_updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'sent', NOW())
        ON CONFLICT (request_id) DO NOTHING`,
-      [botmakerRequestId, orderNumber, plantillaFinal, contactIdClean, JSON.stringify(variables)]
+      [requestId, orderNumber, plantillaFinal, plantilla, contactIdClean, JSON.stringify(variables)]
     );
     jobLog.info({ botmakerRequestId, contactId: contactIdClean }, 'WhatsApp enviado y tracked');
   } catch (dbErr) {
     jobLog.error({ err: dbErr.message }, 'Error guardando tracking WhatsApp');
-    // No re-throw: el mensaje ya se envio, el tracking es secundario
+  }
+
+  // Log evento real: whatsapp_enviado (confirmado por Botmaker)
+  if (orderNumber) {
+    logEvento({ orderNumber: String(orderNumber), accion: `whatsapp_enviado: ${plantilla}`, origen: 'worker' })
+      .catch(err => jobLog.error({ err: err.message }, 'Error logging whatsapp_enviado'));
   }
 
   return {
@@ -173,15 +187,36 @@ function createWhatsAppWorker(connection) {
     }, 'WhatsApp job completado');
   });
 
-  worker.on('failed', (job, err) => {
+  worker.on('failed', async (job, err) => {
+    const { orderNumber, plantilla, requestId } = job?.data || {};
+    const isFinalAttempt = job?.attemptsMade >= (job?.opts?.attempts || 3);
+
     log.error({
       jobId: job?.id,
-      plantilla: job?.data?.plantilla,
+      plantilla,
       telefono: job?.data?.telefono,
-      orderNumber: job?.data?.orderNumber,
+      orderNumber,
       err: err.message,
-      attemptsMade: job?.attemptsMade
+      attemptsMade: job?.attemptsMade,
+      isFinalAttempt
     }, 'WhatsApp job fallido');
+
+    // Solo persistir en DB y loguear error cuando se agotaron todos los reintentos
+    if (isFinalAttempt && orderNumber) {
+      try {
+        // Marcar como failed en whatsapp_messages (crear si no existe)
+        await pool.query(
+          `INSERT INTO whatsapp_messages (request_id, order_number, template, contact_id, variables, status, status_updated_at, error_message, retry_count)
+           VALUES ($1, $2, $3, $4, $5, 'failed', NOW(), $6, $7)
+           ON CONFLICT (request_id) DO UPDATE SET status = 'failed', status_updated_at = NOW(), error_message = $6, retry_count = $7`,
+          [requestId || job?.id, orderNumber, plantilla, job?.data?.telefono, JSON.stringify(job?.data?.variables), err.message, job?.attemptsMade]
+        );
+        // Log evento visible en historial del pedido
+        await logEvento({ orderNumber: String(orderNumber), accion: `whatsapp_error: ${plantilla}`, origen: 'worker' });
+      } catch (dbErr) {
+        log.error({ err: dbErr.message }, 'Error persistiendo fallo WhatsApp');
+      }
+    }
   });
 
   worker.on('error', (err) => {

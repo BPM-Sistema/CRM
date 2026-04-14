@@ -669,18 +669,34 @@ async function queueWhatsApp({ telefono, plantilla, variables, orderNumber }) {
 
   log.info({ orderNumber, plantilla }, '[WHATSAPP] Encolando mensaje');
 
+  const msgRequestId = crypto.randomUUID();
+
   const { whatsappQueue } = require('./lib/queues');
   if (whatsappQueue) {
+    // Crear registro pending ANTES de encolar
+    if (orderNumber) {
+      try {
+        await pool.query(
+          `INSERT INTO whatsapp_messages (request_id, order_number, template, template_key, contact_id, variables, status)
+           VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+           ON CONFLICT (request_id) DO NOTHING`,
+          [msgRequestId, orderNumber, plantilla, plantilla, telefono, JSON.stringify(variables)]
+        );
+      } catch (dbErr) {
+        log.error({ err: dbErr.message }, 'Error creando registro pending WhatsApp');
+      }
+    }
+
     await whatsappQueue.add('send-whatsapp', {
       telefono, plantilla, variables, orderNumber,
-      requestId: crypto.randomUUID()
+      requestId: msgRequestId
     }, {
       attempts: 3,
       backoff: { type: 'exponential', delay: 10000 }
     });
     log.info({ orderNumber, plantilla }, 'WhatsApp message enqueued');
     if (orderNumber) {
-      await logEvento({ orderNumber: String(orderNumber), accion: `whatsapp_enviado: ${plantilla}`, origen: 'sistema' });
+      await logEvento({ orderNumber: String(orderNumber), accion: `whatsapp_encolado: ${plantilla}`, origen: 'sistema' });
     }
     return;
   }
@@ -1691,30 +1707,34 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
       const shippingType = orderData.shipping_type || '';
 
       // Enviar comprobante_confirmado siempre al confirmar
-      log.info({ requestId, comprobanteId: id, orderNumber: comprobante.order_number, customerPhone, action: 'whatsapp_comprobante_confirmado' }, 'Sending WhatsApp comprobante_confirmado');
-      queueWhatsApp({
-        telefono: customerPhone,
-        plantilla: 'comprobante_confirmado',
-        variables: { '1': customerName, '2': String(comprobante.monto), '3': comprobante.order_number },
-        orderNumber: comprobante.order_number
-      }).catch(err => log.error({ err, requestId, comprobanteId: id, orderNumber: comprobante.order_number }, 'Error WhatsApp comprobante_confirmado'));
+      try {
+        await queueWhatsApp({
+          telefono: customerPhone,
+          plantilla: 'comprobante_confirmado',
+          variables: { '1': customerName, '2': String(comprobante.monto), '3': comprobante.order_number },
+          orderNumber: comprobante.order_number
+        });
+      } catch (waErr) {
+        log.error({ err: waErr.message, orderNumber: comprobante.order_number, plantilla: 'comprobante_confirmado' }, 'Error encolando WhatsApp');
+      }
 
       // Enviar datos__envio si es el primer comprobante confirmado y requiere formulario
       if (requiresShippingForm(shippingType)) {
-        // Verificar si es el primer comprobante confirmado
         const countRes = await pool.query(
           `SELECT COUNT(*) as count FROM comprobantes WHERE order_number = $1 AND estado = 'confirmado'`,
           [comprobante.order_number]
         );
-
         if (parseInt(countRes.rows[0].count) === 1) {
-          log.info({ requestId, comprobanteId: id, orderNumber: comprobante.order_number, customerPhone, action: 'whatsapp_datos_envio' }, 'Sending WhatsApp datos__envio');
-          queueWhatsApp({
-            telefono: customerPhone,
-            plantilla: 'datos__envio',
-            variables: { '1': customerName, '2': comprobante.order_number },
-            orderNumber: comprobante.order_number
-          }).catch(err => log.error({ err, requestId, comprobanteId: id, orderNumber: comprobante.order_number }, 'Error WhatsApp datos__envio'));
+          try {
+            await queueWhatsApp({
+              telefono: customerPhone,
+              plantilla: 'datos__envio',
+              variables: { '1': customerName, '2': comprobante.order_number },
+              orderNumber: comprobante.order_number
+            });
+          } catch (waErr) {
+            log.error({ err: waErr.message, orderNumber: comprobante.order_number, plantilla: 'datos__envio' }, 'Error encolando WhatsApp');
+          }
         }
       }
     }
@@ -1986,12 +2006,16 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
           });
 
           if (orderData?.customer_phone) {
-            queueWhatsApp({
-              telefono: orderData.customer_phone,
-              plantilla: 'comprobante_confirmado',
-              variables: { '1': orderData.customer_name || 'Cliente', '2': String(comprobante.monto), '3': comprobante.order_number },
-              orderNumber: comprobante.order_number
-            }).catch(() => {});
+            try {
+              await queueWhatsApp({
+                telefono: orderData.customer_phone,
+                plantilla: 'comprobante_confirmado',
+                variables: { '1': orderData.customer_name || 'Cliente', '2': String(comprobante.monto), '3': comprobante.order_number },
+                orderNumber: comprobante.order_number
+              });
+            } catch (waErr) {
+              log.error({ err: waErr.message, orderNumber: comprobante.order_number, plantilla: 'comprobante_confirmado' }, 'Error encolando WhatsApp en conciliación');
+            }
 
             if (requiresShippingForm(orderData.shipping_type)) {
               const countRes = await pool.query(
@@ -1999,12 +2023,16 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
                 [comprobante.order_number]
               );
               if (parseInt(countRes.rows[0].count) === 1) {
-                queueWhatsApp({
-                  telefono: orderData.customer_phone,
-                  plantilla: 'datos__envio',
-                  variables: { '1': orderData.customer_name || 'Cliente', '2': comprobante.order_number },
-                  orderNumber: comprobante.order_number
-                }).catch(err => console.error(`❌ Error WhatsApp datos__envio (conciliación) pedido #${comprobante.order_number}:`, err.message));
+                try {
+                  await queueWhatsApp({
+                    telefono: orderData.customer_phone,
+                    plantilla: 'datos__envio',
+                    variables: { '1': orderData.customer_name || 'Cliente', '2': comprobante.order_number },
+                    orderNumber: comprobante.order_number
+                  });
+                } catch (waErr) {
+                  log.error({ err: waErr.message, orderNumber: comprobante.order_number, plantilla: 'datos__envio' }, 'Error encolando WhatsApp en conciliación');
+                }
               }
             }
           }
@@ -2120,17 +2148,20 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
 
     // WhatsApp al cliente - comprobante_rechazado
     if (comprobante.customer_phone) {
-      queueWhatsApp({
-        telefono: comprobante.customer_phone,
-        plantilla: 'comprobante_rechazado',
-        variables: {
-          '1': comprobante.customer_name || 'Cliente',
-          '2': String(comprobante.monto),
-          '3': comprobante.order_number
-        },
-        orderNumber: comprobante.order_number
-      }).then(() => log.info({ requestId, comprobanteId: id, orderNumber: comprobante.order_number }, 'WhatsApp comprobante_rechazado sent'))
-        .catch(err => log.error({ err, requestId, comprobanteId: id, orderNumber: comprobante.order_number }, 'Error WhatsApp comprobante_rechazado'));
+      try {
+        await queueWhatsApp({
+          telefono: comprobante.customer_phone,
+          plantilla: 'comprobante_rechazado',
+          variables: {
+            '1': comprobante.customer_name || 'Cliente',
+            '2': String(comprobante.monto),
+            '3': comprobante.order_number
+          },
+          orderNumber: comprobante.order_number
+        });
+      } catch (waErr) {
+        log.error({ err: waErr.message, orderNumber: comprobante.order_number, plantilla: 'comprobante_rechazado' }, 'Error encolando WhatsApp');
+      }
     }
 
     log.info({ requestId, comprobanteId: id, orderNumber: comprobante.order_number, motivo, action: 'reject_success' }, 'Comprobante rejected successfully');
@@ -3236,17 +3267,20 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
 
       if (esEnvioNube && pedido.customer_phone && pedido.tn_order_id && pedido.tn_order_token) {
         const trackingParam = `${pedido.tn_order_id}/${pedido.tn_order_token}`;
-        queueWhatsApp({
-          telefono: pedido.customer_phone,
-          plantilla: 'enviado_env_nube',
-          variables: {
-            '1': pedido.customer_name || 'Cliente',
-            '2': orderNumber,
-            '3': trackingParam
-          },
-          orderNumber
-        }).then(() => console.log(`📨 WhatsApp enviado_env_nube enviado (Pedido #${orderNumber})`))
-          .catch(err => console.error('⚠️ Error WhatsApp enviado_env_nube:', err.message));
+        try {
+          await queueWhatsApp({
+            telefono: pedido.customer_phone,
+            plantilla: 'enviado_env_nube',
+            variables: {
+              '1': pedido.customer_name || 'Cliente',
+              '2': orderNumber,
+              '3': trackingParam
+            },
+            orderNumber
+          });
+        } catch (waErr) {
+          log.error({ err: waErr.message, orderNumber, plantilla: 'enviado_env_nube' }, 'Error encolando WhatsApp');
+        }
       } else if (esEnvioNube) {
         console.log(`⚠️ No se envió WhatsApp enviado_env_nube: faltan datos (phone: ${!!pedido.customer_phone}, order_id: ${!!pedido.tn_order_id}, token: ${!!pedido.tn_order_token})`);
       }
@@ -3258,17 +3292,20 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
       const tnPath = pedido.tn_order_id && pedido.tn_order_token
         ? `${pedido.tn_order_id}/${pedido.tn_order_token}`
         : orderNumber;
-      queueWhatsApp({
-        telefono: pedido.customer_phone,
-        plantilla: 'pedido_cancelado',
-        variables: {
-          '1': pedido.customer_name || 'Cliente',
-          '2': orderNumber,
-          '3': tnPath
-        },
-        orderNumber
-      }).then(() => console.log(`📨 WhatsApp pedido_cancelado enviado (Pedido #${orderNumber})`))
-        .catch(err => console.error('⚠️ Error WhatsApp pedido_cancelado:', err.message));
+      try {
+        await queueWhatsApp({
+          telefono: pedido.customer_phone,
+          plantilla: 'pedido_cancelado',
+          variables: {
+            '1': pedido.customer_name || 'Cliente',
+            '2': orderNumber,
+            '3': tnPath
+          },
+          orderNumber
+        });
+      } catch (waErr) {
+        log.error({ err: waErr.message, orderNumber, plantilla: 'pedido_cancelado' }, 'Error encolando WhatsApp');
+      }
     }
 
     // Sincronizar estado hacia Tiendanube (async, no bloquea respuesta)
@@ -3531,17 +3568,20 @@ app.post('/webhook/tiendanube', async (req, res) => {
           const tnPathCancel = clienteCancel.tn_order_id && clienteCancel.tn_order_token
             ? `${clienteCancel.tn_order_id}/${clienteCancel.tn_order_token}`
             : orderNumber;
-          queueWhatsApp({
-            telefono: clienteCancel.customer_phone,
-            plantilla: 'pedido_cancelado',
-            variables: {
-              '1': clienteCancel.customer_name || 'Cliente',
-              '2': orderNumber,
-              '3': tnPathCancel
-            },
-            orderNumber
-          }).then(() => log.info({ orderNumber }, 'WhatsApp pedido_cancelado sent'))
-            .catch(err => log.error({ err, orderNumber }, 'Error WhatsApp pedido_cancelado'));
+          try {
+            await queueWhatsApp({
+              telefono: clienteCancel.customer_phone,
+              plantilla: 'pedido_cancelado',
+              variables: {
+                '1': clienteCancel.customer_name || 'Cliente',
+                '2': orderNumber,
+                '3': tnPathCancel
+              },
+              orderNumber
+            });
+          } catch (waErr) {
+            log.error({ err: waErr.message, orderNumber, plantilla: 'pedido_cancelado' }, 'Error encolando WhatsApp');
+          }
         }
 
         log.info({ orderNumber, orderId }, 'Order marked as cancelled in DB');
@@ -3970,17 +4010,20 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
             if (clientePago?.customer_phone) {
               const montoFormateado = Number(clientePago.monto_tiendanube || tnTotalPaid).toLocaleString('es-AR');
-              queueWhatsApp({
-                telefono: clientePago.customer_phone,
-                plantilla: 'comprobante_confirmado',
-                variables: {
-                  '1': clientePago.customer_name || 'Cliente',
-                  '2': montoFormateado,
-                  '3': orderNum
-                },
-                orderNumber: orderNum
-              }).then(() => log.info({ orderNumber: orderNum }, 'WhatsApp comprobante_confirmado sent from TN payment webhook'))
-                .catch(err => log.error({ err, orderNumber: orderNum }, 'Error WhatsApp comprobante_confirmado from TN payment webhook'));
+              try {
+                await queueWhatsApp({
+                  telefono: clientePago.customer_phone,
+                  plantilla: 'comprobante_confirmado',
+                  variables: {
+                    '1': clientePago.customer_name || 'Cliente',
+                    '2': montoFormateado,
+                    '3': orderNum
+                  },
+                  orderNumber: orderNum
+                });
+              } catch (waErr) {
+                log.error({ err: waErr.message, orderNumber: orderNum, plantilla: 'comprobante_confirmado' }, 'Error encolando WhatsApp');
+              }
 
               // Enviar datos__envio si requiere formulario de envío y no existe shipping_request
               if (requiresShippingForm(clientePago.shipping_type)) {
@@ -3989,13 +4032,16 @@ app.post('/webhook/tiendanube', async (req, res) => {
                   [orderNum]
                 );
                 if (shippingReqRes.rows.length === 0) {
-                  queueWhatsApp({
-                    telefono: clientePago.customer_phone,
-                    plantilla: 'datos__envio',
-                    variables: { '1': clientePago.customer_name || 'Cliente', '2': orderNum },
-                    orderNumber: orderNum
-                  }).then(() => log.info({ orderNumber: orderNum }, 'WhatsApp datos__envio sent from TN payment webhook'))
-                    .catch(err => log.error({ err, orderNumber: orderNum }, 'Error WhatsApp datos__envio from TN payment webhook'));
+                  try {
+                    await queueWhatsApp({
+                      telefono: clientePago.customer_phone,
+                      plantilla: 'datos__envio',
+                      variables: { '1': clientePago.customer_name || 'Cliente', '2': orderNum },
+                      orderNumber: orderNum
+                    });
+                  } catch (waErr) {
+                    log.error({ err: waErr.message, orderNumber: orderNum, plantilla: 'datos__envio' }, 'Error encolando WhatsApp');
+                  }
                 } else {
                   log.info({ orderNumber: orderNum }, 'Skipping datos__envio - shipping_request already exists');
                 }
@@ -4039,17 +4085,20 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
               if (clienteWebhook?.customer_phone && clienteWebhook.tn_order_id && clienteWebhook.tn_order_token) {
                 const trackingParam = `${clienteWebhook.tn_order_id}/${clienteWebhook.tn_order_token}`;
-                queueWhatsApp({
-                  telefono: clienteWebhook.customer_phone,
-                  plantilla: 'enviado_env_nube',
-                  variables: {
-                    '1': clienteWebhook.customer_name || 'Cliente',
-                    '2': orderNum,
-                    '3': trackingParam
-                  },
-                  orderNumber: orderNum
-                }).then(() => log.info({ orderNumber: orderNum }, 'WhatsApp enviado_env_nube sent from webhook'))
-                  .catch(err => log.error({ err, orderNumber: orderNum }, 'Error WhatsApp enviado_env_nube from webhook'));
+                try {
+                  await queueWhatsApp({
+                    telefono: clienteWebhook.customer_phone,
+                    plantilla: 'enviado_env_nube',
+                    variables: {
+                      '1': clienteWebhook.customer_name || 'Cliente',
+                      '2': orderNum,
+                      '3': trackingParam
+                    },
+                    orderNumber: orderNum
+                  });
+                } catch (waErr) {
+                  log.error({ err: waErr.message, orderNumber: orderNum, plantilla: 'enviado_env_nube' }, 'Error encolando WhatsApp');
+                }
               } else {
                 log.warn({ orderNumber: orderNum, hasPhone: !!clienteWebhook?.customer_phone, hasOrderId: !!clienteWebhook?.tn_order_id, hasToken: !!clienteWebhook?.tn_order_token }, 'WhatsApp enviado_env_nube skipped - missing data');
               }
@@ -4109,15 +4158,19 @@ app.post('/webhook/tiendanube', async (req, res) => {
     }
 
     // 6️⃣ Botmaker - envía WhatsApp a TODOS los pedidos nuevos
-    await queueWhatsApp({
-      telefono,
-      plantilla: 'pedido_creado',
-      variables: {
-        '1': pedido.customer?.name || 'Cliente',
-        '2': String(pedido.number)
-      },
-      orderNumber: pedido.number
-    });
+    try {
+      await queueWhatsApp({
+        telefono,
+        plantilla: 'pedido_creado',
+        variables: {
+          '1': pedido.customer?.name || 'Cliente',
+          '2': String(pedido.number)
+        },
+        orderNumber: pedido.number
+      });
+    } catch (waErr) {
+      log.error({ err: waErr.message, orderNumber: String(pedido.number), plantilla: 'pedido_creado' }, 'Error encolando WhatsApp');
+    }
 
     // 7️⃣ Si requiere formulario de envío (Expreso a elección o Via Cargo)
     const shippingOption = (typeof pedido.shipping_option === 'string'
@@ -4563,20 +4616,16 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
         '3': cuentaActual
       };
 
-      console.log('plantilla final:', plantilla, 'variables:', variables);
-      queueWhatsApp({
-        telefono,
-        plantilla,
-        variables,
-        orderNumber
-      }).catch(err =>
-        console.error('⚠️ Error WhatsApp cliente:', err.message)
-      );
-      await logEvento({
-        comprobanteId,
-        accion: 'whatsapp_cliente_enviado',
-        origen: 'sistem'
-      });
+      try {
+        await queueWhatsApp({
+          telefono,
+          plantilla,
+          variables,
+          orderNumber
+        });
+      } catch (waErr) {
+        log.error({ err: waErr.message, orderNumber, plantilla: 'partial_paid' }, 'Error encolando WhatsApp');
+      }
     }
 
     /* ===============================
@@ -7446,6 +7495,80 @@ app.get('/whatsapp/templates', authenticate, requirePermission('whatsapp.send_bu
     res.json({ ok: true, templates: result.rows });
   } catch (error) {
     console.error('❌ GET /whatsapp/templates error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/* =====================================================
+   WHATSAPP MESSAGES - Estado y reenvío
+===================================================== */
+
+// Listar mensajes con filtros (status, order_number)
+app.get('/whatsapp/messages', authenticate, requirePermission('receipts.confirm'), async (req, res) => {
+  try {
+    const { status, order_number, page = 1, limit = 50 } = req.query;
+    const conditions = [];
+    const params = [];
+    let idx = 0;
+
+    if (status) { idx++; conditions.push(`wm.status = $${idx}`); params.push(status); }
+    if (order_number) { idx++; conditions.push(`wm.order_number = $${idx}::text`); params.push(order_number); }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
+
+    const [countRes, dataRes] = await Promise.all([
+      pool.query(`SELECT COUNT(*) FROM whatsapp_messages wm ${where}`, params),
+      pool.query(
+        `SELECT wm.*, ov.customer_name
+         FROM whatsapp_messages wm
+         LEFT JOIN orders_validated ov ON ov.order_number = wm.order_number::text
+         ${where}
+         ORDER BY wm.created_at DESC
+         LIMIT ${parseInt(limit)} OFFSET ${offset}`,
+        params
+      )
+    ]);
+
+    res.json({
+      messages: dataRes.rows,
+      total: parseInt(countRes.rows[0].count),
+      page: parseInt(page),
+      totalPages: Math.ceil(parseInt(countRes.rows[0].count) / parseInt(limit))
+    });
+  } catch (error) {
+    log.error({ err: error }, 'GET /whatsapp/messages error');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Reintentar un mensaje fallido
+app.post('/whatsapp/messages/:id/retry', authenticate, requirePermission('receipts.confirm'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const msg = await pool.query(`SELECT * FROM whatsapp_messages WHERE id = $1`, [id]);
+    if (msg.rows.length === 0) return res.status(404).json({ error: 'Mensaje no encontrado' });
+
+    const m = msg.rows[0];
+    if (m.status === 'sent') return res.status(400).json({ error: 'El mensaje ya fue enviado' });
+
+    // Marcar como retrying
+    await pool.query(
+      `UPDATE whatsapp_messages SET status = 'retrying', status_updated_at = NOW(), retry_count = retry_count + 1 WHERE id = $1`,
+      [id]
+    );
+
+    // Re-encolar usando template_key original (no el nombre resuelto)
+    await queueWhatsApp({
+      telefono: m.contact_id.startsWith('+') ? m.contact_id : `+${m.contact_id}`,
+      plantilla: m.template_key || m.template.replace('numero_viejo_', '').replace(/_v\d+$/, ''),
+      variables: m.variables,
+      orderNumber: String(m.order_number)
+    });
+
+    res.json({ ok: true, message: 'Mensaje reencolado' });
+  } catch (error) {
+    log.error({ err: error }, 'POST /whatsapp/messages/:id/retry error');
     res.status(500).json({ error: error.message });
   }
 });

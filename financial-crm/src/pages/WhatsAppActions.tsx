@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Header } from '../components/layout';
 import { Card, Button } from '../components/ui';
 import {
@@ -11,6 +11,8 @@ import {
   Package,
   Plus,
   Trash2,
+  RefreshCw,
+  RotateCcw,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { authFetch } from '../services/api';
@@ -71,9 +73,43 @@ export default function WhatsAppActions() {
 
   const isTrackingTemplate = TRACKING_TEMPLATES.includes(selectedTemplate);
 
+  // Failed messages
+  const [failedMessages, setFailedMessages] = useState<any[]>([]);
+  const [failedLoading, setFailedLoading] = useState(false);
+  const [retryingId, setRetryingId] = useState<number | null>(null);
+
+  const loadFailedMessages = useCallback(async () => {
+    setFailedLoading(true);
+    try {
+      const response = await authFetch(`${API_BASE_URL}/whatsapp/messages?status=failed&limit=50`);
+      if (response.ok) {
+        const data = await response.json();
+        setFailedMessages(data.messages || []);
+      }
+    } catch { /* ignore */ }
+    setFailedLoading(false);
+  }, []);
+
+  async function retryMessage(id: number) {
+    setRetryingId(id);
+    try {
+      const response = await authFetch(`${API_BASE_URL}/whatsapp/messages/${id}/retry`, { method: 'POST' });
+      if (response.ok) {
+        setFailedMessages(prev => prev.filter(m => m.id !== id));
+      } else {
+        const data = await response.json();
+        alert(data.error || 'Error al reintentar');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error al reintentar');
+    }
+    setRetryingId(null);
+  }
+
   useEffect(() => {
     loadTemplates();
-  }, []);
+    loadFailedMessages();
+  }, [loadFailedMessages]);
 
   async function loadTemplates() {
     try {
@@ -474,6 +510,64 @@ export default function WhatsAppActions() {
             </div>
           </Card>
         )}
+        {/* Failed Messages Section */}
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-neutral-900 flex items-center gap-2">
+              <XCircle className="h-5 w-5 text-red-500" />
+              Mensajes fallidos
+              {failedMessages.length > 0 && (
+                <span className="bg-red-100 text-red-700 text-xs font-medium px-2 py-0.5 rounded-full">
+                  {failedMessages.length}
+                </span>
+              )}
+            </h3>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={loadFailedMessages}
+              disabled={failedLoading}
+            >
+              <RefreshCw className={`h-4 w-4 mr-1 ${failedLoading ? 'animate-spin' : ''}`} />
+              Actualizar
+            </Button>
+          </div>
+
+          {failedMessages.length === 0 ? (
+            <p className="text-sm text-neutral-500">No hay mensajes fallidos</p>
+          ) : (
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {failedMessages.map((m) => (
+                <div key={m.id} className="flex items-center justify-between bg-red-50 rounded-lg px-4 py-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="font-medium text-neutral-900">#{m.order_number}</span>
+                      <span className="text-neutral-500">{m.customer_name || m.contact_id}</span>
+                      <span className="text-neutral-400">·</span>
+                      <span className="text-neutral-500 truncate">{m.template}</span>
+                    </div>
+                    <div className="text-xs text-red-600 mt-0.5 truncate">
+                      {m.error_message || 'Error desconocido'} · {m.retry_count || 0} reintentos · {new Date(m.created_at).toLocaleString('es-AR')}
+                    </div>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => retryMessage(m.id)}
+                    disabled={retryingId === m.id}
+                    className="ml-3 shrink-0"
+                  >
+                    {retryingId === m.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <><RotateCcw className="h-3 w-3 mr-1" /> Reintentar</>
+                    )}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
       </div>
     </div>
   );
