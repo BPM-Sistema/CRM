@@ -8,11 +8,17 @@ import {
   XCircle,
   AlertTriangle,
   MessageSquare,
+  Package,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { authFetch } from '../services/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+// Plantillas que requieren variables de tracking
+const TRACKING_TEMPLATES = ['prueba_2v', 'envio_nube_extra'];
 
 interface Template {
   key: string;
@@ -42,6 +48,12 @@ interface BulkSendResponse {
   };
 }
 
+interface TrackingEntry {
+  orderNumber: string;
+  totalShipments: number;
+  trackingCodes: Record<number, string>; // position → code
+}
+
 export default function WhatsAppActions() {
   const { hasPermission } = useAuth();
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -51,6 +63,13 @@ export default function WhatsAppActions() {
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<BulkSendResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Estado para tracking entries
+  const [trackingEntries, setTrackingEntries] = useState<TrackingEntry[]>([
+    { orderNumber: '', totalShipments: 2, trackingCodes: {} }
+  ]);
+
+  const isTrackingTemplate = TRACKING_TEMPLATES.includes(selectedTemplate);
 
   useEffect(() => {
     loadTemplates();
@@ -73,13 +92,13 @@ export default function WhatsAppActions() {
     }
   }
 
+  // Envío masivo genérico (plantillas normales)
   async function handleSend() {
     if (!orderNumbers.trim()) {
       setError('Ingresá al menos un número de pedido');
       return;
     }
 
-    // Parse order numbers: split by comma, newline, or space
     const orders = orderNumbers
       .split(/[\s,\n]+/)
       .map(n => n.trim())
@@ -120,6 +139,107 @@ export default function WhatsAppActions() {
     }
   }
 
+  // Envío de tracking (plantillas con variables)
+  async function handleSendTracking() {
+    // Validar que todos los entries tengan datos
+    for (let i = 0; i < trackingEntries.length; i++) {
+      const entry = trackingEntries[i];
+      if (!entry.orderNumber.trim()) {
+        setError(`Falta el número de pedido en la entrada ${i + 1}`);
+        return;
+      }
+      for (let pos = 2; pos <= entry.totalShipments; pos++) {
+        if (!entry.trackingCodes[pos]?.trim()) {
+          setError(`Falta el código de envío #${pos} en pedido ${entry.orderNumber}`);
+          return;
+        }
+      }
+    }
+
+    setError(null);
+    setResult(null);
+    setSending(true);
+
+    const results = { sent: [] as SendResult[], failed: [] as SendResult[], skipped: [] as SendResult[] };
+
+    try {
+      for (const entry of trackingEntries) {
+        const cleanOrder = entry.orderNumber.replace('#', '').trim();
+        for (let pos = 2; pos <= entry.totalShipments; pos++) {
+          try {
+            const response = await authFetch(`${API_BASE_URL}/orders/${cleanOrder}/tracking-codes`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                tracking_code: entry.trackingCodes[pos],
+                position: pos,
+                total_shipments: entry.totalShipments,
+                send_whatsapp: true,
+              }),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+              results.failed.push({ orderNumber: `${cleanOrder} (#${pos})`, error: data.error });
+            } else {
+              results.sent.push({
+                orderNumber: `${cleanOrder} (#${pos})`,
+                customerName: data.tracking?.tracking_code,
+              });
+            }
+          } catch (err: any) {
+            results.failed.push({ orderNumber: `${cleanOrder} (#${pos})`, error: err.message });
+          }
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      }
+
+      setResult({
+        ok: true,
+        template: selectedTemplate,
+        total: results.sent.length + results.failed.length,
+        sent: results.sent.length,
+        failed: results.failed.length,
+        skipped: results.skipped.length,
+        results,
+      });
+    } catch (err: any) {
+      setError(err.message || 'Error al enviar');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function addTrackingEntry() {
+    setTrackingEntries(prev => [...prev, { orderNumber: '', totalShipments: 2, trackingCodes: {} }]);
+  }
+
+  function removeTrackingEntry(index: number) {
+    setTrackingEntries(prev => prev.filter((_, i) => i !== index));
+  }
+
+  function updateTrackingEntry(index: number, updates: Partial<TrackingEntry>) {
+    setTrackingEntries(prev => prev.map((entry, i) => {
+      if (i !== index) return entry;
+      const updated = { ...entry, ...updates };
+      // Limpiar tracking codes que estén fuera del rango si cambia totalShipments
+      if (updates.totalShipments) {
+        const cleaned: Record<number, string> = {};
+        for (let pos = 2; pos <= updates.totalShipments; pos++) {
+          if (entry.trackingCodes[pos]) cleaned[pos] = entry.trackingCodes[pos];
+        }
+        updated.trackingCodes = cleaned;
+      }
+      return updated;
+    }));
+  }
+
+  function updateTrackingCode(entryIndex: number, position: number, code: string) {
+    setTrackingEntries(prev => prev.map((entry, i) => {
+      if (i !== entryIndex) return entry;
+      return { ...entry, trackingCodes: { ...entry.trackingCodes, [position]: code } };
+    }));
+  }
+
   if (!hasPermission('whatsapp.send_bulk')) {
     return (
       <div className="min-h-screen">
@@ -158,7 +278,11 @@ export default function WhatsAppActions() {
                 ) : (
                   <select
                     value={selectedTemplate}
-                    onChange={(e) => setSelectedTemplate(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedTemplate(e.target.value);
+                      setResult(null);
+                      setError(null);
+                    }}
                     className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   >
                     {templates.map((t) => (
@@ -175,22 +299,117 @@ export default function WhatsAppActions() {
                 )}
               </div>
 
-              {/* Order numbers input */}
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">
-                  Números de pedido
-                </label>
-                <textarea
-                  value={orderNumbers}
-                  onChange={(e) => setOrderNumbers(e.target.value)}
-                  placeholder="Ej: 30001, 30002, 30003&#10;O uno por línea:&#10;30001&#10;30002"
-                  rows={5}
-                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none"
-                />
-                <p className="mt-1 text-xs text-neutral-500">
-                  Separados por coma, espacio o uno por línea. Máximo 100 pedidos.
-                </p>
-              </div>
+              {/* Modo tracking: campos por pedido */}
+              {isTrackingTemplate ? (
+                <div className="space-y-4">
+                  {trackingEntries.map((entry, entryIdx) => (
+                    <div key={entryIdx} className="p-4 bg-neutral-50 rounded-lg border border-neutral-200 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Package className="h-4 w-4 text-neutral-500" />
+                          <span className="text-sm font-medium text-neutral-700">
+                            Pedido {entryIdx + 1}
+                          </span>
+                        </div>
+                        {trackingEntries.length > 1 && (
+                          <button
+                            onClick={() => removeTrackingEntry(entryIdx)}
+                            className="p-1 text-neutral-400 hover:text-red-600 rounded"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-medium text-neutral-600 mb-1 block">
+                            Nro. Pedido
+                          </label>
+                          <input
+                            type="text"
+                            value={entry.orderNumber}
+                            onChange={(e) => updateTrackingEntry(entryIdx, { orderNumber: e.target.value })}
+                            placeholder="Ej: 31163"
+                            className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            disabled={sending}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-neutral-600 mb-1 block">
+                            Total envíos
+                          </label>
+                          <select
+                            value={entry.totalShipments}
+                            onChange={(e) => updateTrackingEntry(entryIdx, { totalShipments: Number(e.target.value) })}
+                            className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            disabled={sending}
+                          >
+                            {[2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                              <option key={n} value={n}>{n} envíos</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Campo 1 gris (TN automático) */}
+                      <div>
+                        <label className="text-xs font-medium text-neutral-400 mb-1 block">
+                          Envío #1 — Tiendanube (automático)
+                        </label>
+                        <input
+                          type="text"
+                          value="Se envía con la plantilla original"
+                          disabled
+                          className="w-full px-3 py-2 text-sm bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-400 cursor-not-allowed"
+                        />
+                      </div>
+
+                      {/* Campos editables para cada tracking extra */}
+                      {Array.from({ length: entry.totalShipments - 1 }, (_, i) => i + 2).map(pos => (
+                        <div key={pos}>
+                          <label className="text-xs font-medium text-neutral-600 mb-1 block">
+                            Envío #{pos}
+                          </label>
+                          <input
+                            type="text"
+                            value={entry.trackingCodes[pos] || ''}
+                            onChange={(e) => updateTrackingCode(entryIdx, pos, e.target.value)}
+                            placeholder="Código de seguimiento"
+                            className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            disabled={sending}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+
+                  <button
+                    onClick={addTrackingEntry}
+                    className="w-full py-2 border-2 border-dashed border-neutral-300 rounded-lg text-sm text-neutral-500 hover:border-green-400 hover:text-green-600 flex items-center justify-center gap-2"
+                  >
+                    <Plus size={16} />
+                    Agregar otro pedido
+                  </button>
+                </div>
+              ) : (
+                /* Modo normal: textarea de números */
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">
+                    Números de pedido
+                  </label>
+                  <textarea
+                    value={orderNumbers}
+                    onChange={(e) => setOrderNumbers(e.target.value)}
+                    placeholder="Ej: 30001, 30002, 30003&#10;O uno por línea:&#10;30001&#10;30002"
+                    rows={5}
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none"
+                  />
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Separados por coma, espacio o uno por línea. Máximo 100 pedidos.
+                  </p>
+                </div>
+              )}
 
               {/* Error message */}
               {error && (
@@ -202,8 +421,8 @@ export default function WhatsAppActions() {
 
               {/* Send button */}
               <Button
-                onClick={handleSend}
-                disabled={sending || !orderNumbers.trim()}
+                onClick={isTrackingTemplate ? handleSendTracking : handleSend}
+                disabled={sending || (isTrackingTemplate ? false : !orderNumbers.trim())}
                 className="bg-green-600 hover:bg-green-700"
               >
                 {sending ? (
@@ -214,7 +433,7 @@ export default function WhatsAppActions() {
                 ) : (
                   <>
                     <Send className="h-4 w-4 mr-2" />
-                    Enviar WhatsApp
+                    {isTrackingTemplate ? 'Guardar y enviar WA' : 'Enviar WhatsApp'}
                   </>
                 )}
               </Button>

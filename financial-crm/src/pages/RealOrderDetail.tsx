@@ -20,10 +20,6 @@ import {
   Download,
   Image,
   Tag,
-  X,
-  Plus,
-  Send,
-  RotateCcw,
 } from 'lucide-react';
 import { getEventConfig, formatEventLabel } from '../utils/eventConfig';
 import { Header } from '../components/layout';
@@ -40,15 +36,10 @@ import {
   fetchRemitoByOrder,
   getShippingLabelUrl,
   getEnvioNubeLabel,
-  fetchTrackingCodes,
-  addTrackingCode,
-  deleteTrackingCode,
-  resendTrackingWhatsapp,
   ApiOrderDetail,
   ApiOrderPrintData,
   ShippingRequest,
   Remito,
-  TrackingCodesResponse,
   mapEstadoPago,
   mapEstadoPedido,
   OrderStatus,
@@ -97,13 +88,6 @@ export function RealOrderDetail() {
   // Estado para etiqueta Envío Nube
   const [isLoadingEnvioNubeLabel, setIsLoadingEnvioNubeLabel] = useState(false);
 
-  // Estado para tracking codes (múltiples envíos)
-  const [trackingData, setTrackingData] = useState<TrackingCodesResponse | null>(null);
-  const [trackingInputs, setTrackingInputs] = useState<Record<number, string>>({});
-  const [totalShipments, setTotalShipments] = useState<number>(2);
-  const [isAddingTracking, setIsAddingTracking] = useState(false);
-  const [showTrackingForm, setShowTrackingForm] = useState(false);
-  const [trackingError, setTrackingError] = useState<string | null>(null);
 
   const loadOrder = async () => {
     if (!orderNumber) return;
@@ -157,100 +141,11 @@ export function RealOrderDetail() {
     }
   };
 
-  // Cargar tracking codes para pedidos Envío Nube
-  const loadTrackingCodes = async () => {
-    if (!orderNumber) return;
-    try {
-      const trackings = await fetchTrackingCodes(orderNumber);
-      setTrackingData(trackings);
-      // Actualizar total_shipments si ya hay trackings
-      if (trackings.total_shipments > 0) {
-        setTotalShipments(trackings.total_shipments);
-      }
-    } catch {
-      // Silenciar error si no es Envío Nube
-    }
-  };
-
-  const handleAddAllTrackings = async () => {
-    if (!orderNumber) return;
-
-    // Validar que todos los campos estén llenos
-    const emptyPositions: number[] = [];
-    for (let pos = 2; pos <= totalShipments; pos++) {
-      // Saltar posiciones que ya existen en la DB
-      const alreadyExists = trackingData?.trackings.some(t => !t.is_original && t.position === pos);
-      if (alreadyExists) continue;
-      if (!trackingInputs[pos]?.trim()) {
-        emptyPositions.push(pos);
-      }
-    }
-
-    if (emptyPositions.length > 0) {
-      setTrackingError(`Completá los códigos: ${emptyPositions.map(p => `#${p}`).join(', ')}`);
-      return;
-    }
-
-    setIsAddingTracking(true);
-    setTrackingError(null);
-
-    try {
-      for (let pos = 2; pos <= totalShipments; pos++) {
-        const alreadyExists = trackingData?.trackings.some(t => !t.is_original && t.position === pos);
-        if (alreadyExists) continue;
-        const code = trackingInputs[pos]?.trim();
-        if (code) {
-          await addTrackingCode(orderNumber, code, pos, totalShipments);
-        }
-      }
-      setTrackingInputs({});
-      setShowTrackingForm(false);
-      await loadTrackingCodes();
-    } catch (err) {
-      setTrackingError(err instanceof Error ? err.message : 'Error al agregar tracking');
-    } finally {
-      setIsAddingTracking(false);
-    }
-  };
-
-  const handleDeleteTracking = async (trackingId: number) => {
-    if (!orderNumber || !trackingId) return;
-    if (!confirm('¿Eliminar este código de seguimiento?')) return;
-
-    try {
-      await deleteTrackingCode(orderNumber, trackingId);
-      await loadTrackingCodes();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error al eliminar');
-    }
-  };
-
-  const handleResendWhatsapp = async (trackingId: number) => {
-    if (!orderNumber || !trackingId) return;
-
-    try {
-      await resendTrackingWhatsapp(orderNumber, trackingId);
-      await loadTrackingCodes();
-      alert('WhatsApp enviado');
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error al enviar WhatsApp');
-    }
-  };
 
   useEffect(() => {
     loadOrder();
   }, [orderNumber]);
 
-  // Cargar trackings cuando cambia data y es Envío Nube
-  useEffect(() => {
-    if (data?.order) {
-      const shippingType = (data.order.shipping_type || '').toLowerCase();
-      const esEnvioNube = shippingType.includes('envío nube') || shippingType.includes('envio nube');
-      if (esEnvioNube) {
-        loadTrackingCodes();
-      }
-    }
-  }, [data?.order?.shipping_type]);
 
   const formatCurrency = (amount: number | null) => {
     if (amount === null) return '-';
@@ -1101,165 +996,6 @@ export function RealOrderDetail() {
                       </>
                     )}
                   </Button>
-                  {/* Envío WhatsApp - Múltiples trackings */}
-                  <div className="border-t border-neutral-200 pt-3 mt-3">
-                    <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-                      Envío WhatsApp
-                    </h4>
-
-                    {/* Chips de trackings guardados */}
-                    {trackingData && trackingData.trackings.filter(t => !t.is_original).length > 0 && (
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {trackingData.trackings.filter(t => !t.is_original).map(tracking => (
-                          <div
-                            key={tracking.id}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm bg-amber-100 text-amber-800 border border-amber-200"
-                          >
-                            <span className="font-mono text-xs">
-                              {tracking.position}/{trackingData.total_shipments}
-                            </span>
-                            <span className="font-medium">{tracking.tracking_code}</span>
-                            {tracking.whatsapp_sent_at ? (
-                              <button
-                                onClick={() => handleResendWhatsapp(tracking.id!)}
-                                className="ml-1 p-0.5 hover:bg-amber-200 rounded"
-                                title="Reenviar WhatsApp"
-                              >
-                                <RotateCcw size={12} />
-                              </button>
-                            ) : (
-                              <span className="ml-1 text-[10px] text-amber-600">pendiente</span>
-                            )}
-                            <button
-                              onClick={() => handleDeleteTracking(tracking.id!)}
-                              className="ml-0.5 p-0.5 hover:bg-red-200 hover:text-red-700 rounded"
-                              title="Eliminar"
-                            >
-                              <X size={12} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {showTrackingForm ? (
-                      <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200 space-y-3">
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs font-medium text-neutral-600 w-24">Total envíos:</label>
-                          <select
-                            value={totalShipments}
-                            onChange={(e) => {
-                              setTotalShipments(Number(e.target.value));
-                              setTrackingInputs({});
-                              setTrackingError(null);
-                            }}
-                            className="flex-1 px-2 py-1.5 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                            disabled={isAddingTracking}
-                          >
-                            {[2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
-                              <option key={n} value={n}>{n} envíos</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="space-y-2">
-                          {Array.from({ length: totalShipments }, (_, i) => i + 1).map(pos => {
-                            const originalTracking = trackingData?.trackings.find(t => t.is_original);
-                            const existingExtra = trackingData?.trackings.find(t => !t.is_original && t.position === pos);
-
-                            if (pos === 1) {
-                              return (
-                                <div key={pos}>
-                                  <label className="text-xs font-medium text-neutral-400 mb-1 block">
-                                    Envío #{pos} — Tiendanube (automático)
-                                  </label>
-                                  <input
-                                    type="text"
-                                    value={originalTracking?.tracking_code || 'Se completa al marcar enviado'}
-                                    disabled
-                                    className="w-full px-3 py-2 text-sm bg-neutral-100 border border-neutral-200 rounded-lg text-neutral-400 cursor-not-allowed"
-                                  />
-                                </div>
-                              );
-                            }
-
-                            if (existingExtra) {
-                              return (
-                                <div key={pos}>
-                                  <label className="text-xs font-medium text-emerald-600 mb-1 block">
-                                    Envío #{pos} — Guardado
-                                  </label>
-                                  <input
-                                    type="text"
-                                    value={existingExtra.tracking_code}
-                                    disabled
-                                    className="w-full px-3 py-2 text-sm bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 cursor-not-allowed"
-                                  />
-                                </div>
-                              );
-                            }
-
-                            return (
-                              <div key={pos}>
-                                <label className="text-xs font-medium text-neutral-600 mb-1 block">
-                                  Envío #{pos}
-                                </label>
-                                <input
-                                  type="text"
-                                  value={trackingInputs[pos] || ''}
-                                  onChange={(e) => setTrackingInputs(prev => ({ ...prev, [pos]: e.target.value }))}
-                                  placeholder="Código de seguimiento"
-                                  className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                                  disabled={isAddingTracking}
-                                />
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {trackingError && (
-                          <p className="text-xs text-red-600">{trackingError}</p>
-                        )}
-                        <div className="flex gap-2">
-                          <Button
-                            variant="primary"
-                            className="flex-1 bg-sky-600 hover:bg-sky-700"
-                            onClick={handleAddAllTrackings}
-                            disabled={isAddingTracking}
-                          >
-                            {isAddingTracking ? (
-                              <Loader2 size={14} className="animate-spin" />
-                            ) : (
-                              <>
-                                <Send size={14} className="mr-1" />
-                                Guardar y enviar WA
-                              </>
-                            )}
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            onClick={() => {
-                              setShowTrackingForm(false);
-                              setTrackingInputs({});
-                              setTrackingError(null);
-                            }}
-                            disabled={isAddingTracking}
-                          >
-                            Cancelar
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <Button
-                        variant="secondary"
-                        className="w-full"
-                        onClick={() => setShowTrackingForm(true)}
-                      >
-                        <Plus size={16} className="mr-2" />
-                        Envío múltiple
-                      </Button>
-                    )}
-                  </div>
                 </div>
               </Card>
             )}
