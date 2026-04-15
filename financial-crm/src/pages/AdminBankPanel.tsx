@@ -22,6 +22,7 @@ import { clsx } from 'clsx';
 
 const STATUS_CONFIG: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'default' | 'purple' }> = {
   assigned: { label: 'Asignado', variant: 'success' },
+  matched: { label: 'Pre-vinculado', variant: 'purple' },
   unassigned: { label: 'Sin asignar', variant: 'warning' },
   review: { label: 'Asignado', variant: 'success' },
   duplicate: { label: 'Duplicado', variant: 'danger' },
@@ -303,7 +304,7 @@ export function AdminBankPanel() {
 
               {/* Status filter */}
               <div className="flex items-center gap-1">
-                {['all', 'unassigned', 'assigned'].map(val => (
+                {['all', 'unassigned', 'matched', 'assigned'].map(val => (
                   <button
                     key={val}
                     onClick={() => setFilters({ assignment_status: val, page: 1 })}

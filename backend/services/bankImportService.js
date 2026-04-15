@@ -7,6 +7,7 @@
 
 const crypto = require('crypto');
 const pool = require('../db');
+const { matchFromBankMovement } = require('./bankMatchingService');
 
 function generateFingerprint(mov) {
   const parts = [
@@ -186,20 +187,23 @@ async function importMovimientos(movimientos, userId, resolvedMatches) {
 
       // Nuevo movimiento: resolver assignment
       let assignment;
+      let matchedBy = null;
       if (resolved) {
         assignment = { status: 'assigned', comprobante_id: resolved.comprobante_id, order_number: resolved.order_number };
       } else {
-        // Intentar detectar match automático con comprobantes confirmados
+        // Intentar detectar match con comprobantes confirmados
         assignment = await detectAssignment(client, mov.amount, mov.posted_at, mov.sender_name);
       }
 
-      await client.query(
+      // Insertar movimiento
+      const insertRes = await client.query(
         `INSERT INTO bank_movements
          (import_id, movement_uid, fingerprint, posted_at, amount, currency,
           sender_name, sender_tax_id, sender_account, receiver_name, receiver_account,
           description, reference, bank_name, raw_row, is_incoming,
           assignment_status, linked_comprobante_id, linked_order_number)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+         RETURNING id`,
         [
           importId, mov.movement_uid, fp, mov.posted_at, mov.amount, mov.currency,
           mov.sender_name, mov.sender_tax_id, mov.sender_account, mov.receiver_name, mov.receiver_account,
@@ -207,6 +211,13 @@ async function importMovimientos(movimientos, userId, resolvedMatches) {
           assignment.status, assignment.comprobante_id, assignment.order_number,
         ]
       );
+
+      // Caso B: si quedó unassigned, intentar pre-vincular con comprobante pendiente
+      if (assignment.status === 'unassigned') {
+        const movId = insertRes.rows[0].id;
+        await matchFromBankMovement(client, movId, mov.amount, mov.posted_at, mov.reference, mov.movement_uid);
+      }
+
       inserted++;
     }
 

@@ -4628,6 +4628,16 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     console.log('🧾 Comprobante guardado ID:', comprobanteId);
 
     /* ===============================
+       6️⃣.5 MATCHING AUTOMÁTICO BANCO
+    ================================ */
+    const bankMatch = await matchFromComprobante(
+      comprobanteId, orderNumber, montoDetectado, numeroOperacion, fechaComprobante
+    );
+    if (bankMatch.matched) {
+      console.log(`🔗 Match banco: movimiento #${bankMatch.movement_id} → comprobante #${comprobanteId} (${bankMatch.criteria})`);
+    }
+
+    /* ===============================
        7️⃣ WATERMARK (con ID real)
     ================================ */
     await watermarkReceipt(file.path, {
@@ -5180,6 +5190,7 @@ const localOrdersRoutes = require('./routes/local-orders');
 const localBoxRoutes = require('./routes/local-box');
 const localAlertsRoutes = require('./routes/local-alerts');
 const { importMovimientos } = require('./services/bankImportService');
+const { matchFromComprobante } = require('./services/bankMatchingService');
 // AI Bot routes — PAUSADO, descomentar cuando se active el bot en prod
 // let aiBotRoutes;
 // try {
