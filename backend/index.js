@@ -4199,9 +4199,9 @@ app.post('/webhook/tiendanube', async (req, res) => {
         }
 
         await pool.query(
-          `INSERT INTO scheduled_whatsapp (telefono, plantilla, variables, order_number, send_at)
-           VALUES ($1, 'resenia_maps', '{}', $2, $3)`,
-          [telefono, String(pedido.number), sendAt]
+          `INSERT INTO scheduled_whatsapp (telefono, plantilla, variables, send_at)
+           VALUES ($1, 'resenia_maps', '{}', $2)`,
+          [telefono, sendAt]
         );
         log.info({ orderNumber: String(pedido.number), sendAt: sendAt.toISOString() }, 'Local Local: resenia_maps programado para 21:30');
       } catch (schedErr) {
