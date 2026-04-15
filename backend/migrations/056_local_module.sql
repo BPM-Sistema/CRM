@@ -76,10 +76,10 @@ CREATE TABLE IF NOT EXISTS local_stock (
   product_name TEXT NOT NULL,
   variant_name TEXT,
   qty INTEGER NOT NULL DEFAULT 0,
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(product_id, COALESCE(variant_id, ''))
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_local_stock_unique ON local_stock(product_id, COALESCE(variant_id, ''));
 CREATE INDEX IF NOT EXISTS idx_local_stock_product ON local_stock(product_id);
 
 -- =====================================================
