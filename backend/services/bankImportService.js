@@ -135,30 +135,62 @@ async function importMovimientos(movimientos, userId, resolvedMatches) {
 
       // Resolver assignment desde conciliación
       const resolved = matchByBancoId[String(mov.movement_uid)];
-      const assignment = resolved
-        ? { status: 'assigned', comprobante_id: resolved.comprobante_id, order_number: resolved.order_number }
-        : { status: 'unassigned', comprobante_id: null, order_number: null };
 
+      // Dedup: buscar por fingerprint O por movement_uid (cubre cambios de timezone)
       const existCheck = await client.query(
-        `SELECT id, assignment_status FROM bank_movements WHERE fingerprint = $1`, [fp]
+        `SELECT id, assignment_status FROM bank_movements
+         WHERE fingerprint = $1 OR (movement_uid IS NOT NULL AND movement_uid = $2)
+         LIMIT 1`,
+        [fp, mov.movement_uid]
       );
 
       if (existCheck.rows.length > 0) {
-        // Ya existe: solo actualizar si el nuevo estado es assigned y el actual no lo es
         const existing = existCheck.rows[0];
-        if (assignment.status === 'assigned' && existing.assignment_status !== 'assigned') {
+        // Si tenemos un match resuelto de conciliación, actualizar
+        if (resolved && existing.assignment_status !== 'assigned') {
           await client.query(
             `UPDATE bank_movements
              SET assignment_status = 'assigned',
                  linked_comprobante_id = $1,
-                 linked_order_number = $2
-             WHERE id = $3`,
-            [assignment.comprobante_id, assignment.order_number, existing.id]
+                 linked_order_number = $2,
+                 fingerprint = $3, posted_at = $4
+             WHERE id = $5`,
+            [resolved.comprobante_id, resolved.order_number, fp, mov.posted_at, existing.id]
           );
           updated++;
+        } else if (!resolved && existing.assignment_status === 'unassigned') {
+          // Intentar detectar assignment contra comprobantes existentes
+          const detected = await detectAssignment(client, mov.amount, mov.posted_at, mov.sender_name);
+          if (detected.status !== 'unassigned') {
+            await client.query(
+              `UPDATE bank_movements
+               SET assignment_status = $1,
+                   linked_comprobante_id = $2,
+                   linked_order_number = $3,
+                   fingerprint = $4, posted_at = $5
+               WHERE id = $6`,
+              [detected.status, detected.comprobante_id, detected.order_number, fp, mov.posted_at, existing.id]
+            );
+            updated++;
+          } else {
+            // Actualizar fingerprint/posted_at por si cambió el timezone
+            await client.query(
+              `UPDATE bank_movements SET fingerprint = $1, posted_at = $2 WHERE id = $3`,
+              [fp, mov.posted_at, existing.id]
+            );
+          }
         }
         duplicated++;
         continue;
+      }
+
+      // Nuevo movimiento: resolver assignment
+      let assignment;
+      if (resolved) {
+        assignment = { status: 'assigned', comprobante_id: resolved.comprobante_id, order_number: resolved.order_number };
+      } else {
+        // Intentar detectar match automático con comprobantes confirmados
+        assignment = await detectAssignment(client, mov.amount, mov.posted_at, mov.sender_name);
       }
 
       await client.query(
