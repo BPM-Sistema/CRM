@@ -457,12 +457,13 @@ export function RealOrders() {
 
       // Mostrar resumen
       const messages = [];
-      if (result.success > 0) messages.push(`${result.success} nuevas`);
-      if (result.alreadyPrinted > 0) messages.push(`${result.alreadyPrinted} ya impresas (omitidas)`);
-      if (result.failed > 0) messages.push(`${result.failed} fallaron`);
+      if (result.success > 0) messages.push(`✅ ${result.success} etiquetas generadas`);
+      if (result.alreadyPrinted > 0) messages.push(`⏭️ ${result.alreadyPrinted} ya impresas (omitidas)`);
+      if (result.unpaid > 0) messages.push(`⚠️ ${result.unpaid} excluidas: orden no pagada`);
+      if (result.failed > 0) messages.push(`❌ ${result.failed} fallaron`);
 
-      if (result.alreadyPrinted > 0 || result.failed > 0) {
-        alert(`Etiquetas: ${messages.join(', ')}`);
+      if (result.alreadyPrinted > 0 || result.failed > 0 || result.unpaid > 0) {
+        alert(messages.join('\n'));
       }
 
       clearSelection();

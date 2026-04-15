@@ -6753,7 +6753,7 @@ app.post('/orders/envio-nube-labels', authenticate, async (req, res) => {
 
     // 1. Obtener tn_order_id de todos los pedidos
     const orderRes = await pool.query(`
-      SELECT order_number, tn_order_id, shipping_type, customer_name, envio_nube_label_printed_at
+      SELECT order_number, tn_order_id, shipping_type, customer_name, envio_nube_label_printed_at, estado_pago
       FROM orders_validated
       WHERE order_number = ANY($1)
     `, [orders]);
@@ -6763,6 +6763,7 @@ app.post('/orders/envio-nube-labels', authenticate, async (req, res) => {
     // 2. Filtrar pedidos válidos primero
     const validOrders = [];
     const alreadyPrinted = [];
+    const unpaid = [];
     const results = {
       success: [],
       failed: [],
@@ -6785,6 +6786,12 @@ app.post('/orders/envio-nube-labels', authenticate, async (req, res) => {
       const shippingType = (order.shipping_type || '').toLowerCase();
       if (!shippingType.includes('envío nube') && !shippingType.includes('envio nube')) {
         results.failed.push({ order: orderNumber, error: 'No es Envío Nube' });
+        continue;
+      }
+
+      // Excluir pedidos sin pago
+      if (order.estado_pago === 'pendiente') {
+        unpaid.push({ order: orderNumber, customer: order.customer_name });
         continue;
       }
 
@@ -6845,7 +6852,13 @@ app.post('/orders/envio-nube-labels', authenticate, async (req, res) => {
 
     // 4. Si no hay PDFs exitosos, retornar error
     if (results.pdfBuffers.length === 0) {
-      if (alreadyPrinted.length > 0 && results.failed.length === 0) {
+      if (unpaid.length > 0 && alreadyPrinted.length === 0 && results.failed.length === 0) {
+        return res.status(400).json({
+          error: `Todas las órdenes seleccionadas están sin pago (${unpaid.length})`,
+          unpaid
+        });
+      }
+      if (alreadyPrinted.length > 0 && results.failed.length === 0 && unpaid.length === 0) {
         return res.status(400).json({
           error: `Todas las etiquetas ya fueron impresas (${alreadyPrinted.length})`,
           alreadyPrinted
@@ -6854,7 +6867,8 @@ app.post('/orders/envio-nube-labels', authenticate, async (req, res) => {
       return res.status(400).json({
         error: 'No se pudo obtener ninguna etiqueta',
         failed: results.failed,
-        alreadyPrinted
+        alreadyPrinted,
+        unpaid
       });
     }
 
@@ -6903,6 +6917,7 @@ app.post('/orders/envio-nube-labels', authenticate, async (req, res) => {
     res.setHeader('X-Labels-Success', results.success.length);
     res.setHeader('X-Labels-Failed', results.failed.length);
     res.setHeader('X-Labels-Already-Printed', alreadyPrinted.length);
+    res.setHeader('X-Labels-Unpaid', unpaid.length);
     res.send(Buffer.from(mergedPdfBytes));
 
   } catch (error) {

@@ -1683,6 +1683,7 @@ export async function getEnvioNubeLabels(orders: string[]): Promise<{
   success: number;
   failed: number;
   alreadyPrinted: number;
+  unpaid: number;
 }> {
   const response = await authFetch(`${API_BASE_URL}/orders/envio-nube-labels`, {
     method: 'POST',
@@ -1697,13 +1698,15 @@ export async function getEnvioNubeLabels(orders: string[]): Promise<{
   const success = parseInt(response.headers.get('X-Labels-Success') || '0');
   const failed = parseInt(response.headers.get('X-Labels-Failed') || '0');
   const alreadyPrinted = parseInt(response.headers.get('X-Labels-Already-Printed') || '0');
+  const unpaid = parseInt(response.headers.get('X-Labels-Unpaid') || '0');
 
   const blob = await response.blob();
   return {
     url: URL.createObjectURL(blob),
     success,
     failed,
-    alreadyPrinted
+    alreadyPrinted,
+    unpaid
   };
 }
 
