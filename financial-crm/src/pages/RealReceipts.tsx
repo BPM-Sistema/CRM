@@ -625,10 +625,16 @@ export function RealReceipts() {
                 {bankPreview && (
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-3 text-sm">
-                      {bankPreview.summary.filtrados > 0 && (
+                      {(bankPreview.summary.bank_import?.inserted ?? 0) > 0 && (
+                        <span className="flex items-center gap-1 text-emerald-700">
+                          <CheckCircle2 size={14} />
+                          {bankPreview.summary.bank_import!.inserted} transferencias nuevas en Admin Banco
+                        </span>
+                      )}
+                      {(bankPreview.summary.bank_import?.duplicated ?? 0) > 0 && (
                         <span className="flex items-center gap-1 text-neutral-500">
                           <FileText size={14} />
-                          {bankPreview.summary.filtrados} ya procesados
+                          {bankPreview.summary.bank_import!.duplicated} ya registradas
                         </span>
                       )}
                       <span className="flex items-center gap-1 text-blue-700">

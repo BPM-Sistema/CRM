@@ -2164,6 +2164,7 @@ export interface ConciliacionPreviewResult {
     matched: number;
     unmatched: number;
     sin_conciliar: number;
+    bank_import?: { inserted: number; duplicated: number; updated?: number; error?: string } | null;
   };
   matched: ConciliacionMatch[];
   unmatched: ConciliacionUnmatched[];
