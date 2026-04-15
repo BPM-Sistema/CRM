@@ -7521,6 +7521,104 @@ app.get('/whatsapp/templates', authenticate, requirePermission('whatsapp.send_bu
 });
 
 /* =====================================================
+   WHATSAPP SCHEDULED - Mensajes programados
+===================================================== */
+
+/**
+ * POST /whatsapp/schedule
+ * Programar envío de WhatsApp para una hora específica
+ */
+app.post('/whatsapp/schedule', authenticate, requirePermission('whatsapp.send_bulk'), async (req, res) => {
+  try {
+    const { telefono, plantilla, variables, order_number, send_at } = req.body;
+
+    if (!telefono || !plantilla || !send_at) {
+      return res.status(400).json({ error: 'telefono, plantilla y send_at son requeridos' });
+    }
+
+    const sendAtDate = new Date(send_at);
+    if (isNaN(sendAtDate.getTime())) {
+      return res.status(400).json({ error: 'send_at debe ser una fecha válida (ISO 8601)' });
+    }
+
+    if (sendAtDate <= new Date()) {
+      return res.status(400).json({ error: 'send_at debe ser en el futuro' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO scheduled_whatsapp (telefono, plantilla, variables, order_number, send_at, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, send_at`,
+      [telefono, plantilla, variables || {}, order_number, sendAtDate, req.user?.id]
+    );
+
+    console.log(`⏰ WhatsApp programado: ${plantilla} → ${telefono} para ${sendAtDate.toISOString()}`);
+
+    res.json({ ok: true, scheduled: result.rows[0] });
+  } catch (error) {
+    console.error('❌ POST /whatsapp/schedule error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /whatsapp/scheduled
+ * Listar mensajes programados
+ */
+app.get('/whatsapp/scheduled', authenticate, requirePermission('whatsapp.send_bulk'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, telefono, plantilla, variables, order_number, send_at, sent_at, error, created_at
+       FROM scheduled_whatsapp
+       ORDER BY send_at DESC
+       LIMIT 50`
+    );
+    res.json({ ok: true, messages: result.rows });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Procesador de mensajes programados (cada 30 segundos)
+setInterval(async () => {
+  try {
+    const pending = await pool.query(
+      `SELECT id, telefono, plantilla, variables, order_number
+       FROM scheduled_whatsapp
+       WHERE sent_at IS NULL AND error IS NULL AND send_at <= NOW()
+       ORDER BY send_at
+       LIMIT 10`
+    );
+
+    for (const msg of pending.rows) {
+      try {
+        await queueWhatsApp({
+          telefono: msg.telefono,
+          plantilla: msg.plantilla,
+          variables: msg.variables || {},
+          orderNumber: msg.order_number
+        });
+
+        await pool.query(
+          `UPDATE scheduled_whatsapp SET sent_at = NOW() WHERE id = $1`,
+          [msg.id]
+        );
+
+        console.log(`⏰✅ Scheduled WhatsApp sent: ${msg.plantilla} → ${msg.telefono}`);
+      } catch (err) {
+        await pool.query(
+          `UPDATE scheduled_whatsapp SET error = $1 WHERE id = $2`,
+          [err.message, msg.id]
+        );
+        console.error(`⏰❌ Scheduled WhatsApp failed: ${msg.plantilla} → ${msg.telefono}:`, err.message);
+      }
+    }
+  } catch {
+    // Silenciar errores del check periódico
+  }
+}, 30000);
+
+/* =====================================================
    WHATSAPP MESSAGES - Estado y reenvío
 ===================================================== */
 
