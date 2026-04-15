@@ -1940,6 +1940,16 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
 
     log.info({ matched: matched.length, unmatched: unmatched.length, sin_conciliar: sin_conciliar.length }, 'Conciliación preview: fin');
 
+    // Persistir movimientos bancarios en Admin Banco (sin assignments)
+    // para que se actualice aunque no haya matches y no se toque "Aplicar"
+    let bankImportResult = null;
+    try {
+      bankImportResult = await importMovimientos(movimientos, req.user?.id, []);
+      log.info({ inserted: bankImportResult.inserted, duplicated: bankImportResult.duplicated }, 'Bank import from conciliación preview');
+    } catch (err) {
+      log.error({ err: err.message }, 'Bank import from conciliación preview failed');
+    }
+
     res.json({
       ok: true,
       preview: true,
@@ -1948,7 +1958,8 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
         transferencias_entrantes: entrantes.length,
         matched: matched.length,
         unmatched: unmatched.length,
-        sin_conciliar: sin_conciliar.length
+        sin_conciliar: sin_conciliar.length,
+        bank_import: bankImportResult
       },
       matched,
       unmatched,

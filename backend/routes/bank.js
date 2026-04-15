@@ -33,9 +33,9 @@ function parseMovimiento(raw) {
 
   let postedAt;
   if (fecha && hora) {
-    postedAt = new Date(`${fecha}T${hora}`);
+    postedAt = new Date(`${fecha}T${hora}-03:00`);
   } else if (fecha) {
-    postedAt = new Date(fecha);
+    postedAt = new Date(`${fecha}T00:00:00-03:00`);
   } else {
     postedAt = new Date();
   }
@@ -428,11 +428,51 @@ router.get('/movements', authenticate, requirePermission('bank.view'), async (re
       params
     );
 
+    // Comprobantes pendientes de confirmar
+    const pendingRes = await pool.query(
+      `SELECT COUNT(*) as pending_count, COALESCE(SUM(monto), 0) as pending_total
+       FROM comprobantes WHERE estado IN ('pendiente', 'a_confirmar')`
+    );
+
+    // Pagos efectivo con los mismos filtros de fecha
+    const cashConditions = [];
+    const cashParams = [];
+    let cashIdx = 0;
+    if (fecha === 'hoy') {
+      cashConditions.push(`created_at::date = CURRENT_DATE`);
+    } else if (fecha === 'ayer') {
+      cashConditions.push(`created_at::date = CURRENT_DATE - 1`);
+    } else if (fecha === 'anteayer') {
+      cashConditions.push(`created_at::date = CURRENT_DATE - 2`);
+    } else if (fecha_desde) {
+      cashIdx++;
+      cashConditions.push(`created_at::date >= $${cashIdx}::date`);
+      cashParams.push(fecha_desde);
+    }
+    if (fecha_hasta) {
+      cashIdx++;
+      cashConditions.push(`created_at::date <= $${cashIdx}::date`);
+      cashParams.push(fecha_hasta);
+    }
+    const cashWhere = cashConditions.length > 0 ? `WHERE ${cashConditions.join(' AND ')}` : '';
+    const cashRes = await pool.query(
+      `SELECT COUNT(*) as cash_count, COALESCE(SUM(monto), 0) as cash_total
+       FROM pagos_efectivo ${cashWhere}`,
+      cashParams
+    );
+
     // Last import date
     const lastImportRes = await pool.query(
       `SELECT created_at FROM bank_imports ORDER BY created_at DESC LIMIT 1`
     );
     const stats = statsRes.rows[0] || {};
+    const pending = pendingRes.rows[0] || {};
+    const cash = cashRes.rows[0] || {};
+    stats.pending_receipts_count = pending.pending_count;
+    stats.pending_receipts_total = pending.pending_total;
+    stats.cash_count = cash.cash_count;
+    stats.cash_total = cash.cash_total;
+    stats.total_real = Number(stats.total_ingresos || 0) + Number(cash.cash_total || 0);
     if (lastImportRes.rows.length > 0) {
       stats.last_import_at = lastImportRes.rows[0].created_at;
     }

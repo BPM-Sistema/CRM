@@ -333,7 +333,7 @@ export function AdminBankPanel() {
 
         {/* Stats cards */}
         {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 md:gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 md:gap-3">
             <div className="bg-white rounded-xl border border-neutral-200/60 p-3">
               <div className="text-[10px] md:text-xs text-neutral-500 mb-1">Asignados</div>
               <div className="text-lg md:text-2xl font-semibold text-emerald-600">{stats.assigned_count || 0}</div>
@@ -350,10 +350,26 @@ export function AdminBankPanel() {
               <div className="text-[10px] md:text-xs text-neutral-500 mb-1">Total sin asignar</div>
               <div className="text-lg md:text-2xl font-semibold text-amber-600">{formatCurrency(Number(stats.unassigned_total || 0))}</div>
             </div>
-            <div className="col-span-2 md:col-span-1 bg-white rounded-xl border border-neutral-200/60 p-3">
-              <div className="text-[10px] md:text-xs text-neutral-500 mb-1">Total ingresos</div>
+            <div className="bg-white rounded-xl border border-neutral-200/60 p-3">
+              <div className="text-[10px] md:text-xs text-neutral-500 mb-1">Transferencias</div>
               <div className="text-lg md:text-2xl font-semibold text-neutral-900">{formatCurrency(Number(stats.total_ingresos || 0))}</div>
             </div>
+            <div className="bg-white rounded-xl border border-neutral-200/60 p-3">
+              <div className="text-[10px] md:text-xs text-neutral-500 mb-1">Efectivo</div>
+              <div className="text-lg md:text-2xl font-semibold text-neutral-700">{Number(stats.cash_count || 0)}</div>
+              <div className="text-[10px] md:text-xs text-neutral-500 mt-0.5">{formatCurrency(Number(stats.cash_total || 0))}</div>
+            </div>
+            <div className="bg-white rounded-xl border border-blue-200 p-3">
+              <div className="text-[10px] md:text-xs text-neutral-500 mb-1">Total real ingresado</div>
+              <div className="text-lg md:text-2xl font-semibold text-blue-600">{formatCurrency(Number(stats.total_real || 0))}</div>
+            </div>
+            {Number(stats.pending_receipts_count || 0) > 0 && (
+            <div className="bg-white rounded-xl border border-orange-200 p-3">
+              <div className="text-[10px] md:text-xs text-neutral-500 mb-1">Comprobantes pendientes</div>
+              <div className="text-lg md:text-2xl font-semibold text-orange-600">{stats.pending_receipts_count}</div>
+              <div className="text-[10px] md:text-xs text-orange-500 mt-0.5">{formatCurrency(Number(stats.pending_receipts_total || 0))}</div>
+            </div>
+            )}
           </div>
         )}
 
