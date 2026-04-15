@@ -20,6 +20,9 @@ import {
   // Bot, // PAUSADO — Bot IA
   MoreHorizontal,
   X,
+  ClipboardList,
+  CreditCard,
+  AlertTriangle,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -83,6 +86,12 @@ const navItems = [
   { to: '/customers', icon: <UserCheck size={20} />, label: 'Clientes', mobileIcon: <UserCheck size={22} />, permissions: ['customers.view'] },
 ];
 
+const localItems = [
+  { to: '/local/reservas', icon: <ClipboardList size={20} />, label: 'Reservas', permissions: ['local.orders.view'] },
+  { to: '/local/caja', icon: <CreditCard size={20} />, label: 'Caja', permissions: ['local.box.view'] },
+  { to: '/local/alertas', icon: <AlertTriangle size={20} />, label: 'Alertas', permissions: ['local.alerts.view'] },
+];
+
 const adminItems = [
   { to: '/admin/users', icon: <Users size={20} />, label: 'Usuarios', permissions: ['users.view'] },
   { to: '/admin/financieras', icon: <Landmark size={20} />, label: 'Financieras', permissions: ['financieras.view'] },
@@ -108,11 +117,12 @@ export function Sidebar() {
   };
 
   const visibleNavItems = navItems.filter(item => hasAnyPermission(item.permissions));
+  const visibleLocalItems = localItems.filter(item => hasAnyPermission(item.permissions));
   const visibleAdminItems = adminItems.filter(item => hasAnyPermission(item.permissions));
 
   // Mobile: show first 4 nav items + "More" button
   const mobileMainTabs = visibleNavItems.slice(0, 4);
-  const mobileOverflowItems = [...visibleNavItems.slice(4), ...visibleAdminItems];
+  const mobileOverflowItems = [...visibleNavItems.slice(4), ...visibleLocalItems, ...visibleAdminItems];
   const isOverflowActive = mobileOverflowItems.some(item => location.pathname === item.to || location.pathname.startsWith(item.to + '/'));
 
   return (
@@ -137,6 +147,22 @@ export function Sidebar() {
           {visibleNavItems.map((item) => (
             <NavItem key={item.to} to={item.to} icon={item.icon} label={item.label} collapsed={collapsed} />
           ))}
+
+          {visibleLocalItems.length > 0 && (
+            <>
+              <div className={clsx('pt-4 pb-2', collapsed ? 'px-2' : 'px-3')}>
+                {!collapsed && (
+                  <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">
+                    Local
+                  </span>
+                )}
+                {collapsed && <div className="h-px bg-neutral-200" />}
+              </div>
+              {visibleLocalItems.map((item) => (
+                <NavItem key={item.to} to={item.to} icon={item.icon} label={item.label} collapsed={collapsed} />
+              ))}
+            </>
+          )}
 
           {visibleAdminItems.length > 0 && (
             <>
@@ -251,6 +277,35 @@ export function Sidebar() {
                   <span className="font-medium">{item.label}</span>
                 </NavLink>
               ))}
+
+              {/* Local section */}
+              {visibleLocalItems.length > 0 && (
+                <>
+                  <div className="pt-4 pb-2 px-4">
+                    <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">
+                      Local
+                    </span>
+                  </div>
+                  {visibleLocalItems.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={({ isActive }) =>
+                        clsx(
+                          'flex items-center gap-3 px-4 py-3.5 rounded-xl transition-colors',
+                          isActive
+                            ? 'bg-neutral-900 text-white'
+                            : 'text-neutral-700 hover:bg-neutral-100 active:bg-neutral-200'
+                        )
+                      }
+                    >
+                      {item.icon}
+                      <span className="font-medium">{item.label}</span>
+                    </NavLink>
+                  ))}
+                </>
+              )}
 
               {/* Admin section */}
               {visibleAdminItems.length > 0 && (

@@ -21,6 +21,7 @@ import {
   Truck,
   Settings,
   Send,
+  Store,
 } from 'lucide-react';
 import {
   fetchUsers,
@@ -84,6 +85,21 @@ const PERMISSION_LABELS: Record<string, string> = {
   'customers.sync': 'Sincronizar clientes',
   'customers.segment': 'Gestionar segmentos',
   'whatsapp.send_bulk': 'Enviar WhatsApp masivo',
+  'local.orders.view': 'Ver reservas',
+  'local.orders.create': 'Crear reservas',
+  'local.orders.edit': 'Editar reservas',
+  'local.orders.print': 'Imprimir reservas',
+  'local.orders.pack': 'Marcar armado',
+  'local.orders.ship': 'Marcar enviado',
+  'local.orders.control': 'Controlar recepción',
+  'local.orders.confirm': 'Confirmar recepción',
+  'local.orders.cancel': 'Cancelar reservas',
+  'local.box.view': 'Ver caja local',
+  'local.box.create': 'Crear pedidos de caja',
+  'local.box.edit': 'Editar pedidos de caja',
+  'local.box.print': 'Imprimir pedidos de caja',
+  'local.box.pay': 'Registrar pagos caja',
+  'local.alerts.view': 'Ver alertas local',
 };
 
 const SECTIONS = [
@@ -178,6 +194,18 @@ const SECTIONS = [
     color: 'bg-green-50 text-green-600',
     subsections: [
       { title: 'Acciones', permissions: ['whatsapp.send_bulk'] }
+    ]
+  },
+  {
+    id: 'local',
+    title: 'Local',
+    icon: Store,
+    color: 'bg-sky-50 text-sky-600',
+    subsections: [
+      { title: 'Reservas — Local', permissions: ['local.orders.view', 'local.orders.create', 'local.orders.control', 'local.orders.confirm', 'local.orders.cancel'] },
+      { title: 'Reservas — Depósito', permissions: ['local.orders.edit', 'local.orders.print', 'local.orders.pack', 'local.orders.ship'] },
+      { title: 'Caja', permissions: ['local.box.view', 'local.box.create', 'local.box.edit', 'local.box.print', 'local.box.pay'] },
+      { title: 'Alertas', permissions: ['local.alerts.view'] }
     ]
   }
 ];

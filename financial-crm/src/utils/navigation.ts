@@ -24,6 +24,12 @@ const navItems = [
   },
 ];
 
+const localItems = [
+  { to: '/local/reservas', permissions: ['local.orders.view'] },
+  { to: '/local/caja', permissions: ['local.box.view'] },
+  { to: '/local/alertas', permissions: ['local.alerts.view'] },
+];
+
 const adminItems = [
   { to: '/admin/roles', permissions: ['users.view'] },
   { to: '/admin/users', permissions: ['users.view'] },
@@ -52,7 +58,14 @@ export function getDefaultRoute(): string {
     }
   }
 
-  // Si no hay ninguna en navItems, buscar en adminItems
+  // Si no hay ninguna en navItems, buscar en localItems
+  for (const item of localItems) {
+    if (hasAnyPermission(item.permissions)) {
+      return item.to;
+    }
+  }
+
+  // Si no hay ninguna en localItems, buscar en adminItems
   for (const item of adminItems) {
     if (hasAnyPermission(item.permissions)) {
       return item.to;

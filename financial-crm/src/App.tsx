@@ -9,6 +9,13 @@ import { WhatsAppActions } from './pages';
 import ImageSyncStatus from './pages/ImageSyncStatus';
 import SystemStatus from './pages/SystemStatus';
 import { AiBotDashboard, AiBotConfig, AiBotHistory, AiBotPromptEditor, AdminBankPanel } from './pages';
+import LocalReservas from './pages/local/LocalReservas';
+import LocalReservaNew from './pages/local/LocalReservaNew';
+import LocalReservaDetail from './pages/local/LocalReservaDetail';
+import LocalCaja from './pages/local/LocalCaja';
+import LocalCajaNew from './pages/local/LocalCajaNew';
+import LocalCajaDetail from './pages/local/LocalCajaDetail';
+import LocalAlertas from './pages/local/LocalAlertas';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginPage } from './pages/LoginPage';
 import { getDefaultRoute } from './utils/navigation';
@@ -55,6 +62,14 @@ function AppRoutes() {
             <Route path="/admin/ai-bot/history" element={<AiBotHistory />} />
             <Route path="/admin/ai-bot/prompt" element={<AiBotPromptEditor />} />
             <Route path="/system-status" element={<SystemStatus />} />
+            {/* Módulo LOCAL */}
+            <Route path="/local/reservas" element={<LocalReservas />} />
+            <Route path="/local/reservas/nueva" element={<LocalReservaNew />} />
+            <Route path="/local/reservas/:id" element={<LocalReservaDetail />} />
+            <Route path="/local/caja" element={<LocalCaja />} />
+            <Route path="/local/caja/nueva" element={<LocalCajaNew />} />
+            <Route path="/local/caja/:id" element={<LocalCajaDetail />} />
+            <Route path="/local/alertas" element={<LocalAlertas />} />
             {/* Ruta catch-all: redirige a la primera sección permitida */}
             <Route path="*" element={<DefaultRedirect />} />
           </Routes>
