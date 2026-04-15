@@ -660,6 +660,20 @@ async function guardarPedidoCompleto(pedido) {
  */
 const _recentWhatsApp = new Map();
 async function queueWhatsApp({ telefono, plantilla, variables, orderNumber }) {
+  // Bloquear todos los WhatsApp para "local local" (excepto resenia_maps)
+  if (orderNumber && plantilla !== 'resenia_maps') {
+    try {
+      const localCheck = await pool.query(
+        `SELECT customer_name FROM orders_validated WHERE order_number = $1`,
+        [String(orderNumber).replace('#', '').trim()]
+      );
+      if (localCheck.rows[0] && localCheck.rows[0].customer_name?.trim().toLowerCase() === 'local local') {
+        log.info({ orderNumber, plantilla }, 'WhatsApp skipped — local local customer');
+        return;
+      }
+    } catch { /* si falla el check, continuar normalmente */ }
+  }
+
   // Deduplicar: misma plantilla + pedido en los últimos 5 minutos → skip
   if (orderNumber) {
     const varSuffix = variables?.['3'] ? `:${variables['3']}` : '';
@@ -4167,19 +4181,47 @@ app.post('/webhook/tiendanube', async (req, res) => {
       return;
     }
 
-    // 6️⃣ Botmaker - envía WhatsApp a TODOS los pedidos nuevos
-    try {
-      await queueWhatsApp({
-        telefono,
-        plantilla: 'pedido_creado',
-        variables: {
-          '1': pedido.customer?.name || 'Cliente',
-          '2': String(pedido.number)
-        },
-        orderNumber: pedido.number
-      });
-    } catch (waErr) {
-      log.error({ err: waErr.message, orderNumber: String(pedido.number), plantilla: 'pedido_creado' }, 'Error encolando WhatsApp');
+    // 6️⃣ Botmaker - envía WhatsApp a pedidos nuevos
+    const customerName = (pedido.customer?.name || '').trim().toLowerCase();
+    const isLocalLocal = customerName === 'local local';
+
+    if (isLocalLocal) {
+      // Cliente "local local": no enviar ninguna plantilla, solo programar reseña para las 21:30
+      try {
+        const now = new Date();
+        const sendAt = new Date(now);
+        // 21:30 Argentina = 00:30 UTC del día siguiente
+        sendAt.setUTCHours(0, 30, 0, 0);
+        sendAt.setUTCDate(sendAt.getUTCDate() + 1);
+        // Si ya pasaron las 00:30 UTC (21:30 Arg), programar para mañana
+        if (sendAt <= now) {
+          sendAt.setUTCDate(sendAt.getUTCDate() + 1);
+        }
+
+        await pool.query(
+          `INSERT INTO scheduled_whatsapp (telefono, plantilla, variables, order_number, send_at)
+           VALUES ($1, 'resenia_maps', $2, $3, $4)`,
+          [telefono, { '1': pedido.customer?.name || 'Cliente', '2': String(pedido.number) }, String(pedido.number), sendAt]
+        );
+        log.info({ orderNumber: String(pedido.number), sendAt: sendAt.toISOString() }, 'Local Local: resenia_maps programado para 21:30');
+      } catch (schedErr) {
+        log.error({ err: schedErr.message, orderNumber: String(pedido.number) }, 'Error programando resenia_maps');
+      }
+    } else {
+      // Cliente normal: enviar pedido_creado
+      try {
+        await queueWhatsApp({
+          telefono,
+          plantilla: 'pedido_creado',
+          variables: {
+            '1': pedido.customer?.name || 'Cliente',
+            '2': String(pedido.number)
+          },
+          orderNumber: pedido.number
+        });
+      } catch (waErr) {
+        log.error({ err: waErr.message, orderNumber: String(pedido.number), plantilla: 'pedido_creado' }, 'Error encolando WhatsApp');
+      }
     }
 
     // 7️⃣ Si requiere formulario de envío (Expreso a elección o Via Cargo)
