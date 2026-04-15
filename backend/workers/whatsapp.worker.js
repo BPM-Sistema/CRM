@@ -35,7 +35,12 @@ async function processWhatsAppJob(job) {
   let telefono = telefonoOriginal;
 
   // 1. Verificar que el tipo de plantilla exista en el catálogo
+  // Si la DB falla, getPlantillaTipos() ahora tira error → BullMQ reintenta
   const tipos = await getPlantillaTipos();
+  if (tipos.length === 0) {
+    // Cache vacío + DB respondió vacío = no hay plantillas configuradas
+    throw new Error('Catálogo de plantillas vacío — posible error de DB');
+  }
   const tipoExiste = tipos.some(t => t.key === plantilla);
   if (!tipoExiste) {
     jobLog.warn('Tipo de plantilla no existe en catálogo');

@@ -40,8 +40,13 @@ async function getPlantillaTipos() {
     return tiposCache;
   } catch (err) {
     console.error('[PlantillaResolver] Error loading tipos cache:', err.message);
-    // Return empty array on error - fallback will handle it
-    return [];
+    // Si hay cache viejo, usarlo antes que perder mensajes
+    if (tiposCache) {
+      console.warn('[PlantillaResolver] Using stale cache due to DB error');
+      return tiposCache;
+    }
+    // Sin cache: propagar error para que BullMQ reintente el job
+    throw err;
   }
 }
 
