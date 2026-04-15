@@ -606,7 +606,17 @@ async function guardarPedidoCompleto(pedido) {
     customerName,
     customerEmail,
     customerPhone,
-    (typeof pedido.shipping_option === 'string' ? pedido.shipping_option : pedido.shipping_option?.name) || pedido.shipping || null,
+    (() => {
+      const option = (typeof pedido.shipping_option === 'string' ? pedido.shipping_option : pedido.shipping_option?.name) || pedido.shipping || null;
+      // "Punto de retiro" es genérico - enriquecer con el carrier real desde shipping_option_code
+      if (option && option.toLowerCase().includes('punto de retiro') && pedido.shipping_option_code) {
+        const code = pedido.shipping_option_code.toLowerCase();
+        if (code.includes('andreani')) return 'Envío Nube - Andreani a sucursal';
+        if (code.includes('correo')) return 'Envío Nube - Correo Argentino a sucursal';
+        if (code.includes('oca')) return 'Envío Nube - OCA a sucursal';
+      }
+      return option;
+    })(),
     pedido.shipping_tracking_number || null,
     shippingAddress ? JSON.stringify(shippingAddress) : null,
     pedido.note || null,
