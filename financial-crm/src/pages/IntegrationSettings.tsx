@@ -91,6 +91,8 @@ const KEY_ICONS: Record<string, typeof Settings> = {
   whatsapp_tpl_pedido_cancelado: Send,
   whatsapp_tpl_partial_paid: Send,
   whatsapp_tpl_enviado_transporte: Send,
+  whatsapp_tpl_resenia_maps: Send,
+  whatsapp_tpl_envio_extra: Send,
 };
 
 // Nombres amigables
@@ -132,6 +134,8 @@ const KEY_NAMES: Record<string, string> = {
   whatsapp_tpl_pedido_cancelado: 'Pedido Cancelado',
   whatsapp_tpl_partial_paid: 'Saldo Pendiente',
   whatsapp_tpl_enviado_transporte: 'Envío por Transporte',
+  whatsapp_tpl_resenia_maps: 'Reseña Maps (Local)',
+  whatsapp_tpl_envio_extra: 'Envío Extra',
 };
 
 // Tooltips explicativos (no tecnicos)
