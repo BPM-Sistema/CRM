@@ -471,7 +471,7 @@ export function AdminBankPanel() {
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => setFilter('page', Math.max(1, currentPage - 1))}
+                  onClick={() => { setFilter('page', Math.max(1, currentPage - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                   disabled={currentPage <= 1}
                 >
                   <ChevronLeft size={14} />
@@ -479,7 +479,7 @@ export function AdminBankPanel() {
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => setFilter('page', Math.min(pagination.pages, currentPage + 1))}
+                  onClick={() => { setFilter('page', Math.min(pagination.pages, currentPage + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                   disabled={currentPage >= pagination.pages}
                 >
                   <ChevronRight size={14} />

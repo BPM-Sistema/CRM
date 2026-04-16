@@ -670,7 +670,7 @@ export function AiBotHistory() {
             </p>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setFilter('page', (filters.page as number) - 1)}
+                onClick={() => { setFilter('page', (filters.page as number) - 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                 disabled={(filters.page as number) <= 1}
                 className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium border border-neutral-200 rounded-lg hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
@@ -678,7 +678,7 @@ export function AiBotHistory() {
                 Anterior
               </button>
               <button
-                onClick={() => setFilter('page', (filters.page as number) + 1)}
+                onClick={() => { setFilter('page', (filters.page as number) + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                 disabled={(filters.page as number) >= totalPages}
                 className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium border border-neutral-200 rounded-lg hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >

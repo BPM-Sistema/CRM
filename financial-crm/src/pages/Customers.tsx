@@ -536,8 +536,8 @@ export default function Customers() {
                   <div className="px-4 py-3 border-t border-neutral-200 flex items-center justify-between">
                     <span className="text-sm text-neutral-500">Página {page} de {totalPages}</span>
                     <div className="flex gap-2">
-                      <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="p-2 rounded-lg hover:bg-neutral-100 disabled:opacity-50"><ChevronLeft size={20} /></button>
-                      <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="p-2 rounded-lg hover:bg-neutral-100 disabled:opacity-50"><ChevronRight size={20} /></button>
+                      <button onClick={() => { setPage(p => Math.max(1, p - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }} disabled={page === 1} className="p-2 rounded-lg hover:bg-neutral-100 disabled:opacity-50"><ChevronLeft size={20} /></button>
+                      <button onClick={() => { setPage(p => Math.min(totalPages, p + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }} disabled={page === totalPages} className="p-2 rounded-lg hover:bg-neutral-100 disabled:opacity-50"><ChevronRight size={20} /></button>
                     </div>
                   </div>
                 )}

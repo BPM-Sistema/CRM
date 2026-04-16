@@ -1295,7 +1295,7 @@ export function ShippingDocuments() {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => setFilter('page', Math.max(1, page - 1))}
+              onClick={() => { setFilter('page', Math.max(1, page - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
               disabled={page === 1}
             >
               <ChevronLeft size={16} />
@@ -1306,7 +1306,7 @@ export function ShippingDocuments() {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => setFilter('page', Math.min(pagination.totalPages, page + 1))}
+              onClick={() => { setFilter('page', Math.min(pagination.totalPages, page + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
               disabled={page === pagination.totalPages}
             >
               <ChevronRight size={16} />

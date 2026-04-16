@@ -200,6 +200,7 @@ export function RealOrders() {
 
   const goToPage = (page: number) => {
     setFilter('page', page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Recargar cuando cambian los filtros desde la URL
