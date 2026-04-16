@@ -179,6 +179,14 @@ function ComprobanteCard({ comp, onClick, selectionMode, isSelected, onToggleSel
             </div>
           </div>
         )}
+        {comp.bank_movement_id && (
+          <div className="absolute top-3 left-3">
+            <div className="flex items-center gap-1 px-2 py-1 bg-purple-600 text-white rounded-lg text-xs font-medium shadow-sm">
+              <Building2 size={12} />
+              Transf. encontrada
+            </div>
+          </div>
+        )}
       </div>
       <div className="p-4">
         <div className="flex items-center justify-between mb-2">

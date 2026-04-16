@@ -123,6 +123,10 @@ export interface ApiComprobanteList {
   confirmed_by: string | null;
   confirmed_at: string | null;
   confirmed_by_name: string | null;
+  bank_movement_id: number | null;
+  bank_sender_name: string | null;
+  bank_posted_at: string | null;
+  bank_matched_by: string | null;
 }
 
 export interface ApiComprobanteDetail {

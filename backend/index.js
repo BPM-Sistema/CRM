@@ -1551,10 +1551,15 @@ app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async
         c.financiera_id,
         f.nombre as financiera_nombre,
         o.customer_name,
-        o.estado_pago as orden_estado_pago
+        o.estado_pago as orden_estado_pago,
+        bm.id as bank_movement_id,
+        bm.sender_name as bank_sender_name,
+        bm.posted_at as bank_posted_at,
+        bm.matched_by as bank_matched_by
       FROM comprobantes c
       LEFT JOIN orders_validated o ON c.order_number = o.order_number
       LEFT JOIN financieras f ON c.financiera_id = f.id
+      LEFT JOIN bank_movements bm ON bm.linked_comprobante_id = c.id AND bm.assignment_status = 'matched'
       ${whereClause}
       ORDER BY c.created_at DESC
       LIMIT $${limitParam} OFFSET $${offsetParam}
