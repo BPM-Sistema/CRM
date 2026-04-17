@@ -731,9 +731,15 @@ async function queueWhatsApp({ telefono, plantilla, variables, orderNumber }) {
     }
     return;
   }
-  // Fallback to direct send
-  log.warn({ orderNumber, plantilla }, 'WhatsApp queue unavailable, sending directly (fallback)');
-  return enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNumber });
+  // Sin cola → no enviar. El mensaje se pierde si no hay tracking.
+  log.error({ orderNumber, plantilla }, 'WhatsApp queue unavailable — mensaje NO enviado');
+
+  // Notificar por email
+  const { sendNotification } = require('./lib/email');
+  sendNotification({
+    subject: `[CRM] WhatsApp NO enviado — pedido #${orderNumber || 'N/A'}`,
+    body: `La cola de WhatsApp no está disponible.\n\nPedido: #${orderNumber || 'N/A'}\nPlantilla: ${plantilla}\nTeléfono: ${telefono}\nVariables: ${JSON.stringify(variables)}\n\nEl mensaje NO fue enviado. Verificar Redis y la cola.`,
+  }).catch(() => {});
 }
 
 
@@ -1779,25 +1785,7 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
         log.error({ err: waErr.message, orderNumber: comprobante.order_number, plantilla: 'comprobante_confirmado' }, 'Error encolando WhatsApp');
       }
 
-      // Enviar datos__envio si es el primer comprobante confirmado y requiere formulario
-      if (requiresShippingForm(shippingType)) {
-        const countRes = await pool.query(
-          `SELECT COUNT(*) as count FROM comprobantes WHERE order_number = $1 AND estado = 'confirmado'`,
-          [comprobante.order_number]
-        );
-        if (parseInt(countRes.rows[0].count) === 1) {
-          try {
-            await queueWhatsApp({
-              telefono: customerPhone,
-              plantilla: 'datos__envio',
-              variables: { '1': customerName, '2': comprobante.order_number },
-              orderNumber: comprobante.order_number
-            });
-          } catch (waErr) {
-            log.error({ err: waErr.message, orderNumber: comprobante.order_number, plantilla: 'datos__envio' }, 'Error encolando WhatsApp');
-          }
-        }
-      }
+      // datos__envio ya se envía en /upload cuando el pedido pasa a a_imprimir
     }
 
     res.json({
@@ -2089,24 +2077,7 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
               log.error({ err: waErr.message, orderNumber: comprobante.order_number, plantilla: 'comprobante_confirmado' }, 'Error encolando WhatsApp en conciliación');
             }
 
-            if (requiresShippingForm(orderData.shipping_type)) {
-              const countRes = await pool.query(
-                `SELECT COUNT(*) as count FROM comprobantes WHERE order_number = $1 AND estado = 'confirmado'`,
-                [comprobante.order_number]
-              );
-              if (parseInt(countRes.rows[0].count) === 1) {
-                try {
-                  await queueWhatsApp({
-                    telefono: orderData.customer_phone,
-                    plantilla: 'datos__envio',
-                    variables: { '1': orderData.customer_name || 'Cliente', '2': comprobante.order_number },
-                    orderNumber: comprobante.order_number
-                  });
-                } catch (waErr) {
-                  log.error({ err: waErr.message, orderNumber: comprobante.order_number, plantilla: 'datos__envio' }, 'Error encolando WhatsApp en conciliación');
-                }
-              }
-            }
+            // datos__envio ya se envía en /upload cuando el pedido pasa a a_imprimir
           }
 
           console.log(`✅ Conciliación: comprobante #${comprobante.id} (pedido #${comprobante.order_number}) confirmado — banco ID ${banco_id}`);
@@ -4136,13 +4107,13 @@ app.post('/webhook/tiendanube', async (req, res) => {
                 log.error({ err: waErr.message, orderNumber: orderNum, plantilla: 'comprobante_confirmado' }, 'Error encolando WhatsApp');
               }
 
-              // Enviar datos__envio si requiere formulario de envío y no existe shipping_request
+              // Enviar datos__envio si requiere formulario de envío, no existe shipping_request, y no se envió antes
               if (requiresShippingForm(clientePago.shipping_type)) {
-                const shippingReqRes = await pool.query(
-                  `SELECT 1 FROM shipping_requests WHERE order_number = $1 LIMIT 1`,
-                  [orderNum]
-                );
-                if (shippingReqRes.rows.length === 0) {
+                const [srRes, waRes] = await Promise.all([
+                  pool.query(`SELECT 1 FROM shipping_requests WHERE order_number = $1 LIMIT 1`, [orderNum]),
+                  pool.query(`SELECT 1 FROM whatsapp_messages WHERE order_number = $1::int AND (template_key = 'datos__envio' OR template ILIKE '%datos%envio%') LIMIT 1`, [orderNum])
+                ]);
+                if (srRes.rows.length === 0 && waRes.rows.length === 0) {
                   try {
                     await queueWhatsApp({
                       telefono: clientePago.customer_phone,
@@ -4154,7 +4125,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
                     log.error({ err: waErr.message, orderNumber: orderNum, plantilla: 'datos__envio' }, 'Error encolando WhatsApp');
                   }
                 } else {
-                  log.info({ orderNumber: orderNum }, 'Skipping datos__envio - shipping_request already exists');
+                  log.info({ orderNumber: orderNum }, 'Skipping datos__envio - already sent or shipping_request exists');
                 }
               }
             }
@@ -4316,9 +4287,9 @@ app.post('/webhook/tiendanube', async (req, res) => {
       ? pedido.shipping_option
       : pedido.shipping_option?.name) || '';
 
-    // datos__envio se envía al confirmar el primer comprobante (no aquí)
+    // datos__envio se envía en /upload cuando el pedido pasa a a_imprimir (no aquí)
     if (requiresShippingForm(shippingOption)) {
-      log.info({ orderNumber: String(pedido.number), shippingOption }, 'Order requires shipping form (will be requested on comprobante confirmation)');
+      log.info({ orderNumber: String(pedido.number), shippingOption }, 'Order requires shipping form (will be requested on comprobante upload)');
     }
 
   } catch (err) {
@@ -4798,6 +4769,37 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
        where order_number = $1 and estado_pago = 'pendiente'`,
       [orderNumber]
     );
+
+    /* ===============================
+       1️⃣4️⃣b ENVIAR datos__envio SI CORRESPONDE
+       Se envía cuando el pedido llega a a_imprimir con comprobante cargado
+       y el tipo de envío requiere pedir datos al cliente.
+    ================================ */
+    const orderStateRes = await pool.query(
+      `SELECT estado_pedido, shipping_type FROM orders_validated WHERE order_number = $1`,
+      [orderNumber]
+    );
+    if (orderStateRes.rows.length > 0) {
+      const { estado_pedido: epActual, shipping_type: stActual } = orderStateRes.rows[0];
+      if (epActual === 'a_imprimir' && requiresShippingForm(stActual)) {
+        const [srCheck, waCheck] = await Promise.all([
+          pool.query(`SELECT 1 FROM shipping_requests WHERE order_number = $1 LIMIT 1`, [orderNumber]),
+          pool.query(`SELECT 1 FROM whatsapp_messages WHERE order_number = $1::int AND (template_key = 'datos__envio' OR template ILIKE '%datos%envio%') LIMIT 1`, [orderNumber])
+        ]);
+        if (srCheck.rows.length === 0 && waCheck.rows.length === 0) {
+          try {
+            await queueWhatsApp({
+              telefono: customerPhone || telefono,
+              plantilla: 'datos__envio',
+              variables: { '1': nombre, '2': orderNumber },
+              orderNumber
+            });
+          } catch (waErr) {
+            log.error({ err: waErr.message, orderNumber, plantilla: 'datos__envio' }, 'Error encolando WhatsApp datos__envio en upload');
+          }
+        }
+      }
+    }
 
     /* ===============================
        1️⃣4️⃣ RESPUESTA FINAL

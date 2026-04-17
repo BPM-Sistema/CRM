@@ -222,6 +222,13 @@ function createWhatsAppWorker(connection) {
       } catch (dbErr) {
         log.error({ err: dbErr.message }, 'Error persistiendo fallo WhatsApp');
       }
+
+      // Notificar por email
+      const { sendNotification } = require('../lib/email');
+      sendNotification({
+        subject: `[CRM] WhatsApp FALLÓ — pedido #${orderNumber}`,
+        body: `El mensaje WhatsApp falló después de ${job?.attemptsMade} intentos.\n\nPedido: #${orderNumber}\nPlantilla: ${plantilla}\nTeléfono: ${job?.data?.telefono}\nError: ${err.message}`,
+      }).catch(() => {});
     }
   });
 
