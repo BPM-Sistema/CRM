@@ -20,6 +20,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { tiendanube: tnConfig } = require('./integrationConfig');
+const { callTiendanubeWrite } = require('../lib/tnWriteClient');
 
 // ─── Configuración ──────────────────────────────────────────
 
@@ -358,14 +359,16 @@ async function updateImagePositions(storeId, accessToken, productId, newOrder) {
     const newPosition = i + 1;
     if (img.position === newPosition) continue;
 
-    await requestWithRetry(() =>
-      axios.put(
-        `${TN_BASE_URL}/${storeId}/products/${productId}/images/${img.id}`,
-        { position: newPosition },
-        { headers, timeout: 15000 }
-      )
+    await callTiendanubeWrite(
+      {
+        method: 'put',
+        url: `${TN_BASE_URL}/${storeId}/products/${productId}/images/${img.id}`,
+        data: { position: newPosition },
+        headers,
+        timeout: 15000,
+      },
+      { context: `image-position#prod:${productId}/img:${img.id}` }
     );
-    await sleep(RATE_LIMIT_DELAY_MS);
   }
 }
 

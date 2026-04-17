@@ -6,7 +6,7 @@
  * - POST /remitos/:id/confirm (routes/remitos.js)
  */
 
-const { callTiendanube } = require('./circuitBreaker');
+const { callTiendanubeWrite } = require('./tnWriteClient');
 const { isEnabled } = require('../services/integrationConfig');
 
 const ESTADO_TN_MAP = {
@@ -38,12 +38,15 @@ async function sincronizarEstadoTiendanube(tnOrderId, orderNumber, tnStatus, lab
   // Para 'paid', usar PUT con { status: 'paid' } (funciona en TN API)
   if (tnStatus === 'paid') {
     try {
-      await callTiendanube({
-        method: 'put',
-        url: `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}`,
-        data: { status: 'paid' },
-        headers
-      });
+      await callTiendanubeWrite(
+        {
+          method: 'put',
+          url: `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}`,
+          data: { status: 'paid' },
+          headers,
+        },
+        { context: `mark-paid#${orderNumber}` }
+      );
       console.log(`✅ [Orden ${orderNumber}] Marcada como ${labelEs} en Tiendanube (tn_order_id: ${tnOrderId})`);
       return true;
     } catch (err) {
@@ -69,12 +72,15 @@ async function sincronizarEstadoTiendanube(tnOrderId, orderNumber, tnStatus, lab
   }
 
   try {
-    await callTiendanube({
-      method: 'post',
-      url: `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}/${action}`,
-      data: {},
-      headers
-    });
+    await callTiendanubeWrite(
+      {
+        method: 'post',
+        url: `https://api.tiendanube.com/v1/${storeId}/orders/${tnOrderId}/${action}`,
+        data: {},
+        headers,
+      },
+      { context: `${action}#${orderNumber}` }
+    );
     console.log(`✅ [Orden ${orderNumber}] Marcada como ${labelEs} en Tiendanube (tn_order_id: ${tnOrderId})`);
     return true;
   } catch (err) {

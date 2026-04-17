@@ -27,6 +27,7 @@ const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
 const { callTiendanube, callBotmaker } = require('./lib/circuitBreaker');
+const { callTiendanubeWrite } = require('./lib/tnWriteClient');
 
 const { uploadFile: storageUploadFile, getPublicUrl: storageGetPublicUrl } = require('./lib/storage');
 const { calcularEstadoCuenta } = require('./utils/calcularEstadoCuenta');
@@ -265,17 +266,20 @@ async function obtenerEtiquetasEnvioNube(tnOrderId) {
 
         try {
           // POST al endpoint correcto de creación de labels
-          const createRes = await callTiendanube({
-            method: 'post',
-            url: `https://api.tiendanube.com/v1/${storeId}/fulfillment-orders/labels`,
-            data: [{ id: fo.id }],
-            headers: {
-              authentication: `bearer ${token}`,
-              'Content-Type': 'application/json',
-              'User-Agent': 'bpm-validator'
+          const createRes = await callTiendanubeWrite(
+            {
+              method: 'post',
+              url: `https://api.tiendanube.com/v1/${storeId}/fulfillment-orders/labels`,
+              data: [{ id: fo.id }],
+              headers: {
+                authentication: `bearer ${token}`,
+                'Content-Type': 'application/json',
+                'User-Agent': 'bpm-validator',
+              },
+              timeout: 30000,
             },
-            timeout: 30000
-          });
+            { context: `label-create#fo:${fo.id}` }
+          );
 
           console.log(`✅ Label solicitado:`, JSON.stringify(createRes.data));
 
@@ -311,17 +315,20 @@ async function obtenerEtiquetasEnvioNube(tnOrderId) {
       if (readyLabel) {
         try {
           // POST al endpoint de download para obtener URL presignada
-          const downloadRes = await callTiendanube({
-            method: 'post',
-            url: `https://api.tiendanube.com/v1/${storeId}/fulfillment-orders/${fo.id}/labels/${readyLabel.id}/download`,
-            data: {},
-            headers: {
-              authentication: `bearer ${token}`,
-              'Content-Type': 'application/json',
-              'User-Agent': 'bpm-validator'
+          const downloadRes = await callTiendanubeWrite(
+            {
+              method: 'post',
+              url: `https://api.tiendanube.com/v1/${storeId}/fulfillment-orders/${fo.id}/labels/${readyLabel.id}/download`,
+              data: {},
+              headers: {
+                authentication: `bearer ${token}`,
+                'Content-Type': 'application/json',
+                'User-Agent': 'bpm-validator',
+              },
+              timeout: 15000,
             },
-            timeout: 15000
-          });
+            { context: `label-download#fo:${fo.id}` }
+          );
 
           // La respuesta es un array con URLs presignadas
           const labelDoc = downloadRes.data.find(d => d.type === 'LABEL');
