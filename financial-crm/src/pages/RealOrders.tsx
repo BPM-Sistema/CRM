@@ -1193,7 +1193,9 @@ export function RealOrders() {
             </div>
           ) : (
             <div className="space-y-2">
-              {/* Opción: A Imprimir */}
+              {/* Única opción válida para impresión inicial.
+                  Reimprimir pedidos ya impresos se hace desde el detalle de cada pedido,
+                  no desde este flujo masivo. */}
               <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
                 <div className="flex items-center gap-3">
                   <input
@@ -1206,90 +1208,6 @@ export function RealOrders() {
                 </div>
                 <span className="text-sm text-neutral-500">{printCounts?.a_imprimir ?? 0} pedidos</span>
               </label>
-
-              {/* Opción: Hoja Impresa */}
-              <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedPrintStatuses.has('hoja_impresa')}
-                    onChange={() => togglePrintStatus('hoja_impresa')}
-                    className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
-                  />
-                  <span className="font-medium text-neutral-900">Hoja Impresa</span>
-                </div>
-                <span className="text-sm text-neutral-500">{printCounts?.hoja_impresa ?? 0} pedidos</span>
-              </label>
-
-              {/* Opción: Pendiente Pago */}
-              <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedPrintStatuses.has('pendiente_pago')}
-                    onChange={() => togglePrintStatus('pendiente_pago')}
-                    className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
-                  />
-                  <span className="font-medium text-neutral-900">Pendiente Pago</span>
-                </div>
-                <span className="text-sm text-neutral-500">{printCounts?.pendiente_pago ?? 0} pedidos</span>
-              </label>
-
-              {/* Opción: Armado */}
-              <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedPrintStatuses.has('armado')}
-                    onChange={() => togglePrintStatus('armado')}
-                    className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
-                  />
-                  <span className="font-medium text-neutral-900">Armado</span>
-                </div>
-                <span className="text-sm text-neutral-500">{printCounts?.armado ?? 0} pedidos</span>
-              </label>
-
-              {/* Opción: Retirado */}
-              <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedPrintStatuses.has('retirado')}
-                    onChange={() => togglePrintStatus('retirado')}
-                    className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
-                  />
-                  <span className="font-medium text-neutral-900">Retirado</span>
-                </div>
-                <span className="text-sm text-neutral-500">{printCounts?.retirado ?? 0} pedidos</span>
-              </label>
-
-              {/* Opción: En Calle */}
-              <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedPrintStatuses.has('en_calle')}
-                    onChange={() => togglePrintStatus('en_calle')}
-                    className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
-                  />
-                  <span className="font-medium text-neutral-900">En Calle</span>
-                </div>
-                <span className="text-sm text-neutral-500">{printCounts?.en_calle ?? 0} pedidos</span>
-              </label>
-
-              {/* Opción: Enviado */}
-              <label className="flex items-center justify-between p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 cursor-pointer transition-colors">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedPrintStatuses.has('enviado')}
-                    onChange={() => togglePrintStatus('enviado')}
-                    className="w-4 h-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-500"
-                  />
-                  <span className="font-medium text-neutral-900">Enviado</span>
-                </div>
-                <span className="text-sm text-neutral-500">{printCounts?.enviado ?? 0} pedidos</span>
-              </label>
             </div>
           )}
 
@@ -1300,7 +1218,7 @@ export function RealOrders() {
               <span className="font-semibold text-neutral-900">{selectedPrintCount} pedidos</span>
             </div>
             <p className="text-xs text-neutral-500 mt-1">
-              Se incluyen todos los pedidos con los estados seleccionados
+              Solo se incluyen pedidos con pago confirmado, saldo en 0 y sin impresión previa.
             </p>
           </div>
 

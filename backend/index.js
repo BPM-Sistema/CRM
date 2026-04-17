@@ -1190,14 +1190,22 @@ app.post('/orders/to-print', authenticate, requirePermission('orders.print'), as
       return res.status(400).json({ error: 'Debe seleccionar al menos un estado' });
     }
 
-    // Validar que los estados sean válidos
-    const validStatuses = ['pendiente_pago', 'a_imprimir', 'hoja_impresa', 'armado', 'retirado', 'en_calle', 'enviado', 'cancelado'];
-    const invalidStatuses = statuses.filter(s => !validStatuses.includes(s));
+    // Estados permitidos para el flujo NORMAL de impresión inicial.
+    // Explícitamente NO incluye hoja_impresa, armado, retirado, en_calle, enviado, cancelado
+    // ni pendiente_pago — esos no corresponden a impresión inicial.
+    const printableStatuses = ['a_imprimir'];
+    const invalidStatuses = statuses.filter(s => !printableStatuses.includes(s));
     if (invalidStatuses.length > 0) {
-      return res.status(400).json({ error: `Estados inválidos: ${invalidStatuses.join(', ')}` });
+      return res.status(400).json({
+        error: `Estados no válidos para impresión normal: ${invalidStatuses.join(', ')}. Solo se acepta: ${printableStatuses.join(', ')}`
+      });
     }
 
-    // Obtener pedidos con los estados seleccionados, incluyendo info de shipping
+    // Selección de pedidos imprimibles:
+    //  - estado_pedido = 'a_imprimir' → estado de negocio "listo para imprimir"
+    //  - printed_at IS NULL → no reimprimir
+    //  - NOT IN ('pendiente','anulado') → defensa mínima contra invariante violada
+    //    (las reglas completas viven en los paths que setean a_imprimir, no acá)
     const result = await pool.query(`
       SELECT
         o.order_number,
@@ -1205,6 +1213,8 @@ app.post('/orders/to-print', authenticate, requirePermission('orders.print'), as
         EXISTS(SELECT 1 FROM shipping_requests WHERE order_number = o.order_number) as has_shipping_request
       FROM orders_validated o
       WHERE o.estado_pedido = ANY($1)
+        AND o.printed_at IS NULL
+        AND o.estado_pago NOT IN ('pendiente', 'anulado')
       ORDER BY o.created_at ASC
     `, [statuses]);
 
@@ -2174,6 +2184,17 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
     await client.query(`UPDATE comprobantes SET estado = 'rechazado', confirmed_at = NOW(), confirmed_by = $2 WHERE id = $1`, [id, req.user?.id]);
 
     await client.query('COMMIT');
+
+    // Recalcular estados del pedido. Garantiza invariante a_imprimir:
+    //   - si no quedan comprobantes pendientes ni pagos confirmados → estado_pago=pendiente → estado_pedido retrocede a pendiente_pago (si no se imprimió aún)
+    //   - si quedan otros comprobantes pendientes → estado_pago permanece a_confirmar
+    //   - si hay pagos confirmados reales → estado_pago=confirmado_parcial/confirmado_total
+    try {
+      const pagoResult = await recalcularPagos(pool, comprobante.order_number);
+      log.info({ requestId, orderNumber: comprobante.order_number, estadoPago: pagoResult.estadoPago, estadoPedido: pagoResult.estadoPedido }, 'Estado recalculado tras rechazo');
+    } catch (recalcErr) {
+      log.error({ err: recalcErr.message, orderNumber: comprobante.order_number }, 'Error recalculando pagos tras rechazo');
+    }
 
     // Log (after commit)
     log.info({ requestId, comprobanteId: id, orderNumber: comprobante.order_number, action: 'reject_log' }, 'Inserting rejection log');
@@ -3235,9 +3256,12 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
       });
     }
 
-    // Verificar que existe el pedido
+    // Verificar que existe el pedido (incluye printed_at/packed_at/shipped_at/saldo para
+    // que las guardias "no sobrescribir si ya existe" y la validación de pago funcionen bien)
     const orderRes = await pool.query(
-      `SELECT order_number, estado_pago, estado_pedido, tn_order_id, tn_order_token,
+      `SELECT order_number, estado_pago, estado_pedido, saldo,
+              printed_at, packed_at, shipped_at,
+              tn_order_id, tn_order_token,
               customer_name, customer_phone, shipping_type
        FROM orders_validated WHERE order_number = $1`,
       [orderNumber]
@@ -3259,13 +3283,28 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
       }
     }
 
-    // Determinar timestamps según el estado
+    // No se puede marcar como impreso (hoja_impresa) si el pago está bloqueante.
+    // Regla mínima: pendiente/anulado no → cualquier otro estado (incluye a_confirmar,
+    // confirmado_parcial, confirmado_total, a_favor) sí puede imprimirse.
+    // La lógica fina de cuándo un pedido llega a a_imprimir vive en los paths que lo setean.
+    if (estado_pedido === 'hoja_impresa') {
+      const bloqueantes = ['pendiente', 'anulado'];
+      if (bloqueantes.includes(pedido.estado_pago)) {
+        return res.status(400).json({
+          error: `No se puede marcar como impreso: pago ${pedido.estado_pago}`
+        });
+      }
+    }
+
+    // Determinar timestamps según el estado.
+    // Las guardias preservan la primera marca real (no sobrescribimos printed_at/packed_at/shipped_at
+    // si ya existían). Esto evita contaminar métricas por reimpresiones accidentales.
     let updateFields = ['estado_pedido = $1'];
     let updateValues = [estado_pedido];
     let paramIndex = 2;
 
     if (estado_pedido === 'hoja_impresa' && !pedido.printed_at) {
-      // Cuando se imprime la etiqueta, marcamos printed_at
+      // Cuando se imprime la etiqueta, marcamos printed_at (solo primera vez)
       updateFields.push(`printed_at = NOW()`);
     } else if (estado_pedido === 'armado' && !pedido.packed_at) {
       updateFields.push(`packed_at = NOW()`);
@@ -3680,14 +3719,24 @@ app.post('/webhook/tiendanube', async (req, res) => {
           log.info({ orderNumber: String(pedido.number), tnStatus: pedido.status }, 'order/updated skipped — order cancelled in both BPM and TN');
           return;
         }
-        // TN ya no dice cancelado → reabrir el pedido
+        // TN ya no dice cancelado → reabrir el pedido.
+        // Invariante a_imprimir: solo si el pago lo habilita. Si no, queda en pendiente_pago
+        // y el flujo de pagos lo subirá a a_imprimir cuando corresponda.
         log.info({ orderNumber: String(pedido.number), tnStatus: pedido.status }, 'Reopening cancelled order — TN no longer cancelled');
-        await pool.query(
-          `UPDATE orders_validated SET estado_pedido = 'a_imprimir', updated_at = NOW() WHERE order_number = $1`,
+        const reopenRes = await pool.query(
+          `UPDATE orders_validated
+           SET estado_pedido = CASE
+                 WHEN estado_pago IN ('a_confirmar','confirmado_parcial','confirmado_total','a_favor') THEN 'a_imprimir'
+                 ELSE 'pendiente_pago'
+               END,
+               updated_at = NOW()
+           WHERE order_number = $1
+           RETURNING estado_pedido`,
           [String(pedido.number)]
         );
-        await logEvento({ orderNumber: String(pedido.number), accion: 'Pedido reabierto desde TN', origen: 'webhook_tiendanube' });
-        db.estado_pedido = 'a_imprimir';
+        const nuevoEstado = reopenRes.rows[0]?.estado_pedido || 'pendiente_pago';
+        await logEvento({ orderNumber: String(pedido.number), accion: `Pedido reabierto desde TN (${nuevoEstado})`, origen: 'webhook_tiendanube' });
+        db.estado_pedido = nuevoEstado;
       }
 
       // Valores nuevos de Tiendanube
@@ -4963,19 +5012,24 @@ app.get('/rechazar/:id', async (req, res) => {
       return res.send('Este comprobante ya fue procesado.');
     }
 
+    const orderNumber = compRes.rows[0].order_number;
+
     // Rechazar comprobante
     await client.query(
-      `UPDATE comprobantes SET estado = 'rechazado' WHERE id = $1`,
+      `UPDATE comprobantes SET estado = 'rechazado', confirmed_at = NOW() WHERE id = $1`,
       [id]
     );
 
-    // El estado de la orden pasa a rechazado
-    await client.query(
-      `UPDATE orders_validated SET estado_pago = 'rechazado' WHERE order_number = $1`,
-      [compRes.rows[0].order_number]
-    );
-
     await client.query('COMMIT');
+
+    // Recalcular pagos — mantiene la invariante a_imprimir tras el rechazo.
+    // Si no quedan comprobantes pendientes ni pagos, estado_pago='pendiente' y
+    // estado_pedido retrocede a pendiente_pago (si aún no se imprimió).
+    try {
+      await recalcularPagos(pool, orderNumber);
+    } catch (recalcErr) {
+      console.error(`❌ Error recalculando pagos tras rechazo via link para ${orderNumber}:`, recalcErr.message);
+    }
 
     return res.send(`
       <h2>Comprobante rechazado</h2>

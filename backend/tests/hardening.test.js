@@ -89,8 +89,25 @@ describe('Financial Consistency', () => {
       expect(calcularEstadoPedido('confirmado_total', 'pendiente_pago')).toBe('a_imprimir');
     });
 
-    test('does not regress from a_imprimir', () => {
-      expect(calcularEstadoPedido('pendiente', 'a_imprimir')).toBe('a_imprimir');
+    test('moves from pendiente_pago to a_imprimir on a_confirmar (comprobante cargado)', () => {
+      expect(calcularEstadoPedido('a_confirmar', 'pendiente_pago')).toBe('a_imprimir');
+    });
+
+    test('moves from pendiente_pago to a_imprimir on confirmado_parcial', () => {
+      expect(calcularEstadoPedido('confirmado_parcial', 'pendiente_pago')).toBe('a_imprimir');
+    });
+
+    test('retrocede from a_imprimir to pendiente_pago if pago becomes pendiente', () => {
+      // Invariante: a_imprimir requiere pago valido. Si el pago se invalida antes de imprimir, retrocede.
+      expect(calcularEstadoPedido('pendiente', 'a_imprimir')).toBe('pendiente_pago');
+    });
+
+    test('retrocede from a_imprimir to pendiente_pago if pago becomes anulado', () => {
+      expect(calcularEstadoPedido('anulado', 'a_imprimir')).toBe('pendiente_pago');
+    });
+
+    test('does not regress from hoja_impresa when pago becomes pendiente', () => {
+      expect(calcularEstadoPedido('pendiente', 'hoja_impresa')).toBe('hoja_impresa');
     });
 
     test('does not regress from enviado', () => {

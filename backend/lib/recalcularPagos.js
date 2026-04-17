@@ -28,7 +28,8 @@ async function recalcularPagos(clientOrPool, orderNumber, opts = {}) {
       ov.estado_pedido,
       ov.estado_pago,
       COALESCE(c.total, 0) as comp_total,
-      COALESCE(e.total, 0) as ef_total
+      COALESCE(e.total, 0) as ef_total,
+      COALESCE(cp.pending_count, 0) as comp_pending_count
     FROM orders_validated ov
     LEFT JOIN (
       SELECT order_number, SUM(monto) as total
@@ -40,6 +41,11 @@ async function recalcularPagos(clientOrPool, orderNumber, opts = {}) {
       FROM pagos_efectivo
       GROUP BY order_number
     ) e ON ov.order_number = e.order_number
+    LEFT JOIN (
+      SELECT order_number, COUNT(*) as pending_count
+      FROM comprobantes WHERE estado IN ('pendiente', 'a_confirmar')
+      GROUP BY order_number
+    ) cp ON ov.order_number = cp.order_number
     WHERE ov.order_number = $1
   `, [orderNumber]);
 
@@ -52,6 +58,7 @@ async function recalcularPagos(clientOrPool, orderNumber, opts = {}) {
   const pagoOnlineTn = Number(row.pago_online_tn) || 0;
   const compTotal = Number(row.comp_total);
   const efTotal = Number(row.ef_total);
+  const compPendingCount = Number(row.comp_pending_count);
   const pagosLocales = compTotal + efTotal;
   const totalPagado = pagoOnlineTn + pagosLocales;
   const saldo = Math.max(0, monto - totalPagado);
@@ -68,6 +75,10 @@ async function recalcularPagos(clientOrPool, orderNumber, opts = {}) {
     estadoPago = 'confirmado_total';
   } else if (totalPagado > 0) {
     estadoPago = 'confirmado_parcial';
+  } else if (compPendingCount > 0) {
+    // Hay comprobante(s) pendientes de verificacion pero ninguno confirmado:
+    // preservar a_confirmar (no retroceder a pendiente).
+    estadoPago = 'a_confirmar';
   } else {
     estadoPago = 'pendiente';
   }

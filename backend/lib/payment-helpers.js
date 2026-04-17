@@ -35,23 +35,34 @@ async function calcularTotalPagado(orderNumber) {
 
 /* =====================================================
    UTIL — CALCULAR ESTADO PEDIDO (centralizado)
-   Regla: si hay plata pagada -> puede avanzar en flujo logistico
+   Regla: si hay plata pagada o comprobante en verificacion -> puede avanzar en flujo logistico
    Independiente del metodo de pago (transferencia, efectivo, etc.)
+
+   Regla de invariante a_imprimir:
+   - a_imprimir requiere estado_pago en ('a_confirmar','confirmado_parcial','confirmado_total','a_favor')
+   - si estado_pago queda en ('pendiente','anulado'), a_imprimir retrocede a pendiente_pago
+   - estados posteriores (hoja_impresa, armado, retirado, en_calle, enviado) no retroceden
 ===================================================== */
+const ESTADOS_PAGO_HABILITAN_IMPRIMIR = ['confirmado_total', 'confirmado_parcial', 'a_favor', 'a_confirmar'];
+const ESTADOS_PAGO_BLOQUEAN_IMPRIMIR = ['pendiente', 'anulado'];
+
 function calcularEstadoPedido(estadoPago, estadoPedidoActual) {
-  // Si ya avanzo mas alla de pendiente_pago, no retroceder
+  // Si el pago queda invalido y el pedido todavia no se imprimio, retrocede a pendiente_pago.
+  // Solo aplica a a_imprimir: estados posteriores (hoja_impresa+) no retroceden porque ya hubo trabajo fisico.
+  if (estadoPedidoActual === 'a_imprimir' && ESTADOS_PAGO_BLOQUEAN_IMPRIMIR.includes(estadoPago)) {
+    return 'pendiente_pago';
+  }
+
+  // Si ya avanzo mas alla de pendiente_pago (y no aplica el retroceso de arriba), no retroceder
   if (estadoPedidoActual !== 'pendiente_pago') {
     return estadoPedidoActual;
   }
 
-  // Estados de pago que indican que hay plata pagada -> avanzar a a_imprimir
-  const estadosPagados = ['confirmado_total', 'confirmado_parcial', 'a_favor'];
-
-  if (estadosPagados.includes(estadoPago)) {
+  // Desde pendiente_pago, avanzar a a_imprimir si hay pago o comprobante en verificacion
+  if (ESTADOS_PAGO_HABILITAN_IMPRIMIR.includes(estadoPago)) {
     return 'a_imprimir';
   }
 
-  // Si no hay pago confirmado, mantener pendiente_pago
   return 'pendiente_pago';
 }
 
@@ -166,6 +177,8 @@ function mapShippingToEstadoPedido(shippingStatus, shippingCarrier, shippingType
 module.exports = {
   calcularTotalPagado,
   calcularEstadoPedido,
+  ESTADOS_PAGO_HABILITAN_IMPRIMIR,
+  ESTADOS_PAGO_BLOQUEAN_IMPRIMIR,
   requiresShippingForm,
   normalizePhoneForComparison,
   normalizePhone,
