@@ -6,12 +6,21 @@ const fs = require('fs');
 const path = require('path');
 
 // Mock axios antes de importar
+// Callable (axios(config)) + métodos (axios.get/put) — el wrapper
+// callTiendanubeWrite va por la forma callable vía circuitBreaker.
 const mockAxiosGet = jest.fn();
 const mockAxiosPut = jest.fn();
-jest.mock('axios', () => ({
-  get: mockAxiosGet,
-  put: mockAxiosPut
-}));
+jest.mock('axios', () => {
+  const fn = jest.fn((config) => {
+    const method = (config.method || 'get').toLowerCase();
+    if (method === 'get') return mockAxiosGet(config.url, config);
+    if (method === 'put') return mockAxiosPut(config.url, config.data, config);
+    return Promise.reject(new Error(`axios mock: method not supported: ${method}`));
+  });
+  fn.get = mockAxiosGet;
+  fn.put = mockAxiosPut;
+  return fn;
+});
 
 // Env vars de prueba
 process.env.TIENDANUBE_STORE_ID = '99999';
