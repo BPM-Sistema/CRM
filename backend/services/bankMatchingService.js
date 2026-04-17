@@ -177,4 +177,114 @@ async function applyMatchTx(client, movementId, comprobanteId, orderNumber, crit
   }).catch(() => {});
 }
 
-module.exports = { matchFromComprobante, matchFromBankMovement };
+/**
+ * Caso C: Después de confirmar un comprobante manualmente, buscar movimiento
+ * bancario sin asignar (o pre-vinculado) que coincida y marcarlo como 'assigned'.
+ *
+ * Criterios (mismo orden que Caso A):
+ *   1. numero_operacion exacto
+ *   2. monto exacto + fecha cercana (±2 días)
+ *
+ * Diferencia con Caso A: el comprobante ya está confirmado, así que el
+ * bank_movement pasa directo a 'assigned' (no 'matched').
+ *
+ * @param {number} comprobanteId
+ * @param {string} orderNumber
+ * @param {number} monto
+ * @param {string|null} numeroOperacion
+ * @param {string|null} fechaComprobante - YYYY-MM-DD
+ * @returns {{ matched: boolean, movement_id?: number, criteria?: string }}
+ */
+async function matchOnConfirm(comprobanteId, orderNumber, monto, numeroOperacion, fechaComprobante) {
+  try {
+    // Primero: si ya existe un bank_movement pre-vinculado a este comprobante, promoverlo
+    const prelinked = await pool.query(
+      `SELECT id FROM bank_movements
+       WHERE linked_comprobante_id = $1
+         AND assignment_status IN ('matched', 'review')
+       LIMIT 1`,
+      [comprobanteId]
+    );
+
+    if (prelinked.rows.length === 1) {
+      await pool.query(
+        `UPDATE bank_movements
+         SET assignment_status = 'assigned',
+             matched_by = 'manual_confirm',
+             matched_at = NOW()
+         WHERE id = $1`,
+        [prelinked.rows[0].id]
+      );
+      logEvento({
+        accion: 'bank_movement_assigned_on_confirm',
+        origen: 'manual_confirm',
+        detalles: JSON.stringify({ movement_id: prelinked.rows[0].id, comprobante_id: comprobanteId, order_number: orderNumber, criteria: 'prelinked' }),
+      }).catch(() => {});
+      return { matched: true, movement_id: prelinked.rows[0].id, criteria: 'prelinked' };
+    }
+
+    // 1. Match por numero_operacion exacto
+    if (numeroOperacion) {
+      const res = await pool.query(
+        `SELECT id FROM bank_movements
+         WHERE assignment_status IN ('unassigned', 'matched', 'review')
+           AND is_incoming = true
+           AND (reference = $1 OR movement_uid = $1)
+         LIMIT 2`,
+        [numeroOperacion]
+      );
+
+      if (res.rows.length === 1) {
+        await applyAssign(res.rows[0].id, comprobanteId, orderNumber, 'numero_operacion');
+        return { matched: true, movement_id: res.rows[0].id, criteria: 'numero_operacion' };
+      }
+    }
+
+    // 2. Match por monto exacto + fecha cercana (±2 días)
+    const fechaRef = fechaComprobante || new Date().toISOString().split('T')[0];
+    const res = await pool.query(
+      `SELECT id FROM bank_movements
+       WHERE assignment_status IN ('unassigned', 'matched', 'review')
+         AND is_incoming = true
+         AND amount = $1
+         AND ABS(posted_at::date - $2::date) <= 2
+       ORDER BY ABS(posted_at::date - $2::date) ASC
+       LIMIT 2`,
+      [monto, fechaRef]
+    );
+
+    if (res.rows.length === 1) {
+      await applyAssign(res.rows[0].id, comprobanteId, orderNumber, 'monto_fecha');
+      return { matched: true, movement_id: res.rows[0].id, criteria: 'monto_fecha' };
+    }
+
+    return { matched: false, reason: res.rows.length === 0 ? 'no_candidates' : 'ambiguous' };
+  } catch (err) {
+    console.error('matchOnConfirm error:', err.message);
+    return { matched: false, reason: 'error', error: err.message };
+  }
+}
+
+/**
+ * Aplica asignación directa (comprobante ya confirmado → 'assigned')
+ */
+async function applyAssign(movementId, comprobanteId, orderNumber, criteria) {
+  await pool.query(
+    `UPDATE bank_movements
+     SET assignment_status = 'assigned',
+         linked_comprobante_id = $1,
+         linked_order_number = $2,
+         matched_by = 'manual_confirm',
+         matched_at = NOW()
+     WHERE id = $3 AND assignment_status IN ('unassigned', 'matched', 'review')`,
+    [comprobanteId, orderNumber, movementId]
+  );
+
+  logEvento({
+    accion: 'bank_movement_assigned_on_confirm',
+    origen: 'manual_confirm',
+    detalles: JSON.stringify({ movement_id: movementId, comprobante_id: comprobanteId, order_number: orderNumber, criteria }),
+  }).catch(() => {});
+}
+
+module.exports = { matchFromComprobante, matchFromBankMovement, matchOnConfirm };

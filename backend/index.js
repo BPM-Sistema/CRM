@@ -1687,7 +1687,7 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
 
     // 1️⃣ Buscar comprobante con row lock
     const compRes = await client.query(
-      `SELECT id, order_number, monto, estado FROM comprobantes WHERE id = $1 FOR UPDATE`,
+      `SELECT id, order_number, monto, estado, numero_operacion, fecha_comprobante FROM comprobantes WHERE id = $1 FOR UPDATE`,
       [id]
     );
 
@@ -1729,6 +1729,21 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
       marcarPagadoEnTiendanube(orderData.tn_order_id, comprobante.order_number);
       // No await - no bloqueamos la respuesta
     }
+
+    // 7.6️⃣ Vincular con bank_movement si existe (after commit, fire and forget)
+    matchOnConfirm(
+      comprobante.id,
+      comprobante.order_number,
+      comprobante.monto,
+      comprobante.numero_operacion || null,
+      comprobante.fecha_comprobante ? comprobante.fecha_comprobante.toISOString().split('T')[0] : null
+    ).then(result => {
+      if (result.matched) {
+        log.info({ comprobanteId: id, movementId: result.movement_id, criteria: result.criteria }, 'Bank movement assigned on confirm');
+      }
+    }).catch(err => {
+      log.error({ err: err.message, comprobanteId: id }, 'matchOnConfirm failed');
+    });
 
     // 8️⃣ Log
     log.info({ requestId, comprobanteId: id, orderNumber: comprobante.order_number, action: 'confirm_log' }, 'Inserting confirmation log');
@@ -5256,7 +5271,7 @@ const localOrdersRoutes = require('./routes/local-orders');
 const localBoxRoutes = require('./routes/local-box');
 const localAlertsRoutes = require('./routes/local-alerts');
 const { importMovimientos } = require('./services/bankImportService');
-const { matchFromComprobante } = require('./services/bankMatchingService');
+const { matchFromComprobante, matchOnConfirm } = require('./services/bankMatchingService');
 // AI Bot routes — PAUSADO, descomentar cuando se active el bot en prod
 // let aiBotRoutes;
 // try {
