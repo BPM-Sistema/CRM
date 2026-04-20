@@ -65,9 +65,12 @@ async function recalcularPagos(clientOrPool, orderNumber, opts = {}) {
   const estadoPedidoActual = row.estado_pedido;
   const estadoPagoActual = row.estado_pago;
 
-  // No tocar estados especiales
+  // No tocar estados especiales SOLO si el pedido sigue efectivamente cancelado.
+  // Si el pedido fue reabierto (estado_pedido != 'cancelado'), el 'anulado'/'reembolsado'
+  // es residuo de una cancelación previa y debe recomputarse según comprobantes/efectivo.
   let estadoPago;
-  if (estadoPagoActual === 'reembolsado' || estadoPagoActual === 'anulado') {
+  if ((estadoPagoActual === 'reembolsado' || estadoPagoActual === 'anulado') &&
+      estadoPedidoActual === 'cancelado') {
     estadoPago = estadoPagoActual;
   } else if (Math.abs(monto - totalPagado) <= tolerancia && totalPagado > 0) {
     estadoPago = 'confirmado_total';

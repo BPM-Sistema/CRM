@@ -1710,8 +1710,11 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
       return res.status(400).json({ error: 'Este comprobante ya fue procesado' });
     }
 
-    // 2️⃣ Confirmar comprobante
-    await client.query(`UPDATE comprobantes SET estado = 'confirmado' WHERE id = $1`, [id]);
+    // 2️⃣ Confirmar comprobante (incluye auditoría: confirmed_at + confirmed_by)
+    await client.query(
+      `UPDATE comprobantes SET estado = 'confirmado', confirmed_at = NOW(), confirmed_by = $2 WHERE id = $1`,
+      [id, req.user?.id || null]
+    );
 
     // 3️⃣ Recalcular pagos (centralizado: pago_online_tn + comprobantes + efectivo)
     const pagoResult = await recalcularPagos(client, comprobante.order_number);
@@ -5010,9 +5013,9 @@ app.get('/confirmar/:id', async (req, res) => {
       return res.send('Este comprobante ya fue procesado.');
     }
 
-    // 2️⃣ Confirmar comprobante
+    // 2️⃣ Confirmar comprobante (confirmed_at para auditoría; link público → sin user)
     await client.query(
-      `UPDATE comprobantes SET estado = 'confirmado' WHERE id = $1`,
+      `UPDATE comprobantes SET estado = 'confirmado', confirmed_at = NOW() WHERE id = $1`,
       [id]
     );
 
