@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/layout';
-import { Dashboard, RealOrders, RealOrderDetail, RealReceipts, RealReceiptDetail, AdminUsers, Financieras, ShippingForm, ShippingDocuments, ComprobantesForm, IntegrationSettings } from './pages';
+import { Dashboard, RealOrders, RealOrderDetail, RealReceipts, RealReceiptDetail, AdminUsers, Financieras, ShippingForm, ShippingDocuments, ComprobantesForm, IntegrationSettings, TransportesRanking } from './pages';
 import Customers from './pages/Customers';
 import ActivityLog from './pages/ActivityLog';
 import SyncQueue from './pages/SyncQueue';
@@ -49,6 +49,7 @@ function AppRoutes() {
             <Route path="/receipts/admin-bank" element={<AdminBankPanel />} />
             <Route path="/receipts/:id" element={<RealReceiptDetail />} />
             <Route path="/remitos" element={<ShippingDocuments />} />
+            <Route path="/transportes-ranking" element={<TransportesRanking />} />
             <Route path="/customers" element={<Customers />} />
             <Route path="/admin/users" element={<AdminUsers />} />
             <Route path="/admin/activity" element={<ActivityLog />} />

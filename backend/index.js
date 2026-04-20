@@ -6367,6 +6367,143 @@ app.post('/shipping-data/bulk', authenticate, async (req, res) => {
 });
 
 /**
+ * GET /shipping-data/ranking
+ * Ranking de transportes/expresos por provincia combinando:
+ *   - shipping_requests (formulario actual, tabla operacional)
+ *   - shipping_requests_historico (datos importados desde Google Sheets)
+ *
+ * Normalización:
+ *   - UPPER + TRIM + colapso de espacios
+ *   - Acentos quitados vía TRANSLATE (sin depender de unaccent)
+ *
+ * Exclusiones (matching laxo sobre nombre normalizado, sin acentos):
+ *   - Andreani / Andriani
+ *   - Correo Argentino
+ *
+ * Query param opcional: ?provincia=<nombre>
+ */
+app.get('/shipping-data/ranking', authenticate, async (req, res) => {
+  try {
+    const provincia = (req.query.provincia || '').trim();
+
+    // Expresiones SQL reutilizables
+    // norm(text) = UPPER(TRIM(sin acentos, espacios colapsados))
+    const normExpr = (col) => `
+      REGEXP_REPLACE(
+        UPPER(TRIM(
+          TRANSLATE(COALESCE(${col}, ''), 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')
+        )),
+        '\\s+', ' ', 'g'
+      )
+    `;
+
+    // Mapeo de alias de provincias. Unifica typos/abreviaturas al nombre canónico.
+    // CABA se mantiene separado de Buenos Aires.
+    const provinciaCanonicaExpr = (normalizedCol) => `
+      CASE
+        WHEN ${normalizedCol} IN (
+          'BUENOS AIRES','BS AS','BSAS','BS.AS','BA AS',
+          'PCIA. BUENOS AIRES','PROVINCIA DE BUENOS AIRES',
+          'BUE2NOS AIRESA','BUENOA AIRES','BUENAS AIRES','BUENO AIRES','BUENOD AIRES','BUE','BUENO'
+        ) THEN 'BUENOS AIRES'
+        WHEN ${normalizedCol} IN ('CABA','CIUDAD AUTONOMA DE BUENOS AIRES') THEN 'CABA'
+        WHEN ${normalizedCol} IN ('SANTA FE','SANTAFE','STA FE','LA CAPITAL - SANTA FE') THEN 'SANTA FE'
+        WHEN ${normalizedCol} IN ('CORDOBA','CORDO1BWA2') THEN 'CORDOBA'
+        WHEN ${normalizedCol} IN ('MISIONES','MUSIONES') THEN 'MISIONES'
+        WHEN ${normalizedCol} IN ('NEUQUEN','NEUQUEN CAPITAL') THEN 'NEUQUEN'
+        WHEN ${normalizedCol} IN ('TIERRA DEL FUEGO','TIERRA DEL FUEGA') THEN 'TIERRA DEL FUEGO'
+        WHEN ${normalizedCol} IN ('SAN LUIS','SA LUIS') THEN 'SAN LUIS'
+        WHEN ${normalizedCol} IN ('LA PAMPA','LAPAMPA','LA PAMPA PROVINCE') THEN 'LA PAMPA'
+        WHEN ${normalizedCol} IN ('LA RIOJA','LA RIOJA CAPITAL') THEN 'LA RIOJA'
+        WHEN ${normalizedCol} IN ('SANTIAGO DEL ESTERO','SGO DEL ESTERO') THEN 'SANTIAGO DEL ESTERO'
+        WHEN ${normalizedCol} IN ('RIO NEGRO','RIO NEGRO ATRIEL') THEN 'RIO NEGRO'
+        ELSE ${normalizedCol}
+      END
+    `;
+
+    // Provincias que se descartan por ser basura / no identificables
+    const descartarProvincia = `('XSXSXS','343434','BLA','ARA VERA','SANTA','DANTE FE','BUENOD AIRES')`;
+
+    const params = [];
+    let whereProvincia = '';
+    if (provincia) {
+      params.push(provincia);
+      whereProvincia = `AND ${provinciaCanonicaExpr(normExpr('provincia'))} = ${provinciaCanonicaExpr(normExpr(`$${params.length}`))}`;
+    }
+
+    const sql = `
+      WITH base AS (
+        SELECT
+          ${provinciaCanonicaExpr(normExpr('provincia'))} AS provincia,
+          CASE
+            WHEN empresa_envio = 'VIA_CARGO' THEN 'VIA CARGO'
+            ELSE ${normExpr('empresa_envio_otro')}
+          END AS transporte
+        FROM shipping_requests
+        WHERE provincia IS NOT NULL AND TRIM(provincia) <> ''
+          ${whereProvincia}
+
+        UNION ALL
+
+        SELECT
+          ${provinciaCanonicaExpr(normExpr('provincia'))} AS provincia,
+          ${normExpr('empresa_envio_raw')} AS transporte
+        FROM shipping_requests_historico
+        WHERE provincia IS NOT NULL AND TRIM(provincia) <> ''
+          ${whereProvincia}
+      ),
+      filtered AS (
+        SELECT *
+        FROM base
+        WHERE transporte <> ''
+          AND provincia NOT IN ${descartarProvincia}
+          AND transporte NOT LIKE '%ANDREANI%'
+          AND transporte NOT LIKE '%ANDRIANI%'
+          AND transporte NOT LIKE '%CORREO ARGENTINO%'
+          AND transporte NOT LIKE '%CORREO_ARGENTINO%'
+      )
+      SELECT provincia, transporte, COUNT(*)::int AS cantidad
+      FROM filtered
+      GROUP BY provincia, transporte
+      ORDER BY provincia ASC, cantidad DESC, transporte ASC
+    `;
+
+    const result = await pool.query(sql, params);
+
+    const porProvincia = {};
+    for (const row of result.rows) {
+      if (!porProvincia[row.provincia]) porProvincia[row.provincia] = [];
+      porProvincia[row.provincia].push({
+        transporte: row.transporte,
+        cantidad: row.cantidad
+      });
+    }
+
+    const provinciasRes = await pool.query(`
+      SELECT DISTINCT ${provinciaCanonicaExpr(normExpr('provincia'))} AS provincia
+      FROM (
+        SELECT provincia FROM shipping_requests
+        UNION ALL
+        SELECT provincia FROM shipping_requests_historico
+      ) x
+      WHERE provincia IS NOT NULL AND TRIM(provincia) <> ''
+        AND ${provinciaCanonicaExpr(normExpr('provincia'))} NOT IN ${descartarProvincia}
+      ORDER BY provincia ASC
+    `);
+
+    res.json({
+      ok: true,
+      provincias: provinciasRes.rows.map(r => r.provincia),
+      ranking: porProvincia
+    });
+
+  } catch (error) {
+    console.error('❌ GET /shipping-data/ranking error:', error.message);
+    res.status(500).json({ error: 'Error al calcular ranking de transportes' });
+  }
+});
+
+/**
  * GET /orders/:orderNumber/shipping-request
  * Obtener datos de envío para un pedido (si existen)
  */

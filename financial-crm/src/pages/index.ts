@@ -15,3 +15,4 @@ export { AiBotHistory } from './AiBotHistory';
 export { AiBotPromptEditor } from './AiBotPromptEditor';
 export { default as WhatsAppActions } from './WhatsAppActions';
 export { AdminBankPanel } from './AdminBankPanel';
+export { TransportesRanking } from './TransportesRanking';
