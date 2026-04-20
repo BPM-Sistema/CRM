@@ -65,7 +65,7 @@ export function TransportesRanking() {
 
   const mensajeParaCliente = (provincia: string, filas: TransporteRow[]): string => {
     const top = filas.slice(0, 10).map(f => `• ${f.transporte}`).join('\n');
-    return `¡Mira! Tenemos estos expresos y transportes que recopilamos de pedidos de clientes de tu ${provincia}. Los más elegidos son:\n\n${top}\n\nSi querés, podés elegir uno de estos y nosotros se lo entregamos sin problemas!`;
+    return `¡Mira! Tenemos estos expresos y transportes que recopilamos de pedidos de clientes de ${provincia}. Los más elegidos son:\n\n${top}\n\nSi querés, podés elegir uno de estos y nosotros se lo entregamos sin problemas!`;
   };
 
   const copiarMensaje = async (provincia: string, filas: TransporteRow[]) => {
