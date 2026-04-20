@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Truck, Search } from 'lucide-react';
+import { Truck, Search, Copy, Check } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Card } from '../components/ui';
 import { authFetch } from '../services/api';
@@ -23,6 +23,7 @@ export function TransportesRanking() {
   const [error, setError] = useState<string | null>(null);
   const [provinciaSel, setProvinciaSel] = useState<string>('');
   const [search, setSearch] = useState('');
+  const [copiadoProv, setCopiadoProv] = useState<string | null>(null);
 
   useEffect(() => {
     const run = async () => {
@@ -61,6 +62,21 @@ export function TransportesRanking() {
 
   const totalProvincia = (filas: TransporteRow[]) =>
     filas.reduce((sum, f) => sum + f.cantidad, 0);
+
+  const mensajeParaCliente = (provincia: string, filas: TransporteRow[]): string => {
+    const top = filas.slice(0, 10).map(f => `• ${f.transporte}`).join('\n');
+    return `¡Mira! Tenemos estos expresos y transportes que recopilamos de pedidos de clientes de tu ${provincia}. Los más elegidos son:\n\n${top}\n\nSi querés, podés elegir uno de estos y nosotros se lo entregamos sin problemas!`;
+  };
+
+  const copiarMensaje = async (provincia: string, filas: TransporteRow[]) => {
+    try {
+      await navigator.clipboard.writeText(mensajeParaCliente(provincia, filas));
+      setCopiadoProv(provincia);
+      setTimeout(() => setCopiadoProv(prev => (prev === provincia ? null : prev)), 2000);
+    } catch {
+      alert('No se pudo copiar al portapapeles');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -127,14 +143,33 @@ export function TransportesRanking() {
 
         {!loading && !error && rankingFiltrado.map(({ provincia, filas }) => (
           <Card key={provincia} padding="none">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-100">
-              <div className="flex items-center gap-2">
-                <Truck size={18} className="text-neutral-500" />
-                <h3 className="font-semibold text-neutral-900">{provincia}</h3>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-100 gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <Truck size={18} className="text-neutral-500 flex-shrink-0" />
+                <h3 className="font-semibold text-neutral-900 truncate">{provincia}</h3>
               </div>
-              <span className="text-xs text-neutral-500">
-                {totalProvincia(filas)} envíos · {filas.length} transportes
-              </span>
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <span className="hidden md:inline text-xs text-neutral-500">
+                  {totalProvincia(filas)} envíos · {filas.length} transportes
+                </span>
+                {filas.length > 0 && (
+                  <button
+                    onClick={() => copiarMensaje(provincia, filas)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      copiadoProv === provincia
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-neutral-900 text-white hover:bg-neutral-800'
+                    }`}
+                    title="Copiar mensaje para cliente"
+                  >
+                    {copiadoProv === provincia ? (
+                      <><Check size={14} /> Copiado</>
+                    ) : (
+                      <><Copy size={14} /> Copiar mensaje</>
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
             {filas.length === 0 ? (
               <div className="px-5 py-4 text-sm text-neutral-500">
