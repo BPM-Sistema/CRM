@@ -6508,6 +6508,7 @@ app.get('/shipping-data/ranking', authenticate, async (req, res) => {
           AND transporte NOT LIKE '%ANDRIANI%'
           AND transporte NOT LIKE '%CORREO ARGENTINO%'
           AND transporte NOT LIKE '%CORREO_ARGENTINO%'
+          AND transporte NOT LIKE '%@%'  -- descarta emails mal ingresados
       )
       SELECT provincia, transporte, COUNT(*)::int AS cantidad
       FROM filtered
