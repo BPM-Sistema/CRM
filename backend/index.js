@@ -3542,15 +3542,14 @@ app.post('/webhook/botmaker-status', async (req, res) => {
 
           log.error({ intentTxId, errorMsg, contactId }, 'WhatsApp delivery failed');
 
-          // Loguear el fallo
-          await pool.query(`
-            INSERT INTO logs (order_number, accion, detalle, created_at)
-            VALUES ($1, $2, $3, NOW())
-          `, [
-            msg.order_number || 0,
-            'whatsapp_failed',
-            JSON.stringify({ template: msg.template, contactId, error: errorMsg, intentTxId })
-          ]);
+          // Loguear el fallo en `logs` para que aparezca en /admin/activity y en la
+          // actividad del pedido. INSERT directo previo intentaba escribir en una
+          // columna `detalle` que no existe; usamos logEvento (patrón del resto del file).
+          await logEvento({
+            orderNumber: msg.order_number ? String(msg.order_number) : null,
+            accion: `whatsapp_failed: ${msg.template || 'unknown'} — ${errorMsg}`,
+            origen: 'webhook_botmaker'
+          });
 
           // No retry automático - el mensaje podría haberse entregado
           // Los fallos quedan logueados para revisión manual en tabla logs
