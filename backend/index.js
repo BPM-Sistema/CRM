@@ -3749,23 +3749,23 @@ app.post('/webhook/tiendanube', async (req, res) => {
           return;
         }
         // TN ya no dice cancelado → reabrir el pedido.
-        // Invariante a_imprimir: solo si el pago lo habilita. Si no, queda en pendiente_pago
-        // y el flujo de pagos lo subirá a a_imprimir cuando corresponda.
+        // 1) Si estado_pago quedó en 'anulado' por la cancelación, volverlo a 'pendiente'
+        //    para que recalcularPagos no lo bypasee (el bypass protege estados especiales).
+        // 2) Recalcular pagos con comprobantes/efectivo/pago_online_tn existentes.
+        // 3) El estado_pedido lo resuelve recalcularPagos vía calcularEstadoPedido.
         log.info({ orderNumber: String(pedido.number), tnStatus: pedido.status }, 'Reopening cancelled order — TN no longer cancelled');
-        const reopenRes = await pool.query(
+        await pool.query(
           `UPDATE orders_validated
-           SET estado_pedido = CASE
-                 WHEN estado_pago IN ('a_confirmar','confirmado_parcial','confirmado_total','a_favor') THEN 'a_imprimir'
-                 ELSE 'pendiente_pago'
-               END,
+           SET estado_pago = CASE WHEN estado_pago = 'anulado' THEN 'pendiente' ELSE estado_pago END,
                updated_at = NOW()
-           WHERE order_number = $1
-           RETURNING estado_pedido`,
+           WHERE order_number = $1`,
           [String(pedido.number)]
         );
-        const nuevoEstado = reopenRes.rows[0]?.estado_pedido || 'pendiente_pago';
+        const recalc = await recalcularPagos(pool, String(pedido.number));
+        const nuevoEstado = recalc.estadoPedido || 'pendiente_pago';
         await logEvento({ orderNumber: String(pedido.number), accion: `Pedido reabierto desde TN (${nuevoEstado})`, origen: 'webhook_tiendanube' });
         db.estado_pedido = nuevoEstado;
+        db.estado_pago = recalc.estadoPago;
       }
 
       // Valores nuevos de Tiendanube
