@@ -118,7 +118,14 @@ router.post('/imports/preview', authenticate, requirePermission('bank.view'), as
     }
 
     const parsed = movimientos.map(parseMovimiento);
-    const incoming = parsed.filter(m => m.is_incoming);
+    const incomingAll = parsed.filter(m => m.is_incoming);
+
+    const ignoredRes = await pool.query(
+      `SELECT movement_uid FROM bank_movements_ignored`
+    );
+    const ignoredSet = new Set(ignoredRes.rows.map(r => r.movement_uid));
+    const incoming = incomingAll.filter(m => !ignoredSet.has(m.movement_uid));
+    const ignoredCount = incomingAll.length - incoming.length;
 
     // Check duplicates against existing fingerprints
     const fingerprints = incoming.map(m => generateFingerprint(m));
@@ -144,10 +151,11 @@ router.post('/imports/preview', authenticate, requirePermission('bank.view'), as
       ok: true,
       summary: {
         total_rows: movimientos.length,
-        total_incoming: incoming.length,
+        total_incoming: incomingAll.length,
         total_new: newCount,
         total_duplicated: dupCount,
-        total_outgoing: movimientos.length - incoming.length,
+        total_ignored: ignoredCount,
+        total_outgoing: movimientos.length - incomingAll.length,
       },
       movements: preview,
     });
@@ -171,7 +179,14 @@ router.post('/imports/apply', authenticate, requirePermission('bank.view'), asyn
     await client.query('BEGIN');
 
     const parsed = movimientos.map(parseMovimiento);
-    const incoming = parsed.filter(m => m.is_incoming);
+    const incomingAll = parsed.filter(m => m.is_incoming);
+
+    const ignoredRes = await client.query(
+      `SELECT movement_uid FROM bank_movements_ignored`
+    );
+    const ignoredSet = new Set(ignoredRes.rows.map(r => r.movement_uid));
+    const incoming = incomingAll.filter(m => !ignoredSet.has(m.movement_uid));
+    const ignoredCount = incomingAll.length - incoming.length;
 
     // Create import record
     const importRes = await client.query(
@@ -261,9 +276,10 @@ router.post('/imports/apply', authenticate, requirePermission('bank.view'), asyn
       import_id: importId,
       summary: {
         total_rows: movimientos.length,
-        total_incoming: incoming.length,
+        total_incoming: incomingAll.length,
         total_inserted: inserted,
         total_duplicated: duplicated,
+        total_ignored: ignoredCount,
         total_assigned: assigned,
         total_unassigned: unassigned,
         total_review: review,

@@ -106,11 +106,22 @@ async function importMovimientos(movimientos, userId, resolvedMatches) {
 
     const CUTOFF = '2026-04-06T15:11:00';
     const parsed = movimientos.map(parseMovimiento);
-    const incoming = parsed.filter(m => m.is_incoming && m.posted_at >= CUTOFF);
+    let incoming = parsed.filter(m => m.is_incoming && m.posted_at >= CUTOFF);
 
     if (incoming.length === 0) {
       await client.query('ROLLBACK');
       return { inserted: 0, duplicated: 0 };
+    }
+
+    const ignoredRes = await client.query(
+      `SELECT movement_uid FROM bank_movements_ignored`
+    );
+    const ignoredSet = new Set(ignoredRes.rows.map(r => r.movement_uid));
+    let ignored = 0;
+    if (ignoredSet.size > 0) {
+      const before = incoming.length;
+      incoming = incoming.filter(m => !ignoredSet.has(m.movement_uid));
+      ignored = before - incoming.length;
     }
 
     // Indexar matches resueltos por banco_id para lookup rápido
@@ -226,11 +237,11 @@ async function importMovimientos(movimientos, userId, resolvedMatches) {
       [inserted, duplicated, importId]
     );
     await client.query('COMMIT');
-    return { inserted, duplicated, updated };
+    return { inserted, duplicated, updated, ignored };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('importMovimientos error:', err.message);
-    return { inserted: 0, duplicated: 0, updated: 0, error: err.message };
+    return { inserted: 0, duplicated: 0, updated: 0, ignored: 0, error: err.message };
   } finally {
     client.release();
   }
