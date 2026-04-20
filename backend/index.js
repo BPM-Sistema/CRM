@@ -7629,6 +7629,24 @@ app.post('/orders/:orderNumber/tracking-codes/:id/resend-whatsapp', authenticate
    WHATSAPP ACCIONES - Envío masivo de plantillas
 ===================================================== */
 
+// Templates que piden datos extra (monto, códigos, etc) que bulk-send no puede armar
+const BULK_SEND_UNSUPPORTED = new Set([
+  'comprobante_confirmado',
+  'partial_paid',
+  'pedido_cancelado',
+  'enviado_env_nube',
+  'envio_extra',
+]);
+
+function buildBulkVariables(template, order) {
+  if (template === 'abre_chat') return {};
+  if (BULK_SEND_UNSUPPORTED.has(template)) return null;
+  return {
+    '1': order.customer_name || 'Cliente',
+    '2': String(order.order_number),
+  };
+}
+
 /**
  * POST /whatsapp/bulk-send
  * Enviar plantilla de WhatsApp a múltiples pedidos
@@ -7681,11 +7699,21 @@ app.post('/whatsapp/bulk-send', authenticate, requirePermission('whatsapp.send_b
           continue;
         }
 
+        const variables = buildBulkVariables(template, order);
+        if (variables === null) {
+          results.skipped.push({
+            orderNumber: cleanOrderNumber,
+            reason: `Template '${template}' requiere datos extra (monto/códigos) y no puede enviarse desde envío masivo`,
+            customerName: order.customer_name
+          });
+          continue;
+        }
+
         // Enviar WhatsApp
         const response = await enviarWhatsAppPlantilla({
           telefono: phone,
           plantilla: template,
-          variables: { '1': cleanOrderNumber },
+          variables,
           orderNumber: cleanOrderNumber
         });
 
