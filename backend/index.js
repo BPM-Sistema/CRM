@@ -1844,6 +1844,42 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
       const horaBanco = mov['Fecha/Hora'].split(' ')[1] || '';
       const nombreOrigen = (mov['Nombre Destino'] || '').trim();
 
+      // Pre-check: movimiento ya pre-vinculado a un comprobante pendiente (auto-match previo con ±2 días).
+      // Si el comprobante sigue pendiente/a_confirmar, ofrecerlo como match exacto para que "Aplicar" lo confirme.
+      if (mov.ID) {
+        const prelinkRes = await pool.query(
+          `SELECT c.id, c.order_number, c.monto, c.numero_operacion, c.created_at,
+                  ov.customer_name, ov.monto_tiendanube
+           FROM bank_movements bm
+           JOIN comprobantes c ON c.id = bm.linked_comprobante_id
+           LEFT JOIN orders_validated ov ON ov.order_number = c.order_number
+           WHERE bm.movement_uid = $1
+             AND bm.assignment_status IN ('matched','review')
+             AND c.estado IN ('pendiente','a_confirmar')
+           LIMIT 1`,
+          [mov.ID]
+        );
+        const prelink = prelinkRes.rows[0];
+        if (prelink && !usedComprobanteIds.has(prelink.id)) {
+          usedComprobanteIds.add(prelink.id);
+          matched.push({
+            banco_id: mov.ID,
+            comprobante_id: prelink.id,
+            order_number: prelink.order_number,
+            monto: importe,
+            monto_pedido: prelink.monto_tiendanube || null,
+            nombre_banco: nombreOrigen,
+            nombre_cliente: prelink.customer_name || '',
+            fecha_banco: fechaBanco,
+            hora_banco: horaBanco,
+            fecha_comprobante: prelink.created_at,
+            numero_operacion: prelink.numero_operacion || null,
+            tipo: 'exacto'
+          });
+          continue;
+        }
+      }
+
       // Buscar comprobante pendiente con monto ±1 (tolerancia redondeo) y misma fecha
       const compRes = await pool.query(
         `SELECT c.id, c.order_number, c.monto, c.estado, c.created_at, c.numero_operacion,
