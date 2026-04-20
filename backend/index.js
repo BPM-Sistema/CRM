@@ -6433,6 +6433,17 @@ app.get('/shipping-data/ranking', authenticate, async (req, res) => {
       )
     `;
 
+    // Quita prefijos comunes del nombre de transporte para agrupar
+    // "PRIVITERA" y "TRANSPORTE PRIVITERA" como el mismo.
+    // OJO: NO se quita "CORREO " porque el filtro de exclusión usa "CORREO ARGENTINO".
+    const stripPrefijoTransporte = (expr) => `
+      REGEXP_REPLACE(
+        ${expr},
+        '^(TRANSPORTE |EXPRESO |EMPRESA )+',
+        ''
+      )
+    `;
+
     // Mapeo de alias de provincias. Unifica typos/abreviaturas al nombre canónico.
     // CABA se mantiene separado de Buenos Aires.
     const provinciaCanonicaExpr = (normalizedCol) => `
@@ -6473,7 +6484,7 @@ app.get('/shipping-data/ranking', authenticate, async (req, res) => {
           ${provinciaCanonicaExpr(normExpr('provincia'))} AS provincia,
           CASE
             WHEN empresa_envio = 'VIA_CARGO' THEN 'VIA CARGO'
-            ELSE ${normExpr('empresa_envio_otro')}
+            ELSE ${stripPrefijoTransporte(normExpr('empresa_envio_otro'))}
           END AS transporte
         FROM shipping_requests
         WHERE provincia IS NOT NULL AND TRIM(provincia) <> ''
@@ -6483,7 +6494,7 @@ app.get('/shipping-data/ranking', authenticate, async (req, res) => {
 
         SELECT
           ${provinciaCanonicaExpr(normExpr('provincia'))} AS provincia,
-          ${normExpr('empresa_envio_raw')} AS transporte
+          ${stripPrefijoTransporte(normExpr('empresa_envio_raw'))} AS transporte
         FROM shipping_requests_historico
         WHERE provincia IS NOT NULL AND TRIM(provincia) <> ''
           ${whereProvincia}
