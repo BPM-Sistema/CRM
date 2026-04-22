@@ -1,20 +1,16 @@
 /**
- * BPM — Stock Alerts Snippet (Tiendanube)
+ * BPM — Stock Alerts Snippet (Tiendanube theme "Recife")
  *
- * Inyecta:
- *  - En listado de productos: badge "Sin stock — Avisarme" si producto sin stock
- *  - En detalle de producto: bloque con input teléfono + botón "Avisarme por WhatsApp"
- *    (detecta la variante seleccionada actualmente)
+ * Fase 1: solo captura de intención. No envía mensajes todavía.
  *
- * Fase 1: solo captura de intención. No envía mensajes.
+ * Detecta:
+ *   - Página de detalle: <form id="product_form"> con <input name="add_to_cart" value="{product.id}">
+ *   - Botón "Sin stock": <input data-store="product-buy-button" class="... nostock" disabled>
+ *   - Variante seleccionada: selects <select class="js-variation-option"> + botones .js-insta-variant.selected
  *
- * Cómo integrarlo en el theme de Tiendanube:
- *   Agregar en el layout principal (por ej. antes de </body>):
- *     <script src="https://api.bpmadministrador.com/stock-alerts-snippet.js" defer></script>
- *
- * Requiere que el theme exponga data-attrs estándar de TN en los botones "Comprar"
- * y en los elementos de producto de listado. Ver función `findContext()` para los
- * selectores usados.
+ * Integración:
+ *   <script src="https://api.bpmadministrador.com/stock-alerts-snippet.js" defer></script>
+ *   (se carga desde layout.tpl, corre en todas las páginas, se auto-desactiva donde no aplica)
  */
 (function () {
   'use strict';
@@ -29,16 +25,16 @@
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
     var css = [
-      '.bpm-sa-badge{display:inline-block;padding:4px 10px;background:#fee;color:#c00;border-radius:999px;font-size:12px;font-weight:600;margin-top:6px;}',
-      '.bpm-sa-box{margin:16px 0;padding:16px;border:1px solid #e5e5e5;border-radius:10px;background:#fafafa;font-family:inherit;}',
-      '.bpm-sa-box h4{margin:0 0 6px;font-size:15px;font-weight:700;color:#222;}',
-      '.bpm-sa-box p{margin:0 0 12px;font-size:13px;color:#555;}',
-      '.bpm-sa-row{display:flex;gap:8px;flex-wrap:wrap;}',
-      '.bpm-sa-row input{flex:1;min-width:180px;padding:11px 12px;border:1px solid #ccc;border-radius:8px;font-size:15px;outline:none;}',
+      '.bpm-sa-box{margin:16px 0;padding:16px;border:1px solid #e5e5e5;border-radius:10px;background:#fafafa;font-family:inherit;color:#222;}',
+      '.bpm-sa-box h4{margin:0 0 6px;font-size:15px;font-weight:700;color:#222;line-height:1.3;}',
+      '.bpm-sa-box p{margin:0 0 12px;font-size:13px;color:#555;line-height:1.4;}',
+      '.bpm-sa-row{display:flex;gap:8px;flex-wrap:wrap;align-items:stretch;}',
+      '.bpm-sa-row input{flex:1 1 180px;min-width:0;padding:11px 12px;border:1px solid #ccc;border-radius:8px;font-size:15px;outline:none;background:#fff;color:#222;box-sizing:border-box;}',
       '.bpm-sa-row input:focus{border-color:#25D366;}',
       '.bpm-sa-row button{padding:11px 18px;background:#25D366;color:#fff;border:0;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;}',
+      '.bpm-sa-row button:hover{background:#1ebe5d;}',
       '.bpm-sa-row button:disabled{opacity:.6;cursor:not-allowed;}',
-      '.bpm-sa-msg{margin-top:10px;font-size:13px;}',
+      '.bpm-sa-msg{margin-top:10px;font-size:13px;line-height:1.4;}',
       '.bpm-sa-msg.ok{color:#0a7a2b;}',
       '.bpm-sa-msg.err{color:#c00;}',
     ].join('');
@@ -77,126 +73,135 @@
   }
   function alreadySent(key) {
     var m = getSentMap();
-    // vigente 24h
     if (!m[key]) return false;
     return (Date.now() - m[key]) < 24 * 60 * 60 * 1000;
   }
 
   // =====================================================
-  // Detección de contexto (producto / variante / stock)
+  // Contexto del producto en la página de detalle (theme Recife)
   // =====================================================
-
-  /**
-   * Intenta detectar info del producto en la página de detalle.
-   * Tiendanube expone en la mayoría de themes:
-   *   - <meta property="og:url"> y og:title
-   *   - <form data-store="product-form" data-product-id="...">
-   *   - <select name="variation-{variant_attr_id}">  o botones con data-option
-   *   - <input name="variant_id" value="...">
-   *   - <span data-store="product-stock"> / data-max-stock
-   */
   function findProductContext() {
-    // 1. product_id — del form de producto
-    var form = $('form[data-store="product-form"], form.js-product-form, form[data-product-id]');
-    var productId = null;
-    if (form) {
-      productId = form.getAttribute('data-product-id')
-        || (form.querySelector('input[name="variant_id"]') && form.querySelector('input[name="variant_id"]').getAttribute('data-product-id'))
-        || null;
-    }
-    // Fallback: LD+JSON
+    // Form exclusivo de la página de detalle: <form id="product_form" class="js-product-form" data-store="product-form-{id}">
+    var form = document.getElementById('product_form');
+    if (!form || !form.classList.contains('js-product-form')) return null;
+
+    // product_id — siempre está en <input name="add_to_cart">
+    var addInput = form.querySelector('input[name="add_to_cart"]');
+    var productId = addInput ? String(addInput.value || '').trim() : null;
     if (!productId) {
-      var ld = $('script[type="application/ld+json"]');
-      if (ld) {
-        try {
-          var j = JSON.parse(ld.textContent);
-          if (j && j.productID) productId = String(j.productID);
-          else if (j && j['@type'] === 'Product' && j.sku) productId = String(j.sku);
-        } catch (e) {}
-      }
+      // Fallback: parsear data-store="product-form-{id}"
+      var ds = form.getAttribute('data-store') || '';
+      var m = ds.match(/product-form-(\d+)/);
+      if (m) productId = m[1];
     }
     if (!productId) return null;
 
-    // 2. variant_id actualmente seleccionada
-    var variantInput = form && form.querySelector('input[name="variant_id"]');
-    var variantId = variantInput ? variantInput.value : null;
-
-    // 3. nombres
-    var productName = null;
-    var titleEl = $('[data-store="product-title"], .js-product-name, h1.product-title, h1');
-    if (titleEl) productName = titleEl.textContent.trim();
-    if (!productName) {
-      var ogt = $('meta[property="og:title"]');
-      if (ogt) productName = ogt.getAttribute('content');
+    // Sin stock — input[data-store="product-buy-button"] con clase nostock o disabled
+    var buyBtn = form.querySelector('input[data-store="product-buy-button"], input.js-addtocart');
+    var outOfStock = false;
+    if (buyBtn) {
+      if (buyBtn.disabled === true || buyBtn.getAttribute('disabled') !== null) outOfStock = true;
+      if (buyBtn.classList.contains('nostock')) outOfStock = true;
+      var val = String(buyBtn.value || '').toLowerCase();
+      if (/sin\s*stock|agotado|sold.?out|no\s*disponible/.test(val)) outOfStock = true;
     }
 
-    // nombre de variante: concatenación de los selects / opciones activas
+    // Nombre del producto
+    var productName = null;
+    var h1 = document.querySelector('h1');
+    if (h1 && h1.textContent) productName = h1.textContent.trim();
+    if (!productName) {
+      var og = document.querySelector('meta[property="og:title"]');
+      if (og) productName = og.getAttribute('content');
+    }
+
+    // Variante seleccionada: concatena nombres de opciones activas
     var variantName = '';
-    var selects = form ? $$('select[name^="variation"]', form) : [];
-    selects.forEach(function (sel) {
-      if (sel.value && sel.options[sel.selectedIndex]) {
-        variantName += (variantName ? ' / ' : '') + sel.options[sel.selectedIndex].text.trim();
+    // 1) Selects clásicos
+    $$('select.js-variation-option, select[name^="variation"]', form).forEach(function (sel) {
+      var opt = sel.options && sel.options[sel.selectedIndex];
+      if (opt && opt.text) {
+        var t = opt.text.trim();
+        if (t) variantName += (variantName ? ' / ' : '') + t;
       }
     });
-    // Themes con botones
-    if (!variantName && form) {
-      var selBtns = $$('.js-variation-option-active, [data-option][aria-checked="true"], .is-active[data-option]', form);
-      selBtns.forEach(function (b) {
-        var t = b.textContent.trim();
+    // 2) Botones bullet / color (fallback si no hay selects visibles)
+    if (!variantName) {
+      $$('.js-insta-variant.selected', form).forEach(function (btn) {
+        var inner = btn.querySelector('[data-name]');
+        var t = (inner && inner.getAttribute('data-name')) || btn.getAttribute('title') || btn.textContent || '';
+        t = t.trim();
+        if (t) variantName += (variantName ? ' / ' : '') + t;
+      });
+    }
+    // 3) Label js-insta-variation-label
+    if (!variantName) {
+      $$('strong.js-insta-variation-label', form).forEach(function (el) {
+        var t = (el.textContent || '').trim();
         if (t) variantName += (variantName ? ' / ' : '') + t;
       });
     }
 
-    // 4. stock — detectar "sin stock"
-    var outOfStock = false;
-    // Caso 1: botón de compra deshabilitado con texto "sin stock"
-    var buyBtn = $('[data-store="product-buy-button"], .js-addtocart, button.btn-comprar, button[name="add-to-cart"]');
-    if (buyBtn) {
-      var txt = (buyBtn.textContent || '').toLowerCase();
-      if (buyBtn.disabled || /sin stock|agotado|sold.?out|no disponible/.test(txt)) {
-        outOfStock = true;
-      }
-    }
-    // Caso 2: elemento con data-store="product-stock" con texto "sin stock"
-    var stockEl = $('[data-store="product-stock"], .js-product-stock');
-    if (stockEl) {
-      var stxt = (stockEl.textContent || '').toLowerCase();
-      if (/sin stock|agotado|sold.?out/.test(stxt)) outOfStock = true;
-      // data-max-stock = 0
-      var max = stockEl.getAttribute('data-max-stock');
-      if (max !== null && Number(max) === 0) outOfStock = true;
-    }
-    // Caso 3: mensaje de no-stock explícito
-    if (!outOfStock) {
-      var noStock = $('.js-product-no-stock:not([style*="display: none"]), [data-store="out-of-stock"]:not([style*="display: none"])');
-      if (noStock && noStock.offsetParent !== null) outOfStock = true;
-    }
+    // variant_id: este theme no expone el variant_id actual como input hidden de forma confiable.
+    // Intentamos resolverlo usando product.variants_object si está disponible en algún contenedor.
+    var variantId = resolveVariantId(form, productId);
 
     return {
-      productId: String(productId),
-      variantId: variantId ? String(variantId) : null,
+      productId: productId,
+      variantId: variantId,
       productName: productName || null,
       variantName: variantName || null,
       outOfStock: outOfStock,
     };
   }
 
+  function resolveVariantId(form, productId) {
+    // 1) data-variants JSON en contenedor de quickshop (a veces presente también en detalle)
+    var container = document.querySelector('[data-variants][data-quickshop-id]');
+    var variantsJson = null;
+    if (container) {
+      try { variantsJson = JSON.parse(container.getAttribute('data-variants')); } catch (e) {}
+    }
+
+    // 2) Opciones actualmente seleccionadas (option IDs)
+    var selectedOptionIds = [];
+    $$('select.js-variation-option, select[name^="variation"]', form).forEach(function (sel) {
+      if (sel.value) selectedOptionIds.push(String(sel.value));
+    });
+    $$('.js-insta-variant.selected', form).forEach(function (btn) {
+      var id = btn.getAttribute('data-option');
+      if (id) selectedOptionIds.push(String(id));
+    });
+
+    if (!variantsJson || !Array.isArray(variantsJson) || selectedOptionIds.length === 0) return null;
+
+    // Match: variant cuyas values (option1/option2/option3) matchean todas las seleccionadas
+    for (var i = 0; i < variantsJson.length; i++) {
+      var v = variantsJson[i];
+      var opts = [v.option1, v.option2, v.option3].filter(function (x) { return x != null; }).map(String);
+      var allMatch = selectedOptionIds.every(function (s) { return opts.indexOf(String(s)) !== -1; });
+      if (allMatch) return String(v.id);
+    }
+    return null;
+  }
+
   // =====================================================
-  // UI — Bloque "Avisarme" en detalle de producto
+  // UI: bloque "Avisame cuando vuelva a stock" en detalle
   // =====================================================
   function renderDetailBlock(ctx) {
-    var form = $('form[data-store="product-form"], form.js-product-form, form[data-product-id]');
+    var form = document.getElementById('product_form');
     if (!form) return;
 
-    // Ya existe: actualizamos su contexto
-    var existing = $('#bpm-sa-block');
+    var existing = document.getElementById('bpm-sa-block');
+    var key = ctx.productId + ':' + (ctx.variantId || 'null');
+
     if (existing) {
+      // Actualizar contexto
       existing.setAttribute('data-product-id', ctx.productId);
       existing.setAttribute('data-variant-id', ctx.variantId || '');
       existing.setAttribute('data-product-name', ctx.productName || '');
       existing.setAttribute('data-variant-name', ctx.variantName || '');
-      // key por producto+variante
-      var key = ctx.productId + ':' + (ctx.variantId || 'null');
+      existing.style.display = '';
       if (alreadySent(key)) showSuccess(existing);
       return;
     }
@@ -219,26 +224,33 @@
       '<div id="bpm-sa-msg" class="bpm-sa-msg"></div>',
     ].join('');
 
-    // Insertar después del form de compra
-    form.parentNode.insertBefore(box, form.nextSibling);
+    // Insertar inmediatamente después del form (queda debajo del botón "Sin stock")
+    if (form.parentNode) {
+      form.parentNode.insertBefore(box, form.nextSibling);
+    }
 
-    // Si ya se envió en esta sesión, mostrar éxito directamente
-    var key2 = ctx.productId + ':' + (ctx.variantId || 'null');
-    if (alreadySent(key2)) {
+    if (alreadySent(key)) {
       showSuccess(box);
       return;
     }
 
-    $('#bpm-sa-submit', box).addEventListener('click', function () { submit(box); });
-    $('#bpm-sa-phone', box).addEventListener('keydown', function (e) {
+    var submitBtn = box.querySelector('#bpm-sa-submit');
+    var phoneInput = box.querySelector('#bpm-sa-phone');
+    submitBtn.addEventListener('click', function () { submit(box); });
+    phoneInput.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') { e.preventDefault(); submit(box); }
     });
   }
 
+  function hideDetailBlock() {
+    var existing = document.getElementById('bpm-sa-block');
+    if (existing) existing.style.display = 'none';
+  }
+
   function showSuccess(box) {
-    var row = $('.bpm-sa-row', box);
+    var row = box.querySelector('.bpm-sa-row');
     if (row) row.style.display = 'none';
-    var msg = $('#bpm-sa-msg', box);
+    var msg = box.querySelector('#bpm-sa-msg');
     if (msg) {
       msg.className = 'bpm-sa-msg ok';
       msg.textContent = '✅ Listo, te vamos a avisar apenas ingrese stock.';
@@ -246,9 +258,9 @@
   }
 
   function submit(box) {
-    var phoneInput = $('#bpm-sa-phone', box);
-    var btn = $('#bpm-sa-submit', box);
-    var msg = $('#bpm-sa-msg', box);
+    var phoneInput = box.querySelector('#bpm-sa-phone');
+    var btn = box.querySelector('#bpm-sa-submit');
+    var msg = box.querySelector('#bpm-sa-msg');
 
     var phoneRaw = phoneInput.value.trim();
     var phone = normalizePhone(phoneRaw);
@@ -260,6 +272,7 @@
     }
 
     btn.disabled = true;
+    var originalLabel = btn.textContent;
     btn.textContent = 'Enviando...';
     msg.textContent = '';
 
@@ -280,8 +293,8 @@
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
       .then(function (res) {
         btn.disabled = false;
-        btn.textContent = 'Avisarme por WhatsApp';
-        if (res.ok && res.body.success) {
+        btn.textContent = originalLabel;
+        if (res.ok && res.body && res.body.success) {
           var key = payload.product_id + ':' + (payload.variant_id || 'null');
           setSent(key);
           showSuccess(box);
@@ -292,71 +305,40 @@
       })
       .catch(function () {
         btn.disabled = false;
-        btn.textContent = 'Avisarme por WhatsApp';
+        btn.textContent = originalLabel;
         msg.className = 'bpm-sa-msg err';
         msg.textContent = 'Error de conexión. Intentá de nuevo.';
       });
   }
 
   // =====================================================
-  // Listado de productos — badge "Sin stock — Avisarme"
-  // =====================================================
-  function decorateListing() {
-    // Productos en listado con atributo sin-stock
-    var candidates = $$('.js-product-item, .product-item, [data-store="product-item"]');
-    candidates.forEach(function (el) {
-      if (el.getAttribute('data-bpm-sa-marked') === '1') return;
-
-      var buyBtn = $('[data-store="product-buy-button"], .js-addtocart', el);
-      var label = $('.js-out-of-stock, [data-store="out-of-stock"]', el);
-      var isOut = false;
-      if (buyBtn) {
-        var t = (buyBtn.textContent || '').toLowerCase();
-        if (buyBtn.disabled || /sin stock|agotado|sold.?out|no disponible/.test(t)) isOut = true;
-      }
-      if (label && label.offsetParent !== null) isOut = true;
-
-      if (!isOut) return;
-
-      var badge = document.createElement('div');
-      badge.className = 'bpm-sa-badge';
-      badge.textContent = 'Sin stock — Avisarme';
-      var title = $('.js-item-name, .product-item__name, h3, h2', el);
-      (title || el).appendChild(badge);
-      el.setAttribute('data-bpm-sa-marked', '1');
-    });
-  }
-
-  // =====================================================
-  // Observador: re-render cuando cambia variante o DOM del detalle
+  // Orquestación
   // =====================================================
   function run() {
     injectStyles();
-
-    // Detalle
     var ctx = findProductContext();
     if (ctx && ctx.outOfStock) {
       renderDetailBlock(ctx);
     } else {
-      // Si ya existe el bloque pero el producto dejó de estar sin stock, lo ocultamos
-      var existing = $('#bpm-sa-block');
-      if (existing) existing.style.display = 'none';
+      hideDetailBlock();
     }
-
-    // Listado
-    decorateListing();
   }
 
   function init() {
     run();
 
-    // Observa cambios (cambio de variante, navegación AJAX, etc.)
+    // Observa cambios (cambio de variante, ajax, re-render de precio/stock)
     var debounceId = null;
     var mo = new MutationObserver(function () {
       clearTimeout(debounceId);
       debounceId = setTimeout(run, 250);
     });
-    mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'disabled', 'value'] });
+    mo.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'disabled', 'value', 'selected'],
+    });
   }
 
   if (document.readyState === 'loading') {
