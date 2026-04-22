@@ -92,6 +92,18 @@ const leadsLimiter = rateLimit({
   skip: () => skipInTest,
 });
 
+// Stock alerts (back-in-stock): 30 submissions per hour per IP
+const stockAlertsLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 30,
+  store: createStore('stock_alerts'),
+  keyGenerator: realIp,
+  message: { error: 'Demasiadas solicitudes. Intenta de nuevo más tarde.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => skipInTest,
+});
+
 // General API: 100 requests per minute per IP
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
@@ -110,5 +122,6 @@ module.exports = {
   validationLimiter,
   shippingFormLimiter,
   leadsLimiter,
+  stockAlertsLimiter,
   apiLimiter,
 };

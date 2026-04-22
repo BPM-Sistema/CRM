@@ -5310,6 +5310,7 @@ const bankRoutes = require('./routes/bank');
 const localOrdersRoutes = require('./routes/local-orders');
 const localBoxRoutes = require('./routes/local-box');
 const localAlertsRoutes = require('./routes/local-alerts');
+const stockAlertsRoutes = require('./routes/stock-alerts');
 const { importMovimientos } = require('./services/bankImportService');
 const { matchFromComprobante, matchOnConfirm } = require('./services/bankMatchingService');
 // AI Bot routes — PAUSADO, descomentar cuando se active el bot en prod
@@ -5337,6 +5338,10 @@ app.use('/bank', bankRoutes);
 app.use('/local', localOrdersRoutes);
 app.use('/local/box-orders', localBoxRoutes);
 app.use('/local/alerts', localAlertsRoutes);
+// Stock alerts: endpoint público POST (sin auth, con rate limit) + resto autenticado
+const { stockAlertsLimiter } = require('./middleware/rateLimit');
+app.post('/stock-alerts', stockAlertsLimiter, stockAlertsRoutes.createStockAlertHandler);
+app.use('/stock-alerts', stockAlertsRoutes);
 if (aiBotRoutes) app.use('/ai-bot', aiBotRoutes);
 app.use('/admin/queues', bullBoardAuth, bullBoardAdapter.getRouter());
 

@@ -16,6 +16,7 @@ import LocalCaja from './pages/local/LocalCaja';
 import LocalCajaNew from './pages/local/LocalCajaNew';
 import LocalCajaDetail from './pages/local/LocalCajaDetail';
 import LocalAlertas from './pages/local/LocalAlertas';
+import StockAlerts from './pages/StockAlerts';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginPage } from './pages/LoginPage';
 import { getDefaultRoute } from './utils/navigation';
@@ -71,6 +72,7 @@ function AppRoutes() {
             <Route path="/local/caja/nueva" element={<LocalCajaNew />} />
             <Route path="/local/caja/:id" element={<LocalCajaDetail />} />
             <Route path="/local/alertas" element={<LocalAlertas />} />
+            <Route path="/admin/stock-alerts" element={<StockAlerts />} />
             {/* Ruta catch-all: redirige a la primera sección permitida */}
             <Route path="*" element={<DefaultRedirect />} />
           </Routes>
