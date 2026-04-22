@@ -233,7 +233,7 @@
     box.setAttribute('data-variant-name', ctx.variantName || '');
 
     box.innerHTML = [
-      '<h4>📲 Avisame cuando vuelva a stock</h4>',
+      '<h4>📲 Avisame cuando reingrese</h4>',
       '<p>Dejanos tu número de WhatsApp y te avisamos apenas ingrese.</p>',
       '<div class="bpm-sa-row">',
       '  <input id="bpm-sa-phone" type="tel" inputmode="numeric" placeholder="Ej: 11 2345 6789" autocomplete="tel" />',
@@ -356,7 +356,7 @@
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'bpm-sa-listbtn';
-      btn.innerHTML = '🔔 Avisame cuando haya stock';
+      btn.innerHTML = '🔔 Avisame cuando reingrese';
       btn.setAttribute('data-product-id', productId);
       btn.setAttribute('data-product-name', productName || '');
 
@@ -390,7 +390,7 @@
       '<div class="bpm-sa-modal-card" role="dialog" aria-modal="true">',
       '  <button type="button" class="bpm-sa-modal-close" aria-label="Cerrar">&times;</button>',
       '  <div class="bpm-sa-modal-form">',
-      '    <h4>📲 Avisame cuando vuelva</h4>',
+      '    <h4>📲 Avisame cuando reingrese</h4>',
       '    <p class="bpm-sa-modal-product"></p>',
       '    <input type="tel" inputmode="numeric" placeholder="Tu WhatsApp (ej: 11 2345 6789)" autocomplete="tel" />',
       '    <button type="button" class="bpm-sa-modal-submit">Confirmar</button>',
