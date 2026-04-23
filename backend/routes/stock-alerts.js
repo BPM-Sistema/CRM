@@ -455,6 +455,59 @@ router.put('/config', requirePermission('stock_alerts.manage'), async (req, res)
 });
 
 // =====================================================
+// GET /sent-messages — historial de WhatsApps enviados por el dispatcher
+// =====================================================
+router.get('/sent-messages', requirePermission('stock_alerts.view'), async (req, res) => {
+  try {
+    const { from, to, phone, limit = '100' } = req.query;
+
+    const conditions = [`template_key = 'stock_alert_reingreso'`];
+    const params = [];
+    let idx = 1;
+    if (from) { conditions.push(`status_updated_at >= $${idx++}`); params.push(new Date(String(from))); }
+    if (to)   { conditions.push(`status_updated_at <= $${idx++}`); params.push(new Date(String(to))); }
+    if (phone) {
+      conditions.push(`contact_id ILIKE $${idx++}`);
+      params.push(`%${String(phone).replace(/[^0-9]/g, '')}%`);
+    }
+
+    const lim = Math.min(parseInt(limit, 10) || 100, 500);
+
+    const rowsQ = await pool.query(
+      `SELECT id, request_id, contact_id, variables, status, created_at, status_updated_at
+       FROM whatsapp_messages
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY COALESCE(status_updated_at, created_at) DESC, id DESC
+       LIMIT ${lim}`,
+      params
+    );
+
+    // Contadores útiles
+    const totalsQ = await pool.query(
+      `SELECT
+         COUNT(*)::int AS total,
+         COUNT(*) FILTER (WHERE status = 'sent')::int AS sent,
+         COUNT(*) FILTER (WHERE status = 'pending')::int AS pending,
+         COUNT(*) FILTER (WHERE status NOT IN ('sent','pending'))::int AS failed,
+         COUNT(*) FILTER (
+           WHERE status = 'sent'
+             AND status_updated_at >= DATE_TRUNC('day', NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')
+         )::int AS sent_today,
+         COUNT(*) FILTER (
+           WHERE status = 'sent' AND status_updated_at > NOW() - INTERVAL '7 days'
+         )::int AS sent_last_7d
+       FROM whatsapp_messages
+       WHERE template_key = 'stock_alert_reingreso'`
+    );
+
+    res.json({ success: true, totals: totalsQ.rows[0], items: rowsQ.rows });
+  } catch (error) {
+    console.error('[stock-alerts] GET /sent-messages error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =====================================================
 // GET /last-run — métricas de la última corrida del dispatcher
 // =====================================================
 router.get('/last-run', requirePermission('stock_alerts.view'), async (req, res) => {

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { Bell, Activity, ChevronDown, ChevronRight, MessageSquare, RefreshCw, Save, Search, XCircle } from 'lucide-react';
+import { Bell, Activity, ChevronDown, ChevronRight, Copy, MessageSquare, RefreshCw, Save, Search, Send, XCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -110,6 +110,17 @@ export default function StockAlerts() {
   const [error, setError] = useState<string | null>(null);
   const [expandedPhone, setExpandedPhone] = useState<string | null>(null);
 
+  // Historial de envíos (WhatsApps)
+  const [sentTotals, setSentTotals] = useState<null | {
+    total: number; sent: number; pending: number; failed: number; sent_today: number; sent_last_7d: number;
+  }>(null);
+  const [sentItems, setSentItems] = useState<Array<{
+    id: number; request_id: string; contact_id: string;
+    variables: Record<string, string> | null;
+    status: string; created_at: string; status_updated_at: string | null;
+  }>>([]);
+  const [sentOpen, setSentOpen] = useState(false);
+
   // Última corrida del dispatcher
   const [lastRun, setLastRun] = useState<null | {
     id: number; started_at: string; finished_at: string | null;
@@ -168,6 +179,20 @@ export default function StockAlerts() {
       if (!res.ok) return;
       const j = await res.json();
       setLastRun(j.run || null);
+    } catch (e) { /* silent */ }
+  };
+
+  const loadSent = async () => {
+    try {
+      const p = new URLSearchParams();
+      if (from) p.set('from', from);
+      if (to) p.set('to', to);
+      p.set('limit', '200');
+      const res = await authFetch(`${API_BASE_URL}/stock-alerts/sent-messages?${p.toString()}`);
+      if (!res.ok) return;
+      const j = await res.json();
+      setSentTotals(j.totals || null);
+      setSentItems(j.items || []);
     } catch (e) { /* silent */ }
   };
 
@@ -240,8 +265,14 @@ export default function StockAlerts() {
   useEffect(() => {
     loadConfig();
     loadLastRun();
+    loadSent();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    loadSent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, to]);
 
   const cancelAlert = async (id: number) => {
     if (!confirm('¿Cancelar esta alerta?')) return;
@@ -354,6 +385,89 @@ export default function StockAlerts() {
           </Card>
         </div>
       )}
+
+      {/* WhatsApps enviados */}
+      <Card padding="md">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Send size={16} className="text-neutral-600" />
+            <h3 className="text-sm font-semibold text-neutral-800">WhatsApps enviados (stock alerts)</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={loadSent}><RefreshCw size={14} /></Button>
+            <Button variant="secondary" size="sm" onClick={() => setSentOpen((v) => !v)}>
+              {sentOpen ? 'Ocultar historial' : 'Ver historial'}
+            </Button>
+          </div>
+        </div>
+        {sentTotals && (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
+            <div>
+              <div className="text-neutral-500">Hoy</div>
+              <div className="font-semibold text-lg mt-0.5 tabular-nums text-emerald-700">{sentTotals.sent_today}</div>
+            </div>
+            <div>
+              <div className="text-neutral-500">Últimos 7 días</div>
+              <div className="font-semibold text-lg mt-0.5 tabular-nums">{sentTotals.sent_last_7d}</div>
+            </div>
+            <div>
+              <div className="text-neutral-500">Total enviados</div>
+              <div className="font-semibold text-lg mt-0.5 tabular-nums">{sentTotals.sent}</div>
+            </div>
+            <div>
+              <div className="text-neutral-500">En cola</div>
+              <div className="font-semibold text-lg mt-0.5 tabular-nums text-amber-700">{sentTotals.pending}</div>
+            </div>
+            <div>
+              <div className="text-neutral-500">Fallidos</div>
+              <div className="font-semibold text-lg mt-0.5 tabular-nums text-red-600">{sentTotals.failed}</div>
+            </div>
+          </div>
+        )}
+        {sentOpen && (
+          <div className="mt-4 border-t border-neutral-100 pt-3">
+            {sentItems.length === 0 ? (
+              <p className="text-xs text-neutral-400 text-center py-4">Sin envíos en el rango seleccionado</p>
+            ) : (
+              <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-neutral-50 border-b border-neutral-200 sticky top-0">
+                    <tr className="text-left">
+                      <th className="px-3 py-2 font-medium text-neutral-600">Cliente</th>
+                      <th className="px-3 py-2 font-medium text-neutral-600">Teléfono</th>
+                      <th className="px-3 py-2 font-medium text-neutral-600">Producto</th>
+                      <th className="px-3 py-2 font-medium text-neutral-600">Fecha</th>
+                      <th className="px-3 py-2 font-medium text-neutral-600">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-100">
+                    {sentItems.map((it) => {
+                      const v = it.variables || {};
+                      const nombre = v['1'] || '—';
+                      const producto = v['2'] || '—';
+                      const fecha = it.status_updated_at || it.created_at;
+                      const badge = it.status === 'sent' ? 'success' as const
+                        : it.status === 'pending' ? 'warning' as const
+                        : 'danger' as const;
+                      return (
+                        <tr key={it.id}>
+                          <td className="px-3 py-1.5 text-neutral-800">{nombre}</td>
+                          <td className="px-3 py-1.5 font-mono text-neutral-700">{it.contact_id}</td>
+                          <td className="px-3 py-1.5 text-neutral-700 truncate max-w-[280px]" title={producto}>{producto}</td>
+                          <td className="px-3 py-1.5 text-neutral-500 whitespace-nowrap">{formatDate(fecha)}</td>
+                          <td className="px-3 py-1.5">
+                            <Badge variant={badge} size="sm">{it.status}</Badge>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
 
       {/* Última corrida del dispatcher */}
       <Card padding="md">
@@ -699,11 +813,38 @@ function CustomerTable({ items, expanded, onToggle }: {
 }
 
 function ProductTable({ items }: { items: ProductGroup[] }) {
+  const [copied, setCopied] = useState(false);
+
+  const copyList = async () => {
+    // Formato pedido: "Manta a cuadros — 26 clientes" (con variante si hay)
+    const lines = items.map((p) => {
+      const name = p.variant_name ? `${p.product_name} · ${p.variant_name}` : p.product_name;
+      return `${name} — ${p.people_count} cliente${p.people_count !== 1 ? 's' : ''}`;
+    });
+    const text = lines.join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      alert(text);
+    }
+  };
+
   if (items.length === 0) {
     return <Card padding="md"><div className="text-center text-sm text-neutral-500 py-4">No hay productos</div></Card>;
   }
   return (
     <Card padding="none">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-neutral-200 bg-white">
+        <span className="text-xs text-neutral-500">{items.length} producto{items.length !== 1 ? 's' : ''} · ordenados por # personas</span>
+        <button
+          onClick={copyList}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-neutral-200 rounded-lg hover:bg-neutral-50"
+        >
+          <Copy size={13} /> {copied ? 'Copiado ✓' : 'Copiar lista'}
+        </button>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-neutral-50 border-b border-neutral-200">
