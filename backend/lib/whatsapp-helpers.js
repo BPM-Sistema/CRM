@@ -8,12 +8,10 @@
  * NO hardcoded mappings. Config keys are derived dynamically from plantilla key.
  */
 
-const axios = require('axios');
-const { callBotmaker } = require('./circuitBreaker');
-const pool = require('../db');
 const { whatsapp: waConfig, isEnabled: isIntegrationEnabled } = require('../services/integrationConfig');
 const { apiLogger: log } = require('./logger');
-const { getPlantillaFinal, getPlantillaTipos } = require('./plantilla-resolver');
+const { getPlantillaTipos } = require('./plantilla-resolver');
+const { queueWhatsApp } = require('./whatsapp-queue');
 
 /**
  * Normaliza número de teléfono argentino para WhatsApp
@@ -55,16 +53,16 @@ function getConfigKey(plantillaKey) {
 }
 
 async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNumber = null }) {
-  // Verificar que el tipo de plantilla exista en el catálogo
-  const tipos = await getPlantillaTipos();
-  const tipoExiste = tipos.some(t => t.key === plantilla);
+  // Checks tempranos sincrónicos (así los callers pueden contar "skipped" sin
+  // esperar al worker). Si pasan, delegamos a la cola — el worker hace el
+  // envío real a Botmaker respetando el rate limit global (1 msg / 3s).
 
-  if (!tipoExiste) {
+  const tipos = await getPlantillaTipos();
+  if (!tipos.some(t => t.key === plantilla)) {
     log.warn({ plantilla }, 'WhatsApp template type not found in catalog, skipping');
     return { data: { skipped: true, reason: 'template_type_not_found' } };
   }
 
-  // Verificar si la plantilla está habilitada (config key derivado dinámicamente)
   const configKey = getConfigKey(plantilla);
   const enabled = await isIntegrationEnabled(configKey, { context: `plantilla:${plantilla}` });
   if (!enabled) {
@@ -72,84 +70,30 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNu
     return { data: { skipped: true, reason: 'template_disabled' } };
   }
 
-  // Filtro de testing desde integrationConfig (con cache)
-  // FAIL-SAFE: si no se puede leer config, bloquear envío para no enviar a cliente real
   const testingConfig = await waConfig.getTestingConfig();
-
   if (testingConfig === null) {
-    console.error('❌ WhatsApp bloqueado: no se pudo leer config de testing');
+    log.error({ plantilla }, 'WhatsApp bloqueado: no se pudo leer config de testing');
     return { data: { skipped: true, reason: 'testing_config_unavailable' } };
   }
-
   if (testingConfig.enabled) {
     const testingPhone = testingConfig.testingPhone;
     if (!testingPhone) {
-      console.log('📵 WhatsApp ignorado: modo testing activo pero sin número configurado');
+      log.info({ plantilla }, 'WhatsApp ignorado: modo testing activo pero sin número configurado');
       return { data: { skipped: true, reason: 'testing_no_phone' } };
     }
-    console.log(`🧪 WhatsApp testing: redirigiendo de ${telefono} → ${testingPhone}`);
+    log.info({ from: telefono, to: testingPhone }, 'WhatsApp testing: redirigiendo teléfono');
     telefono = testingPhone;
   }
 
-  // Normalizar número argentino (agregar 9 si falta)
   telefono = normalizeArgentinaPhone(telefono);
 
-  // Resolve template name using catalog-based system
-  // No hardcoded logic - uses explicit mappings from database
-  const plantillaFinal = await getPlantillaFinal(plantilla);
-
-  // Obtener channelId desde config (con fallback a env var)
-  const channelId = await waConfig.getChannelId();
-  if (!channelId) {
-    console.error('❌ WhatsApp bloqueado: no hay channelId configurado');
-    return { data: { skipped: true, reason: 'no_channel_id' } };
+  // Encolar via BullMQ — el worker hará el POST a Botmaker y pasará el registro
+  // de whatsapp_messages de 'pending' a 'sent' (o 'failed' tras 3 intentos).
+  const result = await queueWhatsApp({ telefono, plantilla, variables, orderNumber });
+  if (result?.queued === false) {
+    return { data: { skipped: true, reason: result.reason } };
   }
-
-  console.log('📤 Enviando WhatsApp a:', telefono, 'plantilla:', plantillaFinal);
-
-  const contactIdClean = telefono.replace('+', '');
-
-  try {
-    const response = await callBotmaker({
-      method: 'post',
-      url: 'https://api.botmaker.com/v2.0/chats-actions/trigger-intent',
-      data: {
-        chat: {
-          channelId,
-          contactId: contactIdClean
-        },
-        intentIdOrName: plantillaFinal,
-        variables
-      },
-      headers: {
-        'access-token': process.env.BOTMAKER_ACCESS_TOKEN,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    // Guardar en tracking si tenemos requestId.
-    // Este helper es síncrono: para cuando llegamos acá Botmaker ya aceptó el
-    // envío, así que persistimos como 'sent' directamente. El INSERT anterior
-    // dejaba status='pending' y nadie lo actualizaba (bug: 148 filas colgadas).
-    const requestId = response.data?.requestId;
-    if (requestId) {
-      try {
-        await pool.query(`
-          INSERT INTO whatsapp_messages (request_id, order_number, template, template_key, contact_id, variables, status, status_updated_at)
-          VALUES ($1, $2, $3, $4, $5, $6, 'sent', NOW())
-          ON CONFLICT (request_id) DO NOTHING
-        `, [requestId, orderNumber, plantillaFinal, plantilla, contactIdClean, JSON.stringify(variables)]);
-        console.log(`📝 WhatsApp tracked: ${requestId} (pedido: ${orderNumber || 'N/A'})`);
-      } catch (dbErr) {
-        console.error('⚠️ Error guardando tracking WhatsApp:', dbErr.message);
-      }
-    }
-
-    return response;
-  } catch (err) {
-    console.error('❌ Error enviando WhatsApp:', err.response?.data || err.message);
-    throw err;
-  }
+  return { data: { queued: true, requestId: result?.requestId } };
 }
 
 module.exports = {
