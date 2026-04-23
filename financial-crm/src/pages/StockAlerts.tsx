@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { Bell, ChevronDown, ChevronRight, RefreshCw, Search, XCircle } from 'lucide-react';
+import { Bell, ChevronDown, ChevronRight, MessageSquare, RefreshCw, Save, Search, XCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -110,6 +110,13 @@ export default function StockAlerts() {
   const [error, setError] = useState<string | null>(null);
   const [expandedPhone, setExpandedPhone] = useState<string | null>(null);
 
+  // Configuración de plantillas
+  const [stockAlertTemplate, setStockAlertTemplate] = useState('');
+  const [novedadesTemplate, setNovedadesTemplate] = useState('');
+  const [availableTemplates, setAvailableTemplates] = useState<string[]>([]);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [configMsg, setConfigMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
   // Filtros
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<StatusFilter>('');
@@ -134,6 +141,37 @@ export default function StockAlerts() {
     p.set('limit', '300');
     return p.toString();
   }, [q, status, from, to, productId, variantId, wantsNews, minRequests]);
+
+  const loadConfig = async () => {
+    try {
+      const res = await authFetch(`${API_BASE_URL}/stock-alerts/config`);
+      if (!res.ok) return;
+      const j = await res.json();
+      setStockAlertTemplate(j.stockAlertTemplate || '');
+      setNovedadesTemplate(j.novedadesTemplate || '');
+      setAvailableTemplates(j.availableTemplates || []);
+    } catch (e) { /* silent */ }
+  };
+
+  const saveConfig = async () => {
+    setSavingConfig(true);
+    setConfigMsg(null);
+    try {
+      const res = await authFetch(`${API_BASE_URL}/stock-alerts/config`, {
+        method: 'PUT',
+        body: JSON.stringify({ stockAlertTemplate, novedadesTemplate }),
+      });
+      const j = await res.json();
+      if (!res.ok || !j.success) throw new Error(j.error || 'Error al guardar');
+      setConfigMsg({ kind: 'ok', text: 'Guardado' });
+      setTimeout(() => setConfigMsg(null), 3000);
+      loadConfig();
+    } catch (err) {
+      setConfigMsg({ kind: 'err', text: err instanceof Error ? err.message : 'Error' });
+    } finally {
+      setSavingConfig(false);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -180,6 +218,11 @@ export default function StockAlerts() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, status, from, to, productId, variantId, wantsNews, minRequests]);
+
+  useEffect(() => {
+    loadConfig();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const cancelAlert = async (id: number) => {
     if (!confirm('¿Cancelar esta alerta?')) return;
@@ -291,6 +334,59 @@ export default function StockAlerts() {
             )}
           </Card>
         </div>
+      )}
+
+      {/* Configuración de plantillas HSM */}
+      {canManage && (
+        <Card padding="md">
+          <div className="flex items-center gap-2 mb-3">
+            <MessageSquare size={16} className="text-neutral-600" />
+            <h3 className="text-sm font-semibold text-neutral-800">Configuración de plantillas WhatsApp</h3>
+          </div>
+          <p className="text-xs text-neutral-500 mb-3">
+            Escribí el nombre HSM exacto tal como está en Botmaker. Si lo dejás vacío, el disparo automático no envía.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-neutral-600 block mb-1">Plantilla Stock Alerts (reingreso)</label>
+              <input
+                type="text"
+                list="bpm-sa-available-templates"
+                value={stockAlertTemplate}
+                onChange={(e) => setStockAlertTemplate(e.target.value)}
+                placeholder="ej: stock_alert_reingreso_v1"
+                className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-400 font-mono"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-neutral-600 block mb-1">Plantilla Novedades (solo config)</label>
+              <input
+                type="text"
+                list="bpm-sa-available-templates"
+                value={novedadesTemplate}
+                onChange={(e) => setNovedadesTemplate(e.target.value)}
+                placeholder="ej: novedades_ingresos_v1"
+                className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-400 font-mono"
+              />
+            </div>
+          </div>
+          <datalist id="bpm-sa-available-templates">
+            {availableTemplates.map((t) => <option key={t} value={t} />)}
+          </datalist>
+          <div className="flex items-center gap-3 mt-3">
+            <Button variant="primary" size="sm" onClick={saveConfig} isLoading={savingConfig}>
+              <Save size={14} /> Guardar
+            </Button>
+            {configMsg && (
+              <span className={configMsg.kind === 'ok' ? 'text-xs text-emerald-700' : 'text-xs text-red-600'}>
+                {configMsg.text}
+              </span>
+            )}
+          </div>
+          <div className="mt-3 text-xs text-neutral-500 leading-relaxed border-t border-neutral-100 pt-3">
+            <strong className="text-neutral-700">Variables stock alerts</strong> — 1: nombre · 2: producto · 3: variante (opcional) · 4: link producto
+          </div>
+        </Card>
       )}
 
       {/* Tabs */}

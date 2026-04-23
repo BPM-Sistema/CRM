@@ -394,6 +394,87 @@ router.get('/facets', requirePermission('stock_alerts.view'), async (req, res) =
 });
 
 // =====================================================
+// GET /config — lee plantilla actual + lista de plantillas HSM ya usadas
+// =====================================================
+router.get('/config', requirePermission('stock_alerts.view'), async (req, res) => {
+  try {
+    const q = await pool.query(
+      `SELECT key, plantilla_default
+       FROM plantilla_tipos
+       WHERE key IN ('stock_alert_reingreso', 'novedades_ingresos')`
+    );
+    const map = {};
+    for (const r of q.rows) map[r.key] = r.plantilla_default || '';
+
+    const availableQ = await pool.query(
+      `SELECT DISTINCT plantilla_default AS name
+       FROM plantilla_tipos
+       WHERE plantilla_default IS NOT NULL AND plantilla_default <> ''
+       ORDER BY plantilla_default ASC`
+    );
+
+    res.json({
+      success: true,
+      stockAlertTemplate: map['stock_alert_reingreso'] || '',
+      novedadesTemplate: map['novedades_ingresos'] || '',
+      availableTemplates: availableQ.rows.map((r) => r.name),
+    });
+  } catch (error) {
+    console.error('[stock-alerts] GET /config error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =====================================================
+// PUT /config — actualiza plantilla_default del catálogo
+// =====================================================
+router.put('/config', requirePermission('stock_alerts.manage'), async (req, res) => {
+  try {
+    const { stockAlertTemplate, novedadesTemplate } = req.body || {};
+    const updates = [];
+    if (typeof stockAlertTemplate === 'string') {
+      updates.push(['stock_alert_reingreso', stockAlertTemplate.trim().slice(0, 200)]);
+    }
+    if (typeof novedadesTemplate === 'string') {
+      updates.push(['novedades_ingresos', novedadesTemplate.trim().slice(0, 200)]);
+    }
+    if (updates.length === 0) {
+      return res.status(400).json({ success: false, error: 'Nada que actualizar' });
+    }
+    for (const [key, val] of updates) {
+      await pool.query(
+        `UPDATE plantilla_tipos SET plantilla_default = $2 WHERE key = $1`,
+        [key, val]
+      );
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[stock-alerts] PUT /config error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =====================================================
+// Cron dispatch handler (exportado; se monta en index.js con verifyCronAuth)
+// =====================================================
+async function cronDispatchHandler(req, res) {
+  try {
+    const dryRun = req.query.dry_run === '1' || req.query.dryRun === '1';
+    // queueWhatsApp vive en index.js; lo recibimos por closure inyectado (ver index.js)
+    const { runDispatcher } = require('../services/stockAlertDispatcher');
+    const queueWhatsApp = req.app.locals.queueWhatsApp;
+    if (typeof queueWhatsApp !== 'function') {
+      return res.status(500).json({ success: false, error: 'queueWhatsApp no disponible' });
+    }
+    const stats = await runDispatcher({ queueWhatsApp, dryRun });
+    res.json({ success: true, stats });
+  } catch (error) {
+    console.error('[stock-alerts] cron dispatch error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+// =====================================================
 // PATCH /:id/cancel
 // =====================================================
 router.patch('/:id/cancel', requirePermission('stock_alerts.manage'), async (req, res) => {
@@ -420,3 +501,4 @@ router.patch('/:id/cancel', requirePermission('stock_alerts.manage'), async (req
 
 module.exports = router;
 module.exports.createStockAlertHandler = createStockAlert;
+module.exports.cronDispatchHandler = cronDispatchHandler;
