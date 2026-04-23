@@ -70,18 +70,18 @@
       '.bpm-sa-modal{position:fixed;inset:0;z-index:2147483000;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(15,15,15,.55);font-family:' + FONT + ';-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}',
       '.bpm-sa-modal.open{display:flex;}',
       '.bpm-sa-modal *{box-sizing:border-box;}',
-      '.bpm-sa-modal-card{background:#fff;color:#1a1a1a;border:2px solid ' + ACCENT + ';border-radius:16px;max-width:380px;width:100%;padding:24px 22px 20px;position:relative;box-shadow:0 24px 70px rgba(0,0,0,.25);animation:bpmSaFadeUp .22s ease-out;max-height:calc(100dvh - 40px);overflow-y:auto;}',
+      '.bpm-sa-modal-card{background:#fff;color:#1a1a1a;border:2px solid ' + ACCENT + ';border-radius:14px;max-width:320px;width:100%;padding:20px 18px 16px;position:relative;box-shadow:0 18px 50px rgba(0,0,0,.22);animation:bpmSaFadeUp .22s ease-out;max-height:calc(100dvh - 40px);overflow-y:auto;}',
       '@keyframes bpmSaFadeUp{from{transform:translateY(12px) scale(.97);opacity:0}to{transform:translateY(0) scale(1);opacity:1}}',
       '.bpm-sa-modal-close{position:absolute;top:10px;right:12px;background:none;border:0;color:#999;font-size:22px;cursor:pointer;width:30px;height:30px;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0;}',
       '.bpm-sa-modal-close:hover{background:#f2f2f2;color:#333;}',
-      '.bpm-sa-modal h4{margin:0 0 6px;font-family:' + FONT + ';font-size:17px;font-weight:700;color:#111;line-height:1.3;letter-spacing:-0.015em;padding-right:20px;}',
-      '.bpm-sa-modal p.bpm-sa-modal-lead{margin:0 0 16px;font-family:' + FONT + ';font-size:13px;color:#555;line-height:1.5;}',
-      '.bpm-sa-modal input[type="text"], .bpm-sa-modal input[type="tel"]{width:100%;padding:12px 14px;border:1px solid #d8d8d6;background:#fff;color:#1a1a1a;border-radius:10px;font-family:' + FONT + ';font-size:15px;outline:none;margin-bottom:9px;}',
+      '.bpm-sa-modal h4{margin:0 0 4px;font-family:' + FONT + ';font-size:15px;font-weight:700;color:#111;line-height:1.3;letter-spacing:-0.012em;padding-right:20px;}',
+      '.bpm-sa-modal p.bpm-sa-modal-lead{margin:0 0 12px;font-family:' + FONT + ';font-size:12px;color:#555;line-height:1.45;}',
+      '.bpm-sa-modal input[type="text"], .bpm-sa-modal input[type="tel"]{width:100%;padding:10px 12px;border:1px solid #d8d8d6;background:#fff;color:#1a1a1a;border-radius:9px;font-family:' + FONT + ';font-size:14px;outline:none;margin-bottom:7px;}',
       '.bpm-sa-modal input[type="text"]::placeholder, .bpm-sa-modal input[type="tel"]::placeholder{color:#aaa;}',
       '.bpm-sa-modal input[type="text"]:focus, .bpm-sa-modal input[type="tel"]:focus{border-color:' + ACCENT + ';}',
-      '.bpm-sa-modal .bpm-sa-modal-check{display:flex;align-items:flex-start;gap:8px;margin:8px 0 14px;font-family:' + FONT + ';font-size:12.5px;color:#555;line-height:1.45;cursor:pointer;}',
-      '.bpm-sa-modal .bpm-sa-modal-check input[type="checkbox"]{flex-shrink:0;margin-top:2px;width:14px;height:14px;accent-color:' + ACCENT + ';}',
-      '.bpm-sa-modal .bpm-sa-modal-submit{width:100%;padding:13px;background:' + ACCENT + ';color:#fff;border:0;border-radius:10px;font-family:' + FONT + ';font-size:14px;font-weight:600;cursor:pointer;letter-spacing:0.01em;}',
+      '.bpm-sa-modal .bpm-sa-modal-check{display:flex;align-items:flex-start;gap:7px;margin:6px 0 10px;font-family:' + FONT + ';font-size:11.5px;color:#555;line-height:1.4;cursor:pointer;}',
+      '.bpm-sa-modal .bpm-sa-modal-check input[type="checkbox"]{flex-shrink:0;margin-top:2px;width:13px;height:13px;accent-color:' + ACCENT + ';}',
+      '.bpm-sa-modal .bpm-sa-modal-submit{width:100%;padding:11px;background:' + ACCENT + ';color:#fff;border:0;border-radius:9px;font-family:' + FONT + ';font-size:13px;font-weight:600;cursor:pointer;letter-spacing:0.01em;}',
       '.bpm-sa-modal .bpm-sa-modal-submit:hover{background:#1ebe5d;}',
       '.bpm-sa-modal .bpm-sa-modal-submit:disabled{opacity:.6;cursor:not-allowed;}',
       '.bpm-sa-modal .bpm-sa-modal-msg{margin-top:10px;font-family:' + FONT + ';font-size:13px;line-height:1.4;min-height:16px;}',
@@ -90,8 +90,8 @@
       '.bpm-sa-modal-success .bpm-sa-check-icon{font-size:44px;line-height:1;margin-bottom:10px;color:' + ACCENT + ';}',
       '.bpm-sa-modal-success p{margin:0;font-family:' + FONT + ';font-size:14px;color:#333;line-height:1.5;}',
 
-      // ========= Mobile: adaptar al teclado con visualViewport =========
-      '@media (max-width:480px){.bpm-sa-modal{padding:16px;align-items:flex-end;}.bpm-sa-modal-card{max-width:none;}}',
+      // Mobile: mantiene centered con más padding lateral mínimo
+      '@media (max-width:480px){.bpm-sa-modal{padding:14px;}}',
     ].join('');
     var st = document.createElement('style');
     st.id = STYLE_ID;
@@ -458,21 +458,22 @@
       if (e.key === 'Escape' && modalEl && modalEl.classList.contains('open')) closeModal();
     });
 
-    // Ajuste automático al abrirse/cerrarse el teclado en mobile
+    // Ajuste automático al aparecer/desaparecer el teclado:
+    // re-encaja el contenedor del modal dentro de la zona visible (visualViewport),
+    // así la card queda SIEMPRE centrada en lo que el usuario está viendo.
     if (window.visualViewport) {
       var onVvResize = function () {
         if (!modalEl || !modalEl.classList.contains('open')) return;
         var vv = window.visualViewport;
-        var card = modalEl.querySelector('.bpm-sa-modal-card');
-        if (!card) return;
         var kbHeight = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
         if (kbHeight > 80) {
-          // Teclado abierto: pegamos la card arriba del teclado
-          modalEl.style.alignItems = 'flex-end';
-          modalEl.style.paddingBottom = (kbHeight + 12) + 'px';
+          modalEl.style.top = vv.offsetTop + 'px';
+          modalEl.style.height = vv.height + 'px';
+          modalEl.style.bottom = 'auto';
         } else {
-          modalEl.style.alignItems = '';
-          modalEl.style.paddingBottom = '';
+          modalEl.style.top = '';
+          modalEl.style.height = '';
+          modalEl.style.bottom = '';
         }
       };
       window.visualViewport.addEventListener('resize', onVvResize);
