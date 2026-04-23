@@ -211,19 +211,24 @@ async function runDispatcher({ queueWhatsApp, dryRun = false, triggerSource = 'c
           ? (product.name.es || Object.values(product.name)[0])
           : (product.name || productId);
         const headerImageUrl = (product.images && product.images[0] && product.images[0].src) || null;
+        // Handle para URL dinámica del botón (https://blanqueriaxmayorista.com/productos/${1}/)
+        const productHandle = product.handle && typeof product.handle === 'object'
+          ? (product.handle.es || Object.values(product.handle)[0])
+          : (product.handle || '');
 
         stats.dispatched_products++;
 
         for (const a of alertsQ.rows) {
-          // Variables Botmaker:
-          //   headerImageUrl → header IMAGE dinámico (convención de Botmaker)
+          // Variables Botmaker (convención global — misma variable sirve en body/header/botón):
+          //   headerImageUrl → header IMAGE dinámico (patrón probado en 'enviado_transporte')
           //   {{1}} = nombre (fallback "Cliente")
           //   {{2}} = producto
-          //   {{3}} = link directo al producto
+          //   {{3}} = handle del producto → usado en URL dinámica del botón CTA
+          //           (https://blanqueriaxmayorista.com/productos/${3}/)
           const variables = {
             '1': a.first_name || 'Cliente',
             '2': a.product_name || productName || '',
-            '3': productUrl,
+            '3': productHandle || '',
           };
           if (headerImageUrl) variables.headerImageUrl = headerImageUrl;
 
