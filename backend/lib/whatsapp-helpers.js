@@ -127,15 +127,18 @@ async function enviarWhatsAppPlantilla({ telefono, plantilla, variables, orderNu
       }
     });
 
-    // Guardar en tracking si tenemos requestId
+    // Guardar en tracking si tenemos requestId.
+    // Este helper es síncrono: para cuando llegamos acá Botmaker ya aceptó el
+    // envío, así que persistimos como 'sent' directamente. El INSERT anterior
+    // dejaba status='pending' y nadie lo actualizaba (bug: 148 filas colgadas).
     const requestId = response.data?.requestId;
     if (requestId) {
       try {
         await pool.query(`
-          INSERT INTO whatsapp_messages (request_id, order_number, template, contact_id, variables, status)
-          VALUES ($1, $2, $3, $4, $5, 'pending')
+          INSERT INTO whatsapp_messages (request_id, order_number, template, template_key, contact_id, variables, status, status_updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, 'sent', NOW())
           ON CONFLICT (request_id) DO NOTHING
-        `, [requestId, orderNumber, plantillaFinal, contactIdClean, JSON.stringify(variables)]);
+        `, [requestId, orderNumber, plantillaFinal, plantilla, contactIdClean, JSON.stringify(variables)]);
         console.log(`📝 WhatsApp tracked: ${requestId} (pedido: ${orderNumber || 'N/A'})`);
       } catch (dbErr) {
         console.error('⚠️ Error guardando tracking WhatsApp:', dbErr.message);
