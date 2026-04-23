@@ -8002,9 +8002,17 @@ setInterval(async () => {
    WHATSAPP MESSAGES - Estado y reenvío
 ===================================================== */
 
-// Reverse mapping: template Meta → key interna del catálogo
+// Reverse mapping: template Meta → key interna del catálogo.
+// Si template_key está guardado pero ya no existe en el catálogo (keys rotas
+// históricas tipo 'sin_stock_v2'), cae al fallback por plantilla_default.
 async function resolveTemplateKey(m) {
-  if (m.template_key) return m.template_key;
+  if (m.template_key) {
+    const r = await pool.query(
+      `SELECT 1 FROM plantilla_tipos WHERE key = $1 LIMIT 1`,
+      [m.template_key]
+    );
+    if (r.rows.length > 0) return m.template_key;
+  }
   const r = await pool.query(
     `SELECT key FROM plantilla_tipos WHERE plantilla_default = $1 LIMIT 1`,
     [m.template]
