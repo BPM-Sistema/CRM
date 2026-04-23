@@ -476,6 +476,69 @@ router.get('/last-run', requirePermission('stock_alerts.view'), async (req, res)
 });
 
 // =====================================================
+// Test send handler — envío único a un teléfono específico
+// Se monta en index.js como POST /stock-alerts/cron/test-send (verifyCronAuth)
+// =====================================================
+async function testSendHandler(req, res) {
+  try {
+    const { phone, product_id, first_name } = req.body || {};
+    if (!phone) return res.status(400).json({ success: false, error: 'phone requerido' });
+    if (!product_id) return res.status(400).json({ success: false, error: 'product_id requerido' });
+
+    const axios = require('axios');
+    const storeId = process.env.TIENDANUBE_STORE_ID;
+    const token = process.env.TIENDANUBE_ACCESS_TOKEN;
+    if (!storeId || !token) {
+      return res.status(500).json({ success: false, error: 'TN credentials missing' });
+    }
+
+    // Fetch producto
+    const { data: product } = await axios.get(
+      `https://api.tiendanube.com/v1/${storeId}/products/${product_id}`,
+      { headers: { Authentication: `bearer ${token}` }, timeout: 15000 }
+    );
+
+    const productName = (product.name && typeof product.name === 'object')
+      ? (product.name.es || Object.values(product.name)[0])
+      : (product.name || product_id);
+    const productHandle = (product.handle && typeof product.handle === 'object')
+      ? (product.handle.es || Object.values(product.handle)[0])
+      : (product.handle || '');
+    const headerImageUrl = (product.images && product.images[0] && product.images[0].src) || null;
+
+    const variables = {
+      '1': first_name || 'Cliente',
+      '2': productName,
+      '3': productHandle,
+    };
+    if (headerImageUrl) variables.headerImageUrl = headerImageUrl;
+
+    const queueWhatsApp = req.app.locals.queueWhatsApp;
+    if (typeof queueWhatsApp !== 'function') {
+      return res.status(500).json({ success: false, error: 'queueWhatsApp no disponible' });
+    }
+
+    await queueWhatsApp({
+      telefono: String(phone),
+      plantilla: 'stock_alert_reingreso',
+      variables,
+      orderNumber: null,
+    });
+
+    res.json({
+      success: true,
+      message: 'Encolado. Revisá que el mensaje llegue en ~5-30s.',
+      phone,
+      variables,
+      productUrl: product.canonical_url || null,
+    });
+  } catch (err) {
+    console.error('[stock-alerts] test-send error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+// =====================================================
 // Cron dispatch handler (exportado; se monta en index.js con verifyCronAuth)
 // =====================================================
 async function cronDispatchHandler(req, res) {
@@ -527,3 +590,4 @@ router.patch('/:id/cancel', requirePermission('stock_alerts.manage'), async (req
 module.exports = router;
 module.exports.createStockAlertHandler = createStockAlert;
 module.exports.cronDispatchHandler = cronDispatchHandler;
+module.exports.testSendHandler = testSendHandler;

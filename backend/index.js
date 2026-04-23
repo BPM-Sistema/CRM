@@ -5344,6 +5344,7 @@ app.post('/stock-alerts', stockAlertsLimiter, stockAlertsRoutes.createStockAlert
 // Cron dispatcher (Cloud Scheduler, cada 1h) — protegido por OIDC/shared secret, sin auth de usuario
 app.locals.queueWhatsApp = queueWhatsApp;
 app.post('/stock-alerts/cron/dispatch', verifyCronAuth, stockAlertsRoutes.cronDispatchHandler);
+app.post('/stock-alerts/cron/test-send', verifyCronAuth, stockAlertsRoutes.testSendHandler);
 app.use('/stock-alerts', stockAlertsRoutes);
 if (aiBotRoutes) app.use('/ai-bot', aiBotRoutes);
 app.use('/admin/queues', bullBoardAuth, bullBoardAdapter.getRouter());
