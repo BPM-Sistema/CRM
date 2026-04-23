@@ -1,15 +1,17 @@
 /**
  * Stock Alerts — "Avisarme cuando vuelva a stock"
  *
- * Fase 1: solo captura de intención + listado/stats en BPM.
- * Fase 2 (NO implementada): disparo automático de WhatsApp cuando
- * el producto/variante vuelve a tener stock.
+ * Fase 1: captura de intención + panel en BPM.
+ * Fase 2 (NO implementada): disparo automático de WhatsApp al reingreso.
  *
  * Endpoints:
- *   POST /stock-alerts            (público, con rate limit)  — crear alerta desde TN
- *   GET  /stock-alerts            (auth)                     — listar con filtros
- *   GET  /stock-alerts/stats      (auth)                     — estadísticas agregadas
- *   PATCH /stock-alerts/:id/cancel (auth)                    — marcar como cancelada
+ *   POST  /stock-alerts                (público, rate limit)  — crear alerta
+ *   GET   /stock-alerts                (auth)  — lista plana con filtros
+ *   GET   /stock-alerts/stats          (auth)  — KPIs agregados
+ *   GET   /stock-alerts/by-customer    (auth)  — agrupado por teléfono
+ *   GET   /stock-alerts/by-product     (auth)  — agrupado por producto+variante
+ *   GET   /stock-alerts/facets         (auth)  — listas para filtros (productos, variantes)
+ *   PATCH /stock-alerts/:id/cancel     (auth)  — cancelar manualmente
  */
 
 const express = require('express');
@@ -17,26 +19,25 @@ const router = express.Router();
 const pool = require('../db');
 const { authenticate, requirePermission } = require('../middleware/auth');
 
-// Ventana de deduplicación: mismo phone + product + variant en las últimas 24h
-// en estado pending se considera duplicado.
 const DEDUPE_WINDOW_HOURS = 24;
 
 function normalizePhone(raw) {
   if (!raw) return null;
   let digits = String(raw).replace(/\D/g, '');
-  // Remover prefijo 54 (AR) si está presente
   if (digits.startsWith('54')) digits = digits.slice(2);
-  // Remover el "9" de celulares AR si está después del código
-  // (no lo removemos aquí para preservar el formato real recibido)
   return digits;
 }
-
 function isValidPhone(digits) {
   return typeof digits === 'string' && digits.length >= 10 && digits.length <= 15;
 }
+function truncate(str, max) {
+  if (str == null) return null;
+  const s = String(str);
+  return s.length > max ? s.slice(0, max) : s;
+}
 
 // =====================================================
-// POST /stock-alerts  —  Endpoint público (desde Tiendanube)
+// POST /stock-alerts — público (rate-limitado en index.js)
 // =====================================================
 async function createStockAlert(req, res) {
   try {
@@ -46,30 +47,26 @@ async function createStockAlert(req, res) {
       product_name,
       variant_name,
       phone,
+      first_name,
+      wants_news,
       source,
     } = req.body || {};
 
-    if (!product_id) {
-      return res.status(400).json({ success: false, error: 'product_id es obligatorio' });
-    }
-    if (!phone) {
-      return res.status(400).json({ success: false, error: 'phone es obligatorio' });
-    }
+    if (!product_id) return res.status(400).json({ success: false, error: 'product_id es obligatorio' });
+    if (!phone) return res.status(400).json({ success: false, error: 'phone es obligatorio' });
 
     const phoneClean = normalizePhone(phone);
     if (!isValidPhone(phoneClean)) {
-      return res.status(400).json({
-        success: false,
-        error: 'El teléfono debe tener entre 10 y 15 dígitos',
-      });
+      return res.status(400).json({ success: false, error: 'El teléfono debe tener entre 10 y 15 dígitos' });
     }
 
     const productIdStr = String(product_id);
     const variantIdStr = variant_id ? String(variant_id) : null;
     const sourceStr = typeof source === 'string' && source.trim() ? source.trim().slice(0, 50) : 'tiendanube';
+    const firstNameClean = first_name ? truncate(String(first_name).trim(), 100) : null;
+    const wantsNewsBool = wants_news === true || wants_news === 'true';
 
-    // Dedupe: si ya existe una alerta pending reciente para mismo phone + product + variant,
-    // devolvemos éxito con flag `duplicate: true` en lugar de crear otra.
+    // Dedupe: mismo phone+product+variant en pending dentro de la ventana
     const existing = await pool.query(
       `SELECT id
        FROM stock_alerts
@@ -83,6 +80,16 @@ async function createStockAlert(req, res) {
     );
 
     if (existing.rows.length > 0) {
+      // Enriquecer con datos nuevos si llegaron
+      if (wantsNewsBool || firstNameClean) {
+        await pool.query(
+          `UPDATE stock_alerts
+           SET wants_news = wants_news OR $2,
+               first_name = COALESCE($3, first_name)
+           WHERE id = $1`,
+          [existing.rows[0].id, wantsNewsBool, firstNameClean]
+        );
+      }
       return res.status(200).json({
         success: true,
         duplicate: true,
@@ -93,15 +100,17 @@ async function createStockAlert(req, res) {
 
     const result = await pool.query(
       `INSERT INTO stock_alerts
-        (product_id, variant_id, product_name, variant_name, phone, source, user_agent, referer)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        (product_id, variant_id, product_name, variant_name, phone, first_name, wants_news, source, user_agent, referer)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING id`,
       [
         productIdStr,
         variantIdStr,
-        product_name ? String(product_name).slice(0, 500) : null,
-        variant_name ? String(variant_name).slice(0, 500) : null,
+        truncate(product_name, 500),
+        truncate(variant_name, 500),
         phoneClean,
+        firstNameClean,
+        wantsNewsBool,
         sourceStr,
         req.get('User-Agent') || null,
         req.get('Referer') || null,
@@ -116,74 +125,74 @@ async function createStockAlert(req, res) {
 }
 
 // =====================================================
-// Rutas administrativas (requieren auth)
+// Rutas admin
 // =====================================================
 router.use(authenticate);
 
-// GET /stock-alerts  —  Lista con filtros
+// Helper: WHERE común a partir de query params
+function buildFilters(query) {
+  const conditions = [];
+  const params = [];
+  let idx = 1;
+
+  const { product_id, variant_id, status, from, to, q, wants_news } = query;
+
+  if (product_id) { conditions.push(`product_id = $${idx++}`); params.push(String(product_id)); }
+  if (variant_id) { conditions.push(`variant_id = $${idx++}`); params.push(String(variant_id)); }
+  if (status) { conditions.push(`status = $${idx++}`); params.push(String(status)); }
+  if (from) { conditions.push(`created_at >= $${idx++}`); params.push(new Date(String(from))); }
+  if (to) { conditions.push(`created_at <= $${idx++}`); params.push(new Date(String(to))); }
+  if (wants_news === 'true' || wants_news === '1') {
+    conditions.push(`wants_news = TRUE`);
+  }
+  if (q) {
+    const needle = `%${String(q).trim()}%`;
+    conditions.push(`(product_name ILIKE $${idx} OR variant_name ILIKE $${idx} OR phone ILIKE $${idx} OR first_name ILIKE $${idx})`);
+    params.push(needle);
+    idx++;
+  }
+
+  return { where: conditions.length ? `WHERE ${conditions.join(' AND ')}` : '', params, nextIdx: idx };
+}
+
+// =====================================================
+// GET / — lista plana
+// =====================================================
 router.get('/', requirePermission('stock_alerts.view'), async (req, res) => {
   try {
-    const {
-      product_id,
-      variant_id,
-      status,
-      from,
-      to,
-      q, // búsqueda por producto/variante/teléfono
-      limit = '200',
-      offset = '0',
-    } = req.query;
+    const { limit = '200', offset = '0', min_requests } = req.query;
+    const { where, params, nextIdx } = buildFilters(req.query);
 
-    const conditions = [];
-    const params = [];
-    let idx = 1;
-
-    if (product_id) {
-      conditions.push(`product_id = $${idx++}`);
-      params.push(String(product_id));
-    }
-    if (variant_id) {
-      conditions.push(`variant_id = $${idx++}`);
-      params.push(String(variant_id));
-    }
-    if (status) {
-      conditions.push(`status = $${idx++}`);
-      params.push(String(status));
-    }
-    if (from) {
-      conditions.push(`created_at >= $${idx++}`);
-      params.push(new Date(String(from)));
-    }
-    if (to) {
-      conditions.push(`created_at <= $${idx++}`);
-      params.push(new Date(String(to)));
-    }
-    if (q) {
-      const needle = `%${String(q).trim()}%`;
-      conditions.push(`(product_name ILIKE $${idx} OR variant_name ILIKE $${idx} OR phone ILIKE $${idx})`);
-      params.push(needle);
+    // Filtro adicional: phones con ≥ min_requests en toda la tabla
+    let extraWhere = '';
+    const extraParams = [...params];
+    let idx = nextIdx;
+    const minReq = parseInt(min_requests, 10);
+    if (Number.isInteger(minReq) && minReq > 1) {
+      extraWhere = `${where ? ' AND' : 'WHERE'} phone IN (
+        SELECT phone FROM stock_alerts GROUP BY phone HAVING COUNT(*) >= $${idx}
+      )`;
+      extraParams.push(minReq);
       idx++;
     }
-
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const lim = Math.min(parseInt(limit, 10) || 200, 1000);
     const off = Math.max(parseInt(offset, 10) || 0, 0);
 
     const rowsQ = await pool.query(
-      `SELECT
-        id, product_id, variant_id, product_name, variant_name,
-        phone, source, status, created_at, notified_at, cancelled_at
+      `SELECT id, product_id, variant_id, product_name, variant_name,
+              phone, first_name, wants_news,
+              source, status, created_at, notified_at, cancelled_at
        FROM stock_alerts
-       ${where}
+       ${where}${extraWhere}
        ORDER BY created_at DESC
        LIMIT ${lim} OFFSET ${off}`,
-      params
+      extraParams
     );
 
     const countQ = await pool.query(
-      `SELECT COUNT(*)::int AS total FROM stock_alerts ${where}`,
-      params
+      `SELECT COUNT(*)::int AS total FROM stock_alerts ${where}${extraWhere}`,
+      extraParams
     );
 
     res.json({
@@ -199,39 +208,31 @@ router.get('/', requirePermission('stock_alerts.view'), async (req, res) => {
   }
 });
 
-// GET /stock-alerts/stats  —  Estadísticas agregadas
+// =====================================================
+// GET /stats — KPIs
+// =====================================================
 router.get('/stats', requirePermission('stock_alerts.view'), async (req, res) => {
   try {
     const totalQ = await pool.query(`SELECT COUNT(*)::int AS total FROM stock_alerts`);
     const byStatusQ = await pool.query(
-      `SELECT status, COUNT(*)::int AS count
-       FROM stock_alerts
-       GROUP BY status`
+      `SELECT status, COUNT(*)::int AS count FROM stock_alerts GROUP BY status`
     );
-
+    const uniqueQ = await pool.query(
+      `SELECT COUNT(DISTINCT phone)::int AS unique_customers FROM stock_alerts`
+    );
+    const wantsNewsQ = await pool.query(
+      `SELECT COUNT(DISTINCT phone)::int AS count FROM stock_alerts WHERE wants_news = TRUE`
+    );
     const topProductsQ = await pool.query(
       `SELECT product_id,
               COALESCE(MAX(product_name), product_id) AS product_name,
-              COUNT(*)::int AS count
+              COUNT(DISTINCT phone)::int AS count
        FROM stock_alerts
        WHERE status = 'pending'
        GROUP BY product_id
        ORDER BY count DESC
        LIMIT 10`
     );
-
-    const topVariantsQ = await pool.query(
-      `SELECT product_id, variant_id,
-              COALESCE(MAX(product_name), product_id) AS product_name,
-              COALESCE(MAX(variant_name), '') AS variant_name,
-              COUNT(*)::int AS count
-       FROM stock_alerts
-       WHERE status = 'pending' AND variant_id IS NOT NULL
-       GROUP BY product_id, variant_id
-       ORDER BY count DESC
-       LIMIT 10`
-    );
-
     const byDayQ = await pool.query(
       `SELECT DATE(created_at AT TIME ZONE 'America/Argentina/Buenos_Aires') AS day,
               COUNT(*)::int AS count
@@ -247,9 +248,10 @@ router.get('/stats', requirePermission('stock_alerts.view'), async (req, res) =>
     res.json({
       success: true,
       total: totalQ.rows[0].total,
+      uniqueCustomers: uniqueQ.rows[0].unique_customers,
+      wantsNews: wantsNewsQ.rows[0].count,
       byStatus,
       topProducts: topProductsQ.rows,
-      topVariants: topVariantsQ.rows,
       byDay: byDayQ.rows,
     });
   } catch (error) {
@@ -258,13 +260,146 @@ router.get('/stats', requirePermission('stock_alerts.view'), async (req, res) =>
   }
 });
 
-// PATCH /stock-alerts/:id/cancel  —  Cancelar manualmente
+// =====================================================
+// GET /by-customer — agrupado por teléfono
+// =====================================================
+router.get('/by-customer', requirePermission('stock_alerts.view'), async (req, res) => {
+  try {
+    const { limit = '200', offset = '0', min_requests } = req.query;
+    const { where, params, nextIdx } = buildFilters(req.query);
+
+    const lim = Math.min(parseInt(limit, 10) || 200, 1000);
+    const off = Math.max(parseInt(offset, 10) || 0, 0);
+    let idx = nextIdx;
+
+    let having = '';
+    const minReq = parseInt(min_requests, 10);
+    if (Number.isInteger(minReq) && minReq > 1) {
+      having = `HAVING COUNT(*) >= $${idx}`;
+      params.push(minReq);
+      idx++;
+    }
+
+    const q = `
+      SELECT
+        phone,
+        MAX(first_name)                    AS first_name,
+        COUNT(*)::int                      AS request_count,
+        COUNT(DISTINCT product_id)::int    AS distinct_products,
+        MAX(created_at)                    AS last_created_at,
+        MIN(created_at)                    AS first_created_at,
+        BOOL_OR(wants_news)                AS wants_news,
+        JSONB_AGG(
+          JSONB_BUILD_OBJECT(
+            'id', id,
+            'product_id', product_id,
+            'product_name', product_name,
+            'variant_id', variant_id,
+            'variant_name', variant_name,
+            'created_at', created_at,
+            'status', status
+          ) ORDER BY created_at DESC
+        )                                  AS alerts
+      FROM stock_alerts
+      ${where}
+      GROUP BY phone
+      ${having}
+      ORDER BY request_count DESC, last_created_at DESC
+      LIMIT ${lim} OFFSET ${off}
+    `;
+    const rowsQ = await pool.query(q, params);
+
+    res.json({ success: true, items: rowsQ.rows, limit: lim, offset: off });
+  } catch (error) {
+    console.error('[stock-alerts] GET /by-customer error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =====================================================
+// GET /by-product — agrupado por producto + variante
+// =====================================================
+router.get('/by-product', requirePermission('stock_alerts.view'), async (req, res) => {
+  try {
+    const { limit = '200', offset = '0', min_requests } = req.query;
+    const { where, params, nextIdx } = buildFilters(req.query);
+
+    const lim = Math.min(parseInt(limit, 10) || 200, 1000);
+    const off = Math.max(parseInt(offset, 10) || 0, 0);
+    let idx = nextIdx;
+
+    let having = '';
+    const minReq = parseInt(min_requests, 10);
+    if (Number.isInteger(minReq) && minReq > 1) {
+      having = `HAVING COUNT(DISTINCT phone) >= $${idx}`;
+      params.push(minReq);
+      idx++;
+    }
+
+    const q = `
+      SELECT
+        product_id,
+        variant_id,
+        COALESCE(MAX(product_name), product_id)               AS product_name,
+        COALESCE(MAX(variant_name), '')                       AS variant_name,
+        COUNT(DISTINCT phone)::int                            AS people_count,
+        COUNT(*)::int                                         AS total_alerts,
+        COUNT(DISTINCT phone) FILTER (WHERE wants_news)::int  AS wants_news_count,
+        MIN(created_at)                                       AS first_created_at,
+        MAX(created_at)                                       AS last_created_at
+      FROM stock_alerts
+      ${where}
+      GROUP BY product_id, variant_id
+      ${having}
+      ORDER BY people_count DESC, last_created_at DESC
+      LIMIT ${lim} OFFSET ${off}
+    `;
+    const rowsQ = await pool.query(q, params);
+
+    res.json({ success: true, items: rowsQ.rows, limit: lim, offset: off });
+  } catch (error) {
+    console.error('[stock-alerts] GET /by-product error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =====================================================
+// GET /facets — dropdowns de filtros
+// =====================================================
+router.get('/facets', requirePermission('stock_alerts.view'), async (req, res) => {
+  try {
+    const productsQ = await pool.query(
+      `SELECT product_id, COALESCE(MAX(product_name), product_id) AS product_name, COUNT(*)::int AS count
+       FROM stock_alerts
+       GROUP BY product_id
+       ORDER BY count DESC
+       LIMIT 200`
+    );
+    const variantsQ = await pool.query(
+      `SELECT product_id, variant_id,
+              COALESCE(MAX(product_name), product_id) AS product_name,
+              COALESCE(MAX(variant_name), '') AS variant_name,
+              COUNT(*)::int AS count
+       FROM stock_alerts
+       WHERE variant_id IS NOT NULL
+       GROUP BY product_id, variant_id
+       ORDER BY count DESC
+       LIMIT 400`
+    );
+    res.json({ success: true, products: productsQ.rows, variants: variantsQ.rows });
+  } catch (error) {
+    console.error('[stock-alerts] GET /facets error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =====================================================
+// PATCH /:id/cancel
+// =====================================================
 router.patch('/:id/cancel', requirePermission('stock_alerts.manage'), async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    if (!Number.isInteger(id)) {
-      return res.status(400).json({ success: false, error: 'id inválido' });
-    }
+    if (!Number.isInteger(id)) return res.status(400).json({ success: false, error: 'id inválido' });
 
     const result = await pool.query(
       `UPDATE stock_alerts
@@ -273,11 +408,9 @@ router.patch('/:id/cancel', requirePermission('stock_alerts.manage'), async (req
        RETURNING id`,
       [id]
     );
-
     if (result.rowCount === 0) {
       return res.status(404).json({ success: false, error: 'Alerta no encontrada o ya procesada' });
     }
-
     res.json({ success: true });
   } catch (error) {
     console.error('[stock-alerts] PATCH cancel error:', error.message);
