@@ -8002,6 +8002,32 @@ setInterval(async () => {
    WHATSAPP MESSAGES - Estado y reenvío
 ===================================================== */
 
+// Reverse mapping: template Meta → key interna del catálogo
+async function resolveTemplateKey(m) {
+  if (m.template_key) return m.template_key;
+  const r = await pool.query(
+    `SELECT key FROM plantilla_tipos WHERE plantilla_default = $1 LIMIT 1`,
+    [m.template]
+  );
+  return r.rows[0]?.key || m.template;
+}
+
+// Decide si la acción de la plantilla ya fue cumplida por otra vía.
+// Evita reintentar un mensaje que ya no hace falta (ej. cliente ya cargó datos).
+async function checkAccionCumplida(templateKey, orderNumber) {
+  if (templateKey === 'datos__envio') {
+    const r = await pool.query(
+      `SELECT shipping_address FROM orders_validated WHERE order_number = $1`,
+      [String(orderNumber)]
+    );
+    const addr = r.rows[0]?.shipping_address;
+    if (addr && typeof addr === 'object' && (addr.city || addr.street || addr.name)) {
+      return { done: true, reason: 'Ya tiene datos de envío cargados' };
+    }
+  }
+  return { done: false };
+}
+
 // Listar mensajes con filtros (status, order_number)
 app.get('/whatsapp/messages', authenticate, requirePermission('receipts.confirm'), async (req, res) => {
   try {
@@ -8029,8 +8055,16 @@ app.get('/whatsapp/messages', authenticate, requirePermission('receipts.confirm'
       )
     ]);
 
+    const enriched = await Promise.all(dataRes.rows.map(async (m) => {
+      const templateKey = await resolveTemplateKey(m);
+      const accion_cumplida = m.status === 'failed'
+        ? await checkAccionCumplida(templateKey, m.order_number)
+        : { done: false };
+      return { ...m, template_key_resolved: templateKey, accion_cumplida };
+    }));
+
     res.json({
-      messages: dataRes.rows,
+      messages: enriched,
       total: parseInt(countRes.rows[0].count),
       page: parseInt(page),
       totalPages: Math.ceil(parseInt(countRes.rows[0].count) / parseInt(limit))
@@ -8041,7 +8075,7 @@ app.get('/whatsapp/messages', authenticate, requirePermission('receipts.confirm'
   }
 });
 
-// Reintentar un mensaje fallido
+// Reintentar un mensaje fallido recalculando variables desde el pedido actual
 app.post('/whatsapp/messages/:id/retry', authenticate, requirePermission('receipts.confirm'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -8051,23 +8085,77 @@ app.post('/whatsapp/messages/:id/retry', authenticate, requirePermission('receip
     const m = msg.rows[0];
     if (m.status === 'sent') return res.status(400).json({ error: 'El mensaje ya fue enviado' });
 
-    // Marcar como retrying
+    const templateKey = await resolveTemplateKey(m);
+
+    // Corta-spam: si la acción ya se cumplió por otra vía, descartar en vez de reenviar
+    const cumplida = await checkAccionCumplida(templateKey, m.order_number);
+    if (cumplida.done) {
+      await pool.query(
+        `UPDATE whatsapp_messages SET status = 'discarded', error_message = $2, status_updated_at = NOW() WHERE id = $1`,
+        [id, `Descartado automáticamente: ${cumplida.reason}`]
+      );
+      return res.status(400).json({ error: cumplida.reason, discarded: true });
+    }
+
+    // Re-fetch pedido para variables frescas
+    const orderRes = await pool.query(
+      `SELECT order_number, customer_name, customer_phone FROM orders_validated WHERE order_number = $1`,
+      [String(m.order_number)]
+    );
+    if (orderRes.rows.length === 0) {
+      return res.status(400).json({ error: 'Pedido no encontrado en orders_validated' });
+    }
+    const order = orderRes.rows[0];
+
+    const variables = buildBulkVariables(templateKey, order);
+    if (variables === null) {
+      return res.status(400).json({
+        error: `Plantilla '${templateKey}' requiere datos extra (monto, códigos, etc.) y no puede reenviarse desde este retry`
+      });
+    }
+
+    const phone = order.customer_phone
+      || (m.contact_id.startsWith('+') ? m.contact_id : `+${m.contact_id}`);
+
     await pool.query(
       `UPDATE whatsapp_messages SET status = 'retrying', status_updated_at = NOW(), retry_count = retry_count + 1 WHERE id = $1`,
       [id]
     );
 
-    // Re-encolar usando template_key original (no el nombre resuelto)
     await queueWhatsApp({
-      telefono: m.contact_id.startsWith('+') ? m.contact_id : `+${m.contact_id}`,
-      plantilla: m.template_key || m.template.replace('numero_viejo_', '').replace(/_v\d+$/, ''),
-      variables: m.variables,
+      telefono: phone,
+      plantilla: templateKey,
+      variables,
       orderNumber: String(m.order_number)
     });
 
-    res.json({ ok: true, message: 'Mensaje reencolado' });
+    res.json({ ok: true, message: 'Mensaje reencolado con variables actualizadas' });
   } catch (error) {
     log.error({ err: error }, 'POST /whatsapp/messages/:id/retry error');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Descartar mensaje fallido (no reenvía, lo saca de la lista de fallidos)
+app.post('/whatsapp/messages/:id/discard', authenticate, requirePermission('receipts.confirm'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body || {};
+    const msg = await pool.query(`SELECT id, status FROM whatsapp_messages WHERE id = $1`, [id]);
+    if (msg.rows.length === 0) return res.status(404).json({ error: 'Mensaje no encontrado' });
+    if (msg.rows[0].status === 'sent') return res.status(400).json({ error: 'El mensaje ya fue enviado' });
+
+    await pool.query(
+      `UPDATE whatsapp_messages
+       SET status = 'discarded', status_updated_at = NOW(),
+           error_message = COALESCE($2, 'Descartado manualmente')
+       WHERE id = $1`,
+      [id, reason || null]
+    );
+
+    res.json({ ok: true, message: 'Mensaje descartado' });
+  } catch (error) {
+    log.error({ err: error }, 'POST /whatsapp/messages/:id/discard error');
     res.status(500).json({ error: error.message });
   }
 });

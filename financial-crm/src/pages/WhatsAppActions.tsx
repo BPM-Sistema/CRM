@@ -13,6 +13,7 @@ import {
   Trash2,
   RefreshCw,
   RotateCcw,
+  Check,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { authFetch } from '../services/api';
@@ -77,6 +78,7 @@ export default function WhatsAppActions() {
   const [failedMessages, setFailedMessages] = useState<any[]>([]);
   const [failedLoading, setFailedLoading] = useState(false);
   const [retryingId, setRetryingId] = useState<number | null>(null);
+  const [discardingId, setDiscardingId] = useState<number | null>(null);
 
   const loadFailedMessages = useCallback(async () => {
     setFailedLoading(true);
@@ -94,16 +96,41 @@ export default function WhatsAppActions() {
     setRetryingId(id);
     try {
       const response = await authFetch(`${API_BASE_URL}/whatsapp/messages/${id}/retry`, { method: 'POST' });
+      const data = await response.json().catch(() => ({}));
       if (response.ok) {
         setFailedMessages(prev => prev.filter(m => m.id !== id));
+      } else if (data.discarded) {
+        // El backend descartó automáticamente porque el pedido ya cumplió la acción
+        setFailedMessages(prev => prev.filter(m => m.id !== id));
+        alert(`Se descartó automáticamente: ${data.error}`);
       } else {
-        const data = await response.json();
         alert(data.error || 'Error al reintentar');
       }
     } catch (err: any) {
       alert(err.message || 'Error al reintentar');
     }
     setRetryingId(null);
+  }
+
+  async function discardMessage(id: number, reason?: string) {
+    if (!confirm('¿Descartar este mensaje? No se reenviará y saldrá de la lista.')) return;
+    setDiscardingId(id);
+    try {
+      const response = await authFetch(`${API_BASE_URL}/whatsapp/messages/${id}/discard`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason || 'Descartado desde UI' }),
+      });
+      if (response.ok) {
+        setFailedMessages(prev => prev.filter(m => m.id !== id));
+      } else {
+        const data = await response.json();
+        alert(data.error || 'Error al descartar');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error al descartar');
+    }
+    setDiscardingId(null);
   }
 
   useEffect(() => {
@@ -537,34 +564,74 @@ export default function WhatsAppActions() {
             <p className="text-sm text-neutral-500">No hay mensajes fallidos</p>
           ) : (
             <div className="space-y-2 max-h-96 overflow-y-auto">
-              {failedMessages.map((m) => (
-                <div key={m.id} className="flex items-center justify-between bg-red-50 rounded-lg px-4 py-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="font-medium text-neutral-900">#{m.order_number}</span>
-                      <span className="text-neutral-500">{m.customer_name || m.contact_id}</span>
-                      <span className="text-neutral-400">·</span>
-                      <span className="text-neutral-500 truncate">{m.template}</span>
+              {failedMessages.map((m) => {
+                const cumplida = m.accion_cumplida?.done === true;
+                const bg = cumplida ? 'bg-emerald-50' : 'bg-red-50';
+                return (
+                  <div key={m.id} className={`flex items-center justify-between ${bg} rounded-lg px-4 py-3`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 text-sm flex-wrap">
+                        <span className="font-medium text-neutral-900">#{m.order_number}</span>
+                        <span className="text-neutral-500">{m.customer_name || m.contact_id}</span>
+                        <span className="text-neutral-400">·</span>
+                        <span className="text-neutral-500 truncate">{m.template}</span>
+                        {cumplida && (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                            <Check className="h-3 w-3" /> {m.accion_cumplida.reason}
+                          </span>
+                        )}
+                      </div>
+                      <div className={`text-xs mt-0.5 truncate ${cumplida ? 'text-emerald-700' : 'text-red-600'}`}>
+                        {m.error_message || 'Error desconocido'} · {m.retry_count || 0} reintentos · {new Date(m.created_at).toLocaleString('es-AR')}
+                      </div>
                     </div>
-                    <div className="text-xs text-red-600 mt-0.5 truncate">
-                      {m.error_message || 'Error desconocido'} · {m.retry_count || 0} reintentos · {new Date(m.created_at).toLocaleString('es-AR')}
+                    <div className="ml-3 shrink-0 flex gap-2">
+                      {cumplida ? (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => discardMessage(m.id, m.accion_cumplida.reason)}
+                          disabled={discardingId === m.id}
+                        >
+                          {discardingId === m.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <><Trash2 className="h-3 w-3 mr-1" /> Descartar</>
+                          )}
+                        </Button>
+                      ) : (
+                        <>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => retryMessage(m.id)}
+                            disabled={retryingId === m.id}
+                          >
+                            {retryingId === m.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <><RotateCcw className="h-3 w-3 mr-1" /> Reintentar</>
+                            )}
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => discardMessage(m.id)}
+                            disabled={discardingId === m.id}
+                            className="text-neutral-500"
+                          >
+                            {discardingId === m.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3 w-3" />
+                            )}
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => retryMessage(m.id)}
-                    disabled={retryingId === m.id}
-                    className="ml-3 shrink-0"
-                  >
-                    {retryingId === m.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <><RotateCcw className="h-3 w-3 mr-1" /> Reintentar</>
-                    )}
-                  </Button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </Card>
