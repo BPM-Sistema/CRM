@@ -47,13 +47,15 @@
       '.bpm-sa-box .bpm-sa-msg.err{color:#c00;}',
 
       // ========= Botón en listado (V5 con borde verde) =========
-      '.bpm-sa-listbtn{display:inline-flex;align-items:center;gap:7px;margin-top:8px;padding:8px 13px;background:#fff;border:1.5px solid ' + ACCENT + ';border-radius:8px;color:#1a1a1a !important;font:inherit;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none !important;line-height:1;box-shadow:0 1px 2px rgba(37,211,102,.1);font-family:inherit;}',
+      '.bpm-sa-listbtn{display:inline-flex;align-items:center;gap:7px;margin-top:8px;padding:8px 13px;background:#fff;border:1.5px solid ' + ACCENT + ';border-radius:8px;color:#1a1a1a !important;font:inherit;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none !important;line-height:1;box-shadow:0 1px 2px rgba(37,211,102,.1);font-family:inherit;outline:none;-webkit-tap-highlight-color:transparent;}',
       '.bpm-sa-listbtn:hover{background:' + ACCENT + ';color:#fff !important;border-color:' + ACCENT + ';text-decoration:none !important;}',
       '.bpm-sa-listbtn:hover svg{color:#fff;}',
+      '.bpm-sa-listbtn:focus:not(:hover){background:#fff;color:#1a1a1a !important;}',
+      '.bpm-sa-listbtn:focus:not(:hover) svg{color:' + ACCENT + ';}',
       '.bpm-sa-listbtn svg{width:14px;height:14px;color:' + ACCENT + ';flex-shrink:0;}',
 
       // ========= Modal V5 (toast oscuro abajo-derecha) =========
-      '.bpm-sa-modal{position:fixed;inset:0;z-index:2147483000;pointer-events:none;display:flex;align-items:flex-end;justify-content:flex-end;padding:24px;font-family:inherit;}',
+      '.bpm-sa-modal{position:fixed;inset:0;z-index:2147483000;pointer-events:none;display:none;align-items:flex-end;justify-content:flex-end;padding:24px;font-family:inherit;}',
       '.bpm-sa-modal.open{display:flex;}',
       '.bpm-sa-modal *{box-sizing:border-box;}',
       '.bpm-sa-modal-card{pointer-events:auto;background:#1a1a1a;color:#fff;border:1.5px solid ' + ACCENT + ';border-radius:14px;max-width:340px;width:100%;padding:20px 22px;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.35);animation:bpmSaFadeUp .2s ease-out;}',
@@ -385,6 +387,8 @@
       btn.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopPropagation();
+        // Quitar focus para que no se quede el hover verde pegado
+        btn.blur();
         openModal({
           productId: productId,
           productName: productName,
