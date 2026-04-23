@@ -455,6 +455,27 @@ router.put('/config', requirePermission('stock_alerts.manage'), async (req, res)
 });
 
 // =====================================================
+// GET /last-run — métricas de la última corrida del dispatcher
+// =====================================================
+router.get('/last-run', requirePermission('stock_alerts.view'), async (req, res) => {
+  try {
+    const q = await pool.query(
+      `SELECT id, started_at, finished_at, trigger_source, dry_run,
+              pairs_checked, fetched, fetch_errors,
+              dispatched_products, alerts_sent, alerts_send_errors,
+              skipped_no_template, updated_state, error_message
+       FROM stock_alert_runs
+       ORDER BY started_at DESC
+       LIMIT 1`
+    );
+    res.json({ success: true, run: q.rows[0] || null });
+  } catch (error) {
+    console.error('[stock-alerts] GET /last-run error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =====================================================
 // Cron dispatch handler (exportado; se monta en index.js con verifyCronAuth)
 // =====================================================
 async function cronDispatchHandler(req, res) {
@@ -466,7 +487,11 @@ async function cronDispatchHandler(req, res) {
     if (typeof queueWhatsApp !== 'function') {
       return res.status(500).json({ success: false, error: 'queueWhatsApp no disponible' });
     }
-    const stats = await runDispatcher({ queueWhatsApp, dryRun });
+    const stats = await runDispatcher({
+      queueWhatsApp,
+      dryRun,
+      triggerSource: req.cronAuth?.method === 'oidc' ? 'cron' : (req.cronAuth?.method === 'secret' ? 'cron-secret' : 'manual'),
+    });
     res.json({ success: true, stats });
   } catch (error) {
     console.error('[stock-alerts] cron dispatch error:', error.message);

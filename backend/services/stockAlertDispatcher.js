@@ -101,7 +101,7 @@ function buildProductUrl(product, storeBaseUrl) {
 /**
  * Handler principal. El caller debe inyectar queueWhatsApp desde el scope del index.js.
  */
-async function runDispatcher({ queueWhatsApp, dryRun = false } = {}) {
+async function runDispatcher({ queueWhatsApp, dryRun = false, triggerSource = 'cron' } = {}) {
   const stats = {
     pairs: 0,
     fetched: 0,
@@ -113,6 +113,19 @@ async function runDispatcher({ queueWhatsApp, dryRun = false } = {}) {
     updated_state: 0,
     dry_run: !!dryRun,
   };
+
+  // Registrar arranque de la corrida
+  let runId = null;
+  try {
+    const ins = await pool.query(
+      `INSERT INTO stock_alert_runs (trigger_source, dry_run)
+       VALUES ($1, $2) RETURNING id`,
+      [triggerSource, !!dryRun]
+    );
+    runId = ins.rows[0].id;
+  } catch (e) {
+    log.warn({ err: e.message }, '[stockAlertDispatcher] no se pudo registrar run (continuando igual)');
+  }
 
   const plantillaKey = STOCK_ALERT_PLANTILLA_KEY;
   const configuredTemplate = await getConfiguredTemplate();
@@ -258,8 +271,42 @@ async function runDispatcher({ queueWhatsApp, dryRun = false } = {}) {
     }
   }
 
-  log.info(stats, '[stockAlertDispatcher] finished');
-  return stats;
+  // Cerrar el run con métricas finales
+  if (runId) {
+    try {
+      await pool.query(
+        `UPDATE stock_alert_runs SET
+           finished_at = NOW(),
+           pairs_checked = $2,
+           fetched = $3,
+           fetch_errors = $4,
+           dispatched_products = $5,
+           alerts_sent = $6,
+           alerts_send_errors = $7,
+           skipped_no_template = $8,
+           updated_state = $9,
+           stats_raw = $10
+         WHERE id = $1`,
+        [
+          runId,
+          stats.pairs,
+          stats.fetched,
+          stats.fetch_errors,
+          stats.dispatched_products,
+          stats.alerts_sent,
+          stats.alerts_send_errors,
+          stats.skipped_no_template,
+          stats.updated_state,
+          JSON.stringify(stats),
+        ]
+      );
+    } catch (e) {
+      log.warn({ err: e.message, runId }, '[stockAlertDispatcher] no se pudo cerrar run (métricas se pierden)');
+    }
+  }
+
+  log.info({ ...stats, runId }, '[stockAlertDispatcher] finished');
+  return { ...stats, runId };
 }
 
 module.exports = {

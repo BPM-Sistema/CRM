@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { Bell, ChevronDown, ChevronRight, MessageSquare, RefreshCw, Save, Search, XCircle } from 'lucide-react';
+import { Bell, Activity, ChevronDown, ChevronRight, MessageSquare, RefreshCw, Save, Search, XCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -110,6 +110,15 @@ export default function StockAlerts() {
   const [error, setError] = useState<string | null>(null);
   const [expandedPhone, setExpandedPhone] = useState<string | null>(null);
 
+  // Última corrida del dispatcher
+  const [lastRun, setLastRun] = useState<null | {
+    id: number; started_at: string; finished_at: string | null;
+    trigger_source: string | null; dry_run: boolean;
+    pairs_checked: number; fetched: number; fetch_errors: number;
+    dispatched_products: number; alerts_sent: number; alerts_send_errors: number;
+    skipped_no_template: boolean; updated_state: number; error_message: string | null;
+  }>(null);
+
   // Configuración de plantillas
   const [stockAlertTemplate, setStockAlertTemplate] = useState('');
   const [novedadesTemplate, setNovedadesTemplate] = useState('');
@@ -150,6 +159,15 @@ export default function StockAlerts() {
       setStockAlertTemplate(j.stockAlertTemplate || '');
       setNovedadesTemplate(j.novedadesTemplate || '');
       setAvailableTemplates(j.availableTemplates || []);
+    } catch (e) { /* silent */ }
+  };
+
+  const loadLastRun = async () => {
+    try {
+      const res = await authFetch(`${API_BASE_URL}/stock-alerts/last-run`);
+      if (!res.ok) return;
+      const j = await res.json();
+      setLastRun(j.run || null);
     } catch (e) { /* silent */ }
   };
 
@@ -221,6 +239,7 @@ export default function StockAlerts() {
 
   useEffect(() => {
     loadConfig();
+    loadLastRun();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -335,6 +354,54 @@ export default function StockAlerts() {
           </Card>
         </div>
       )}
+
+      {/* Última corrida del dispatcher */}
+      <Card padding="md">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Activity size={16} className="text-neutral-600" />
+            <h3 className="text-sm font-semibold text-neutral-800">Última corrida del dispatcher</h3>
+          </div>
+          <Button variant="ghost" size="sm" onClick={loadLastRun}>
+            <RefreshCw size={14} />
+          </Button>
+        </div>
+        {!lastRun ? (
+          <p className="text-xs text-neutral-500">Aún no se ejecutó ninguna corrida. El scheduler automático está pausado hasta configurar la plantilla HSM en Botmaker.</p>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
+            <div>
+              <div className="text-neutral-500">Cuándo</div>
+              <div className="font-medium mt-0.5">{formatDate(lastRun.started_at)}</div>
+              <div className="text-neutral-400 text-[11px]">
+                {lastRun.trigger_source || '—'}{lastRun.dry_run ? ' · DRY RUN' : ''}
+              </div>
+            </div>
+            <div>
+              <div className="text-neutral-500">Pares revisados</div>
+              <div className="font-medium mt-0.5 tabular-nums">{lastRun.pairs_checked}</div>
+              <div className="text-neutral-400 text-[11px]">{lastRun.fetched} fetched · {lastRun.fetch_errors} errs</div>
+            </div>
+            <div>
+              <div className="text-neutral-500">Reingresos detectados</div>
+              <div className="font-medium mt-0.5 tabular-nums">{lastRun.dispatched_products}</div>
+            </div>
+            <div>
+              <div className="text-neutral-500">WhatsApps encolados</div>
+              <div className="font-medium mt-0.5 tabular-nums text-emerald-700">{lastRun.alerts_sent}</div>
+              {lastRun.alerts_send_errors > 0 && (
+                <div className="text-red-600 text-[11px]">{lastRun.alerts_send_errors} errores</div>
+              )}
+            </div>
+            <div>
+              <div className="text-neutral-500">Plantilla</div>
+              <div className={`font-medium mt-0.5 ${lastRun.skipped_no_template ? 'text-amber-700' : 'text-emerald-700'}`}>
+                {lastRun.skipped_no_template ? 'Sin configurar' : 'OK'}
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
 
       {/* Configuración de plantillas HSM */}
       {canManage && (
