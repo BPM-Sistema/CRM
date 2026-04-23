@@ -210,16 +210,22 @@ async function runDispatcher({ queueWhatsApp, dryRun = false, triggerSource = 'c
         const productName = product.name && typeof product.name === 'object'
           ? (product.name.es || Object.values(product.name)[0])
           : (product.name || productId);
+        const headerImageUrl = (product.images && product.images[0] && product.images[0].src) || null;
 
         stats.dispatched_products++;
 
         for (const a of alertsQ.rows) {
+          // Variables Botmaker:
+          //   headerImageUrl → header IMAGE dinámico (convención de Botmaker)
+          //   {{1}} = nombre (fallback "Cliente")
+          //   {{2}} = producto
+          //   {{3}} = link directo al producto
           const variables = {
-            '1': a.first_name || '',
+            '1': a.first_name || 'Cliente',
             '2': a.product_name || productName || '',
-            '3': a.variant_name || '',
-            '4': productUrl,
+            '3': productUrl,
           };
+          if (headerImageUrl) variables.headerImageUrl = headerImageUrl;
 
           try {
             if (!dryRun) {

@@ -451,7 +451,7 @@ export default function StockAlerts() {
             )}
           </div>
           <div className="mt-3 text-xs text-neutral-500 leading-relaxed border-t border-neutral-100 pt-3">
-            <strong className="text-neutral-700">Variables stock alerts</strong> — 1: nombre · 2: producto · 3: variante (opcional) · 4: link producto
+            <strong className="text-neutral-700">Stock alerts</strong> — header IMAGE dinámica (imagen del producto) · {'{{1}}'} nombre · {'{{2}}'} producto · {'{{3}}'} link al producto
           </div>
         </Card>
       )}
