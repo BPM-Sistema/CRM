@@ -557,7 +557,16 @@ async function testSendHandler(req, res) {
     const productHandle = (product.handle && typeof product.handle === 'object')
       ? (product.handle.es || Object.values(product.handle)[0])
       : (product.handle || '');
-    const headerImageUrl = (product.images && product.images[0] && product.images[0].src) || null;
+    // Meta no acepta .webp como header de template → primera imagen PNG/JPG
+    const headerImageUrl = (() => {
+      const imgs = product.images;
+      if (!Array.isArray(imgs) || imgs.length === 0) return null;
+      const sup = imgs.find((img) => {
+        const src = img && img.src;
+        return typeof src === 'string' && /\.(png|jpe?g)(\?|$)/i.test(src);
+      });
+      return (sup && sup.src) || (imgs[0] && imgs[0].src) || null;
+    })();
 
     const variables = {
       '1': first_name || 'Cliente',

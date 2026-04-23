@@ -39,6 +39,20 @@ function getTnHeaders() {
   };
 }
 
+// Meta (WhatsApp Cloud API) no soporta .webp como header de template — solo JPG/PNG.
+// Buscar primera imagen soportada desde [0] hacia adelante. Si ninguna califica,
+// devolver la [0] como último recurso para no regresar null (mejor fallar en Meta
+// con log claro que enviar sin imagen).
+function pickTemplateHeaderImage(images) {
+  if (!Array.isArray(images) || images.length === 0) return null;
+  const supported = images.find((img) => {
+    const src = img && img.src;
+    if (typeof src !== 'string') return false;
+    return /\.(png|jpe?g)(\?|$)/i.test(src);
+  });
+  return (supported && supported.src) || (images[0] && images[0].src) || null;
+}
+
 async function fetchProduct(productId) {
   const storeId = process.env.TIENDANUBE_STORE_ID;
   if (!storeId) throw new Error('TIENDANUBE_STORE_ID no configurado');
@@ -210,7 +224,9 @@ async function runDispatcher({ queueWhatsApp, dryRun = false, triggerSource = 'c
         const productName = product.name && typeof product.name === 'object'
           ? (product.name.es || Object.values(product.name)[0])
           : (product.name || productId);
-        const headerImageUrl = (product.images && product.images[0] && product.images[0].src) || null;
+        // Meta no acepta .webp como header de template → buscar primera imagen PNG/JPG
+        // Avanza desde [0] y si todas son webp, cae al [0] como último recurso
+        const headerImageUrl = pickTemplateHeaderImage(product.images);
         // Handle para URL dinámica del botón (https://blanqueriaxmayorista.com/productos/${1}/)
         const productHandle = product.handle && typeof product.handle === 'object'
           ? (product.handle.es || Object.values(product.handle)[0])
