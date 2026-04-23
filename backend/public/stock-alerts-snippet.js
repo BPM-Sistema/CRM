@@ -267,11 +267,17 @@
   }
 
   function showInlineSuccess(box) {
-    // Oculta todos los hijos interactivos
-    $$('.bpm-sa-field, .bpm-sa-check, .bpm-sa-submit', box).forEach(function (el) { el.style.display = 'none'; });
+    // Dejar sólo el mensaje de éxito: ocultar heading, lead, campos, checkbox, submit
+    $$('h4, p.bpm-sa-lead, .bpm-sa-field, .bpm-sa-check, .bpm-sa-submit', box).forEach(function (el) {
+      el.style.display = 'none';
+    });
     var msg = box.querySelector('.bpm-sa-msg');
     if (msg) {
       msg.className = 'bpm-sa-msg ok';
+      msg.style.margin = '0';
+      msg.style.textAlign = 'center';
+      msg.style.fontSize = '14px';
+      msg.style.padding = '4px 0';
       msg.textContent = '✅ Listo, te avisamos apenas reingrese.';
     }
   }
