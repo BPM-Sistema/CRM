@@ -5613,6 +5613,89 @@ app.post('/resync-estados/cron', verifyCronAuth, async (req, res) => {
   }
 });
 
+// Observabilidad WhatsApp: detectar mensajes pending anormalmente viejos.
+// No modifica DB — solo loguea y alerta por email. Debe correr cada 15 min.
+app.post('/cron/whatsapp-stuck-check', verifyCronAuth, async (req, res) => {
+  try {
+    const stuck = await pool.query(`
+      SELECT request_id, order_number, template, template_key, contact_id,
+             created_at,
+             EXTRACT(EPOCH FROM (NOW() - created_at))::int AS age_seconds,
+             retry_count
+      FROM whatsapp_messages
+      WHERE status = 'pending'
+        AND created_at < NOW() - INTERVAL '10 minutes'
+      ORDER BY created_at ASC
+      LIMIT 100
+    `);
+
+    const count = stuck.rows.length;
+    log.info({ count, authMethod: req.cronAuth?.method }, 'Cron whatsapp-stuck-check');
+
+    if (count > 0) {
+      const rows = stuck.rows.map((r) => ({
+        request_id: r.request_id,
+        order_number: r.order_number,
+        template: r.template || r.template_key,
+        contact_id: r.contact_id,
+        age_min: Math.round(r.age_seconds / 60),
+        retry_count: r.retry_count,
+      }));
+      log.warn({ count, rows }, 'WhatsApp stuck: pending > 10 min encontrados');
+
+      const { sendNotification } = require('./lib/email');
+      const body =
+        `Se detectaron ${count} mensajes WhatsApp en estado 'pending' por más de 10 minutos.\n\n` +
+        rows
+          .map(
+            (r) =>
+              `• ${r.template || '(sin plantilla)'} → ${r.contact_id || '?'}` +
+              ` | pedido #${r.order_number || 'N/A'}` +
+              ` | ${r.age_min} min | retries=${r.retry_count}` +
+              ` | req=${r.request_id}`
+          )
+          .join('\n');
+      sendNotification({
+        subject: `[CRM] ⚠️ ${count} WhatsApp pending > 10 min`,
+        body,
+      }).catch((err) => log.error({ err: err.message }, 'stuck-check email failed'));
+    }
+
+    res.json({ ok: true, stuck_count: count, sample: stuck.rows.slice(0, 10) });
+  } catch (error) {
+    log.error({ err: error }, 'Cron whatsapp-stuck-check error');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Observabilidad WhatsApp: limpieza diaria de mensajes pending viejos.
+// Los pending > 4h se consideran huérfanos (worker nunca los tomó) y se marcan
+// como 'unknown' con una razón trazable. No reenvía nada. Debe correr 1× por día.
+app.post('/cron/whatsapp-cleanup', verifyCronAuth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      UPDATE whatsapp_messages
+         SET status = 'unknown',
+             status_updated_at = NOW(),
+             error_message = COALESCE(NULLIF(error_message, ''), '[cleanup cron] pending > 4h — marcado unknown automáticamente')
+       WHERE status = 'pending'
+         AND created_at < NOW() - INTERVAL '4 hours'
+       RETURNING request_id, order_number, template, template_key, contact_id, created_at
+    `);
+
+    const count = result.rowCount || 0;
+    log.info(
+      { count, authMethod: req.cronAuth?.method },
+      'Cron whatsapp-cleanup — pending > 4h marcados como unknown'
+    );
+
+    res.json({ ok: true, updated_count: count, sample: result.rows.slice(0, 10) });
+  } catch (error) {
+    log.error({ err: error }, 'Cron whatsapp-cleanup error');
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Ejecutar sincronización manual
 app.post('/sync/run', authenticate, requirePermission('users.view'), async (req, res) => {
   const source = `manual-${req.user.email}`;
