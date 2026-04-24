@@ -3414,72 +3414,50 @@ app.post('/webhook/botmaker-status', async (req, res) => {
 
     const payload = req.body;
 
-    // DEBUG TEMPORAL: log crudo para inspeccionar estructura exacta que manda Botmaker
-    // (quitar luego de confirmar nombres de campos)
-    console.log('[BMW_DEBUG_PAYLOAD] ' + JSON.stringify(payload || {}));
+    // Extraer datos. Botmaker manda messageId (formato "6V0RABKRBOEJKVQ4W6QI").
+    // El fallback intentTxId es por si alguna versión/tipo de callback lo usa.
+    const { type, status, contactId, messageId, intentTxId } = payload;
+    const bmId = messageId || intentTxId;
 
-    // Solo loguear si es un status (no mensajes de usuario)
-    if (payload.type === 'status') {
-      log.info({ payload }, 'Botmaker status webhook received');
-    }
-
-    // Extraer datos relevantes
-    const {
-      type,
-      status,
-      contactId,
-      messageId,
-      intentTxId
-    } = payload;
-
-    // Solo procesar webhooks de tipo status
     if (type !== 'status') {
       return res.status(200).json({ received: true, ignored: true });
     }
 
-    // Actualizar estado en whatsapp_messages si tenemos intentTxId
-    if (intentTxId) {
-      const isSuccess = status === 'delivered' || status === 'read' || status === 'sent';
-      const isFailed = status === 'failed' || status === 'error';
+    if (!bmId) {
+      log.warn({ payload }, 'Webhook Botmaker sin messageId — ignorado');
+      return res.status(200).json({ received: true, ignored: 'no-message-id' });
+    }
 
-      if (isSuccess) {
-        await pool.query(`
-          UPDATE whatsapp_messages
-          SET status = $1, status_updated_at = NOW()
-          WHERE request_id = $2
-        `, [status, intentTxId]);
-        log.info({ status, intentTxId }, 'WhatsApp status updated');
-      } else if (isFailed) {
-        // Obtener mensaje para posible retry
-        const msgResult = await pool.query(`
-          SELECT * FROM whatsapp_messages WHERE request_id = $1
-        `, [intentTxId]);
+    const isSuccess = status === 'delivered' || status === 'read' || status === 'sent';
+    const isFailed = status === 'failed' || status === 'error';
 
-        if (msgResult.rows.length > 0) {
-          const msg = msgResult.rows[0];
-          const errorMsg = payload.error || payload.reason || 'Unknown error';
-
-          // Actualizar como fallido
-          await pool.query(`
-            UPDATE whatsapp_messages
+    if (isSuccess) {
+      const upd = await pool.query(
+        `UPDATE whatsapp_messages
+            SET status = $1, status_updated_at = NOW()
+          WHERE botmaker_message_id = $2
+          RETURNING id`,
+        [status, bmId]
+      );
+      log.info({ status, bmId, matched: upd.rowCount }, 'WhatsApp status updated');
+    } else if (isFailed) {
+      const errorMsg = payload.error || payload.reason || 'Unknown error';
+      const upd = await pool.query(
+        `UPDATE whatsapp_messages
             SET status = 'failed', status_updated_at = NOW(), error_message = $1
-            WHERE request_id = $2
-          `, [errorMsg, intentTxId]);
+          WHERE botmaker_message_id = $2
+          RETURNING id, order_number, template`,
+        [errorMsg, bmId]
+      );
+      log.error({ bmId, errorMsg, contactId, matched: upd.rowCount }, 'WhatsApp delivery failed');
 
-          log.error({ intentTxId, errorMsg, contactId }, 'WhatsApp delivery failed');
-
-          // Loguear el fallo en `logs` para que aparezca en /admin/activity y en la
-          // actividad del pedido. INSERT directo previo intentaba escribir en una
-          // columna `detalle` que no existe; usamos logEvento (patrón del resto del file).
-          await logEvento({
-            orderNumber: msg.order_number ? String(msg.order_number) : null,
-            accion: `whatsapp_failed: ${msg.template || 'unknown'} — ${errorMsg}`,
-            origen: 'webhook_botmaker'
-          });
-
-          // No retry automático - el mensaje podría haberse entregado
-          // Los fallos quedan logueados para revisión manual en tabla logs
-        }
+      if (upd.rows[0]) {
+        const msg = upd.rows[0];
+        await logEvento({
+          orderNumber: msg.order_number ? String(msg.order_number) : null,
+          accion: `whatsapp_failed: ${msg.template || 'unknown'} — ${errorMsg}`,
+          origen: 'webhook_botmaker',
+        });
       }
     }
 

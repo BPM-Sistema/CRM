@@ -128,21 +128,31 @@ async function processWhatsAppJob(job) {
   });
 
   // 6. Actualizar whatsapp_messages a sent (el registro pending se creó al encolar)
-  const botmakerRequestId = response.data?.requestId || requestId;
+  // botmakerMessageId: es el `messageId` que Botmaker envía en los webhooks de
+  // delivery (type=status). Sin guardarlo, el webhook no puede hacer match con
+  // la fila local. Formato típico: "6V0RABKRBOEJKVQ4W6QI".
+  const botmakerMessageId = response.data?.requestId || null;
   try {
     await pool.query(
-      `UPDATE whatsapp_messages SET status = 'sent', status_updated_at = NOW(), template = $2, contact_id = $3, template_key = COALESCE(template_key, $4)
+      `UPDATE whatsapp_messages
+         SET status = 'sent',
+             status_updated_at = NOW(),
+             template = $2,
+             contact_id = $3,
+             template_key = COALESCE(template_key, $4),
+             botmaker_message_id = COALESCE(botmaker_message_id, $5)
        WHERE request_id = $1`,
-      [requestId, plantillaFinal, contactIdClean, plantilla]
+      [requestId, plantillaFinal, contactIdClean, plantilla, botmakerMessageId]
     );
     // Si no existía (fallback directo o mensaje viejo), crear
     await pool.query(
-      `INSERT INTO whatsapp_messages (request_id, order_number, template, template_key, contact_id, variables, status, status_updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 'sent', NOW())
+      `INSERT INTO whatsapp_messages
+         (request_id, order_number, template, template_key, contact_id, variables, status, status_updated_at, botmaker_message_id)
+       VALUES ($1, $2, $3, $4, $5, $6, 'sent', NOW(), $7)
        ON CONFLICT (request_id) DO NOTHING`,
-      [requestId, orderNumber, plantillaFinal, plantilla, contactIdClean, JSON.stringify(variables)]
+      [requestId, orderNumber, plantillaFinal, plantilla, contactIdClean, JSON.stringify(variables), botmakerMessageId]
     );
-    jobLog.info({ botmakerRequestId, contactId: contactIdClean }, 'WhatsApp enviado y tracked');
+    jobLog.info({ botmakerMessageId, contactId: contactIdClean }, 'WhatsApp enviado y tracked');
   } catch (dbErr) {
     jobLog.error({ err: dbErr.message }, 'Error guardando tracking WhatsApp');
   }
@@ -157,7 +167,7 @@ async function processWhatsAppJob(job) {
     status: 'sent',
     plantillaFinal,
     contactId: contactIdClean,
-    botmakerRequestId
+    botmakerMessageId
   };
 }
 
