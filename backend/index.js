@@ -3414,6 +3414,10 @@ app.post('/webhook/botmaker-status', async (req, res) => {
 
     const payload = req.body;
 
+    // DEBUG TEMPORAL: log crudo para inspeccionar estructura exacta que manda Botmaker
+    // (quitar luego de confirmar nombres de campos)
+    console.log('[BMW_DEBUG_PAYLOAD] ' + JSON.stringify(payload || {}));
+
     // Solo loguear si es un status (no mensajes de usuario)
     if (payload.type === 'status') {
       log.info({ payload }, 'Botmaker status webhook received');
