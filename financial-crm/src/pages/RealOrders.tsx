@@ -417,14 +417,6 @@ export function RealOrders() {
     }
   };
 
-  const printSelectedOrders = () => {
-    if (selectedOrderNumbers.size === 0) return;
-    const params = new URLSearchParams();
-    params.set('orders', Array.from(selectedOrderNumbers).join(','));
-    navigate(`/orders/print?${params.toString()}`);
-    clearSelection();
-  };
-
   // Imprimir etiquetas de Envío Nube para pedidos seleccionados
   const printEnvioNubeLabels = async () => {
     if (selectedOrderNumbers.size === 0) return;
@@ -551,15 +543,6 @@ export function RealOrders() {
                   onClick={selectAllVisible}
                 >
                   Seleccionar todos ({filteredOrders.length})
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  leftIcon={<Printer size={16} />}
-                  onClick={printSelectedOrders}
-                  disabled={selectedOrderNumbers.size === 0}
-                >
-                  Imprimir ({selectedOrderNumbers.size})
                 </Button>
                 <Button
                   variant={selectedEnvioNubeCount > 0 ? 'primary' : 'secondary'}
