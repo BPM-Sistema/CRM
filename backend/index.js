@@ -31,6 +31,7 @@ const { callTiendanubeWrite } = require('./lib/tnWriteClient');
 
 const { uploadFile: storageUploadFile, getPublicUrl: storageGetPublicUrl } = require('./lib/storage');
 const { calcularEstadoCuenta } = require('./utils/calcularEstadoCuenta');
+const { formatARS } = require('./utils/formatARS');
 const pool = require('./db');
 const { hashText } = require('./hash');
 const { analizarComprobante, convertirAFormatoLegacy } = require('./services/claudeVision');
@@ -1698,16 +1699,23 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
       const customerName = orderData.customer_name || 'Cliente';
       const shippingType = orderData.shipping_type || '';
 
-      // Enviar comprobante_confirmado siempre al confirmar
+      // Branch según estadoPago:
+      //   - confirmado_parcial → partial_paid (queda saldo pendiente)
+      //   - confirmado_total / a_favor → comprobante_confirmado
+      const plantillaConfirm = estadoPago === 'confirmado_parcial' ? 'partial_paid' : 'comprobante_confirmado';
+      const variablesConfirm = estadoPago === 'confirmado_parcial'
+        ? { '1': customerName, '2': formatARS(comprobante.monto), '3': formatARS(saldo) }
+        : { '1': customerName, '2': formatARS(comprobante.monto), '3': comprobante.order_number };
+
       try {
         await queueWhatsApp({
           telefono: customerPhone,
-          plantilla: 'comprobante_confirmado',
-          variables: { '1': customerName, '2': String(comprobante.monto), '3': comprobante.order_number },
+          plantilla: plantillaConfirm,
+          variables: variablesConfirm,
           orderNumber: comprobante.order_number
         });
       } catch (waErr) {
-        log.error({ err: waErr.message, orderNumber: comprobante.order_number, plantilla: 'comprobante_confirmado' }, 'Error encolando WhatsApp');
+        log.error({ err: waErr.message, orderNumber: comprobante.order_number, plantilla: plantillaConfirm }, 'Error encolando WhatsApp');
       }
 
       // datos__envio ya se envía en /upload cuando el pedido pasa a a_imprimir
@@ -2001,7 +2009,7 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
           await client.query(`UPDATE comprobantes SET estado = 'confirmado', confirmed_at = NOW() WHERE id = $1`, [comprobante.id]);
 
           const pagoResult = await recalcularPagos(client, comprobante.order_number);
-          const { estadoPago } = pagoResult;
+          const { estadoPago, saldo } = pagoResult;
 
           const orderRes = await client.query(
             `SELECT monto_tiendanube, estado_pedido, customer_name, customer_phone, shipping_type, tn_order_id
@@ -2027,15 +2035,24 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
           });
 
           if (orderData?.customer_phone) {
+            const customerName = orderData.customer_name || 'Cliente';
+            // Branch según estadoPago:
+            //   - confirmado_parcial → partial_paid (queda saldo pendiente)
+            //   - confirmado_total / a_favor → comprobante_confirmado
+            const plantillaConfirm = estadoPago === 'confirmado_parcial' ? 'partial_paid' : 'comprobante_confirmado';
+            const variablesConfirm = estadoPago === 'confirmado_parcial'
+              ? { '1': customerName, '2': formatARS(comprobante.monto), '3': formatARS(saldo) }
+              : { '1': customerName, '2': formatARS(comprobante.monto), '3': comprobante.order_number };
+
             try {
               await queueWhatsApp({
                 telefono: orderData.customer_phone,
-                plantilla: 'comprobante_confirmado',
-                variables: { '1': orderData.customer_name || 'Cliente', '2': String(comprobante.monto), '3': comprobante.order_number },
+                plantilla: plantillaConfirm,
+                variables: variablesConfirm,
                 orderNumber: comprobante.order_number
               });
             } catch (waErr) {
-              log.error({ err: waErr.message, orderNumber: comprobante.order_number, plantilla: 'comprobante_confirmado' }, 'Error encolando WhatsApp en conciliación');
+              log.error({ err: waErr.message, orderNumber: comprobante.order_number, plantilla: plantillaConfirm }, 'Error encolando WhatsApp en conciliación');
             }
 
             // datos__envio ya se envía en /upload cuando el pedido pasa a a_imprimir
@@ -2169,7 +2186,7 @@ app.post('/comprobantes/:id/rechazar', authenticate, requirePermission('receipts
           plantilla: 'comprobante_rechazado',
           variables: {
             '1': comprobante.customer_name || 'Cliente',
-            '2': String(comprobante.monto),
+            '2': formatARS(comprobante.monto),
             '3': comprobante.order_number
           },
           orderNumber: comprobante.order_number
@@ -4033,7 +4050,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
             const clientePago = clientePagoRes.rows[0];
 
             if (clientePago?.customer_phone) {
-              const montoFormateado = Number(clientePago.monto_tiendanube || tnTotalPaid).toLocaleString('es-AR');
+              const montoFormateado = formatARS(clientePago.monto_tiendanube || tnTotalPaid);
               try {
                 await queueWhatsApp({
                   telefono: clientePago.customer_phone,
@@ -4665,30 +4682,11 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     const estadoCuenta = resultado.estado;
     const cuentaActual = resultado.cuenta;
 
-    /* ===============================
-       1️⃣1️⃣ WHATSAPP AL CLIENTE (solo pago parcial)
-    ================================ */
-    console.log('CEL: ',telefono, 'ESTADO CUENTA:', estadoCuenta)
-    if (telefono && estadoCuenta === 'debe') {
-      // Solo enviar WhatsApp si hay saldo pendiente (partial_paid)
-      const plantilla = 'partial_paid';
-      const variables = {
-        '1': nombre,
-        '2': montoDetectado,
-        '3': cuentaActual
-      };
-
-      try {
-        await queueWhatsApp({
-          telefono,
-          plantilla,
-          variables,
-          orderNumber
-        });
-      } catch (waErr) {
-        log.error({ err: waErr.message, orderNumber, plantilla: 'partial_paid' }, 'Error encolando WhatsApp');
-      }
-    }
+    // No se envía WhatsApp al subir el comprobante.
+    // El aviso al cliente se manda recién al confirmar:
+    //   - parcial → partial_paid
+    //   - total   → comprobante_confirmado
+    console.log('CEL: ', telefono, 'ESTADO CUENTA:', estadoCuenta);
 
     /* ===============================
        1️⃣2️⃣ UPDATE CUENTA
