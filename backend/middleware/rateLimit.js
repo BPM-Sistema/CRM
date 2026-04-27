@@ -3,20 +3,23 @@
  * Uses Redis store when available, falls back to in-memory store
  */
 
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const { RedisStore } = require('rate-limit-redis');
 const { getRedisClient } = require('../lib/redis');
 
 // Skip rate limiting in test environment
 const skipInTest = process.env.NODE_ENV === 'test';
 
-// Extract real client IP behind Cloud Run proxy
+// Extract real client IP behind Cloud Run proxy.
+// Pasamos el IP por ipKeyGenerator porque desde express-rate-limit v8 es
+// obligatorio para evitar que clientes IPv6 puedan saltar el limite usando
+// el mismo /64 con sufijos distintos.
 function realIp(req) {
   const xff = req.headers['x-forwarded-for'];
-  if (typeof xff === 'string' && xff.length > 0) {
-    return xff.split(',')[0].trim();
-  }
-  return req.ip;
+  const raw = (typeof xff === 'string' && xff.length > 0)
+    ? xff.split(',')[0].trim()
+    : req.ip;
+  return ipKeyGenerator(raw);
 }
 
 /**
