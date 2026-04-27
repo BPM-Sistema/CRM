@@ -7687,7 +7687,9 @@ const BULK_SEND_UNSUPPORTED = new Set([
 ]);
 
 function buildBulkVariables(template, order) {
-  if (template === 'abre_chat') return {};
+  if (template === 'abre_chat') {
+    return { '1': String(order.order_number) };
+  }
   if (BULK_SEND_UNSUPPORTED.has(template)) return null;
   return {
     '1': order.customer_name || 'Cliente',
