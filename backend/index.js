@@ -5294,6 +5294,21 @@ app.post('/stock-alerts', stockAlertsLimiter, stockAlertsRoutes.createStockAlert
 app.locals.queueWhatsApp = queueWhatsApp;
 app.post('/stock-alerts/cron/dispatch', verifyCronAuth, stockAlertsRoutes.cronDispatchHandler);
 app.post('/stock-alerts/cron/test-send', verifyCronAuth, stockAlertsRoutes.testSendHandler);
+
+// Cron semanal: canonicaliza nombres de transporte raw del ranking usando
+// Claude. Configurar en Cloud Scheduler con frecuencia semanal (ej. lunes
+// 4am) → POST https://api.bpmadministrador.com/cron/canonicalize-carriers.
+app.post('/cron/canonicalize-carriers', verifyCronAuth, async (req, res) => {
+  try {
+    const { canonicalizeAllCarriers } = require('./services/carrierResolver');
+    const result = await canonicalizeAllCarriers();
+    console.log(`✅ canonicalize-carriers: ${JSON.stringify(result)}`);
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    console.error('❌ /cron/canonicalize-carriers error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
 app.use('/stock-alerts', stockAlertsRoutes);
 if (aiBotRoutes) app.use('/ai-bot', aiBotRoutes);
 app.use('/admin/queues', bullBoardAuth, bullBoardAdapter.getRouter());
@@ -6531,17 +6546,34 @@ app.get('/shipping-data/ranking', authenticate, async (req, res) => {
     const rawProvincias = [...new Set(result.rows.map(r => r.provincia_raw))];
     const resolved = await resolveProvinces(rawProvincias);
 
+    // Cargar el cache de carriers (carrier_aliases) — se llena con un cron
+    // semanal. Si un transporte no está en el cache, queda como su raw
+    // normalizado (sin Claude en runtime para no demorar el endpoint).
+    const { loadCarrierAliases } = require('./services/carrierResolver');
+    const carrierMap = await loadCarrierAliases();
+
     // Re-agrupar por nombre canónico. Los `null` se descartan (basura / no
     // identificables). Si hay filtro por provincia, lo aplicamos en JS también.
     const filtroNorm = filtroProvincia ? filtroProvincia.toLowerCase() : null;
     const porProvincia = {};
     for (const row of result.rows) {
-      const canonical = resolved.get(row.provincia_raw);
-      if (!canonical) continue; // descartamos no identificables
-      if (filtroNorm && canonical.toLowerCase() !== filtroNorm) continue;
-      if (!porProvincia[canonical]) porProvincia[canonical] = new Map();
-      const acc = porProvincia[canonical];
-      acc.set(row.transporte, (acc.get(row.transporte) || 0) + row.cantidad);
+      const canonicalProv = resolved.get(row.provincia_raw);
+      if (!canonicalProv) continue;
+      if (filtroNorm && canonicalProv.toLowerCase() !== filtroNorm) continue;
+
+      // Aplicar el cache de carriers: si está cacheado y canonical es null,
+      // descartamos esta entrada (no es un transporte real). Si tiene
+      // canónico, usarlo. Si no está en cache, dejamos el raw tal cual.
+      let transporte = row.transporte;
+      if (carrierMap.has(transporte)) {
+        const c = carrierMap.get(transporte);
+        if (c === null) continue; // marcado como no-transporte por Claude
+        transporte = c;
+      }
+
+      if (!porProvincia[canonicalProv]) porProvincia[canonicalProv] = new Map();
+      const acc = porProvincia[canonicalProv];
+      acc.set(transporte, (acc.get(transporte) || 0) + row.cantidad);
     }
 
     // Convertir Map → array ordenado por cantidad desc.
