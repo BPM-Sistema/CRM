@@ -44,7 +44,7 @@ const upload = multer({
 router.post('/upload',
   authenticate,
   requirePermission('remitos.upload'),
-  upload.array('files', 50), // Máximo 50 archivos
+  upload.array('files', 200), // Máximo 200 archivos por batch
   async (req, res) => {
     const files = req.files;
 

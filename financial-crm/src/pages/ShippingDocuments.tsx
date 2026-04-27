@@ -1126,6 +1126,14 @@ export function ShippingDocuments() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    // El backend acepta hasta 200 por batch. Multer falla con "Unexpected field"
+    // en el archivo 201, lo que termina como 500 sin mensaje útil — mejor avisar acá.
+    if (files.length > 200) {
+      setError(`Seleccionaste ${files.length} archivos. El máximo por subida es 200. Subilos en tandas.`);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
     try {
       setUploading(true);
       setError(null);
