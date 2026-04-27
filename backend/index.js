@@ -6466,10 +6466,11 @@ app.post('/shipping-data/bulk', authenticate, async (req, res) => {
  */
 app.get('/shipping-data/ranking', authenticate, async (req, res) => {
   try {
-    const provincia = (req.query.provincia || '').trim();
+    const filtroProvincia = (req.query.provincia || '').trim();
 
-    // Expresiones SQL reutilizables
-    // norm(text) = UPPER(TRIM(sin acentos, espacios colapsados))
+    // SQL agrupa por raw_provincia + transporte. Después en JS resolvemos cada
+    // raw_provincia a su nombre canónico (lista de 24 + cache + Claude) y
+    // re-agrupamos. Esto evita el CASE WHEN gigante y captura cualquier typo.
     const normExpr = (col) => `
       REGEXP_REPLACE(
         UPPER(TRIM(
@@ -6478,10 +6479,8 @@ app.get('/shipping-data/ranking', authenticate, async (req, res) => {
         '\\s+', ' ', 'g'
       )
     `;
-
     // Quita prefijos comunes del nombre de transporte para agrupar
     // "PRIVITERA" y "TRANSPORTE PRIVITERA" como el mismo.
-    // OJO: NO se quita "CORREO " porque el filtro de exclusión usa "CORREO ARGENTINO".
     const stripPrefijoTransporte = (expr) => `
       REGEXP_REPLACE(
         ${expr},
@@ -6490,107 +6489,72 @@ app.get('/shipping-data/ranking', authenticate, async (req, res) => {
       )
     `;
 
-    // Mapeo de alias de provincias. Unifica typos/abreviaturas al nombre canónico.
-    // CABA se mantiene separado de Buenos Aires.
-    const provinciaCanonicaExpr = (normalizedCol) => `
-      CASE
-        WHEN ${normalizedCol} IN (
-          'BUENOS AIRES','BS AS','BSAS','BS.AS','BA AS',
-          'PCIA. BUENOS AIRES','PROVINCIA DE BUENOS AIRES',
-          'BUE2NOS AIRESA','BUENOA AIRES','BUENAS AIRES','BUENO AIRES','BUENOD AIRES','BUE','BUENO'
-        ) THEN 'BUENOS AIRES'
-        WHEN ${normalizedCol} IN ('CABA','CIUDAD AUTONOMA DE BUENOS AIRES') THEN 'CABA'
-        WHEN ${normalizedCol} IN ('SANTA FE','SANTAFE','STA FE','LA CAPITAL - SANTA FE') THEN 'SANTA FE'
-        WHEN ${normalizedCol} IN ('CORDOBA','CORDO1BWA2') THEN 'CORDOBA'
-        WHEN ${normalizedCol} IN ('MISIONES','MUSIONES') THEN 'MISIONES'
-        WHEN ${normalizedCol} IN ('NEUQUEN','NEUQUEN CAPITAL') THEN 'NEUQUEN'
-        WHEN ${normalizedCol} IN ('TIERRA DEL FUEGO','TIERRA DEL FUEGA') THEN 'TIERRA DEL FUEGO'
-        WHEN ${normalizedCol} IN ('SAN LUIS','SA LUIS') THEN 'SAN LUIS'
-        WHEN ${normalizedCol} IN ('LA PAMPA','LAPAMPA','LA PAMPA PROVINCE') THEN 'LA PAMPA'
-        WHEN ${normalizedCol} IN ('LA RIOJA','LA RIOJA CAPITAL') THEN 'LA RIOJA'
-        WHEN ${normalizedCol} IN ('SANTIAGO DEL ESTERO','SGO DEL ESTERO') THEN 'SANTIAGO DEL ESTERO'
-        WHEN ${normalizedCol} IN ('RIO NEGRO','RIO NEGRO ATRIEL') THEN 'RIO NEGRO'
-        ELSE ${normalizedCol}
-      END
-    `;
-
-    // Provincias que se descartan por ser basura / no identificables
-    const descartarProvincia = `('XSXSXS','343434','BLA','ARA VERA','SANTA','DANTE FE','BUENOD AIRES')`;
-
-    const params = [];
-    let whereProvincia = '';
-    if (provincia) {
-      params.push(provincia);
-      whereProvincia = `AND ${provinciaCanonicaExpr(normExpr('provincia'))} = ${provinciaCanonicaExpr(normExpr(`$${params.length}`))}`;
-    }
-
     const sql = `
       WITH base AS (
         SELECT
-          ${provinciaCanonicaExpr(normExpr('provincia'))} AS provincia,
+          ${normExpr('provincia')} AS provincia_raw,
           CASE
             WHEN empresa_envio = 'VIA_CARGO' THEN 'VIA CARGO'
             ELSE ${stripPrefijoTransporte(normExpr('empresa_envio_otro'))}
           END AS transporte
         FROM shipping_requests
         WHERE provincia IS NOT NULL AND TRIM(provincia) <> ''
-          ${whereProvincia}
 
         UNION ALL
 
         SELECT
-          ${provinciaCanonicaExpr(normExpr('provincia'))} AS provincia,
+          ${normExpr('provincia')} AS provincia_raw,
           ${stripPrefijoTransporte(normExpr('empresa_envio_raw'))} AS transporte
         FROM shipping_requests_historico
         WHERE provincia IS NOT NULL AND TRIM(provincia) <> ''
-          ${whereProvincia}
       ),
       filtered AS (
         SELECT *
         FROM base
         WHERE transporte <> ''
-          AND provincia NOT IN ${descartarProvincia}
           AND transporte NOT LIKE '%ANDREANI%'
           AND transporte NOT LIKE '%ANDRIANI%'
           AND transporte NOT LIKE '%CORREO ARGENTINO%'
           AND transporte NOT LIKE '%CORREO_ARGENTINO%'
-          AND transporte NOT LIKE '%@%'  -- descarta emails mal ingresados
+          AND transporte NOT LIKE '%@%'
       )
-      SELECT provincia, transporte, COUNT(*)::int AS cantidad
+      SELECT provincia_raw, transporte, COUNT(*)::int AS cantidad
       FROM filtered
-      GROUP BY provincia, transporte
-      ORDER BY provincia ASC, cantidad DESC, transporte ASC
+      GROUP BY provincia_raw, transporte
+      ORDER BY provincia_raw ASC, cantidad DESC, transporte ASC
     `;
 
-    const result = await pool.query(sql, params);
+    const result = await pool.query(sql);
 
+    // Resolvemos las provincias raw en lote (cache + Claude para las nuevas).
+    const { resolveProvinces } = require('./services/provinceResolver');
+    const rawProvincias = [...new Set(result.rows.map(r => r.provincia_raw))];
+    const resolved = await resolveProvinces(rawProvincias);
+
+    // Re-agrupar por nombre canónico. Los `null` se descartan (basura / no
+    // identificables). Si hay filtro por provincia, lo aplicamos en JS también.
+    const filtroNorm = filtroProvincia ? filtroProvincia.toLowerCase() : null;
     const porProvincia = {};
     for (const row of result.rows) {
-      if (!porProvincia[row.provincia]) porProvincia[row.provincia] = [];
-      porProvincia[row.provincia].push({
-        transporte: row.transporte,
-        cantidad: row.cantidad
-      });
+      const canonical = resolved.get(row.provincia_raw);
+      if (!canonical) continue; // descartamos no identificables
+      if (filtroNorm && canonical.toLowerCase() !== filtroNorm) continue;
+      if (!porProvincia[canonical]) porProvincia[canonical] = new Map();
+      const acc = porProvincia[canonical];
+      acc.set(row.transporte, (acc.get(row.transporte) || 0) + row.cantidad);
     }
 
-    const provinciasRes = await pool.query(`
-      SELECT DISTINCT ${provinciaCanonicaExpr(normExpr('provincia'))} AS provincia
-      FROM (
-        SELECT provincia FROM shipping_requests
-        UNION ALL
-        SELECT provincia FROM shipping_requests_historico
-      ) x
-      WHERE provincia IS NOT NULL AND TRIM(provincia) <> ''
-        AND ${provinciaCanonicaExpr(normExpr('provincia'))} NOT IN ${descartarProvincia}
-      ORDER BY provincia ASC
-    `);
+    // Convertir Map → array ordenado por cantidad desc.
+    const ranking = {};
+    for (const [prov, transportesMap] of Object.entries(porProvincia)) {
+      ranking[prov] = [...transportesMap.entries()]
+        .map(([transporte, cantidad]) => ({ transporte, cantidad }))
+        .sort((a, b) => b.cantidad - a.cantidad || a.transporte.localeCompare(b.transporte));
+    }
 
-    res.json({
-      ok: true,
-      provincias: provinciasRes.rows.map(r => r.provincia),
-      ranking: porProvincia
-    });
+    const provincias = Object.keys(ranking).sort((a, b) => a.localeCompare(b));
 
+    res.json({ ok: true, provincias, ranking });
   } catch (error) {
     console.error('❌ GET /shipping-data/ranking error:', error.message);
     res.status(500).json({ error: 'Error al calcular ranking de transportes' });
