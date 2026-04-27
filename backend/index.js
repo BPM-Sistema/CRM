@@ -1116,6 +1116,41 @@ app.get('/orders/print-counts', authenticate, requirePermission('orders.view'), 
 
 
 /* =====================================================
+   GET — CONTEO DE PEDIDOS PENDIENTES DE DATOS DE ENVÍO
+   Cuenta pedidos donde:
+     - el tipo de envío requiere formulario (Vía Cargo / Expreso a elección)
+     - el cliente todavía NO completó el formulario (no hay shipping_request)
+     - YA tiene al menos un comprobante: si subió comprobante, el flujo ya
+       le pidió datos__envio, así que contamos los que están "pendientes"
+       desde el punto de vista del operador.
+   Lo usa el badge del Header (al lado del bell de notificaciones).
+===================================================== */
+app.get('/orders/pending-shipping-data-count', authenticate, requirePermission('orders.view'), async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT COUNT(*)::int AS count
+      FROM orders_validated o
+      WHERE (
+          (LOWER(COALESCE(o.shipping_type, '')) LIKE '%expreso%' AND LOWER(COALESCE(o.shipping_type, '')) LIKE '%elec%')
+          OR LOWER(COALESCE(o.shipping_type, '')) LIKE '%via cargo%'
+          OR LOWER(COALESCE(o.shipping_type, '')) LIKE '%viacargo%'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM shipping_requests sr WHERE sr.order_number = o.order_number
+        )
+        AND EXISTS (
+          SELECT 1 FROM comprobantes c WHERE c.order_number = o.order_number
+        )
+    `);
+    res.json({ ok: true, count: result.rows[0].count });
+  } catch (error) {
+    console.error('❌ /orders/pending-shipping-data-count error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+/* =====================================================
    POST — OBTENER PEDIDOS PARA IMPRIMIR (por estados)
 ===================================================== */
 app.post('/orders/to-print', authenticate, requirePermission('orders.print'), async (req, res) => {

@@ -1530,6 +1530,16 @@ export interface RemitosFilters {
   status?: RemitoStatus | null;
 }
 
+// Conteo de pedidos pendientes de datos de envío.
+// "Pendiente" = el pedido requiere formulario (Vía Cargo/Expreso), tiene al
+// menos un comprobante (ya se le pidió datos), y todavía no completó el form.
+export async function fetchPendingShippingDataCount(): Promise<number> {
+  const response = await authFetch(`${API_BASE_URL}/orders/pending-shipping-data-count`);
+  if (!response.ok) return 0;
+  const data = await response.json();
+  return data.count ?? 0;
+}
+
 // Subir remitos (múltiples archivos)
 export async function uploadRemitos(files: File[]): Promise<{
   ok: boolean;

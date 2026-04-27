@@ -1,4 +1,4 @@
-import { NotificationBell } from '../ui';
+import { NotificationBell, PendingShippingDataBadge } from '../ui';
 
 interface HeaderProps {
   title: React.ReactNode;
@@ -19,6 +19,7 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
 
         <div className="flex items-center gap-1.5 md:gap-4 flex-shrink-0">
           <NotificationBell />
+          <PendingShippingDataBadge />
           <div className="hidden md:contents">
             {actions}
           </div>
