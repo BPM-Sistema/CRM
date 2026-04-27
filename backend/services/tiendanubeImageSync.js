@@ -37,6 +37,14 @@ const LATEST_FILE = path.join(RUNTIME_DIR, 'latest.json');
 const RUNS_FILE = path.join(RUNTIME_DIR, 'runs.jsonl');
 const LOCK_FILE = path.join(RUNTIME_DIR, 'image-sync.lock');
 
+// Productos a ignorar — IDs de Tiendanube.
+//   339749003 = Acolchado Buenos Aires con corderito a tono ROYAL
+//   304148279 = Toallon secado rapido Aura Blanco
+const IGNORED_PRODUCT_IDS = new Set([
+  339749003,
+  304148279,
+]);
+
 // ─── Utilidades ─────────────────────────────────────────────
 
 function ensureRuntimeDir() {
@@ -450,6 +458,13 @@ async function syncProductImages({ dryRun = false, productId = null, triggerSour
       };
 
       try {
+        if (IGNORED_PRODUCT_IDS.has(Number(product.id))) {
+          item.reason = 'ignorado manualmente';
+          result.products_skipped++;
+          result.items.push(item);
+          continue;
+        }
+
         const variants = product.variants;
         const images = product.images;
 
