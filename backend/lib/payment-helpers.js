@@ -82,6 +82,30 @@ function requiresShippingForm(shippingType) {
 }
 
 /* =====================================================
+   UTIL — TRANSPORTES PROHIBIDOS
+   Bloqueamos Andreani, OCA y Correo Argentino en el form /envio:
+   están con demoras y costos altos. Replica la validación del
+   frontend (ShippingForm.tsx) — no confiar solo en el cliente.
+===================================================== */
+const FORBIDDEN_CARRIER_PATTERNS = [
+  /\bandreani\b/,
+  /\boca\b/,
+  /\bcorreo\s*arg(entino)?\b/,
+];
+
+function isForbiddenCarrier(value) {
+  if (!value) return false;
+  const normalized = String(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return false;
+  return FORBIDDEN_CARRIER_PATTERNS.some(pattern => pattern.test(normalized));
+}
+
+/* =====================================================
    UTIL — NORMALIZAR TELEFONO PARA COMPARACION
    Re-export de utils/phoneNormalize para conveniencia
 ===================================================== */
@@ -180,6 +204,7 @@ module.exports = {
   ESTADOS_PAGO_HABILITAN_IMPRIMIR,
   ESTADOS_PAGO_BLOQUEAN_IMPRIMIR,
   requiresShippingForm,
+  isForbiddenCarrier,
   normalizePhoneForComparison,
   normalizePhone,
   calcularEstadoCuenta,

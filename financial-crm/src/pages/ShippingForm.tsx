@@ -42,6 +42,29 @@ const initialFormData: FormData = {
   comentarios: '',
 };
 
+// Transportes que no se pueden usar (demoras y costos altos).
+// Se matchea contra el input "Otra empresa" en tiempo real, bloqueando el submit.
+const FORBIDDEN_CARRIER_PATTERNS: RegExp[] = [
+  /\bandreani\b/,
+  /\boca\b/,
+  /\bcorreo\s*arg(entino)?\b/,
+];
+
+function normalizeCarrierName(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // quita acentos combinantes
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isForbiddenCarrier(value: string): boolean {
+  const normalized = normalizeCarrierName(value);
+  if (!normalized) return false;
+  return FORBIDDEN_CARRIER_PATTERNS.some(pattern => pattern.test(normalized));
+}
+
 export function ShippingForm() {
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [errors, setErrors] = useState<FormErrors>({});
@@ -69,6 +92,11 @@ export function ShippingForm() {
     }
     if (formData.empresa_envio === 'OTRO' && !formData.empresa_envio_otro.trim()) {
       newErrors.empresa_envio_otro = 'Ingresá el nombre de la empresa';
+    } else if (
+      formData.empresa_envio === 'OTRO' &&
+      isForbiddenCarrier(formData.empresa_envio_otro)
+    ) {
+      newErrors.empresa_envio_otro = 'No despachamos por Correo Argentino, Andreani ni OCA. Elegí otro transporte o expreso a elección.';
     }
     if (!formData.destino_tipo) {
       newErrors.destino_tipo = 'Seleccioná el tipo de destino';
@@ -258,22 +286,35 @@ export function ShippingForm() {
           </div>
 
           {/* Empresa otro (condicional) */}
-          {formData.empresa_envio === 'OTRO' && (
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-1.5">
-                Nombre de la Empresa <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                name="empresa_envio_otro"
-                value={formData.empresa_envio_otro}
-                onChange={handleChange}
-                placeholder="Ej: Cruz del Sur"
-                className={`w-full rounded-lg border ${errors.empresa_envio_otro ? 'border-red-300' : 'border-neutral-200'} bg-white px-4 py-3 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent`}
-              />
-              {errors.empresa_envio_otro && <p className="mt-1.5 text-sm text-red-600">{errors.empresa_envio_otro}</p>}
-            </div>
-          )}
+          {formData.empresa_envio === 'OTRO' && (() => {
+            const isForbidden = isForbiddenCarrier(formData.empresa_envio_otro);
+            const showInputError = errors.empresa_envio_otro || isForbidden;
+            return (
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-1.5">
+                  Nombre de la Empresa <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="empresa_envio_otro"
+                  value={formData.empresa_envio_otro}
+                  onChange={handleChange}
+                  placeholder="Ej: Cruz del Sur"
+                  className={`w-full rounded-lg border ${showInputError ? 'border-red-300' : 'border-neutral-200'} bg-white px-4 py-3 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent`}
+                />
+                {isForbidden ? (
+                  <div className="mt-2 bg-red-50 border-2 border-red-300 text-red-900 text-sm font-medium px-5 py-3 rounded-xl flex items-start gap-2 text-left">
+                    <AlertCircle size={18} className="flex-shrink-0 mt-0.5 text-red-600" />
+                    <span>
+                      Para que tu pedido llegue <strong>rápido y al mejor precio</strong>, momentáneamente no estamos despachando por Correo Argentino, Andreani, OCA ni similares — están con demoras y costos muy altos. Te recomendamos elegir un transporte o expreso a elección 🤗
+                    </span>
+                  </div>
+                ) : (
+                  errors.empresa_envio_otro && <p className="mt-1.5 text-sm text-red-600">{errors.empresa_envio_otro}</p>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Tipo de destino */}
           <div>
@@ -459,7 +500,10 @@ export function ShippingForm() {
           {/* Submit */}
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={
+              isSubmitting ||
+              (formData.empresa_envio === 'OTRO' && isForbiddenCarrier(formData.empresa_envio_otro))
+            }
             className="w-full bg-neutral-900 text-white font-medium py-4 px-6 rounded-xl hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
           >
             {isSubmitting ? (

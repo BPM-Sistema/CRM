@@ -400,13 +400,32 @@ export function RealOrders() {
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({ error: response.statusText }));
-        alert(`Error al generar etiquetas: ${err.error}`);
+        const lines = [err.error || 'Error al generar etiquetas'];
+        if (Array.isArray(err.alreadyPrinted) && err.alreadyPrinted.length > 0) {
+          const nums = err.alreadyPrinted.map((a: { order: string }) => a.order).join(', ');
+          lines.push(`Ya impresas: ${nums}`);
+        }
+        if (Array.isArray(err.missing) && err.missing.length > 0) {
+          lines.push(`Sin datos de envío: ${err.missing.join(', ')}`);
+        }
+        alert(lines.join('\n'));
         return;
       }
+
+      const generated = parseInt(response.headers.get('X-Labels-Generated') || '0', 10);
+      const skipped = parseInt(response.headers.get('X-Labels-Already-Printed') || '0', 10);
+      const missing = parseInt(response.headers.get('X-Labels-Missing') || '0', 10);
 
       const blob = await response.blob();
       const blobUrl = URL.createObjectURL(blob);
       window.open(blobUrl, '_blank');
+
+      if (skipped > 0 || missing > 0) {
+        const msgs: string[] = [`✅ ${generated} etiquetas generadas`];
+        if (skipped > 0) msgs.push(`⏭️ ${skipped} ya impresas (omitidas)`);
+        if (missing > 0) msgs.push(`⚠️ ${missing} sin datos de envío`);
+        alert(msgs.join('\n'));
+      }
     } catch (err) {
       console.error('Error al imprimir etiquetas:', err);
       alert('Error al generar etiquetas');
@@ -716,8 +735,7 @@ export function RealOrders() {
               {([
                 { value: 'all', label: 'Todos', color: 'bg-neutral-100 text-neutral-700' },
                 { value: 'envio_nube', label: 'Envío Nube', color: 'bg-sky-50 text-sky-700' },
-                { value: 'via_cargo', label: 'Via Cargo', color: 'bg-orange-50 text-orange-700' },
-                { value: 'expreso', label: 'Expreso', color: 'bg-violet-50 text-violet-700' },
+                { value: 'transporte', label: 'Transporte', color: 'bg-orange-50 text-orange-700' },
                 { value: 'retiro', label: 'Retiro', color: 'bg-emerald-50 text-emerald-700' },
               ] as const).map((btn) => (
                 <button

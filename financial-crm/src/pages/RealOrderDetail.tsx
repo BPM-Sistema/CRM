@@ -34,7 +34,7 @@ import {
   fetchShippingRequest,
   fetchBotmakerChat,
   fetchRemitoByOrder,
-  getShippingLabelUrl,
+  downloadShippingLabel,
   getEnvioNubeLabel,
   ApiOrderDetail,
   ApiOrderPrintData,
@@ -88,6 +88,9 @@ export function RealOrderDetail() {
   // Estado para etiqueta Envío Nube
   const [isLoadingEnvioNubeLabel, setIsLoadingEnvioNubeLabel] = useState(false);
 
+  // Estado para descarga de etiqueta de transporte
+  const [isLoadingShippingLabel, setIsLoadingShippingLabel] = useState(false);
+
 
   const loadOrder = async () => {
     if (!orderNumber) return;
@@ -122,6 +125,31 @@ export function RealOrderDetail() {
       setError(err instanceof Error ? err.message : 'Error al sincronizar');
     } finally {
       setIsResyncing(false);
+    }
+  };
+
+  const handleDownloadShippingLabel = async () => {
+    if (!orderNumber || isLoadingShippingLabel) return;
+
+    if (shippingRequest?.label_printed_at) {
+      const reprintsLabel = shippingRequest.reprints_count > 0
+        ? ` (ya reimpresa ${shippingRequest.reprints_count} ${shippingRequest.reprints_count === 1 ? 'vez' : 'veces'})`
+        : '';
+      const ok = window.confirm(
+        `Esta etiqueta ya fue impresa${reprintsLabel}.\n¿Reimprimir igual?`
+      );
+      if (!ok) return;
+    }
+
+    setIsLoadingShippingLabel(true);
+    try {
+      const { blobUrl } = await downloadShippingLabel(orderNumber, bultos);
+      window.open(blobUrl, '_blank');
+      setTimeout(loadOrder, 2000);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al generar la etiqueta');
+    } finally {
+      setIsLoadingShippingLabel(false);
     }
   };
 
@@ -925,28 +953,31 @@ export function RealOrderDetail() {
                       <div className="flex items-center gap-2 text-emerald-700">
                         <CheckCircle size={16} />
                         <span className="font-medium">
-                          Etiqueta impresa ({shippingRequest.label_bultos} {shippingRequest.label_bultos === 1 ? 'hoja' : 'hojas'})
+                          Etiqueta impresa
+                          {shippingRequest.reprints_count > 0 && (
+                            <span className="ml-1 font-normal">
+                              · reimpresa {shippingRequest.reprints_count} {shippingRequest.reprints_count === 1 ? 'vez' : 'veces'}
+                            </span>
+                          )}
                         </span>
                       </div>
                       <p className="text-xs text-emerald-600 mt-1">
-                        Última impresión: {formatDistanceToNow(new Date(shippingRequest.label_printed_at), { addSuffix: true, locale: es })}
+                        {shippingRequest.label_bultos} {shippingRequest.label_bultos === 1 ? 'bulto' : 'bultos'} · última impresión {formatDistanceToNow(new Date(shippingRequest.label_printed_at), { addSuffix: true, locale: es })}
                       </p>
                     </div>
                   )}
 
-                  <a
-                    href={getShippingLabelUrl(order.order_number, bultos)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 w-full py-3 px-4 bg-violet-600 hover:bg-violet-700 text-white font-medium rounded-xl transition-colors"
-                    onClick={() => {
-                      // Recargar datos después de unos segundos para actualizar el estado de impresión
-                      setTimeout(loadOrder, 2000);
-                    }}
+                  <button
+                    type="button"
+                    onClick={handleDownloadShippingLabel}
+                    disabled={isLoadingShippingLabel}
+                    className="flex items-center justify-center gap-2 w-full py-3 px-4 bg-violet-600 hover:bg-violet-700 disabled:bg-violet-400 text-white font-medium rounded-xl transition-colors"
                   >
                     <Download size={18} />
-                    {shippingRequest.label_printed_at ? 'Re-imprimir Hoja' : 'Descargar Hoja para Expreso'}
-                  </a>
+                    {isLoadingShippingLabel
+                      ? 'Generando...'
+                      : shippingRequest.label_printed_at ? 'Re-imprimir Hoja' : 'Descargar Hoja para Expreso'}
+                  </button>
                 </div>
               </Card>
             )}

@@ -328,8 +328,11 @@ export interface PaginatedResponse<T> {
   pagination: PaginationInfo;
 }
 
-// Tipos de envío para filtro
-export type ShippingTypeFilter = 'all' | 'envio_nube' | 'via_cargo' | 'expreso' | 'retiro';
+// Tipos de envío para filtro.
+// El UI maneja 4 categorías: all | envio_nube | transporte | retiro.
+// 'via_cargo' y 'expreso' se mantienen como literales aceptados para no romper
+// URLs/links viejos guardados, pero el frontend nuevo solo emite 'transporte'.
+export type ShippingTypeFilter = 'all' | 'envio_nube' | 'transporte' | 'retiro' | 'via_cargo' | 'expreso';
 
 // Filtros para pedidos
 export interface OrderFilters {
@@ -1430,6 +1433,7 @@ export interface ShippingRequest {
   created_at: string;
   label_printed_at: string | null;
   label_bultos: number;
+  reprints_count: number;
 }
 
 // Obtener datos de envío de un pedido
@@ -1448,10 +1452,26 @@ export async function fetchShippingRequest(orderNumber: string): Promise<Shippin
   return data.shipping_request;
 }
 
-// Obtener URL del PDF de etiqueta de envío
-export function getShippingLabelUrl(orderNumber: string, bultos: number = 1): string {
-  const token = localStorage.getItem('auth_token');
-  return `${API_BASE_URL}/orders/${orderNumber}/shipping-label?bultos=${bultos}&token=${token}`;
+// Descargar etiqueta de envío individual.
+// Es POST (no GET) porque el endpoint actualiza label_printed_at y reprints_count.
+// Devuelve un objectURL del blob (PDF) listo para abrir con window.open().
+export async function downloadShippingLabel(
+  orderNumber: string,
+  bultos: number = 1
+): Promise<{ blobUrl: string; filename: string }> {
+  const response = await authFetch(
+    `${API_BASE_URL}/orders/${orderNumber}/shipping-label?bultos=${bultos}`,
+    { method: 'POST' }
+  );
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: response.statusText }));
+    throw new Error(err.error || 'Error al generar la etiqueta');
+  }
+
+  const blob = await response.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  return { blobUrl, filename: `etiqueta-${orderNumber}.pdf` };
 }
 
 // ============================================

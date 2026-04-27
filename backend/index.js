@@ -50,7 +50,7 @@ const { tiendanube: tnConfig, whatsapp: waConfig, isEnabled: isIntegrationEnable
 const { verificarConsistencia, getInconsistencias } = require('./utils/orderVerification');
 const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crearNotificacion } = require('./utils/notifications');
 const { enviarWhatsAppPlantilla } = require('./lib/whatsapp-helpers');
-const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, normalizePhoneForComparison, mapShippingToEstadoPedido } = require('./lib/payment-helpers');
+const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, isForbiddenCarrier, normalizePhoneForComparison, mapShippingToEstadoPedido } = require('./lib/payment-helpers');
 const { recalcularPagos } = require('./lib/recalcularPagos');
 const { syncEstadoToTN, sincronizarEstadoTiendanube } = require('./lib/tn-sync');
 const { watermarkReceipt, isValidDestination, detectarFinancieraDesdeOCR } = require('./lib/comprobante-helpers');
@@ -1340,6 +1340,18 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
         case 'envio_nube':
           conditions.push(`(${st} LIKE '%envío nube%' OR ${st} LIKE '%envio nube%')`);
           break;
+        case 'transporte':
+          // Todo lo que no es Envío Nube ni Retiro: Vía Cargo, Expreso a elección,
+          // OCA, Andreani, Correo Argentino, etc.
+          conditions.push(`(
+            ${st} <> ''
+            AND ${st} NOT LIKE '%envío nube%' AND ${st} NOT LIKE '%envio nube%'
+            AND ${st} NOT LIKE '%retiro%' AND ${st} NOT LIKE '%pickup%'
+            AND ${st} NOT LIKE '%deposito%' AND ${st} NOT LIKE '%depósito%'
+            AND ${st} NOT LIKE '%punto de retiro%'
+          )`);
+          break;
+        // Back-compat: URLs/llamadas viejas siguen funcionando.
         case 'via_cargo':
           conditions.push(`(${st} LIKE '%via cargo%' OR ${st} LIKE '%viacargo%')`);
           break;
@@ -6216,6 +6228,9 @@ app.post('/shipping-data', shippingFormLimiter, async (req, res) => {
     if (empresa_envio === 'OTRO' && !empresa_envio_otro?.trim()) {
       errors.push('Debe especificar el nombre de la empresa de envío');
     }
+    if (empresa_envio === 'OTRO' && empresa_envio_otro && isForbiddenCarrier(empresa_envio_otro)) {
+      errors.push('No despachamos por Correo Argentino, Andreani ni OCA. Elegí otro transporte o expreso a elección.');
+    }
     if (!destino_tipo || !['SUCURSAL', 'DOMICILIO'].includes(destino_tipo)) {
       errors.push('Tipo de destino inválido');
     }
@@ -6574,11 +6589,18 @@ app.get('/orders/:orderNumber/shipping-request', authenticate, async (req, res) 
 });
 
 /**
- * GET /orders/:orderNumber/shipping-label
- * Generar PDF de etiqueta para envío por expreso
+ * POST /orders/:orderNumber/shipping-label
+ * Generar PDF de etiqueta para envío por expreso.
+ *
+ * Es POST (no GET) intencionalmente: este endpoint actualiza
+ * shipping_requests.label_printed_at y reprints_count, así que tiene
+ * efectos secundarios. Usar GET hacía que el navegador (prefetch,
+ * extensiones, recargas accidentales de la pestaña del PDF) disparara
+ * impresiones fantasma sin acción explícita del usuario.
+ *
  * Query params: bultos (número de copias)
  */
-app.get('/orders/:orderNumber/shipping-label', authenticate, async (req, res) => {
+app.post('/orders/:orderNumber/shipping-label', authenticate, async (req, res) => {
   try {
     const { orderNumber } = req.params;
     const bultos = Math.min(Math.max(parseInt(req.query.bultos) || 1, 1), 10); // 1-10 bultos
@@ -6726,12 +6748,18 @@ app.get('/orders/:orderNumber/shipping-label', authenticate, async (req, res) =>
     doc.end();
 
     // Marcar como impresa SOLO cuando el cliente recibió el PDF completo
+    // label_bultos = cantidad real de bultos del paquete (no acumula).
+    // reprints_count = cuántas veces se reimprimió la etiqueta (sí acumula).
     res.on('finish', async () => {
       try {
         await pool.query(`
           UPDATE shipping_requests
           SET label_printed_at = NOW(),
-              label_bultos = COALESCE(label_bultos, 0) + $1
+              label_bultos = $1,
+              reprints_count = CASE
+                WHEN label_printed_at IS NULL THEN 0
+                ELSE COALESCE(reprints_count, 0) + 1
+              END
           WHERE id = $2
         `, [bultos, shipping.id]);
 
@@ -6772,7 +6800,50 @@ app.post('/orders/shipping-labels-batch', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Máximo 50 pedidos por batch' });
     }
 
-    // Datos del remitente (fijos)
+    // 1. Cargar todos los shipping_requests vigentes en una sola query
+    const orderNumbers = orderList.map(o => o.orderNumber);
+    const shippingRes = await pool.query(`
+      SELECT DISTINCT ON (order_number) *
+      FROM shipping_requests
+      WHERE order_number = ANY($1)
+      ORDER BY order_number, created_at DESC
+    `, [orderNumbers]);
+
+    const shippingMap = new Map(shippingRes.rows.map(s => [s.order_number, s]));
+
+    // 2. Clasificar: válidos (a imprimir) | ya impresas | sin datos
+    const validItems = [];
+    const alreadyPrinted = [];
+    const missing = [];
+
+    for (const item of orderList) {
+      const orderNumber = item.orderNumber;
+      const bultos = Math.min(Math.max(parseInt(item.bultos) || 1, 1), 10);
+      const shipping = shippingMap.get(orderNumber);
+
+      if (!shipping) {
+        missing.push(orderNumber);
+        continue;
+      }
+      if (shipping.label_printed_at) {
+        alreadyPrinted.push({ order: orderNumber, printed_at: shipping.label_printed_at });
+        continue;
+      }
+      validItems.push({ orderNumber, bultos, shipping });
+    }
+
+    // 3. Si no queda nada para imprimir, responder JSON con info.
+    if (validItems.length === 0) {
+      return res.status(400).json({
+        error: alreadyPrinted.length > 0
+          ? `Todas las etiquetas ya fueron impresas (${alreadyPrinted.length}). Reimprimí desde el detalle.`
+          : 'No hay pedidos válidos para imprimir',
+        alreadyPrinted,
+        missing
+      });
+    }
+
+    // 4. Iniciar stream del PDF solo con los válidos.
     const remitente = {
       nombre: 'Blanqueriaxmayor',
       domicilio: 'Av Gaona 2376',
@@ -6784,42 +6855,21 @@ app.post('/orders/shipping-labels-batch', authenticate, async (req, res) => {
     const doc = new PDFDocument({
       size: 'A4',
       margin: 40,
-      info: { Title: `Etiquetas Envío - ${orderList.length} pedidos` }
+      info: { Title: `Etiquetas Envío - ${validItems.length} pedidos` }
     });
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=etiquetas-batch-${Date.now()}.pdf`);
+    res.setHeader('X-Labels-Generated', String(validItems.length));
+    res.setHeader('X-Labels-Already-Printed', String(alreadyPrinted.length));
+    res.setHeader('X-Labels-Missing', String(missing.length));
     doc.pipe(res);
 
     const shippingIds = []; // Para marcar como impresas después
     let isFirstPage = true;
 
-    for (const item of orderList) {
-      const orderNumber = item.orderNumber;
-      const bultos = Math.min(Math.max(parseInt(item.bultos) || 1, 1), 10);
-
-      const shippingRes = await pool.query(`
-        SELECT * FROM shipping_requests
-        WHERE order_number = $1
-        ORDER BY created_at DESC
-        LIMIT 1
-      `, [orderNumber]);
-
-      if (shippingRes.rows.length === 0) {
-        console.warn(`⚠️ Batch label: no shipping data for ${orderNumber}, skipping`);
-        continue;
-      }
-
-      const shipping = shippingRes.rows[0];
+    for (const { orderNumber, bultos, shipping } of validItems) {
       shippingIds.push({ id: shipping.id, bultos, orderNumber });
-
-      const orderRes = await pool.query(`
-        SELECT order_number, customer_name, customer_phone, monto_tiendanube
-        FROM orders_validated
-        WHERE order_number = $1
-      `, [orderNumber]);
-
-      const order = orderRes.rows[0] || {};
 
       const empresaEnvio = shipping.empresa_envio === 'OTRO'
         ? shipping.empresa_envio_otro
@@ -6887,13 +6937,18 @@ app.post('/orders/shipping-labels-batch', authenticate, async (req, res) => {
     doc.end();
 
     // Marcar como impresas SOLO cuando el cliente recibió el PDF completo
+    // label_bultos = cantidad real (no acumula). reprints_count = cuántas re-impresiones.
     res.on('finish', async () => {
       try {
         for (const { id, bultos, orderNumber } of shippingIds) {
           await pool.query(`
             UPDATE shipping_requests
             SET label_printed_at = NOW(),
-                label_bultos = COALESCE(label_bultos, 0) + $1
+                label_bultos = $1,
+                reprints_count = CASE
+                  WHEN label_printed_at IS NULL THEN 0
+                  ELSE COALESCE(reprints_count, 0) + 1
+                END
             WHERE id = $2
           `, [bultos, id]);
 
