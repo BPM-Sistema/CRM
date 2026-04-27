@@ -199,9 +199,20 @@ export function ShippingForm() {
           <h1 className="text-3xl font-bold text-neutral-900 mb-2">
             Datos de Envío
           </h1>
-          <div className="inline-block bg-amber-100 text-amber-800 text-sm font-medium px-4 py-2 rounded-full">
-            Este formulario NO sirve para Correo Argentino ni Andreani
+          <div className="bg-amber-50 border-2 border-amber-300 text-amber-900 text-sm font-medium px-5 py-3 rounded-xl flex items-start gap-2 text-left">
+            <AlertCircle size={18} className="flex-shrink-0 mt-0.5 text-amber-600" />
+            <span>
+              Para que tu pedido llegue <strong>rápido y al mejor precio</strong>, momentáneamente no estamos despachando por Correo Argentino, Andreani, OCA ni similares — están con demoras y costos muy altos. Te recomendamos elegir un transporte o expreso a elección 🤗
+            </span>
           </div>
+          <a
+            href={`https://wa.me/541136914124?text=${encodeURIComponent('Hola! Quería saber qué transporte o expreso eligen otros clientes para mi provincia 🚚')}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 mt-3 text-sm font-semibold text-emerald-700 hover:text-emerald-800 hover:underline"
+          >
+            ¿No sabés cuál elegir? Consultanos por WhatsApp →
+          </a>
         </div>
 
         {/* Form */}
