@@ -7,13 +7,16 @@
  *   1. Listar pares (product_id, variant_id) con alertas pending.
  *   2. Consultar stock actual en Tiendanube API.
  *   3. Disparar WhatsApp SOLO si:
- *        last_seen_stock = 0  AND  current_stock > 0   (edge detection)
+ *        last_seen_stock <= STOCK_THRESHOLD  AND  current_stock > STOCK_THRESHOLD
+ *      (edge detection con umbral mínimo — evita avisar reingresos chicos)
  *   4. Cada envío usa queueWhatsApp (usa el worker/queue existente).
  *   5. Actualiza stock_alert_stock_state.last_seen_stock para prevenir
- *      reenvíos mientras el stock siga > 0.
+ *      reenvíos mientras el stock siga > umbral.
  *
  * Garantías:
- *   - NO envía mientras stock sigue > 0 (updateamos last_seen en cada corrida).
+ *   - NO envía si el reingreso es <= STOCK_THRESHOLD (10) unidades.
+ *   - NO envía a teléfonos que ya recibieron MAX_ALERTS_PER_PHONE
+ *     notificaciones en las últimas ALERT_WINDOW_HOURS (ventana móvil).
  *   - NO envía si la plantilla no fue configurada aún (plantilla_default='').
  *   - NO envía duplicados: marcamos status='notified' inmediatamente.
  *   - Respeta el queueWhatsApp existente (NO llamadas directas a Botmaker).
@@ -26,6 +29,9 @@ const { apiLogger: log } = require('../lib/logger');
 const TN_BASE_URL = 'https://api.tiendanube.com/v1';
 const TN_REQUEST_DELAY_MS = 650; // TN permite ~2 rps; quedamos cómodos con ~1.5 rps
 const STOCK_ALERT_PLANTILLA_KEY = 'stock_alert_reingreso';
+const STOCK_THRESHOLD = 10; // mínimo de unidades reingresadas para gatillar aviso
+const MAX_ALERTS_PER_PHONE = 2; // tope de avisos enviados al mismo teléfono dentro de la ventana
+const ALERT_WINDOW_HOURS = 25; // ventana móvil para contar avisos por teléfono
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -201,23 +207,36 @@ async function runDispatcher({ queueWhatsApp, dryRun = false, triggerSource = 'c
       const lastSeen = stateQ.rows[0]?.last_seen_stock;
       const firstTime = lastSeen == null;
 
-      // 4. Edge detection: dispara si last=0 y current>0
+      // 4. Edge detection con umbral: dispara si lastSeen <= 10 y current > 10
+      //    Tratamos "<= STOCK_THRESHOLD" como "sin stock" para que el edge se
+      //    dispare incluso si el producto pasó por valores chicos (1..10) antes
+      //    de superar el umbral.
+      const wasOutOfStock = lastSeen <= STOCK_THRESHOLD;
+      const isInStock = currentStock > STOCK_THRESHOLD;
       const shouldDispatch =
         !firstTime &&
-        lastSeen === 0 &&
-        currentStock > 0 &&
+        wasOutOfStock &&
+        isInStock &&
         !!configuredTemplate;
 
       if (shouldDispatch) {
-        // 5. Traer todas las alertas pending para este par y disparar
+        // 5. Traer alertas pending de este par, excluyendo teléfonos que ya
+        //    recibieron >= MAX_ALERTS_PER_PHONE notificaciones en las últimas
+        //    ALERT_WINDOW_HOURS (ventana móvil; el contador se renueva solo).
         const alertsQ = await pool.query(
-          `SELECT id, phone, first_name, product_name, variant_name
-           FROM stock_alerts
-           WHERE product_id = $1
-             AND COALESCE(variant_id, '') = $2
-             AND status = 'pending'
-           ORDER BY created_at ASC`,
-          [productId, variantId || '']
+          `SELECT a.id, a.phone, a.first_name, a.product_name, a.variant_name
+           FROM stock_alerts a
+           WHERE a.product_id = $1
+             AND COALESCE(a.variant_id, '') = $2
+             AND a.status = 'pending'
+             AND (
+               SELECT COUNT(*) FROM stock_alerts a2
+               WHERE a2.phone = a.phone
+                 AND a2.status = 'notified'
+                 AND a2.notified_at > NOW() - ($4 || ' hours')::INTERVAL
+             ) < $3
+           ORDER BY a.created_at ASC`,
+          [productId, variantId || '', MAX_ALERTS_PER_PHONE, String(ALERT_WINDOW_HOURS)]
         );
 
         const productUrl = buildProductUrl(product, storeBaseUrl);
