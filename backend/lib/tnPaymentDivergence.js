@@ -15,20 +15,24 @@ const axios = require('axios');
 const { notificarUsuariosConPermiso } = require('../utils/notifications');
 
 /**
- * Buscar pedidos del día anterior con posible divergencia
+ * Buscar pedidos con posible divergencia de pago BPM-TN.
+ *
+ * Antes filtraba solo "creado ayer" (24hs); en la practica las divergencias
+ * mas dolorosas son las que pasan dias sin detectar (ej: 31129/31207 estuvieron
+ * 11 dias en limbo). Ahora miramos los ultimos 30 dias y limitamos a 200 para
+ * no colgar el cron si por alguna razon hubiese muchas.
  */
 async function findPotentialDivergences() {
-  // Pedidos de ayer con pago confirmado en BPM pero no reflejado desde TN
   const result = await pool.query(`
     SELECT order_number, tn_order_id, estado_pago, tn_payment_status, total_pagado, created_at
     FROM orders_validated
     WHERE estado_pago = 'confirmado_total'
       AND (tn_payment_status IS NULL OR tn_payment_status != 'paid')
       AND tn_order_id IS NOT NULL
-      AND created_at >= CURRENT_DATE - INTERVAL '1 day'
-      AND created_at < CURRENT_DATE
+      AND created_at >= NOW() - INTERVAL '30 days'
       AND estado_pedido != 'cancelado'
     ORDER BY created_at DESC
+    LIMIT 200
   `);
 
   return result.rows;

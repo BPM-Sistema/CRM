@@ -52,6 +52,7 @@ const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crear
 const { enviarWhatsAppPlantilla } = require('./lib/whatsapp-helpers');
 const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, isForbiddenCarrier, normalizePhoneForComparison, mapShippingToEstadoPedido } = require('./lib/payment-helpers');
 const { recalcularPagos } = require('./lib/recalcularPagos');
+const { reopenIfCancelled } = require('./lib/reopenIfCancelled');
 const { syncEstadoToTN, sincronizarEstadoTiendanube } = require('./lib/tn-sync');
 const { watermarkReceipt, isValidDestination, detectarFinancieraDesdeOCR } = require('./lib/comprobante-helpers');
 const { buildDivergenceReport, saveDivergences, applyAutoFixes, getBpmOrderForComparison } = require('./lib/divergence-detector');
@@ -1754,7 +1755,7 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
 
     // 7.5️⃣ Sincronizar con Tiendanube si está completamente pagado (after commit)
     if (estadoPago === 'confirmado_total' && orderData.tn_order_id) {
-      marcarPagadoEnTiendanube(orderData.tn_order_id, comprobante.order_number);
+      marcarPagadoEnTiendanube(orderData.tn_order_id, comprobante.order_number, 'comprobante_confirmar');
       // No await - no bloqueamos la respuesta
     }
 
@@ -2118,7 +2119,7 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
 
           // Post-commit actions
           if (estadoPago === 'confirmado_total' && orderData?.tn_order_id) {
-            marcarPagadoEnTiendanube(orderData.tn_order_id, comprobante.order_number);
+            marcarPagadoEnTiendanube(orderData.tn_order_id, comprobante.order_number, 'conciliacion_banco');
           }
 
           logEvento({
@@ -3768,34 +3769,8 @@ app.post('/webhook/tiendanube', async (req, res) => {
           return;
         }
         // TN ya no dice cancelado → reabrir el pedido.
-        // 1) estado_pago='anulado'/'reembolsado' es residuo de la cancelacion: lo
-        //    bajamos a 'pendiente' como placeholder. recalcularPagos lo recomputa
-        //    abajo segun pagos reales.
-        // 2) estado_pedido placeholder: si printed_at IS NOT NULL respetamos
-        //    'hoja_impresa' (fisicamente ya se imprimio antes de cancelar — no
-        //    queremos que vuelva al batch de a_imprimir). Si nunca se imprimio,
-        //    'pendiente_pago' como placeholder y calcularEstadoPedido lo lleva a
-        //    'a_imprimir' si los pagos lo habilitan.
-        //    Estados mas avanzados (armado/enviado) no los podemos recuperar
-        //    porque no hay marca temporal equivalente.
-        // Limitacion conocida: si la cancelacion habia puesto pago_online_tn=0
-        // (refunded/voided), ese monto no se restaura aca — depende del siguiente
-        // order/updated de TN.
         log.info({ orderNumber: String(pedido.number), tnStatus: pedido.status }, 'Reopening cancelled order — TN no longer cancelled');
-        await pool.query(
-          `UPDATE orders_validated
-           SET estado_pago = CASE
-                 WHEN estado_pago IN ('anulado','reembolsado') THEN 'pendiente'
-                 ELSE estado_pago
-               END,
-               estado_pedido = CASE
-                 WHEN printed_at IS NOT NULL THEN 'hoja_impresa'
-                 ELSE 'pendiente_pago'
-               END,
-               updated_at = NOW()
-           WHERE order_number = $1`,
-          [String(pedido.number)]
-        );
+        await reopenIfCancelled(pool, String(pedido.number), 'webhook_tiendanube');
         const recalc = await recalcularPagos(pool, String(pedido.number));
         await logEvento({
           orderNumber: String(pedido.number),
@@ -5129,7 +5104,7 @@ app.get('/rechazar/:id', async (req, res) => {
    UTIL — MARCAR PAGADO EN TIENDANUBE
    Sincroniza estado de pago cuando está completamente pagado
 ===================================================== */
-async function marcarPagadoEnTiendanube(tnOrderId, orderNumber) {
+async function marcarPagadoEnTiendanube(tnOrderId, orderNumber, triggeredBy = 'unknown') {
   // Check de integración habilitada (master + sub-toggle)
   const markPaidEnabled = await tnConfig.isMarkPaidEnabled();
   if (!markPaidEnabled) {
@@ -5142,7 +5117,7 @@ async function marcarPagadoEnTiendanube(tnOrderId, orderNumber) {
     return false;
   }
 
-  return sincronizarEstadoTiendanube(tnOrderId, orderNumber, 'paid', 'pagada');
+  return sincronizarEstadoTiendanube(tnOrderId, orderNumber, 'paid', 'pagada', { triggeredBy });
 }
 
 // sincronizarEstadoTiendanube ahora vive en lib/tn-sync.js
@@ -5214,7 +5189,7 @@ app.post('/pago-efectivo', authenticate, requirePermission('orders.create_cash_p
 
     // 6.5️⃣ Sincronizar con Tiendanube si está completamente pagado (after commit)
     if (estadoPago === 'confirmado_total' && tnOrderId) {
-      marcarPagadoEnTiendanube(tnOrderId, orderNumber);
+      marcarPagadoEnTiendanube(tnOrderId, orderNumber, 'pago_efectivo');
     }
 
     // Log de actividad (after commit)
