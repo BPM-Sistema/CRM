@@ -27,6 +27,7 @@ interface SyncQueueOrder {
   tn_payment_status: string | null;
   created_at: string;
   tn_created_at: string;
+  sync_tag?: 'cancelado_con_plata' | 'divergencia_normal';
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -237,10 +238,20 @@ export default function SyncQueue() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                          <CheckCircle2 className="w-3 h-3" />
-                          {order.estado_pago === 'confirmado_total' ? 'Pagado' : 'Parcial'}
-                        </span>
+                        {order.sync_tag === 'cancelado_con_plata' ? (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700"
+                            title="El pedido está cancelado pero tiene plata cargada. Requiere decisión humana."
+                          >
+                            <AlertTriangle className="w-3 h-3" />
+                            Cancelado · ${order.total_pagado.toLocaleString('es-AR')} adentro
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                            <CheckCircle2 className="w-3 h-3" />
+                            {order.estado_pago === 'confirmado_total' ? 'Pagado' : 'Parcial'}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">

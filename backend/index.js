@@ -697,8 +697,13 @@ app.get('/health', (_, res) => res.json({ ok: true }));
 ===================================================== */
 app.get('/sync-queue/payments', authenticate, requirePermission('activity.view'), async (req, res) => {
   try {
-    // Pedidos que están COMPLETAMENTE pagados en nuestro sistema pero NO en Tiendanube
-    // Solo confirmado_total (no parcial) y verificamos saldo <= 0 por seguridad
+    // Lista pedidos con divergencia BPM vs TN: dos categorias en la misma cola
+    //   1) divergencia_normal: pedido activo, pagado en BPM, TN sigue pending.
+    //      Caso clasico (puede sincronizarse marcando pagado en TN).
+    //   2) cancelado_con_plata: pedido cancelado en BPM pero tiene plata
+    //      adentro (total_pagado > 0). Caso ANOMALO — la plata entró pero
+    //      el pedido no se va a despachar. Requiere decision humana
+    //      (devolver, aplicar a otro pedido, reabrir manual).
     const result = await pool.query(`
       SELECT
         order_number,
@@ -713,13 +718,25 @@ app.get('/sync-queue/payments', authenticate, requirePermission('activity.view')
         estado_pedido,
         tn_payment_status,
         created_at,
-        tn_created_at
+        tn_created_at,
+        CASE
+          WHEN estado_pedido = 'cancelado' THEN 'cancelado_con_plata'
+          ELSE 'divergencia_normal'
+        END AS sync_tag
       FROM orders_validated
-      WHERE estado_pago = 'confirmado_total'
-        AND (saldo IS NULL OR saldo <= 0)
-        AND (tn_payment_status IS NULL OR tn_payment_status != 'paid')
-        AND estado_pedido != 'cancelado'
-      ORDER BY created_at DESC
+      WHERE (
+          -- Caso 1: BPM dice pagado total, TN no
+          (estado_pago = 'confirmado_total'
+           AND (saldo IS NULL OR saldo <= 0)
+           AND (tn_payment_status IS NULL OR tn_payment_status != 'paid')
+           AND estado_pedido != 'cancelado')
+          OR
+          -- Caso 2: pedido cancelado con plata adentro
+          (estado_pedido = 'cancelado' AND total_pagado > 0)
+        )
+      ORDER BY
+        CASE WHEN estado_pedido = 'cancelado' THEN 0 ELSE 1 END,  -- cancelados primero (más críticos)
+        created_at DESC
     `);
 
     res.json({
@@ -1730,6 +1747,21 @@ app.post('/comprobantes/:id/confirmar', authenticate, requirePermission('receipt
       return res.status(400).json({ error: 'Este comprobante ya fue procesado' });
     }
 
+    // Bloquear confirmacion sobre pedido cancelado: confirmar dejaba el pedido
+    // en limbo (PAGADO=$X / Anulado) porque el guard de recalcularPagos preserva
+    // estado_pago='anulado'. El operador debe reabrir el pedido manualmente
+    // antes (o cancelar el comprobante).
+    const ordCheck = await client.query(
+      `SELECT estado_pedido FROM orders_validated WHERE order_number = $1`,
+      [comprobante.order_number]
+    );
+    if (ordCheck.rows[0]?.estado_pedido === 'cancelado') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: 'No se puede confirmar este comprobante: el pedido está cancelado. Reabrilo primero o rechazá el comprobante.'
+      });
+    }
+
     // 2️⃣ Confirmar comprobante (incluye auditoría: confirmed_at + confirmed_by)
     await client.query(
       `UPDATE comprobantes SET estado = 'confirmado', confirmed_at = NOW(), confirmed_by = $2 WHERE id = $1`,
@@ -2101,6 +2133,21 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
           }
 
           const comprobante = compRes.rows[0];
+
+          // Bloquear confirmacion sobre pedido cancelado (ver guard equivalente
+          // en /comprobantes/:id/confirmar).
+          const ordCheckCB = await client.query(
+            `SELECT estado_pedido FROM orders_validated WHERE order_number = $1`,
+            [comprobante.order_number]
+          );
+          if (ordCheckCB.rows[0]?.estado_pedido === 'cancelado') {
+            await client.query('ROLLBACK');
+            errors.push({
+              comprobante_id, banco_id,
+              error: `Pedido ${comprobante.order_number} está cancelado — no se confirmó el comprobante`
+            });
+            continue;
+          }
 
           // Confirmar
           await client.query(`UPDATE comprobantes SET estado = 'confirmado', confirmed_at = NOW() WHERE id = $1`, [comprobante.id]);
@@ -3924,12 +3971,39 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
         // Lógica de pago: escribir en pago_online_tn (NO en total_pagado)
         // total_pagado se recalcula después con recalcularPagos()
-        if (paymentStatusNuevo === 'refunded') {
-          setClauses.push(`estado_pago = 'reembolsado'`);
-          setClauses.push(`pago_online_tn = 0`);
-        } else if (paymentStatusNuevo === 'voided') {
-          setClauses.push(`estado_pago = 'anulado'`);
-          setClauses.push(`pago_online_tn = 0`);
+        if (paymentStatusNuevo === 'refunded' || paymentStatusNuevo === 'voided') {
+          // Anti-pisada: si BPM ya tiene pagos locales reales (comprobantes
+          // confirmados o efectivo) cubriendo el monto, NO pisar estado_pago a
+          // anulado/reembolsado. El refunded/voided puede ser residual de una
+          // cancelacion previa que TN reabrio sin actualizar payment_status.
+          // Sin esto, un webhook tardio puede tirar abajo un reopen valido.
+          let pisaResidual = false;
+          if (db.estado_pedido !== 'cancelado') {
+            const compCheck = await pool.query(`
+              SELECT COALESCE(SUM(monto), 0) as total_comp
+              FROM comprobantes
+              WHERE order_number = $1 AND estado = 'confirmado'
+            `, [String(pedido.number)]);
+            const efCheck = await pool.query(`
+              SELECT COALESCE(SUM(monto), 0) as total_ef
+              FROM pagos_efectivo WHERE order_number = $1
+            `, [String(pedido.number)]);
+            const totalLocal = Number(compCheck.rows[0]?.total_comp || 0) + Number(efCheck.rows[0]?.total_ef || 0);
+            if (totalLocal >= Number(db.monto_tiendanube || 0)) {
+              pisaResidual = true;
+              log.info({
+                orderNumber: String(pedido.number),
+                paymentStatus: paymentStatusNuevo,
+                totalLocal,
+                monto: db.monto_tiendanube
+              }, 'Skipping estado_pago override (refunded/voided): pagos locales ya cubren el monto');
+            }
+          }
+          if (!pisaResidual) {
+            setClauses.push(`estado_pago = $${paramIdx++}`);
+            setParams.push(paymentStatusNuevo === 'refunded' ? 'reembolsado' : 'anulado');
+            setClauses.push(`pago_online_tn = 0`);
+          }
         } else if (paymentStatusNuevo === 'partially_refunded') {
           // Reembolso parcial: total_paid de TN refleja lo que queda pagado
           setClauses.push(`pago_online_tn = $${paramIdx++}`);
@@ -6364,7 +6438,7 @@ app.post('/shipping-data', shippingFormLimiter, async (req, res) => {
 
     // Validar que el pedido exista y tenga "Transporte a elección"
     const orderRes = await pool.query(
-      'SELECT order_number, shipping_type FROM orders_validated WHERE order_number = $1 LIMIT 1',
+      'SELECT order_number, shipping_type, estado_pedido FROM orders_validated WHERE order_number = $1 LIMIT 1',
       [sanitizedOrderNumber]
     );
 
@@ -6373,6 +6447,13 @@ app.post('/shipping-data', shippingFormLimiter, async (req, res) => {
         error: 'No existe un pedido con ese número',
         errors: ['No existe un pedido con ese número']
       });
+    }
+
+    // Bloquear si el pedido esta cancelado: no tiene sentido recibir datos de
+    // envio sobre algo que no se va a despachar.
+    if (orderRes.rows[0].estado_pedido === 'cancelado') {
+      const msg = 'Este pedido figura como cancelado. No podemos recibir datos de envío. Si pensás que es un error, contactanos por WhatsApp.';
+      return res.status(400).json({ error: msg, errors: [msg] });
     }
 
     // Validar que el pedido requiera formulario de envío (Expreso a elección o Via Cargo)
@@ -6714,12 +6795,21 @@ app.post('/orders/:orderNumber/shipping-label', authenticate, async (req, res) =
 
     // 2. Obtener datos del pedido
     const orderRes = await pool.query(`
-      SELECT order_number, customer_name, customer_phone, monto_tiendanube
+      SELECT order_number, customer_name, customer_phone, monto_tiendanube, estado_pedido
       FROM orders_validated
       WHERE order_number = $1
     `, [orderNumber]);
 
     const order = orderRes.rows[0] || {};
+
+    // Bloquear impresion de etiqueta si el pedido esta cancelado.
+    // Caso real (31972): se imprimio etiqueta sobre un cancelado y la
+    // logistica iba a despachar igual.
+    if (order.estado_pedido === 'cancelado') {
+      return res.status(400).json({
+        error: 'No se puede imprimir etiqueta: el pedido está cancelado.'
+      });
+    }
 
     // 3. Generar PDF
     const doc = new PDFDocument({
@@ -6903,6 +6993,20 @@ app.post('/orders/shipping-labels-batch', authenticate, async (req, res) => {
     `, [orderNumbers]);
 
     const shippingMap = new Map(shippingRes.rows.map(s => [s.order_number, s]));
+
+    // 1.5 Identificar cancelados para excluirlos del batch (no imprimir etiquetas
+    // sobre pedidos que no se van a despachar).
+    const cancelledRes = await pool.query(
+      `SELECT order_number FROM orders_validated WHERE order_number = ANY($1) AND estado_pedido = 'cancelado'`,
+      [orderNumbers]
+    );
+    if (cancelledRes.rowCount > 0) {
+      const cancelledList = cancelledRes.rows.map(r => r.order_number);
+      return res.status(400).json({
+        error: 'Hay pedidos cancelados en el batch. Quitalos para continuar.',
+        cancelled: cancelledList
+      });
+    }
 
     // 2. Clasificar: válidos (a imprimir) | ya impresas | sin datos
     const validItems = [];
@@ -7150,7 +7254,7 @@ app.get('/orders/:orderNumber/envio-nube-label', authenticate, async (req, res) 
 
     // 1. Obtener tn_order_id de la DB
     const orderRes = await pool.query(`
-      SELECT tn_order_id, shipping_type, customer_name
+      SELECT tn_order_id, shipping_type, customer_name, estado_pedido
       FROM orders_validated
       WHERE order_number = $1
     `, [orderNumber]);
@@ -7160,6 +7264,10 @@ app.get('/orders/:orderNumber/envio-nube-label', authenticate, async (req, res) 
     }
 
     const order = orderRes.rows[0];
+
+    if (order.estado_pedido === 'cancelado') {
+      return res.status(400).json({ error: 'No se puede imprimir etiqueta: el pedido está cancelado.' });
+    }
 
     if (!order.tn_order_id) {
       return res.status(400).json({ error: 'Pedido sin ID de Tiendanube' });
@@ -7239,12 +7347,21 @@ app.post('/orders/envio-nube-labels', authenticate, async (req, res) => {
 
     // 1. Obtener tn_order_id de todos los pedidos
     const orderRes = await pool.query(`
-      SELECT order_number, tn_order_id, shipping_type, customer_name, envio_nube_label_printed_at, estado_pago
+      SELECT order_number, tn_order_id, shipping_type, customer_name, envio_nube_label_printed_at, estado_pago, estado_pedido
       FROM orders_validated
       WHERE order_number = ANY($1)
     `, [orders]);
 
     const ordersMap = new Map(orderRes.rows.map(o => [o.order_number, o]));
+
+    // Rechazar batch si algún pedido está cancelado.
+    const cancelledInBatch = orderRes.rows.filter(o => o.estado_pedido === 'cancelado').map(o => o.order_number);
+    if (cancelledInBatch.length > 0) {
+      return res.status(400).json({
+        error: 'Hay pedidos cancelados en el batch. Quitalos para continuar.',
+        cancelled: cancelledInBatch
+      });
+    }
 
     // 2. Filtrar pedidos válidos primero
     const validOrders = [];
@@ -7427,7 +7544,7 @@ app.post('/orders/envio-nube-labels/preview', authenticate, async (req, res) => 
 
     // 1. Obtener info de todos los pedidos
     const orderRes = await pool.query(`
-      SELECT order_number, tn_order_id, shipping_type, customer_name
+      SELECT order_number, tn_order_id, shipping_type, customer_name, estado_pedido
       FROM orders_validated
       WHERE order_number = ANY($1)
     `, [orders]);
@@ -7445,6 +7562,11 @@ app.post('/orders/envio-nube-labels/preview', authenticate, async (req, res) => 
 
       if (!order) {
         results.unavailable.push({ order: orderNumber, reason: 'Pedido no encontrado' });
+        continue;
+      }
+
+      if (order.estado_pedido === 'cancelado') {
+        results.unavailable.push({ order: orderNumber, reason: 'Pedido cancelado' });
         continue;
       }
 
