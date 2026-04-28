@@ -7762,7 +7762,7 @@ const BULK_SEND_UNSUPPORTED = new Set([
 ]);
 
 function buildBulkVariables(template, order) {
-  if (template === 'abre_chat') {
+  if (template === 'abre_chat' || template === 'cambio_correos_prohibidos') {
     return { '1': String(order.order_number) };
   }
   if (BULK_SEND_UNSUPPORTED.has(template)) return null;
