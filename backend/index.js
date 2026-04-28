@@ -1165,7 +1165,7 @@ app.get('/orders/pending-shipping-data', authenticate, requirePermission('orders
         o.shipping_type,
         o.estado_pago,
         o.estado_pedido,
-        o.fecha_pedido,
+        COALESCE(o.tn_created_at, o.created_at) AS fecha_pedido,
         (
           SELECT MAX(wm.created_at)
           FROM whatsapp_messages wm
@@ -1190,7 +1190,7 @@ app.get('/orders/pending-shipping-data', authenticate, requirePermission('orders
         AND EXISTS (
           SELECT 1 FROM comprobantes c WHERE c.order_number = o.order_number
         )
-      ORDER BY o.fecha_pedido DESC NULLS LAST, o.order_number DESC
+      ORDER BY COALESCE(o.tn_created_at, o.created_at) DESC NULLS LAST, o.order_number DESC
     `);
     res.json({ ok: true, orders: result.rows });
   } catch (error) {
