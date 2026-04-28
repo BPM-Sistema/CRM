@@ -1,8 +1,13 @@
 const pool = require('../db');
 const { alerts } = require('../lib/alerts');
 
+// Tolerancia en centavos para diferencias contables consideradas "ruido"
+// (redondeos, IVA dec.). Antes era 1 centavo => generaba miles de falsos
+// positivos por hora.
+const PAYMENT_DIFF_TOLERANCE = 100;
+
 async function runReconciliation() {
-  const results = { checked: 0, issues: [] };
+  const results = { checked: 0, autoResolved: 0, issues: [] };
 
   // 1. Check payment consistency
   // total_pagado should equal pago_online_tn + SUM(comprobantes confirmados) + SUM(pagos_efectivo)
@@ -25,9 +30,26 @@ async function runReconciliation() {
       ) ef ON ov.order_number = ef.order_number
       WHERE ov.total_pagado > 0
         AND ov.estado_pedido != 'cancelado'
-        AND ABS(ov.total_pagado - (ov.pago_online_tn + COALESCE(comp.total, 0) + COALESCE(ef.total, 0))) > 1
+        AND ABS(ov.total_pagado - (ov.pago_online_tn + COALESCE(comp.total, 0) + COALESCE(ef.total, 0))) > $1
       LIMIT 50
-    `);
+    `, [PAYMENT_DIFF_TOLERANCE]);
+
+    const inconsistentOrderNumbers = new Set(inconsistent.rows.map(r => String(r.order_number)));
+
+    // Auto-resolver alertas viejas cuya diff actual ya esta dentro de tolerancia
+    // (el problema se arreglo y la alerta quedo huerfana abierta).
+    const autoResolveRes = await pool.query(`
+      UPDATE system_alerts
+      SET status = 'resolved',
+          resolved_at = NOW()
+      WHERE category = 'payment'
+        AND status = 'open'
+        AND COALESCE(metadata->>'orderNumber', '') NOT IN (
+          SELECT UNNEST($1::text[])
+        )
+      RETURNING id
+    `, [Array.from(inconsistentOrderNumbers)]);
+    results.autoResolved = autoResolveRes.rowCount;
 
     results.checked += inconsistent.rowCount;
     for (const row of inconsistent.rows) {
@@ -38,6 +60,16 @@ async function runReconciliation() {
         calculated: row.calculated_total,
         diff: Math.abs(row.recorded_total - row.calculated_total)
       });
+
+      // Deduplicar: si ya hay alerta abierta para este pedido, no crear otra.
+      const existing = await pool.query(
+        `SELECT 1 FROM system_alerts
+         WHERE category='payment' AND status='open'
+           AND metadata->>'orderNumber' = $1
+         LIMIT 1`,
+        [String(row.order_number)]
+      );
+      if (existing.rowCount > 0) continue;
 
       await alerts.paymentInconsistency(row.order_number, {
         recorded: row.recorded_total,
