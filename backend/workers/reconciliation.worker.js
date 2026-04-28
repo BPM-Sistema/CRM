@@ -71,6 +71,21 @@ async function runReconciliation() {
       );
       if (existing.rowCount > 0) continue;
 
+      // Snooze: si una alerta del mismo pedido con la misma diff (+/- 1%) fue
+      // resuelta en los ultimos 30 dias, el operador la "ignoro" — no re-disparar
+      // hasta que la diff cambie o pasen 30 dias.
+      const diff = Math.abs(row.recorded_total - row.calculated_total);
+      const recentResolved = await pool.query(
+        `SELECT 1 FROM system_alerts
+         WHERE category='payment' AND status='resolved'
+           AND metadata->>'orderNumber' = $1
+           AND resolved_at > NOW() - INTERVAL '30 days'
+           AND ABS(COALESCE((metadata->>'diff')::numeric, 0) - $2::numeric) <= GREATEST($2::numeric * 0.01, 100)
+         LIMIT 1`,
+        [String(row.order_number), diff]
+      );
+      if (recentResolved.rowCount > 0) continue;
+
       await alerts.paymentInconsistency(row.order_number, {
         recorded: row.recorded_total,
         calculated: row.calculated_total,
