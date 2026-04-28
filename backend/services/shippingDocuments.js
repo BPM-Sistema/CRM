@@ -1452,8 +1452,117 @@ async function processDocumentWithClaude(documentId, claudeData) {
     let match = null;
     let matchDetails = {};
     let candidates = [];
+    let matchSource = 'shipping_requests';
 
-    if (extraction.name || extraction.address) {
+    // PRIORIDAD 1: Número de pedido escrito a mano sobre el remito
+    // El operario suele anotar el N° de pedido sobre la guía de transporte.
+    // Si Claude detectó ese número, intentar match exacto antes que fuzzy.
+    const numeroManuscritoRaw = claudeData.numero_pedido;
+    if (numeroManuscritoRaw) {
+      const numeroNorm = String(numeroManuscritoRaw).replace(/[^0-9]/g, '');
+      if (numeroNorm.length >= 4) {
+        const directRes = await pool.query(`
+          SELECT order_number, customer_name, estado_pedido
+          FROM orders_validated
+          WHERE order_number = $1
+          LIMIT 1
+        `, [numeroNorm]);
+
+        if (directRes.rowCount > 0) {
+          const row = directRes.rows[0];
+          const estadoBloqueado = ['cancelado'].includes(row.estado_pedido);
+          if (!estadoBloqueado) {
+            console.log(`   🎯 Match por N° manuscrito: #${row.order_number} (${row.customer_name})`);
+            match = {
+              orderNumber: row.order_number,
+              score: 1.0,
+              customerName: row.customer_name,
+              createdAt: null,
+              details: {
+                source: 'numero_manuscrito',
+                numero_detectado: numeroManuscritoRaw,
+                estado_pedido: row.estado_pedido
+              }
+            };
+            candidates = [{
+              orderNumber: row.order_number,
+              customerName: row.customer_name,
+              score: 1.0,
+              createdAt: null
+            }];
+            matchSource = 'numero_manuscrito';
+          } else {
+            console.log(`   ⚠️ N° manuscrito ${numeroNorm} encontrado pero pedido está ${row.estado_pedido}`);
+          }
+        } else {
+          // Match exacto falló → tolerancia a 1 dígito mal leído (ej: "31626" → "39626")
+          // Generar variantes a distancia 1 y validar contra el nombre del destinatario.
+          const variantes = new Set();
+          for (let i = 0; i < numeroNorm.length; i++) {
+            for (let d = 0; d <= 9; d++) {
+              const v = numeroNorm.slice(0, i) + String(d) + numeroNorm.slice(i + 1);
+              if (v !== numeroNorm) variantes.add(v);
+            }
+          }
+          const variantesArr = Array.from(variantes);
+
+          const variantesRes = await pool.query(`
+            SELECT order_number, customer_name, estado_pedido
+            FROM orders_validated
+            WHERE order_number = ANY($1::text[])
+              AND estado_pedido NOT IN ('cancelado')
+          `, [variantesArr]);
+
+          if (variantesRes.rowCount > 0 && extraction.name) {
+            // Quedarme con el que tenga mayor similitud de nombre con el destinatario
+            const detectedNorm = normalizeText(extraction.name);
+            const ranked = variantesRes.rows
+              .map(row => ({
+                row,
+                nameScore: row.customer_name
+                  ? calculateSimilarity(detectedNorm, normalizeText(row.customer_name))
+                  : 0
+              }))
+              .sort((a, b) => b.nameScore - a.nameScore);
+
+            const top = ranked[0];
+            // Solo aceptar si el nombre del cliente realmente coincide bastante.
+            // Umbral 0.55 cubre casos como "FERNANDEZ DEVORA" vs "Devora Fernández"
+            // (orden invertido) sin permitir falsos positivos.
+            if (top.nameScore >= 0.55) {
+              console.log(`   🎯 Match por N° manuscrito (1-dígito tolerancia): ${numeroNorm} → #${top.row.order_number} (${top.row.customer_name}, nombre score ${(top.nameScore * 100).toFixed(0)}%)`);
+              match = {
+                orderNumber: top.row.order_number,
+                score: 0.95,
+                customerName: top.row.customer_name,
+                createdAt: null,
+                details: {
+                  source: 'numero_manuscrito_fuzzy',
+                  numero_detectado: numeroManuscritoRaw,
+                  numero_corregido: top.row.order_number,
+                  name_similarity: top.nameScore,
+                  estado_pedido: top.row.estado_pedido
+                }
+              };
+              candidates = [{
+                orderNumber: top.row.order_number,
+                customerName: top.row.customer_name,
+                score: 0.95,
+                createdAt: null
+              }];
+              matchSource = 'numero_manuscrito_fuzzy';
+            } else {
+              console.log(`   ⚠️ N° manuscrito ${numeroNorm}: candidatos a 1-dígito existen pero nombre no coincide (mejor: ${top.row.order_number} con ${(top.nameScore * 100).toFixed(0)}%)`);
+            }
+          } else {
+            console.log(`   ⚠️ N° manuscrito ${numeroNorm} no corresponde a ningún pedido (ni con tolerancia 1 dígito)`);
+          }
+        }
+      }
+    }
+
+    // PRIORIDAD 2: Fuzzy matching por nombre/dirección/ciudad (si no hubo match por número)
+    if (!match && (extraction.name || extraction.address)) {
       if (esViaCargo) {
         // Via Cargo: match estructural por nombre + dirección + ciudad
         const matchResult = await findBestMatch(extraction.name, extraction.address, extraction.city);
@@ -1472,7 +1581,8 @@ async function processDocumentWithClaude(documentId, claudeData) {
       remito_type: remitoType,
       extractionConfidence: extraction.confidence,
       extractionLog: extraction.log,
-      matchSource: 'shipping_requests',
+      matchSource,
+      numero_manuscrito: numeroManuscritoRaw || null,
       claude_vision: true,
       candidates: candidates.map(c => ({
         orderNumber: c.orderNumber,
@@ -1485,6 +1595,7 @@ async function processDocumentWithClaude(documentId, claudeData) {
       extractionConfidence: extraction.confidence,
       extractionLog: extraction.log,
       noMatchReason: 'no_shipping_request_match',
+      numero_manuscrito: numeroManuscritoRaw || null,
       claude_vision: true,
       candidates: []
     };
