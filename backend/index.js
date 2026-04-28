@@ -4528,6 +4528,25 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     }
 
     const pedido = tnResponse.data[0];
+
+    // Bloquear subida si el pedido esta cancelado (en TN o en BPM).
+    // El cliente recibe mensaje claro y se evita generar comprobantes huerfanos
+    // sobre pedidos que no van a procesarse.
+    if (pedido.status === 'cancelled' || pedido.cancelled_at) {
+      return res.status(400).json({
+        error: 'Este pedido figura como cancelado. No podemos recibir comprobantes. Si pensás que es un error, contactanos por WhatsApp.'
+      });
+    }
+    const bpmStatusRes = await pool.query(
+      `SELECT estado_pedido FROM orders_validated WHERE order_number = $1`,
+      [orderNumber]
+    );
+    if (bpmStatusRes.rows[0]?.estado_pedido === 'cancelado') {
+      return res.status(400).json({
+        error: 'Este pedido figura como cancelado. No podemos recibir comprobantes. Si pensás que es un error, contactanos por WhatsApp.'
+      });
+    }
+
     const nombre = pedido.customer?.name || 'Cliente';
     const telefono = pedido.customer?.phone || null;
     const montoTiendanube = Math.round(Number(pedido.total));
