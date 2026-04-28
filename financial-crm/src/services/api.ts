@@ -1540,6 +1540,27 @@ export async function fetchPendingShippingDataCount(): Promise<number> {
   return data.count ?? 0;
 }
 
+export interface PendingShippingDataOrder {
+  order_number: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  shipping_type: string | null;
+  estado_pago: string | null;
+  estado_pedido: string | null;
+  fecha_pedido: string | null;
+  datos_envio_sent_at: string | null;
+  aviso_sent_at: string | null;
+}
+
+// Lista detallada de los pedidos pendientes de datos de envío (mismo criterio
+// que `fetchPendingShippingDataCount`). Lo usa el modal del badge del Header.
+export async function fetchPendingShippingDataList(): Promise<PendingShippingDataOrder[]> {
+  const response = await authFetch(`${API_BASE_URL}/orders/pending-shipping-data`);
+  if (!response.ok) return [];
+  const data = await response.json();
+  return data.orders ?? [];
+}
+
 // Subir remitos (múltiples archivos)
 export async function uploadRemitos(files: File[]): Promise<{
   ok: boolean;

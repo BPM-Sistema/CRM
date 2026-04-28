@@ -1149,6 +1149,55 @@ app.get('/orders/pending-shipping-data-count', authenticate, requirePermission('
   }
 });
 
+/* =====================================================
+   GET — LISTA DE PEDIDOS PENDIENTES DE DATOS DE ENVÍO
+   Misma lógica que el count: requieren formulario, ya tienen comprobante,
+   pero aún no completaron shipping_request. Lo usa el modal del badge.
+===================================================== */
+app.get('/orders/pending-shipping-data', authenticate, requirePermission('orders.view'), async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        o.order_number,
+        o.customer_name,
+        o.customer_phone,
+        o.shipping_type,
+        o.estado_pago,
+        o.estado_pedido,
+        o.fecha_pedido,
+        (
+          SELECT MAX(wm.created_at)
+          FROM whatsapp_messages wm
+          WHERE wm.order_number = CAST(o.order_number AS integer)
+            AND (wm.template_key = 'datos__envio' OR wm.template ILIKE '%datos%envio%')
+        ) AS datos_envio_sent_at,
+        (
+          SELECT MAX(wm.created_at)
+          FROM whatsapp_messages wm
+          WHERE wm.order_number = CAST(o.order_number AS integer)
+            AND wm.template_key = 'aviso_datos_envio'
+        ) AS aviso_sent_at
+      FROM orders_validated o
+      WHERE (
+          (LOWER(COALESCE(o.shipping_type, '')) LIKE '%expreso%' AND LOWER(COALESCE(o.shipping_type, '')) LIKE '%elec%')
+          OR LOWER(COALESCE(o.shipping_type, '')) LIKE '%via cargo%'
+          OR LOWER(COALESCE(o.shipping_type, '')) LIKE '%viacargo%'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM shipping_requests sr WHERE sr.order_number = o.order_number
+        )
+        AND EXISTS (
+          SELECT 1 FROM comprobantes c WHERE c.order_number = o.order_number
+        )
+      ORDER BY o.fecha_pedido DESC NULLS LAST, o.order_number DESC
+    `);
+    res.json({ ok: true, orders: result.rows });
+  } catch (error) {
+    console.error('❌ /orders/pending-shipping-data error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 /* =====================================================
    POST — OBTENER PEDIDOS PARA IMPRIMIR (por estados)
@@ -7879,39 +7928,47 @@ app.post('/whatsapp/send-tracking', authenticate, requirePermission('whatsapp.se
           continue;
         }
 
-        // Recopilar códigos de tracking
-        const codes = [];
+        // Validar todos los códigos ANTES de tocar la DB o encolar el WhatsApp.
+        // Si falta uno solo, descartamos el pedido entero — así evitamos mandar
+        // un WhatsApp con códigos parciales y que el pedido aparezca a la vez
+        // en `failed` y `sent`.
         const totalShipments = Number(entry.totalShipments) || 0;
+        const codesByPos = [];
+        let missingCode = null;
         for (let pos = 1; pos <= totalShipments; pos++) {
           const code = (entry.trackingCodes[pos] || entry.trackingCodes[String(pos)] || '').trim();
           if (!code) {
-            results.failed.push({ orderNumber: cleanOrderNumber, error: `Falta código #${pos}` });
-            continue;
+            missingCode = pos;
+            break;
           }
-          codes.push(code);
+          codesByPos.push({ pos, code });
         }
 
-        if (codes.length === 0) {
+        if (missingCode !== null) {
+          results.failed.push({ orderNumber: cleanOrderNumber, error: `Falta código #${missingCode}` });
+          continue;
+        }
+
+        if (codesByPos.length === 0) {
           results.failed.push({ orderNumber: cleanOrderNumber, error: 'Sin códigos de seguimiento' });
           continue;
         }
 
-        // Guardar tracking codes en DB
-        for (let pos = 1; pos <= totalShipments; pos++) {
-          const code = (entry.trackingCodes[pos] || entry.trackingCodes[String(pos)] || '').trim();
-          if (code) {
-            await pool.query(
-              `INSERT INTO order_tracking_codes (order_number, tracking_code, position, total_shipments, created_by)
-               VALUES ($1, $2, $3, $4, $5)
-               ON CONFLICT (order_number, position)
-               DO UPDATE SET tracking_code = EXCLUDED.tracking_code, total_shipments = EXCLUDED.total_shipments`,
-              [cleanOrderNumber, code, pos, entry.totalShipments, req.user?.id]
-            );
-          }
+        // Guardar tracking codes en DB y marcar whatsapp_sent_at
+        for (const { pos, code } of codesByPos) {
+          await pool.query(
+            `INSERT INTO order_tracking_codes (order_number, tracking_code, position, total_shipments, created_by, whatsapp_sent_at)
+             VALUES ($1, $2, $3, $4, $5, NOW())
+             ON CONFLICT (order_number, position)
+             DO UPDATE SET tracking_code = EXCLUDED.tracking_code,
+                           total_shipments = EXCLUDED.total_shipments,
+                           whatsapp_sent_at = NOW()`,
+            [cleanOrderNumber, code, pos, totalShipments, req.user?.id]
+          );
         }
 
         // Enviar UN solo WhatsApp con todos los códigos concatenados
-        const codesString = codes.join(', ');
+        const codesString = codesByPos.map(c => c.code).join(', ');
         await queueWhatsApp({
           telefono: order.customer_phone,
           plantilla: 'envio_extra',
@@ -7939,7 +7996,12 @@ app.post('/whatsapp/send-tracking', authenticate, requirePermission('whatsapp.se
     }
 
     console.log(`✅ WhatsApp send-tracking: ${results.sent.length} sent, ${results.failed.length} failed`);
-    await logEvento({ accion: `whatsapp_tracking: envio_extra (${results.sent.length} enviados)`, origen: 'admin', userId: req.user.id, username: req.user.name });
+    await logEvento({
+      accion: `whatsapp_tracking: envio_extra (${results.sent.length} enviados)`,
+      origen: 'admin',
+      userId: req.user.id,
+      username: req.user.name || req.user.email || `user_${req.user.id}`
+    });
 
     res.json({
       ok: true,
