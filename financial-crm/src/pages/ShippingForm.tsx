@@ -42,19 +42,51 @@ const initialFormData: FormData = {
   comentarios: '',
 };
 
-// Transportes que no se pueden usar (demoras y costos altos).
-// Se matchea contra el input "Otra empresa" en tiempo real, bloqueando el submit.
-const FORBIDDEN_CARRIER_PATTERNS: RegExp[] = [
-  /\bandreani\b/,
-  /\boca\b/,
-  /\bcorreo\s*arg(entino)?\b/,
+// Lista exhaustiva de carriers prohibidos. NO usar "correo" solo: hay
+// transportes legítimos que empiezan con esa palabra. Bloqueamos solo nombres
+// específicos (oficiales + plurales + typos comunes). Sincronizado con
+// backend/lib/payment-helpers.js — si agregás uno acá, agregalo allá.
+const FORBIDDEN_CARRIERS: string[] = [
+  // === Correo Argentino ===
+  'correo argentino', 'correos argentinos',
+  'correo arg', 'correos arg', 'correoarg',
+  'correoargentino', 'correosargentinos',
+  // typos en "correo"
+  'corrreo argentino', 'corrrreo argentino', 'coreo argentino', 'corre argentino',
+  'corero argentino', 'corero arg',
+  // typos en "argentino"
+  'correo argetino', 'correos argetinos',
+  'correo argntino', 'correos argntinos',
+  'correo argentno', 'correos argentnos',
+  'correo argentnio', 'correos argentnios',
+  'correo argentinno',
+  'correo arjentino', 'correos arjentinos',
+  'correo agentino', 'correos agentinos',
+  'correo argentina', 'correos argentinas',
+
+  // === Andreani ===
+  'andreani', 'andreani sa', 'andreani s.a.', 'andreni', 'andreny',
+  'andriani', 'andereani', 'andreanis', 'andreans', 'andrean',
+  'adreani', 'andeani',
+
+  // === OCA ===
+  'oca', 'oca sa', 'oca s.a.', 'oca express', 'o c a', 'o.c.a',
 ];
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const FORBIDDEN_CARRIER_PATTERNS: RegExp[] = FORBIDDEN_CARRIERS.map(
+  s => new RegExp(`\\b${escapeRegex(s)}\\b`)
+);
 
 function normalizeCarrierName(value: string): string {
   return value
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '') // quita acentos combinantes
+    .replace(/[̀-ͯ]/g, '')         // quita acentos combinantes
+    .replace(/[.\-_/]/g, ' ')      // separadores → espacio
     .replace(/\s+/g, ' ')
     .trim();
 }

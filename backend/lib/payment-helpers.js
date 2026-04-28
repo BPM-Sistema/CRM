@@ -87,11 +87,43 @@ function requiresShippingForm(shippingType) {
    están con demoras y costos altos. Replica la validación del
    frontend (ShippingForm.tsx) — no confiar solo en el cliente.
 ===================================================== */
-const FORBIDDEN_CARRIER_PATTERNS = [
-  /\bandreani\b/,
-  /\boca\b/,
-  /\bcorreo\s*arg(entino)?\b/,
+// Lista exhaustiva de carriers prohibidos. NO usar "correo" solo: hay transportes
+// legitimos que empiezan con esa palabra. Bloqueamos solo nombres especificos
+// (oficiales + plurales + typos comunes).
+const FORBIDDEN_CARRIERS = [
+  // === Correo Argentino ===
+  'correo argentino', 'correos argentinos',
+  'correo arg', 'correos arg', 'correoarg',
+  'correoargentino', 'correosargentinos',
+  // typos en "correo"
+  'corrreo argentino', 'corrrreo argentino', 'coreo argentino', 'corre argentino',
+  'corero argentino', 'corero arg',
+  // typos en "argentino"
+  'correo argetino', 'correos argetinos',
+  'correo argntino', 'correos argntinos',
+  'correo argentno', 'correos argentnos',
+  'correo argentnio', 'correos argentnios',
+  'correo argentinno',
+  'correo arjentino', 'correos arjentinos',
+  'correo agentino', 'correos agentinos',
+  'correo argentina', 'correos argentinas',
+
+  // === Andreani ===
+  'andreani', 'andreani sa', 'andreani s.a.', 'andreni', 'andreny',
+  'andriani', 'andereani', 'andreanis', 'andreans', 'andrean',
+  'adreani', 'andeani',
+
+  // === OCA ===
+  'oca', 'oca sa', 'oca s.a.', 'oca express', 'o c a', 'o.c.a',
 ];
+
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const FORBIDDEN_CARRIER_PATTERNS = FORBIDDEN_CARRIERS.map(
+  s => new RegExp(`\\b${escapeRegex(s)}\\b`)
+);
 
 function isForbiddenCarrier(value) {
   if (!value) return false;
@@ -99,6 +131,7 @@ function isForbiddenCarrier(value) {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
+    .replace(/[.\-_/]/g, ' ')      // separadores → espacio
     .replace(/\s+/g, ' ')
     .trim();
   if (!normalized) return false;
