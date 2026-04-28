@@ -1471,7 +1471,27 @@ async function processDocumentWithClaude(documentId, claudeData) {
         if (directRes.rowCount > 0) {
           const row = directRes.rows[0];
           const estadoBloqueado = ['cancelado'].includes(row.estado_pedido);
-          if (!estadoBloqueado) {
+
+          // Validar que el destinatario del remito coincida con el cliente del
+          // pedido. Si Claude lee mal un dígito y por casualidad ese número
+          // existe (otro cliente), sin esto el match falso se acepta como 1.0.
+          // Si Claude no detectó nombre, aceptamos sólo por número (no hay
+          // forma de validar y el número manuscrito es señal fuerte).
+          let nameOk = true;
+          let nameScore = null;
+          if (extraction.name && row.customer_name) {
+            nameScore = calculateSimilarity(
+              normalizeText(extraction.name),
+              normalizeText(row.customer_name)
+            );
+            nameOk = nameScore >= 0.55;
+          }
+
+          if (estadoBloqueado) {
+            console.log(`   ⚠️ N° manuscrito ${numeroNorm} encontrado pero pedido está ${row.estado_pedido}`);
+          } else if (!nameOk) {
+            console.log(`   ⚠️ N° manuscrito ${numeroNorm} matchea #${row.order_number} pero nombre no coincide (${(nameScore * 100).toFixed(0)}%) — cae a fuzzy`);
+          } else {
             console.log(`   🎯 Match por N° manuscrito: #${row.order_number} (${row.customer_name})`);
             match = {
               orderNumber: row.order_number,
@@ -1481,7 +1501,8 @@ async function processDocumentWithClaude(documentId, claudeData) {
               details: {
                 source: 'numero_manuscrito',
                 numero_detectado: numeroManuscritoRaw,
-                estado_pedido: row.estado_pedido
+                estado_pedido: row.estado_pedido,
+                name_similarity: nameScore
               }
             };
             candidates = [{
@@ -1491,10 +1512,10 @@ async function processDocumentWithClaude(documentId, claudeData) {
               createdAt: null
             }];
             matchSource = 'numero_manuscrito';
-          } else {
-            console.log(`   ⚠️ N° manuscrito ${numeroNorm} encontrado pero pedido está ${row.estado_pedido}`);
           }
-        } else {
+        }
+
+        if (!match && directRes.rowCount === 0) {
           // Match exacto falló → tolerancia a 1 dígito mal leído (ej: "31626" → "39626")
           // Generar variantes a distancia 1 y validar contra el nombre del destinatario.
           const variantes = new Set();
