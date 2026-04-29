@@ -6619,6 +6619,7 @@ app.post('/shipping-data/bulk', authenticate, async (req, res) => {
  * Exclusiones (matching laxo sobre nombre normalizado, sin acentos):
  *   - Andreani / Andriani
  *   - Correo Argentino
+ *   - OCA (matcheado como palabra completa para no tocar OCASA)
  *
  * Query param opcional: ?provincia=<nombre>
  */
@@ -6674,6 +6675,7 @@ app.get('/shipping-data/ranking', authenticate, async (req, res) => {
           AND transporte NOT LIKE '%ANDRIANI%'
           AND transporte NOT LIKE '%CORREO ARGENTINO%'
           AND transporte NOT LIKE '%CORREO_ARGENTINO%'
+          AND transporte !~ '\yOCA\y'
           AND transporte NOT LIKE '%@%'
       )
       SELECT provincia_raw, transporte, COUNT(*)::int AS cantidad
