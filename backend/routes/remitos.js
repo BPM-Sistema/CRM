@@ -74,10 +74,10 @@ router.post('/upload',
 
         // 2. Crear registro en DB con estado 'processing'
         const insertRes = await pool.query(`
-          INSERT INTO shipping_documents (file_url, file_name, file_type, status)
-          VALUES ($1, $2, $3, 'processing')
+          INSERT INTO shipping_documents (file_url, file_name, file_type, status, uploaded_by)
+          VALUES ($1, $2, $3, 'processing', $4)
           RETURNING id
-        `, [fileUrl, file.originalname, file.mimetype]);
+        `, [fileUrl, file.originalname, file.mimetype, req.user?.id || null]);
 
         const documentId = insertRes.rows[0].id;
 
@@ -168,28 +168,58 @@ router.get('/',
   requirePermission('remitos.view'),
   async (req, res) => {
     try {
-      const { status, page = 1, limit = 50 } = req.query;
+      const { status, page = 1, limit = 50, search, dateFrom, dateTo } = req.query;
       const offset = (parseInt(page) - 1) * parseInt(limit);
 
-      let whereClause = '';
+      const conditions = [];
       const params = [];
       let paramIndex = 1;
 
       if (status) {
-        whereClause = `WHERE status = $${paramIndex}`;
+        conditions.push(`sd.status = $${paramIndex}`);
         params.push(status);
         paramIndex++;
       }
 
-      // Obtener remitos - usar confirmed_order_number si existe, sino suggested
+      if (search) {
+        // Match por confirmed_order_number, suggested_order_number o detected_name
+        conditions.push(`(
+          sd.confirmed_order_number ILIKE $${paramIndex} OR
+          sd.suggested_order_number ILIKE $${paramIndex} OR
+          sd.detected_name ILIKE $${paramIndex}
+        )`);
+        params.push(`%${search}%`);
+        paramIndex++;
+      }
+
+      if (dateFrom) {
+        conditions.push(`sd.created_at >= $${paramIndex}`);
+        params.push(dateFrom);
+        paramIndex++;
+      }
+
+      if (dateTo) {
+        // Inclusivo: hasta el final del dia
+        conditions.push(`sd.created_at < ($${paramIndex}::date + INTERVAL '1 day')`);
+        params.push(dateTo);
+        paramIndex++;
+      }
+
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+      // Obtener remitos con JOIN a users para nombres de quien subio/aprobo
       const remitosRes = await pool.query(`
         SELECT
           sd.*,
           ov.customer_name as order_customer_name,
           ov.shipping_address->>'address' as order_address,
-          ov.estado_pedido as order_status
+          ov.estado_pedido as order_status,
+          uploader.name as uploaded_by_name,
+          confirmer.name as confirmed_by_name
         FROM shipping_documents sd
         LEFT JOIN orders_validated ov ON COALESCE(sd.confirmed_order_number, sd.suggested_order_number) = ov.order_number
+        LEFT JOIN users uploader ON uploader.id = sd.uploaded_by
+        LEFT JOIN users confirmer ON confirmer.id = sd.confirmed_by
         ${whereClause}
         ORDER BY sd.created_at DESC
         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
@@ -197,7 +227,7 @@ router.get('/',
 
       // Contar total
       const countRes = await pool.query(`
-        SELECT COUNT(*) as total FROM shipping_documents ${whereClause}
+        SELECT COUNT(*) as total FROM shipping_documents sd ${whereClause}
       `, params);
 
       res.json({

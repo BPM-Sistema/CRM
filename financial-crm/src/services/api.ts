@@ -1507,8 +1507,9 @@ export interface Remito {
     }>;
   } | null;
   confirmed_order_number: string | null;
-  confirmed_by: number | null;
+  confirmed_by: string | null;
   confirmed_at: string | null;
+  uploaded_by: string | null;
   status: RemitoStatus;
   error_message: string | null;
   created_at: string;
@@ -1517,6 +1518,9 @@ export interface Remito {
   order_customer_name?: string | null;
   order_address?: string | null;
   order_status?: string | null;
+  // Joined from users
+  uploaded_by_name?: string | null;
+  confirmed_by_name?: string | null;
 }
 
 export interface RemitosStats {
@@ -1531,6 +1535,9 @@ export interface RemitosStats {
 
 export interface RemitosFilters {
   status?: RemitoStatus | null;
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 // Conteo de pedidos pendientes de datos de envío.
@@ -1639,6 +1646,15 @@ export async function fetchRemitos(
 
   if (filters?.status) {
     params.append('status', filters.status);
+  }
+  if (filters?.search) {
+    params.append('search', filters.search);
+  }
+  if (filters?.dateFrom) {
+    params.append('dateFrom', filters.dateFrom);
+  }
+  if (filters?.dateTo) {
+    params.append('dateTo', filters.dateTo);
   }
 
   const response = await authFetch(`${API_BASE_URL}/remitos?${params.toString()}`);

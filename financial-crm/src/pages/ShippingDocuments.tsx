@@ -765,11 +765,22 @@ function RemitoCard({ remito, onConfirm, onDelete, onOpen, onPreviewOrder, isLoa
           </Button>
         )}
 
-        {/* OCR text toggle - less prominent, at the bottom */}
-        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-          <p className="text-xs text-gray-400">
-            {format(new Date(remito.created_at), "dd/MM HH:mm", { locale: es })}
+        {/* Audit info: subido y aprobado, sin abrir el remito */}
+        <div className="pt-2 border-t border-gray-100 space-y-0.5">
+          <p className="text-xs text-gray-500">
+            <span className="text-gray-400">Subido:</span> {format(new Date(remito.created_at), "dd/MM HH:mm", { locale: es })}
+            {remito.uploaded_by_name && <span className="text-gray-600"> · {remito.uploaded_by_name}</span>}
           </p>
+          {remito.confirmed_at && (
+            <p className="text-xs text-emerald-700">
+              <span className="text-emerald-600/70">Aprobado:</span> {format(new Date(remito.confirmed_at), "dd/MM HH:mm", { locale: es })}
+              {remito.confirmed_by_name && <span> · {remito.confirmed_by_name}</span>}
+            </p>
+          )}
+        </div>
+
+        {/* OCR text toggle - less prominent, at the bottom */}
+        <div className="flex items-center justify-end pt-2">
           {remito.ocr_text && (
             <button
               onClick={() => setShowOCR(!showOCR)}
@@ -1116,10 +1127,22 @@ export function ShippingDocuments() {
   // Filtros persistidos en URL
   const { filters, setFilter, setFilters } = useUrlFilters({
     status: 'all' as RemitoStatus | 'all',
+    search: '' as string,
+    dateFrom: '' as string,
+    dateTo: '' as string,
     page: 1,
   });
   const statusFilter = filters.status;
   const page = filters.page;
+  const search = filters.search;
+  const dateFrom = filters.dateFrom;
+  const dateTo = filters.dateTo;
+  // Debounce del search para no disparar request por cada tecla.
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
@@ -1138,7 +1161,12 @@ export function ShippingDocuments() {
       setError(null);
 
       const [remitosRes, statsRes] = await Promise.all([
-        fetchRemitos(page, 50, { status: statusFilter === 'all' ? undefined : statusFilter }),
+        fetchRemitos(page, 50, {
+          status: statusFilter === 'all' ? undefined : statusFilter,
+          search: debouncedSearch || undefined,
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
+        }),
         fetchRemitosStats()
       ]);
 
@@ -1150,7 +1178,7 @@ export function ShippingDocuments() {
     } finally {
       setLoading(false);
     }
-  }, [page, statusFilter]);
+  }, [page, statusFilter, debouncedSearch, dateFrom, dateTo]);
 
   useEffect(() => {
     loadData();
@@ -1290,6 +1318,44 @@ export function ShippingDocuments() {
           <Button variant="secondary" onClick={loadData} disabled={loading}>
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           </Button>
+        </div>
+
+        {/* Search + date filters */}
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <div className="relative flex-1 min-w-[200px] max-w-md">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setFilters({ search: e.target.value, page: 1 })}
+              placeholder="Buscar por N° de pedido o nombre…"
+              className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900"
+            />
+          </div>
+          <div className="flex items-center gap-1.5 text-sm">
+            <span className="text-neutral-500">Desde</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setFilters({ dateFrom: e.target.value, page: 1 })}
+              className="px-2 py-2 bg-white border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900"
+            />
+            <span className="text-neutral-500">Hasta</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setFilters({ dateTo: e.target.value, page: 1 })}
+              className="px-2 py-2 bg-white border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900"
+            />
+            {(search || dateFrom || dateTo) && (
+              <button
+                onClick={() => setFilters({ search: '', dateFrom: '', dateTo: '', page: 1 })}
+                className="text-xs text-neutral-500 hover:text-neutral-900 underline ml-2"
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Error */}
