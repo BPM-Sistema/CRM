@@ -1190,11 +1190,23 @@ app.get('/orders/pending-shipping-data', authenticate, requirePermission('orders
             AND (wm.template_key = 'datos__envio' OR wm.template ILIKE '%datos%envio%')
         ) AS datos_envio_sent_at,
         (
+          SELECT COUNT(*)::int
+          FROM whatsapp_messages wm
+          WHERE wm.order_number = CAST(o.order_number AS integer)
+            AND (wm.template_key = 'datos__envio' OR wm.template ILIKE '%datos%envio%')
+        ) AS datos_envio_sent_count,
+        (
           SELECT MAX(wm.created_at)
           FROM whatsapp_messages wm
           WHERE wm.order_number = CAST(o.order_number AS integer)
             AND wm.template_key = 'aviso_datos_envio'
-        ) AS aviso_sent_at
+        ) AS aviso_sent_at,
+        (
+          SELECT COUNT(*)::int
+          FROM whatsapp_messages wm
+          WHERE wm.order_number = CAST(o.order_number AS integer)
+            AND wm.template_key = 'aviso_datos_envio'
+        ) AS aviso_sent_count
       FROM orders_validated o
       WHERE (
           (LOWER(COALESCE(o.shipping_type, '')) LIKE '%expreso%' AND LOWER(COALESCE(o.shipping_type, '')) LIKE '%elec%')
@@ -1212,6 +1224,61 @@ app.get('/orders/pending-shipping-data', authenticate, requirePermission('orders
     res.json({ ok: true, orders: result.rows });
   } catch (error) {
     console.error('❌ /orders/pending-shipping-data error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/* =====================================================
+   GET — COUNT DE PEDIDOS CON DATOS MODIFICADOS POST-IMPRESION
+   Etiqueta ya impresa pero el cliente reedito datos de envio despues.
+   La etiqueta fisica quedo desactualizada → requiere reimpresion manual.
+===================================================== */
+app.get('/orders/shipping-data-changed-count', authenticate, requirePermission('orders.view'), async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT COUNT(*)::int AS count
+      FROM shipping_requests sr
+      JOIN orders_validated ov ON ov.order_number = sr.order_number
+      WHERE sr.label_printed_at IS NOT NULL
+        AND sr.data_updated_at > sr.label_printed_at
+        AND ov.estado_pedido NOT IN ('cancelado', 'enviado', 'retirado')
+    `);
+    res.json({ ok: true, count: result.rows[0].count });
+  } catch (error) {
+    console.error('❌ /orders/shipping-data-changed-count error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/* =====================================================
+   GET — LISTA DE PEDIDOS CON DATOS MODIFICADOS POST-IMPRESION
+   Lo usa el modal del badge. Cada item linkea al detalle del pedido,
+   donde la operadora reimprime manual (cuenta como reprint normal).
+===================================================== */
+app.get('/orders/shipping-data-changed', authenticate, requirePermission('orders.view'), async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        ov.order_number,
+        ov.customer_name,
+        ov.customer_phone,
+        ov.shipping_type,
+        ov.estado_pago,
+        ov.estado_pedido,
+        sr.label_printed_at,
+        sr.data_updated_at,
+        sr.reprints_count,
+        COALESCE(ov.tn_created_at, ov.created_at) AS fecha_pedido
+      FROM shipping_requests sr
+      JOIN orders_validated ov ON ov.order_number = sr.order_number
+      WHERE sr.label_printed_at IS NOT NULL
+        AND sr.data_updated_at > sr.label_printed_at
+        AND ov.estado_pedido NOT IN ('cancelado', 'enviado', 'retirado')
+      ORDER BY sr.data_updated_at DESC
+    `);
+    res.json({ ok: true, orders: result.rows });
+  } catch (error) {
+    console.error('❌ /orders/shipping-data-changed error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1433,6 +1500,11 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
       // Solo pedidos que requieren form, tienen datos PERO etiqueta NO impresa
       conditions.push(requiresFormCondition);
       conditions.push(`EXISTS (SELECT 1 FROM shipping_requests sr2 WHERE sr2.order_number = o.order_number AND sr2.label_printed_at IS NULL)`);
+    } else if (shipping_data === 'data_changed') {
+      // Etiqueta impresa pero el cliente modifico datos despues. Requiere
+      // reimpresion manual desde el detalle del pedido.
+      conditions.push(requiresFormCondition);
+      conditions.push(`EXISTS (SELECT 1 FROM shipping_requests sr2 WHERE sr2.order_number = o.order_number AND sr2.label_printed_at IS NOT NULL AND sr2.data_updated_at > sr2.label_printed_at)`);
     }
 
     // Filtro por tipo de envío
@@ -1507,7 +1579,13 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
           ELSE false
         END as requires_shipping_form,
         EXISTS(SELECT 1 FROM shipping_requests WHERE order_number = o.order_number) as has_shipping_data,
-        (SELECT MAX(label_printed_at) FROM shipping_requests WHERE order_number = o.order_number) as shipping_label_printed_at
+        (SELECT MAX(label_printed_at) FROM shipping_requests WHERE order_number = o.order_number) as shipping_label_printed_at,
+        EXISTS(
+          SELECT 1 FROM shipping_requests
+          WHERE order_number = o.order_number
+            AND label_printed_at IS NOT NULL
+            AND data_updated_at > label_printed_at
+        ) as shipping_data_changed_after_print
       FROM orders_validated o
       LEFT JOIN comprobantes c ON o.order_number = c.order_number
       ${whereClause}
@@ -2107,6 +2185,7 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
     log.info({ count: matches.length }, 'Conciliación aplicar: inicio');
 
     const confirmed = [];
+    const alreadyConfirmed = [];
     const errors = [];
 
     for (const match of matches) {
@@ -2117,18 +2196,39 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
         try {
           await client.query('BEGIN');
 
-          // Verificar que el comprobante sigue pendiente
+          // Verificar estado actual del comprobante (con lock)
           const compRes = await client.query(
             `SELECT id, order_number, monto, estado
              FROM comprobantes
-             WHERE id = $1 AND estado IN ('pendiente', 'a_confirmar')
+             WHERE id = $1
              FOR UPDATE`,
             [comprobante_id]
           );
 
           if (compRes.rowCount === 0) {
             await client.query('ROLLBACK');
-            errors.push({ comprobante_id, banco_id, error: 'Comprobante ya no está pendiente' });
+            errors.push({ comprobante_id, banco_id, error: 'Comprobante no encontrado' });
+            continue;
+          }
+
+          const estadoActual = compRes.rows[0].estado;
+
+          // Idempotencia: si ya está confirmado, no es error — la conciliación
+          // ya se aplicó (probablemente por una request previa que se duplicó).
+          if (estadoActual === 'confirmado') {
+            await client.query('ROLLBACK');
+            alreadyConfirmed.push({
+              banco_id,
+              comprobante_id: compRes.rows[0].id,
+              order_number: compRes.rows[0].order_number,
+              monto: compRes.rows[0].monto
+            });
+            continue;
+          }
+
+          if (!['pendiente', 'a_confirmar'].includes(estadoActual)) {
+            await client.query('ROLLBACK');
+            errors.push({ comprobante_id, banco_id, error: `Comprobante en estado ${estadoActual}, no se puede confirmar` });
             continue;
           }
 
@@ -2223,12 +2323,13 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
       }
     }
 
-    log.info({ confirmed: confirmed.length, errors: errors.length }, 'Conciliación aplicar: fin');
+    log.info({ confirmed: confirmed.length, alreadyConfirmed: alreadyConfirmed.length, errors: errors.length }, 'Conciliación aplicar: fin');
 
-    // Persistir movimientos bancarios en Admin Banco con assignments resueltos
+    // Persistir movimientos bancarios en Admin Banco con assignments resueltos.
+    // Incluir tambien los ya-confirmados para que el bank_movement quede ligado.
     let bankImportResult = null;
     if (Array.isArray(movimientos_banco) && movimientos_banco.length > 0) {
-      const resolvedMatches = confirmed.map(c => ({
+      const resolvedMatches = [...confirmed, ...alreadyConfirmed].map(c => ({
         banco_id: c.banco_id,
         comprobante_id: c.comprobante_id,
         order_number: c.order_number
@@ -2246,10 +2347,12 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
       ok: true,
       summary: {
         confirmed: confirmed.length,
+        already_confirmed: alreadyConfirmed.length,
         errors: errors.length,
         bank_import: bankImportResult
       },
       confirmed,
+      already_confirmed: alreadyConfirmed,
       errors
     });
 
@@ -3575,42 +3678,74 @@ app.post('/webhook/botmaker-status', async (req, res) => {
 
     const payload = req.body;
 
-    // Extraer datos. Botmaker manda messageId (formato "6V0RABKRBOEJKVQ4W6QI").
-    // El fallback intentTxId es por si alguna versión/tipo de callback lo usa.
+    // Botmaker envía dos IDs en el callback:
+    //   - messageId: ID del mensaje real de WhatsApp (mayúsculas, ej "YSW6KZULF3RTG3GUPANP")
+    //   - intentTxId: correlation ID del trigger-intent (igual al `requestId` que devolvió la API)
+    // El worker guarda `response.data.requestId` en botmaker_message_id, así que el match inicial
+    // siempre es por intentTxId. Una vez matcheado, sobrescribimos con messageId para que los
+    // siguientes callbacks (delivered → read) matcheen directo por el ID real de WhatsApp.
     const { type, status, contactId, messageId, intentTxId } = payload;
-    const bmId = messageId || intentTxId;
 
     if (type !== 'status') {
       return res.status(200).json({ received: true, ignored: true });
     }
 
-    if (!bmId) {
-      log.warn({ payload }, 'Webhook Botmaker sin messageId — ignorado');
-      return res.status(200).json({ received: true, ignored: 'no-message-id' });
+    if (!messageId && !intentTxId) {
+      log.warn({ payload }, 'Webhook Botmaker sin messageId ni intentTxId — ignorado');
+      return res.status(200).json({ received: true, ignored: 'no-id' });
     }
 
     const isSuccess = status === 'delivered' || status === 'read' || status === 'sent';
     const isFailed = status === 'failed' || status === 'error';
 
+    // Match en 2 pasos para evitar actualizar 2 filas si por colisión un messageId
+    // antiguo coincide con un intentTxId nuevo (improbable pero posible al ser strings cortos):
+    //   1) intentar match por messageId (el ID "real" de WhatsApp)
+    //   2) si no matchea, fallback a intentTxId — y aprovechar para guardar el messageId real
+    async function matchAndUpdate(setClause, params) {
+      // params: [...setParams, messageId, intentTxId]
+      // Devuelve resultado del UPDATE (con RETURNING id, order_number, template)
+      if (messageId) {
+        const r = await pool.query(
+          `UPDATE whatsapp_messages
+              ${setClause}
+            WHERE botmaker_message_id = $${params.length - 1}
+            RETURNING id, order_number, template`,
+          params
+        );
+        if (r.rowCount > 0) return r;
+      }
+      if (intentTxId) {
+        const r = await pool.query(
+          `UPDATE whatsapp_messages
+              ${setClause}
+            WHERE botmaker_message_id = $${params.length}
+            RETURNING id, order_number, template`,
+          params
+        );
+        return r;
+      }
+      return { rowCount: 0, rows: [] };
+    }
+
     if (isSuccess) {
-      const upd = await pool.query(
-        `UPDATE whatsapp_messages
-            SET status = $1, status_updated_at = NOW()
-          WHERE botmaker_message_id = $2
-          RETURNING id`,
-        [status, bmId]
+      const upd = await matchAndUpdate(
+        `SET status = $1,
+             status_updated_at = NOW(),
+             botmaker_message_id = COALESCE($2, botmaker_message_id)`,
+        [status, messageId || null, intentTxId || null]
       );
-      log.info({ status, bmId, matched: upd.rowCount }, 'WhatsApp status updated');
+      log.info({ status, messageId, intentTxId, matched: upd.rowCount }, 'WhatsApp status updated');
     } else if (isFailed) {
       const errorMsg = payload.error || payload.reason || 'Unknown error';
-      const upd = await pool.query(
-        `UPDATE whatsapp_messages
-            SET status = 'failed', status_updated_at = NOW(), error_message = $1
-          WHERE botmaker_message_id = $2
-          RETURNING id, order_number, template`,
-        [errorMsg, bmId]
+      const upd = await matchAndUpdate(
+        `SET status = 'failed',
+             status_updated_at = NOW(),
+             error_message = $1,
+             botmaker_message_id = COALESCE($2, botmaker_message_id)`,
+        [errorMsg, messageId || null, intentTxId || null]
       );
-      log.error({ bmId, errorMsg, contactId, matched: upd.rowCount }, 'WhatsApp delivery failed');
+      log.error({ messageId, intentTxId, errorMsg, contactId, matched: upd.rowCount }, 'WhatsApp delivery failed');
 
       if (upd.rows[0]) {
         const msg = upd.rows[0];
@@ -5874,6 +6009,33 @@ app.post('/cron/whatsapp-cleanup', verifyCronAuth, async (req, res) => {
   }
 });
 
+// Limpieza on-demand de jobs failed en BullMQ. Auth por cron secret porque es
+// operación destructiva (borra los failed sin reintentar). Usar con curl -H "x-cron-secret: ..."
+app.post('/cron/queue-clean-failed/:queueName', verifyCronAuth, async (req, res) => {
+  try {
+    const { queueName } = req.params;
+    const { queues, QUEUE_NAMES } = require('./lib/queues');
+
+    if (!QUEUE_NAMES.includes(queueName)) {
+      return res.status(400).json({ error: `Queue "${queueName}" not found` });
+    }
+
+    const queue = queues[queueName];
+    if (!queue) {
+      return res.status(400).json({ error: `Queue "${queueName}" is not available (Redis not connected)` });
+    }
+
+    const cleaned = await queue.clean(0, 100000, 'failed');
+    const cleanedCount = Array.isArray(cleaned) ? cleaned.length : cleaned;
+
+    log.info({ queueName, cleanedCount, authMethod: req.cronAuth?.method }, 'Queue failed jobs cleaned');
+    res.json({ ok: true, queue: queueName, cleaned_count: cleanedCount });
+  } catch (error) {
+    log.error({ err: error }, 'queue-clean-failed error');
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Ejecutar sincronización manual
 app.post('/sync/run', authenticate, requirePermission('users.view'), async (req, res) => {
   const source = `manual-${req.user.email}`;
@@ -6467,16 +6629,52 @@ app.post('/shipping-data', shippingFormLimiter, async (req, res) => {
     // Sanitizar datos
     const sanitize = (str) => str?.trim() || null;
 
-    // Borrar registro anterior si existe (evita duplicados si el cliente envía dos veces)
-    await pool.query('DELETE FROM shipping_requests WHERE order_number = $1', [sanitizedOrderNumber]);
-
+    // UPSERT: preserva id, created_at, label_printed_at, label_bultos y
+    // reprints_count cuando el cliente reenvia el formulario. data_updated_at
+    // solo se mueve si algun campo critico cambio (los que afectan la
+    // etiqueta fisica: empresa, destino, direccion, nombre, DNI, CP,
+    // provincia, localidad, telefono). Email y comentarios NO disparan aviso.
     const result = await pool.query(`
       INSERT INTO shipping_requests (
         order_number, empresa_envio, empresa_envio_otro, destino_tipo,
         direccion_entrega, nombre_apellido, dni, email,
         codigo_postal, provincia, localidad, telefono, comentarios
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-      RETURNING id, created_at
+      ON CONFLICT (order_number) DO UPDATE SET
+        empresa_envio = EXCLUDED.empresa_envio,
+        empresa_envio_otro = EXCLUDED.empresa_envio_otro,
+        destino_tipo = EXCLUDED.destino_tipo,
+        direccion_entrega = EXCLUDED.direccion_entrega,
+        nombre_apellido = EXCLUDED.nombre_apellido,
+        dni = EXCLUDED.dni,
+        email = EXCLUDED.email,
+        codigo_postal = EXCLUDED.codigo_postal,
+        provincia = EXCLUDED.provincia,
+        localidad = EXCLUDED.localidad,
+        telefono = EXCLUDED.telefono,
+        comentarios = EXCLUDED.comentarios,
+        data_updated_at = CASE
+          WHEN (
+            shipping_requests.empresa_envio       IS DISTINCT FROM EXCLUDED.empresa_envio       OR
+            shipping_requests.empresa_envio_otro  IS DISTINCT FROM EXCLUDED.empresa_envio_otro  OR
+            shipping_requests.destino_tipo        IS DISTINCT FROM EXCLUDED.destino_tipo        OR
+            shipping_requests.direccion_entrega   IS DISTINCT FROM EXCLUDED.direccion_entrega   OR
+            shipping_requests.nombre_apellido     IS DISTINCT FROM EXCLUDED.nombre_apellido     OR
+            shipping_requests.dni                 IS DISTINCT FROM EXCLUDED.dni                 OR
+            shipping_requests.codigo_postal       IS DISTINCT FROM EXCLUDED.codigo_postal       OR
+            shipping_requests.provincia           IS DISTINCT FROM EXCLUDED.provincia           OR
+            shipping_requests.localidad           IS DISTINCT FROM EXCLUDED.localidad           OR
+            shipping_requests.telefono            IS DISTINCT FROM EXCLUDED.telefono
+          ) THEN NOW()
+          ELSE shipping_requests.data_updated_at
+        END
+      RETURNING
+        id,
+        created_at,
+        data_updated_at,
+        label_printed_at,
+        (xmax = 0) AS inserted,
+        (xmax <> 0 AND label_printed_at IS NOT NULL AND data_updated_at >= NOW() - INTERVAL '1 second') AS data_changed_after_print
     `, [
       sanitizedOrderNumber,
       empresa_envio,
@@ -6493,9 +6691,23 @@ app.post('/shipping-data', shippingFormLimiter, async (req, res) => {
       sanitize(comentarios)
     ]);
 
-    console.log(`📦 Datos de envío registrados para pedido ${sanitizedOrderNumber}`);
+    const row = result.rows[0];
+    console.log(`📦 Datos de envío ${row.inserted ? 'registrados' : 'actualizados'} para pedido ${sanitizedOrderNumber}`);
 
-    await logEvento({ orderNumber: sanitizedOrderNumber, accion: 'datos_envio_registrados', origen: 'cliente' });
+    await logEvento({
+      orderNumber: sanitizedOrderNumber,
+      accion: row.inserted ? 'datos_envio_registrados' : 'datos_envio_actualizados',
+      origen: 'cliente'
+    });
+
+    if (row.data_changed_after_print) {
+      await logEvento({
+        orderNumber: sanitizedOrderNumber,
+        accion: 'datos_envio_modificados_post_impresion',
+        origen: 'cliente'
+      });
+      console.log(`⚠️  Pedido ${sanitizedOrderNumber}: datos modificados después de imprimir etiqueta`);
+    }
 
     res.json({
       ok: true,
@@ -6552,15 +6764,42 @@ app.post('/shipping-data/bulk', authenticate, async (req, res) => {
 
         const sanitize = (str) => str?.trim() || null;
 
-        // Borrar registro anterior si existe (para permitir re-testing)
-        await pool.query('DELETE FROM shipping_requests WHERE order_number = $1', [sanitizedOrderNumber]);
-
+        // UPSERT: preserva estado de impresion (label_printed_at, label_bultos,
+        // reprints_count) y created_at original. Mismo patron que /shipping-data.
         const result = await pool.query(`
           INSERT INTO shipping_requests (
             order_number, empresa_envio, empresa_envio_otro, destino_tipo,
             direccion_entrega, nombre_apellido, dni, email,
             codigo_postal, provincia, localidad, telefono, comentarios
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          ON CONFLICT (order_number) DO UPDATE SET
+            empresa_envio = EXCLUDED.empresa_envio,
+            empresa_envio_otro = EXCLUDED.empresa_envio_otro,
+            destino_tipo = EXCLUDED.destino_tipo,
+            direccion_entrega = EXCLUDED.direccion_entrega,
+            nombre_apellido = EXCLUDED.nombre_apellido,
+            dni = EXCLUDED.dni,
+            email = EXCLUDED.email,
+            codigo_postal = EXCLUDED.codigo_postal,
+            provincia = EXCLUDED.provincia,
+            localidad = EXCLUDED.localidad,
+            telefono = EXCLUDED.telefono,
+            comentarios = EXCLUDED.comentarios,
+            data_updated_at = CASE
+              WHEN (
+                shipping_requests.empresa_envio       IS DISTINCT FROM EXCLUDED.empresa_envio       OR
+                shipping_requests.empresa_envio_otro  IS DISTINCT FROM EXCLUDED.empresa_envio_otro  OR
+                shipping_requests.destino_tipo        IS DISTINCT FROM EXCLUDED.destino_tipo        OR
+                shipping_requests.direccion_entrega   IS DISTINCT FROM EXCLUDED.direccion_entrega   OR
+                shipping_requests.nombre_apellido     IS DISTINCT FROM EXCLUDED.nombre_apellido     OR
+                shipping_requests.dni                 IS DISTINCT FROM EXCLUDED.dni                 OR
+                shipping_requests.codigo_postal       IS DISTINCT FROM EXCLUDED.codigo_postal       OR
+                shipping_requests.provincia           IS DISTINCT FROM EXCLUDED.provincia           OR
+                shipping_requests.localidad           IS DISTINCT FROM EXCLUDED.localidad           OR
+                shipping_requests.telefono            IS DISTINCT FROM EXCLUDED.telefono
+              ) THEN NOW()
+              ELSE shipping_requests.data_updated_at
+            END
           RETURNING id, created_at
         `, [
           sanitizedOrderNumber,
@@ -6975,7 +7214,7 @@ app.post('/orders/:orderNumber/shipping-label', authenticate, async (req, res) =
  */
 app.post('/orders/shipping-labels-batch', authenticate, async (req, res) => {
   try {
-    const { orders: orderList } = req.body;
+    const { orders: orderList, reprint = false } = req.body;
 
     if (!orderList || !Array.isArray(orderList) || orderList.length === 0) {
       return res.status(400).json({ error: 'Se requiere un array de pedidos' });
@@ -7025,7 +7264,25 @@ app.post('/orders/shipping-labels-batch', authenticate, async (req, res) => {
         continue;
       }
       if (shipping.label_printed_at) {
-        alreadyPrinted.push({ order: orderNumber, printed_at: shipping.label_printed_at });
+        // Si el cliente modifico datos despues de imprimir, marcamos para que
+        // el frontend avise: requiere reimpresion manual desde el detalle
+        // (o desde el modal del badge ⚠️ con reprint=true).
+        const dataChanged = shipping.data_updated_at &&
+          new Date(shipping.data_updated_at) > new Date(shipping.label_printed_at);
+
+        // Modo reprint: solo permite reimprimir los que tienen datos cambiados
+        // (caso del modal del badge). Para los demas, se exige usar el flujo
+        // individual del detalle.
+        if (reprint && dataChanged) {
+          validItems.push({ orderNumber, bultos, shipping });
+          continue;
+        }
+
+        alreadyPrinted.push({
+          order: orderNumber,
+          printed_at: shipping.label_printed_at,
+          data_changed_after_print: !!dataChanged
+        });
         continue;
       }
       validItems.push({ orderNumber, bultos, shipping });
@@ -7057,11 +7314,14 @@ app.post('/orders/shipping-labels-batch', authenticate, async (req, res) => {
       info: { Title: `Etiquetas Envío - ${validItems.length} pedidos` }
     });
 
+    const dataChangedCount = alreadyPrinted.filter(a => a.data_changed_after_print).length;
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=etiquetas-batch-${Date.now()}.pdf`);
     res.setHeader('X-Labels-Generated', String(validItems.length));
     res.setHeader('X-Labels-Already-Printed', String(alreadyPrinted.length));
     res.setHeader('X-Labels-Missing', String(missing.length));
+    res.setHeader('X-Labels-Data-Changed', String(dataChangedCount));
     doc.pipe(res);
 
     const shippingIds = []; // Para marcar como impresas después
@@ -8364,7 +8624,11 @@ app.post('/whatsapp/messages/:id/retry', authenticate, requirePermission('receip
     if (msg.rows.length === 0) return res.status(404).json({ error: 'Mensaje no encontrado' });
 
     const m = msg.rows[0];
-    if (m.status === 'sent') return res.status(400).json({ error: 'El mensaje ya fue enviado' });
+    // 'sent', 'delivered' y 'read' significan que el mensaje ya llegó al usuario.
+    // Solo reintentamos cuando hubo falla real (failed/error/unknown/retrying/discarded).
+    if (['sent', 'delivered', 'read'].includes(m.status)) {
+      return res.status(400).json({ error: 'El mensaje ya fue enviado' });
+    }
 
     const templateKey = await resolveTemplateKey(m);
 
@@ -8424,7 +8688,9 @@ app.post('/whatsapp/messages/:id/discard', authenticate, requirePermission('rece
     const { reason } = req.body || {};
     const msg = await pool.query(`SELECT id, status FROM whatsapp_messages WHERE id = $1`, [id]);
     if (msg.rows.length === 0) return res.status(404).json({ error: 'Mensaje no encontrado' });
-    if (msg.rows[0].status === 'sent') return res.status(400).json({ error: 'El mensaje ya fue enviado' });
+    if (['sent', 'delivered', 'read'].includes(msg.rows[0].status)) {
+      return res.status(400).json({ error: 'El mensaje ya fue enviado' });
+    }
 
     await pool.query(
       `UPDATE whatsapp_messages

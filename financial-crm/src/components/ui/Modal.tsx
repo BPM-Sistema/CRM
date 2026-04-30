@@ -1,4 +1,5 @@
-import { Fragment, useEffect } from 'react';
+import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
 import { X } from 'lucide-react';
 
@@ -16,7 +17,7 @@ const sizeStyles = {
   md: 'max-w-lg',
   lg: 'max-w-2xl',
   xl: 'max-w-4xl',
-  full: 'max-w-[90vw] max-h-[90vh]',
+  full: 'max-w-[90vw]',
 };
 
 export function Modal({ isOpen, onClose, title, children, size = 'md', showCloseButton = true }: ModalProps) {
@@ -38,22 +39,34 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', showClose
 
   if (!isOpen) return null;
 
-  return (
-    <Fragment>
+  const hasHeader = !!(title || showCloseButton);
+
+  // Usamos portal a document.body para escapar cualquier stacking context
+  // creado por ancestros (ej: Header con backdrop-blur). Sin esto, los z-index
+  // del modal quedan encerrados dentro del padre y otros elementos de la
+  // pagina pueden taparlo.
+  return createPortal(
+    <>
       <div
-        className="fixed inset-0 bg-neutral-900/50 backdrop-blur-sm z-40 transition-opacity duration-200"
+        className="fixed inset-0 bg-neutral-900/50 backdrop-blur-sm z-[100] transition-opacity duration-200"
         onClick={onClose}
       />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="fixed inset-0 z-[101] overflow-y-auto"
+        onClick={onClose}
+      >
+        <div className="flex justify-center px-4 py-8 min-h-full">
         <div
           className={clsx(
-            'relative w-full bg-white rounded-2xl shadow-large',
+            'relative w-full bg-white rounded-2xl shadow-large grid self-start',
+            hasHeader ? 'grid-rows-[auto_minmax(0,1fr)]' : 'grid-rows-[minmax(0,1fr)]',
+            'max-h-[calc(100vh-4rem)]',
             'animate-in fade-in-0 zoom-in-95 duration-200',
             sizeStyles[size]
           )}
           onClick={(e) => e.stopPropagation()}
         >
-          {(title || showCloseButton) && (
+          {hasHeader && (
             <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100">
               {title && (
                 <h2 className="text-lg font-semibold text-neutral-900">{title}</h2>
@@ -68,9 +81,11 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', showClose
               )}
             </div>
           )}
-          <div className="p-6">{children}</div>
+          <div className="p-6 overflow-y-auto">{children}</div>
+        </div>
         </div>
       </div>
-    </Fragment>
+    </>,
+    document.body
   );
 }

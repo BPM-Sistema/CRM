@@ -291,7 +291,9 @@ export function RealReceipts() {
     }
   }, []);
 
+  const bankApplyInFlightRef = useRef(false);
   const handleBankApply = useCallback(async () => {
+    if (bankApplyInFlightRef.current) return;
     if (!bankPreview) return;
     const selectedMatches = bankPreview.matched.filter((_: ConciliacionMatch, i: number) => bankSelectedMatches.has(i));
     if (selectedMatches.length === 0) {
@@ -299,7 +301,9 @@ export function RealReceipts() {
       return;
     }
     if (!confirm(`¿Confirmar ${selectedMatches.length} comprobantes?`)) return;
+    if (bankApplyInFlightRef.current) return;
 
+    bankApplyInFlightRef.current = true;
     setBankApplying(true);
     try {
       const result = await conciliacionAplicar(
@@ -314,8 +318,9 @@ export function RealReceipts() {
       alert(err instanceof Error ? err.message : 'Error aplicando conciliación');
     } finally {
       setBankApplying(false);
+      bankApplyInFlightRef.current = false;
     }
-  }, [bankPreview, bankSelectedMatches]);
+  }, [bankPreview, bankSelectedMatches, bankMovimientos]);
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
@@ -755,6 +760,12 @@ export function RealReceipts() {
                         <CheckCircle2 size={14} />
                         {bankApplyResult.summary.confirmed} confirmados
                       </span>
+                      {(bankApplyResult.summary.already_confirmed ?? 0) > 0 && (
+                        <span className="flex items-center gap-1 text-gray-600">
+                          <CheckCircle2 size={14} />
+                          {bankApplyResult.summary.already_confirmed} ya confirmados
+                        </span>
+                      )}
                       {bankApplyResult.summary.errors > 0 && (
                         <span className="flex items-center gap-1 text-red-700">
                           <AlertCircle size={14} />

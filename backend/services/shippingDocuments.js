@@ -291,7 +291,10 @@ function isViaCargo(ocrText) {
 async function findMatchByNameInFullText(ocrText) {
   const normalizedOcr = normalizeText(ocrText);
 
-  // Obtener shipping_requests activos con customer_name
+  // Obtener shipping_requests activos con customer_name.
+  // Usamos data_updated_at (con fallback a created_at) porque desde la
+  // migracion 074 created_at queda fijo al primer envio del formulario; la
+  // "actividad reciente" la marca data_updated_at.
   const shippingRes = await pool.query(`
     SELECT
       sr.order_number,
@@ -305,9 +308,9 @@ async function findMatchByNameInFullText(ocrText) {
       ov.customer_name
     FROM shipping_requests sr
     INNER JOIN orders_validated ov ON sr.order_number = ov.order_number
-    WHERE sr.created_at > NOW() - INTERVAL '60 days'
+    WHERE COALESCE(sr.data_updated_at, sr.created_at) > NOW() - INTERVAL '60 days'
       AND ov.estado_pedido NOT IN ('cancelado', 'enviado', 'retirado')
-    ORDER BY sr.created_at DESC
+    ORDER BY COALESCE(sr.data_updated_at, sr.created_at) DESC
     LIMIT 500
   `);
 
@@ -1137,9 +1140,9 @@ async function findBestMatch(detectedName, detectedAddress, detectedCity) {
       ov.customer_name
     FROM shipping_requests sr
     INNER JOIN orders_validated ov ON sr.order_number = ov.order_number
-    WHERE sr.created_at > NOW() - INTERVAL '60 days'
+    WHERE COALESCE(sr.data_updated_at, sr.created_at) > NOW() - INTERVAL '60 days'
       AND ov.estado_pedido NOT IN ('cancelado', 'enviado', 'retirado')
-    ORDER BY sr.created_at DESC
+    ORDER BY COALESCE(sr.data_updated_at, sr.created_at) DESC
     LIMIT 500
   `);
 

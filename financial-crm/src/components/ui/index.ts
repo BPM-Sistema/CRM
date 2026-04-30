@@ -8,3 +8,4 @@ export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '.
 export { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
 export { NotificationBell } from './NotificationBell';
 export { PendingShippingDataBadge } from './PendingShippingDataBadge';
+export { ShippingDataChangedBadge } from './ShippingDataChangedBadge';

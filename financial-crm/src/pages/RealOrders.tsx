@@ -53,7 +53,7 @@ export function RealOrders() {
     fecha: 'all' as 'all' | 'hoy' | 'custom',
     fecha_custom: '',
     search: '',
-    shipping_data: 'all' as 'all' | 'pending' | 'complete' | 'label_printed' | 'label_not_printed',
+    shipping_data: 'all' as 'all' | 'pending' | 'complete' | 'label_printed' | 'label_not_printed' | 'data_changed',
     shipping_type: 'all' as ShippingTypeFilter,
     page: 1,
   });
@@ -286,6 +286,13 @@ export function RealOrders() {
   // Los filtros ahora se aplican en el servidor, solo filtramos por permisos localmente
   const filteredOrders = permittedOrders;
 
+  // Pedidos del listado actual con datos modificados despues de imprimir.
+  // La etiqueta fisica quedo desactualizada → operadora debe reimprimir manual.
+  const dataChangedOrders = useMemo(
+    () => filteredOrders.filter(o => o.shipping_data_changed_after_print),
+    [filteredOrders]
+  );
+
   // Contar pedidos seleccionados para imprimir - usa conteos del API
   const selectedPrintCount = useMemo(() => {
     if (!printCounts) return 0;
@@ -402,8 +409,14 @@ export function RealOrders() {
         const err = await response.json().catch(() => ({ error: response.statusText }));
         const lines = [err.error || 'Error al generar etiquetas'];
         if (Array.isArray(err.alreadyPrinted) && err.alreadyPrinted.length > 0) {
-          const nums = err.alreadyPrinted.map((a: { order: string }) => a.order).join(', ');
-          lines.push(`Ya impresas: ${nums}`);
+          const changed = err.alreadyPrinted.filter((a: { data_changed_after_print?: boolean }) => a.data_changed_after_print);
+          const unchanged = err.alreadyPrinted.filter((a: { data_changed_after_print?: boolean }) => !a.data_changed_after_print);
+          if (unchanged.length > 0) {
+            lines.push(`Ya impresas: ${unchanged.map((a: { order: string }) => a.order).join(', ')}`);
+          }
+          if (changed.length > 0) {
+            lines.push(`⚠️ ${changed.length} requieren reimpresión manual (datos modificados): ${changed.map((a: { order: string }) => a.order).join(', ')}`);
+          }
         }
         if (Array.isArray(err.missing) && err.missing.length > 0) {
           lines.push(`Sin datos de envío: ${err.missing.join(', ')}`);
@@ -415,14 +428,19 @@ export function RealOrders() {
       const generated = parseInt(response.headers.get('X-Labels-Generated') || '0', 10);
       const skipped = parseInt(response.headers.get('X-Labels-Already-Printed') || '0', 10);
       const missing = parseInt(response.headers.get('X-Labels-Missing') || '0', 10);
+      const dataChanged = parseInt(response.headers.get('X-Labels-Data-Changed') || '0', 10);
 
       const blob = await response.blob();
       const blobUrl = URL.createObjectURL(blob);
       window.open(blobUrl, '_blank');
 
-      if (skipped > 0 || missing > 0) {
+      if (skipped > 0 || missing > 0 || dataChanged > 0) {
         const msgs: string[] = [`✅ ${generated} etiquetas generadas`];
         if (skipped > 0) msgs.push(`⏭️ ${skipped} ya impresas (omitidas)`);
+        if (dataChanged > 0) {
+          // El listado se refresca abajo y el badge ⚠️ del banner muestra los pedidos.
+          msgs.push(`⚠️ ${dataChanged} requieren reimpresión manual (datos modificados después de imprimir)`);
+        }
         if (missing > 0) msgs.push(`⚠️ ${missing} sin datos de envío`);
         alert(msgs.join('\n'));
       }
@@ -825,7 +843,19 @@ export function RealOrders() {
         {isLabelPrintMode && filteredOrders.length > 0 && (
           <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Truck className="text-orange-600" size={24} />
+              <div className="relative">
+                <Truck className="text-orange-600" size={24} />
+                {dataChangedOrders.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setFilters({ shipping_data: 'data_changed', page: 1 })}
+                    title={`${dataChangedOrders.length} pedido(s) con datos modificados después de imprimir: ${dataChangedOrders.map(o => o.order_number).join(', ')}. Click para ver la lista.`}
+                    className="absolute -top-1 -right-1 bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold rounded-full min-w-[16px] h-[16px] px-1 flex items-center justify-center shadow-sm transition-colors"
+                  >
+                    !
+                  </button>
+                )}
+              </div>
               <div>
                 <p className="font-medium text-orange-900">
                   {selectedForLabels.size > 0
@@ -836,6 +866,15 @@ export function RealOrders() {
                 <p className="text-sm text-orange-700">
                   Seleccioná los pedidos y ajustá la cantidad de bultos para cada uno
                 </p>
+                {dataChangedOrders.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setFilters({ shipping_data: 'data_changed', page: 1 })}
+                    className="text-xs text-amber-700 hover:text-amber-900 hover:underline font-medium mt-1 text-left"
+                  >
+                    ⚠️ {dataChangedOrders.length} con datos modificados después de imprimir → reimprimí: {dataChangedOrders.slice(0, 5).map(o => o.order_number).join(', ')}{dataChangedOrders.length > 5 ? '…' : ''}
+                  </button>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-2">

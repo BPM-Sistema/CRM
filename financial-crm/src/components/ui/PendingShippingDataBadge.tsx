@@ -35,9 +35,10 @@ export function PendingShippingDataBadge() {
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<BulkResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Por default ocultamos pedidos de las últimas 12hs: pueden no haber visto
-  // todavía el mensaje original `datos__envio` que se les manda al subir el
-  // comprobante, así que mandarles un recordatorio es prematuro.
+  // Por default ocultamos pedidos donde el aviso `datos__envio` se mando hace
+  // menos de 12hs: el cliente puede no haberlo visto todavia, asi que mandar
+  // un recordatorio es prematuro. Pedidos sin aviso enviado (datos_envio_sent_at
+  // = null) tambien se ocultan: si nunca le pediste, no es "recordatorio".
   const [onlyOlder, setOnlyOlder] = useState(true);
 
   const loadCount = useCallback(async () => {
@@ -57,10 +58,13 @@ export function PendingShippingDataBadge() {
     return () => clearInterval(interval);
   }, [loadCount]);
 
+  // Elegible para recordatorio: el aviso original `datos__envio` se mando
+  // hace al menos MIN_AGE_HOURS. Si nunca se mando (datos_envio_sent_at null),
+  // no es recordatorio → tampoco lo incluimos.
   const isOlderThanCutoff = useCallback((o: PendingShippingDataOrder) => {
-    if (!o.fecha_pedido) return true; // sin fecha → no podemos descartarlo, lo dejamos
-    const t = new Date(o.fecha_pedido).getTime();
-    if (Number.isNaN(t)) return true;
+    if (!o.datos_envio_sent_at) return false;
+    const t = new Date(o.datos_envio_sent_at).getTime();
+    if (Number.isNaN(t)) return false;
     return Date.now() - t >= MIN_AGE_MS;
   }, []);
 
@@ -237,7 +241,7 @@ export function PendingShippingDataBadge() {
                     className="h-4 w-4 text-green-600 rounded"
                     disabled={sending}
                   />
-                  Solo pedidos de hace ≥ {MIN_AGE_HOURS}hs
+                  Solo pedidos con aviso enviado hace ≥ {MIN_AGE_HOURS}hs
                   {onlyOlder && hiddenByFilter > 0 && (
                     <span className="text-xs text-neutral-500">
                       ({hiddenByFilter} ocultos)
@@ -263,12 +267,13 @@ export function PendingShippingDataBadge() {
               <div className="border border-neutral-200 rounded-lg max-h-96 overflow-y-auto divide-y divide-neutral-100">
                 {visibleOrders.length === 0 ? (
                   <div className="py-6 text-center text-neutral-500 text-sm">
-                    Todos los pedidos pendientes son de hace menos de {MIN_AGE_HOURS}hs. Destildá el filtro para verlos.
+                    A todos los pedidos pendientes el aviso se les mandó hace menos de {MIN_AGE_HOURS}hs (o todavía no se les mandó). Destildá el filtro para verlos.
                   </div>
                 ) : visibleOrders.map(o => {
                   const noPhone = !o.customer_phone;
                   const checked = selected.has(o.order_number);
-                  const avisoSent = !!o.aviso_sent_at;
+                  const datosCount = o.datos_envio_sent_count || 0;
+                  const avisoCount = o.aviso_sent_count || 0;
                   return (
                     <label
                       key={o.order_number}
@@ -285,9 +290,18 @@ export function PendingShippingDataBadge() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-neutral-900">#{o.order_number}</span>
                           <span className="text-neutral-700 truncate">{o.customer_name || '—'}</span>
-                          {avisoSent && (
-                            <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
-                              recordatorio enviado
+                          <span
+                            className="inline-flex items-center gap-1 text-xs bg-neutral-100 text-neutral-700 px-2 py-0.5 rounded-full"
+                            title={o.datos_envio_sent_at ? `Último: ${new Date(o.datos_envio_sent_at).toLocaleString('es-AR')}` : 'Nunca enviado'}
+                          >
+                            datos__envio: {datosCount}
+                          </span>
+                          {avisoCount > 0 && (
+                            <span
+                              className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full"
+                              title={o.aviso_sent_at ? `Último: ${new Date(o.aviso_sent_at).toLocaleString('es-AR')}` : ''}
+                            >
+                              recordatorio: {avisoCount}
                             </span>
                           )}
                           {noPhone && (

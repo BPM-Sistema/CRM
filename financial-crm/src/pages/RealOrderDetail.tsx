@@ -20,6 +20,7 @@ import {
   Download,
   Image,
   Tag,
+  AlertTriangle,
 } from 'lucide-react';
 import { getEventConfig, formatEventLabel } from '../utils/eventConfig';
 import { Header } from '../components/layout';
@@ -145,6 +146,16 @@ export function RealOrderDetail() {
     try {
       const { blobUrl } = await downloadShippingLabel(orderNumber, bultos);
       window.open(blobUrl, '_blank');
+      // Optimistic update: marca local como impresa para que el guard de
+      // confirm dispare en clicks posteriores antes de que loadOrder refresque.
+      // Evita doble impresion por click rapido (observado 2026-04-30 en
+      // 31813 y 31536 con gaps de 12s y 33s entre impresiones).
+      setShippingRequest(prev => prev ? {
+        ...prev,
+        label_printed_at: new Date().toISOString(),
+        label_bultos: bultos,
+        reprints_count: prev.label_printed_at ? (prev.reprints_count || 0) + 1 : 0,
+      } : prev);
       setTimeout(loadOrder, 2000);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error al generar la etiqueta');
@@ -948,24 +959,42 @@ export function RealOrderDetail() {
                   </div>
 
                   {/* Estado de impresión */}
-                  {shippingRequest.label_printed_at && (
-                    <div className="p-3 bg-emerald-50 rounded-lg text-sm border border-emerald-100">
-                      <div className="flex items-center gap-2 text-emerald-700">
-                        <CheckCircle size={16} />
-                        <span className="font-medium">
-                          Etiqueta impresa
-                          {shippingRequest.reprints_count > 0 && (
-                            <span className="ml-1 font-normal">
-                              · reimpresa {shippingRequest.reprints_count} {shippingRequest.reprints_count === 1 ? 'vez' : 'veces'}
+                  {shippingRequest.label_printed_at && (() => {
+                    const dataChanged = shippingRequest.data_updated_at &&
+                      new Date(shippingRequest.data_updated_at) > new Date(shippingRequest.label_printed_at);
+                    return (
+                      <>
+                        {dataChanged && (
+                          <div className="p-3 bg-amber-50 rounded-lg text-sm border border-amber-300">
+                            <div className="flex items-center gap-2 text-amber-800 font-medium">
+                              <AlertTriangle size={16} />
+                              <span>El cliente modificó los datos de envío después de imprimir</span>
+                            </div>
+                            <p className="text-xs text-amber-700 mt-1">
+                              Reimprimí la etiqueta nueva (cuenta como reimpresión y queda registrado).
+                              Datos modificados {formatDistanceToNow(new Date(shippingRequest.data_updated_at), { addSuffix: true, locale: es })}.
+                            </p>
+                          </div>
+                        )}
+                        <div className={`p-3 rounded-lg text-sm border ${dataChanged ? 'bg-neutral-50 border-neutral-200' : 'bg-emerald-50 border-emerald-100'}`}>
+                          <div className={`flex items-center gap-2 ${dataChanged ? 'text-neutral-700' : 'text-emerald-700'}`}>
+                            <CheckCircle size={16} />
+                            <span className="font-medium">
+                              Etiqueta impresa
+                              {shippingRequest.reprints_count > 0 && (
+                                <span className="ml-1 font-normal">
+                                  · reimpresa {shippingRequest.reprints_count} {shippingRequest.reprints_count === 1 ? 'vez' : 'veces'}
+                                </span>
+                              )}
                             </span>
-                          )}
-                        </span>
-                      </div>
-                      <p className="text-xs text-emerald-600 mt-1">
-                        {shippingRequest.label_bultos} {shippingRequest.label_bultos === 1 ? 'bulto' : 'bultos'} · última impresión {formatDistanceToNow(new Date(shippingRequest.label_printed_at), { addSuffix: true, locale: es })}
-                      </p>
-                    </div>
-                  )}
+                          </div>
+                          <p className={`text-xs mt-1 ${dataChanged ? 'text-neutral-500' : 'text-emerald-600'}`}>
+                            {shippingRequest.label_bultos} {shippingRequest.label_bultos === 1 ? 'bulto' : 'bultos'} · última impresión {formatDistanceToNow(new Date(shippingRequest.label_printed_at), { addSuffix: true, locale: es })}
+                          </p>
+                        </div>
+                      </>
+                    );
+                  })()}
 
                   <button
                     type="button"

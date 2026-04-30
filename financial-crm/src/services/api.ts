@@ -84,6 +84,8 @@ export interface ApiOrder {
   shipping_type: string | null;
   requires_shipping_form: boolean;
   has_shipping_data: boolean;
+  shipping_label_printed_at: string | null;
+  shipping_data_changed_after_print: boolean;
   // Estados de Tiendanube
   tn_payment_status: string | null;
   tn_shipping_status: string | null;
@@ -340,7 +342,7 @@ export interface OrderFilters {
   estado_pedido?: string;
   search?: string;
   fecha?: string;
-  shipping_data?: 'pending' | 'complete' | 'label_printed' | 'label_not_printed';
+  shipping_data?: 'pending' | 'complete' | 'label_printed' | 'label_not_printed' | 'data_changed';
   shipping_type?: ShippingTypeFilter;
 }
 
@@ -1431,6 +1433,7 @@ export interface ShippingRequest {
   telefono: string;
   comentarios: string | null;
   created_at: string;
+  data_updated_at: string;
   label_printed_at: string | null;
   label_bultos: number;
   reprints_count: number;
@@ -1549,13 +1552,46 @@ export interface PendingShippingDataOrder {
   estado_pedido: string | null;
   fecha_pedido: string | null;
   datos_envio_sent_at: string | null;
+  datos_envio_sent_count: number;
   aviso_sent_at: string | null;
+  aviso_sent_count: number;
 }
 
 // Lista detallada de los pedidos pendientes de datos de envío (mismo criterio
 // que `fetchPendingShippingDataCount`). Lo usa el modal del badge del Header.
 export async function fetchPendingShippingDataList(): Promise<PendingShippingDataOrder[]> {
   const response = await authFetch(`${API_BASE_URL}/orders/pending-shipping-data`);
+  if (!response.ok) return [];
+  const data = await response.json();
+  return data.orders ?? [];
+}
+
+// Conteo de pedidos con datos de envio modificados despues de imprimir la
+// etiqueta (etiqueta fisica desactualizada → requiere reimpresion manual).
+export async function fetchShippingDataChangedCount(): Promise<number> {
+  const response = await authFetch(`${API_BASE_URL}/orders/shipping-data-changed-count`);
+  if (!response.ok) return 0;
+  const data = await response.json();
+  return data.count ?? 0;
+}
+
+export interface ShippingDataChangedOrder {
+  order_number: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  shipping_type: string | null;
+  estado_pago: string | null;
+  estado_pedido: string | null;
+  fecha_pedido: string | null;
+  label_printed_at: string;
+  data_updated_at: string;
+  reprints_count: number;
+}
+
+// Lista de pedidos con datos modificados post-impresion. Lo usa el modal
+// del badge del Header. Cada item linkea al detalle (reimpresion manual).
+export async function fetchShippingDataChangedList(): Promise<ShippingDataChangedOrder[]> {
+  const response = await authFetch(`${API_BASE_URL}/orders/shipping-data-changed`);
   if (!response.ok) return [];
   const data = await response.json();
   return data.orders ?? [];
@@ -2230,10 +2266,12 @@ export interface ConciliacionAplicarResult {
   ok: boolean;
   summary: {
     confirmed: number;
+    already_confirmed?: number;
     errors: number;
     bank_import: { inserted: number; duplicated: number; updated: number; error?: string } | null;
   };
   confirmed: Array<{ banco_id: string; comprobante_id: number; order_number: string; monto: number }>;
+  already_confirmed?: Array<{ banco_id: string; comprobante_id: number; order_number: string; monto: number }>;
   errors: Array<{ comprobante_id: number; banco_id: string; error: string }>;
 }
 

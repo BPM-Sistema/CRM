@@ -79,12 +79,16 @@ async function processWhatsAppJob(job) {
   }
 
   // 2.5 Prevenir duplicados en retry: si ya enviamos este mensaje (mismo pedido + plantilla), no reenviar
+  // Cualquiera de estos estados implica que ya llegó al usuario:
+  //   - 'sent'      → respondió 200 la API de Botmaker (worker lo marca)
+  //   - 'delivered' → callback de Botmaker confirmó entrega
+  //   - 'read'      → callback de Botmaker confirmó lectura
   if (job.attemptsMade > 0 && orderNumber) {
     const duplicateCheck = await pool.query(
       `SELECT 1 FROM whatsapp_messages
        WHERE order_number = $1
        AND template_key = $2
-       AND status = 'sent'
+       AND status IN ('sent', 'delivered', 'read')
        AND status_updated_at > NOW() - INTERVAL '5 minutes'
        LIMIT 1`,
       [orderNumber, plantilla]
