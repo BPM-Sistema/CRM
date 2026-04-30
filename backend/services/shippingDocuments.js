@@ -332,10 +332,18 @@ async function findMatchByNameInFullText(ocrText) {
 
     if (nameTokens.length === 0) continue;
 
-    // Contar cuántos tokens del nombre aparecen en el OCR
+    // Contar cuántos tokens del nombre aparecen en el OCR.
+    // Usamos word boundaries (espacios o inicio/fin) en vez de substring para
+    // evitar falsos positivos como "ana" matcheando dentro de "DAIANA" o
+    // "mayor" matcheando dentro de "BLANQUERIAXMAYOR" (el remitente que
+    // siempre aparece en el remito). Como normalizeText ya reemplaza todo lo
+    // no-alfanumerico por espacios, basta con chequear que el token aparezca
+    // delimitado por espacios o bordes del string.
     let matchedTokens = 0;
     for (const token of nameTokens) {
-      if (normalizedOcr.includes(token)) {
+      const tokenEsc = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const tokenRe = new RegExp(`(^|\\s)${tokenEsc}(\\s|$)`);
+      if (tokenRe.test(normalizedOcr)) {
         matchedTokens++;
       }
     }
