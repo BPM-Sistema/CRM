@@ -157,6 +157,16 @@ const EVENT_CONFIG: Record<string, EventConfig> = {
     label: 'Datos de envío registrados',
     color: 'bg-cyan-100'
   },
+  'datos_envio_actualizados': {
+    emoji: '📝',
+    label: 'Datos de envío actualizados',
+    color: 'bg-cyan-100'
+  },
+  'datos_envio_modificados_post_impresion': {
+    emoji: '⚠️',
+    label: 'Datos modificados después de imprimir etiqueta',
+    color: 'bg-amber-100'
+  },
 
   // WhatsApp masivo
   'whatsapp_masivo': {

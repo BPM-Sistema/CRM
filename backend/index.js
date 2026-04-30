@@ -140,6 +140,7 @@ app.get('/leads', (req, res) => {
 });
 
 const { logEvento } = require('./utils/logging');
+const { buildInitialSnapshot, buildDiff } = require('./utils/shippingDiff');
 
 /* =====================================================
    UTIL — SIGNED ACTION TOKENS (para links /confirmar /rechazar)
@@ -6629,6 +6630,19 @@ app.post('/shipping-data', shippingFormLimiter, async (req, res) => {
     // Sanitizar datos
     const sanitize = (str) => str?.trim() || null;
 
+    // Leer estado previo para armar el diff que va al historial. Si falla
+    // por cualquier motivo, seguimos con el UPSERT y logeamos sin detalle.
+    let prevRow = null;
+    try {
+      const prevRes = await pool.query(
+        `SELECT * FROM shipping_requests WHERE order_number = $1`,
+        [sanitizedOrderNumber]
+      );
+      prevRow = prevRes.rows[0] || null;
+    } catch (e) {
+      console.error('⚠️ No se pudo leer prev shipping_request:', e.message);
+    }
+
     // UPSERT: preserva id, created_at, label_printed_at, label_bultos y
     // reprints_count cuando el cliente reenvia el formulario. data_updated_at
     // solo se mueve si algun campo critico cambio (los que afectan la
@@ -6669,10 +6683,7 @@ app.post('/shipping-data', shippingFormLimiter, async (req, res) => {
           ELSE shipping_requests.data_updated_at
         END
       RETURNING
-        id,
-        created_at,
-        data_updated_at,
-        label_printed_at,
+        *,
         (xmax = 0) AS inserted,
         (xmax <> 0 AND label_printed_at IS NOT NULL AND data_updated_at >= NOW() - INTERVAL '1 second') AS data_changed_after_print
     `, [
@@ -6694,11 +6705,29 @@ app.post('/shipping-data', shippingFormLimiter, async (req, res) => {
     const row = result.rows[0];
     console.log(`📦 Datos de envío ${row.inserted ? 'registrados' : 'actualizados'} para pedido ${sanitizedOrderNumber}`);
 
-    await logEvento({
-      orderNumber: sanitizedOrderNumber,
-      accion: row.inserted ? 'datos_envio_registrados' : 'datos_envio_actualizados',
-      origen: 'cliente'
-    });
+    // Armar el accion del log con detalle del cambio (lo lee la timeline del
+    // detalle del pedido). Si es INSERT mostramos snapshot inicial; si es
+    // UPDATE mostramos diff "antes → después". Si UPDATE sin cambios reales
+    // (cliente reenvio sin tocar nada) NO logeamos para no ensuciar la timeline.
+    if (row.inserted) {
+      const snapshot = buildInitialSnapshot(row);
+      await logEvento({
+        orderNumber: sanitizedOrderNumber,
+        accion: snapshot ? `datos_envio_registrados — ${snapshot}` : 'datos_envio_registrados',
+        origen: 'cliente'
+      });
+    } else {
+      const { text: diffText, changedFields } = buildDiff(prevRow, row);
+      if (changedFields.length > 0) {
+        await logEvento({
+          orderNumber: sanitizedOrderNumber,
+          accion: `datos_envio_actualizados — ${diffText}`,
+          origen: 'cliente'
+        });
+      }
+      // Si no hubo cambios reales: no logeamos. El cliente reenvio el form
+      // sin tocar nada (refresh accidental, doble-submit, etc).
+    }
 
     if (row.data_changed_after_print) {
       await logEvento({
