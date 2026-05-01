@@ -1,4 +1,5 @@
 import { useState, FormEvent, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Check, AlertCircle, Loader2 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'https://api.bpmadministrador.com';
@@ -98,7 +99,15 @@ function isForbiddenCarrier(value: string): boolean {
 }
 
 export function ShippingForm() {
-  const [formData, setFormData] = useState<FormData>(initialFormData);
+  const [searchParams] = useSearchParams();
+  const orderFromUrl = (searchParams.get('order') || searchParams.get('orderNumber') || '')
+    .replace(/[^0-9]/g, '');
+  const isOrderFromUrl = orderFromUrl.length > 0;
+
+  const [formData, setFormData] = useState<FormData>(() => ({
+    ...initialFormData,
+    order_number: orderFromUrl,
+  }));
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -166,6 +175,9 @@ export function ShippingForm() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+
+    // Pedido viene fijado desde la URL (link de WhatsApp): no permitir cambios
+    if (name === 'order_number' && isOrderFromUrl) return;
 
     // Sanitizar número de pedido: solo números
     const sanitizedValue = name === 'order_number'
@@ -259,6 +271,11 @@ export function ShippingForm() {
           <h1 className="text-3xl font-bold text-neutral-900 mb-2">
             Datos de Envío
           </h1>
+          {isOrderFromUrl && (
+            <p className="text-neutral-600 mb-3">
+              Completá los datos para el pedido <span className="font-semibold">#{orderFromUrl}</span>
+            </p>
+          )}
           <div className="bg-amber-50 border-2 border-amber-300 text-amber-900 text-sm font-medium px-5 py-3 rounded-xl flex items-start gap-2 text-left">
             <AlertCircle size={18} className="flex-shrink-0 mt-0.5 text-amber-600" />
             <span>
@@ -288,7 +305,14 @@ export function ShippingForm() {
               value={formData.order_number}
               onChange={handleChange}
               placeholder="Ej: 12345"
-              className={`w-full rounded-lg border ${errors.order_number || isOrderNotFound ? 'border-red-300 ring-2 ring-red-100' : 'border-neutral-200'} bg-white px-4 py-3 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent transition-all`}
+              readOnly={isOrderFromUrl}
+              className={`w-full rounded-lg border ${
+                errors.order_number || isOrderNotFound
+                  ? 'border-red-300 ring-2 ring-red-100'
+                  : isOrderFromUrl
+                  ? 'border-emerald-200 bg-emerald-50'
+                  : 'border-neutral-200 bg-white'
+              } px-4 py-3 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent transition-all ${isOrderFromUrl ? 'cursor-not-allowed' : ''}`}
             />
             {errors.order_number && <p className="mt-1.5 text-sm text-red-600">{errors.order_number}</p>}
             {isOrderNotFound && !errors.order_number && (
