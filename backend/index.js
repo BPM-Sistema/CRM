@@ -32,6 +32,7 @@ const { callTiendanubeWrite } = require('./lib/tnWriteClient');
 const { uploadFile: storageUploadFile, getPublicUrl: storageGetPublicUrl } = require('./lib/storage');
 const { calcularEstadoCuenta } = require('./utils/calcularEstadoCuenta');
 const { formatARS } = require('./utils/formatARS');
+const { nextBusinessSendAtAR } = require('./utils/businessHours');
 const pool = require('./db');
 const { hashText } = require('./hash');
 const { analizarComprobante, convertirAFormatoLegacy } = require('./services/claudeVision');
@@ -4561,6 +4562,37 @@ app.post('/webhook/tiendanube', async (req, res) => {
       } catch (waErr) {
         log.error({ err: waErr.message, orderNumber: String(pedido.number), plantilla: 'pedido_creado' }, 'Error encolando WhatsApp');
       }
+
+      // Recordatorio pendiente_3hs: programado a +3h del pedido, ajustado a
+      // horario laboral L-V 9-18 ART. El cron periódico lo dispara via
+      // queueWhatsApp y antes valida que el pedido siga sin comprobante / sin pago.
+      try {
+        const existsRes = await pool.query(
+          `SELECT 1 FROM scheduled_whatsapp
+           WHERE order_number = $1 AND plantilla = 'pendiente_3hs'
+           LIMIT 1`,
+          [String(pedido.number)]
+        );
+        if (existsRes.rows.length === 0) {
+          const createdAt = pedido.created_at ? new Date(pedido.created_at) : new Date();
+          const sendAt = nextBusinessSendAtAR(createdAt, Number(pedido.number));
+          await pool.query(
+            `INSERT INTO scheduled_whatsapp (telefono, plantilla, variables, order_number, send_at)
+             VALUES ($1, 'pendiente_3hs', $2::jsonb, $3, $4)`,
+            [
+              telefono,
+              JSON.stringify({ '1': pedido.customer?.name || 'Cliente', '2': String(pedido.number) }),
+              String(pedido.number),
+              sendAt
+            ]
+          );
+          log.info({ orderNumber: String(pedido.number), sendAt: sendAt.toISOString() }, 'pendiente_3hs programado');
+        } else {
+          log.info({ orderNumber: String(pedido.number) }, 'pendiente_3hs ya estaba programado, skip');
+        }
+      } catch (schedErr) {
+        log.error({ err: schedErr.message, orderNumber: String(pedido.number) }, 'Error programando pendiente_3hs');
+      }
     }
 
     // 7️⃣ Si requiere formulario de envío (Expreso a elección o Via Cargo)
@@ -8556,6 +8588,33 @@ setInterval(async () => {
 
     for (const msg of pending.rows) {
       try {
+        // Guard pendiente_3hs: descarta si el cliente ya cargó comprobante,
+        // si el pago no está más pendiente o si el pedido fue cancelado.
+        if (msg.plantilla === 'pendiente_3hs' && msg.order_number) {
+          const guardRes = await pool.query(
+            `SELECT o.estado_pago, o.estado_pedido,
+                    EXISTS(SELECT 1 FROM comprobantes c WHERE c.order_number = o.order_number) AS has_comprobante
+             FROM orders_validated o WHERE o.order_number = $1`,
+            [String(msg.order_number)]
+          );
+          const ord = guardRes.rows[0];
+          if (!ord) {
+            await pool.query(
+              `UPDATE scheduled_whatsapp SET error = $1 WHERE id = $2`,
+              ['discarded: pedido no encontrado', msg.id]
+            );
+            continue;
+          }
+          if (ord.estado_pedido === 'cancelado' || ord.estado_pago !== 'pendiente' || ord.has_comprobante) {
+            await pool.query(
+              `UPDATE scheduled_whatsapp SET error = $1 WHERE id = $2`,
+              [`discarded: estado=${ord.estado_pedido} pago=${ord.estado_pago} comp=${ord.has_comprobante}`, msg.id]
+            );
+            console.log(`⏰⤴️  pendiente_3hs descartado pedido #${msg.order_number} (${ord.estado_pago}, comp=${ord.has_comprobante})`);
+            continue;
+          }
+        }
+
         await queueWhatsApp({
           telefono: msg.telefono,
           plantilla: msg.plantilla,
