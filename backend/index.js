@@ -1125,6 +1125,33 @@ app.get('/orders/print-counts', authenticate, requirePermission('orders.view'), 
       }
     });
 
+    // Desglose de "a_imprimir" para el modal de impresión:
+    // separar los que pueden imprimirse YA de los que están bloqueados
+    // por falta de datos de envío (Expreso a Elección / Vía Cargo sin shipping_request).
+    // Misma regla que /orders/to-print para que el modal anticipe lo que se va a imprimir.
+    const aImprimirRes = await pool.query(`
+      SELECT
+        o.shipping_type,
+        EXISTS(SELECT 1 FROM shipping_requests WHERE order_number = o.order_number) AS has_shipping_request
+      FROM orders_validated o
+      WHERE o.estado_pedido = 'a_imprimir'
+        AND o.printed_at IS NULL
+        AND o.estado_pago NOT IN ('pendiente', 'anulado')
+    `);
+
+    let aImprimirReady = 0;
+    let aImprimirMissingShipping = 0;
+    for (const row of aImprimirRes.rows) {
+      const needsShippingForm = requiresShippingForm(row.shipping_type);
+      if (needsShippingForm && !row.has_shipping_request) {
+        aImprimirMissingShipping += 1;
+      } else {
+        aImprimirReady += 1;
+      }
+    }
+    counts.a_imprimir_ready = aImprimirReady;
+    counts.a_imprimir_missing_shipping = aImprimirMissingShipping;
+
     res.json({ ok: true, counts });
 
   } catch (error) {
@@ -3703,28 +3730,23 @@ app.post('/webhook/botmaker-status', async (req, res) => {
     // antiguo coincide con un intentTxId nuevo (improbable pero posible al ser strings cortos):
     //   1) intentar match por messageId (el ID "real" de WhatsApp)
     //   2) si no matchea, fallback a intentTxId — y aprovechar para guardar el messageId real
-    async function matchAndUpdate(setClause, params) {
-      // params: [...setParams, messageId, intentTxId]
-      // Devuelve resultado del UPDATE (con RETURNING id, order_number, template)
+    // setSql usa $1..$N (con N = setParams.length).
+    // matchAndUpdate appendea el valor del filtro como $${N+1} y arma una
+    // query bien parametrizada. El bug anterior usaba $2 como filtro pero
+    // ese placeholder ya estaba ocupado por el SET → "supplies 3 parameters
+    // but prepared statement requires 2".
+    async function matchAndUpdate(setSql, setParams) {
+      const filterIdx = setParams.length + 1;
+      const sql = `UPDATE whatsapp_messages
+                     ${setSql}
+                   WHERE botmaker_message_id = $${filterIdx}
+                   RETURNING id, order_number, template`;
       if (messageId) {
-        const r = await pool.query(
-          `UPDATE whatsapp_messages
-              ${setClause}
-            WHERE botmaker_message_id = $${params.length - 1}
-            RETURNING id, order_number, template`,
-          params
-        );
+        const r = await pool.query(sql, [...setParams, messageId]);
         if (r.rowCount > 0) return r;
       }
       if (intentTxId) {
-        const r = await pool.query(
-          `UPDATE whatsapp_messages
-              ${setClause}
-            WHERE botmaker_message_id = $${params.length}
-            RETURNING id, order_number, template`,
-          params
-        );
-        return r;
+        return pool.query(sql, [...setParams, intentTxId]);
       }
       return { rowCount: 0, rows: [] };
     }
@@ -3734,7 +3756,7 @@ app.post('/webhook/botmaker-status', async (req, res) => {
         `SET status = $1,
              status_updated_at = NOW(),
              botmaker_message_id = COALESCE($2, botmaker_message_id)`,
-        [status, messageId || null, intentTxId || null]
+        [status, messageId || null]
       );
       log.info({ status, messageId, intentTxId, matched: upd.rowCount }, 'WhatsApp status updated');
     } else if (isFailed) {
@@ -3744,7 +3766,7 @@ app.post('/webhook/botmaker-status', async (req, res) => {
              status_updated_at = NOW(),
              error_message = $1,
              botmaker_message_id = COALESCE($2, botmaker_message_id)`,
-        [errorMsg, messageId || null, intentTxId || null]
+        [errorMsg, messageId || null]
       );
       log.error({ messageId, intentTxId, errorMsg, contactId, matched: upd.rowCount }, 'WhatsApp delivery failed');
 

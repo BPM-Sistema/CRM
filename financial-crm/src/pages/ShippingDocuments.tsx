@@ -576,6 +576,17 @@ function RemitoCard({ remito, onConfirm, onDelete, onOpen, onPreviewOrder, isLoa
             {remito.order_customer_name && (
               <p className="text-sm text-emerald-700 mt-1">{remito.order_customer_name}</p>
             )}
+            {remito.tracking_number && (
+              <a
+                href={`https://formularios.viacargo.com.ar/seguimiento-envio/${remito.tracking_number}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-block mt-2 text-xs font-mono text-blue-600 hover:text-blue-800 hover:underline"
+              >
+                Seguimiento: {remito.tracking_number} ↗
+              </a>
+            )}
           </div>
         )}
 
@@ -932,6 +943,19 @@ function RemitoModal({
                 )}
                 {remito.detected_city && (
                   <p><span className="text-gray-500">Ciudad:</span> {remito.detected_city}</p>
+                )}
+                {remito.tracking_number && (
+                  <p>
+                    <span className="text-gray-500">Seguimiento:</span>{' '}
+                    <a
+                      href={`https://formularios.viacargo.com.ar/seguimiento-envio/${remito.tracking_number}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      {remito.tracking_number}
+                    </a>
+                  </p>
                 )}
               </div>
 

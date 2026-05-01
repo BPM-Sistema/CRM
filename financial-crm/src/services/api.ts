@@ -391,8 +391,16 @@ export async function fetchOrders(page = 1, limit = 50, filters?: OrderFilters):
   };
 }
 
+// Conteos para modal de impresión: incluye un desglose de "a_imprimir"
+// para anticipar cuántos están listos vs cuántos están bloqueados por falta
+// de datos de envío (Expreso a Elección / Vía Cargo sin shipping_request).
+export type PrintCounts = Record<OrderStatus, number> & {
+  a_imprimir_ready: number;
+  a_imprimir_missing_shipping: number;
+};
+
 // Obtener conteos para modal de impresión (sin filtros)
-export async function fetchPrintCounts(): Promise<Record<OrderStatus, number>> {
+export async function fetchPrintCounts(): Promise<PrintCounts> {
   // Cache-buster para forzar datos frescos
   const timestamp = Date.now();
   const response = await authFetch(`${API_BASE_URL}/orders/print-counts?_t=${timestamp}`);
@@ -1510,6 +1518,7 @@ export interface Remito {
   confirmed_by: string | null;
   confirmed_at: string | null;
   uploaded_by: string | null;
+  tracking_number: string | null;
   status: RemitoStatus;
   error_message: string | null;
   created_at: string;

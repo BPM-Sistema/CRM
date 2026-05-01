@@ -1077,6 +1077,19 @@ export function RealOrderDetail() {
                         Nombre detectado: {remito.detected_name}
                       </p>
                     )}
+                    {remito.tracking_number && (
+                      <p className="text-xs text-emerald-600 mt-1">
+                        Seguimiento:{' '}
+                        <a
+                          href={`https://formularios.viacargo.com.ar/seguimiento-envio/${remito.tracking_number}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-mono text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          {remito.tracking_number} ↗
+                        </a>
+                      </p>
+                    )}
                     {remito.confirmed_at && (
                       <p className="text-xs text-emerald-600 mt-1">
                         Confirmado: {formatDistanceToNow(new Date(remito.confirmed_at), { addSuffix: true, locale: es })}

@@ -257,6 +257,21 @@ function normalizeText(text) {
     .trim();
 }
 
+/**
+ * Normaliza un nombre para comparación tolerante al orden de tokens.
+ * Ordena las palabras antes de devolver, así "SYCKO LAURA" y "Laura Sycko"
+ * pasan a ser idénticos. Vía Cargo suele invertir "APELLIDO NOMBRE" en el
+ * remito, lo que hace que Levenshtein sobre el string crudo dé score muy
+ * bajo aunque el nombre sea el mismo.
+ */
+function normalizeNameForCompare(text) {
+  return normalizeText(text)
+    .split(' ')
+    .filter(Boolean)
+    .sort()
+    .join(' ');
+}
+
 // ============================================
 // DETECCIÓN DE TIPO DE REMITO
 // ============================================
@@ -268,6 +283,30 @@ function isViaCargo(ocrText) {
   if (!ocrText) return false;
   const normalized = ocrText.toLowerCase();
   return normalized.includes('via cargo') || normalized.includes('viacargo');
+}
+
+/**
+ * Extrae el N° de guía/seguimiento del OCR. Usado como fallback cuando
+ * Claude Vision no devuelve `numero_guia`. Patrón típico Vía Cargo:
+ *   "GUIA No. 9990347923379"  /  "Guía Nº 999034792379"
+ *
+ * Devolvemos el primer match razonable (10-14 dígitos). Sanitizamos
+ * con `.replace(/[^0-9]/g, '')` por si Claude devuelve "999-034-792-379".
+ */
+function extractTrackingNumber(ocrText) {
+  if (!ocrText) return null;
+  // "GUIA No. 9990347923379"  /  "Guía Nº 999034792379"  /  "GUIA: 999..."  /  "Guía 999..."
+  // El "N°/Nº/N/No." es opcional, igual que ":", "." y "-".
+  const m = ocrText.match(/GU[IÍ]A\s*(?:N[°ºoO]?\.?)?\s*[:.\-]?\s*(\d{10,14})/i);
+  if (m && m[1]) return m[1];
+  return null;
+}
+
+function sanitizeTrackingNumber(raw) {
+  if (raw == null) return null;
+  const digits = String(raw).replace(/[^0-9]/g, '');
+  if (digits.length < 8 || digits.length > 16) return null;
+  return digits;
 }
 
 // ============================================
@@ -289,7 +328,13 @@ function isViaCargo(ocrText) {
  * @returns {Object} { bestMatch, candidates } - Mejor match y array de todos los candidatos
  */
 async function findMatchByNameInFullText(ocrText) {
-  const normalizedOcr = normalizeText(ocrText);
+  // Sacar primero los datos fijos preimpresos (remitente BPM + formulario
+  // Vía Cargo). Si no, tokens como "ignacio", "pazos" o el DNI del titular
+  // se cuentan como "encontrados" e inflan el score de clientes con esos
+  // nombres. La detección de Vía Cargo se hace sobre el OCR original.
+  const viaCargo = isViaCargo(ocrText);
+  const cleaned = stripFixedSenderText(ocrText, { isViaCargo: viaCargo });
+  const normalizedOcr = normalizeText(cleaned);
 
   // Obtener shipping_requests activos con customer_name.
   // Usamos data_updated_at (con fallback a created_at) porque desde la
@@ -454,6 +499,7 @@ const KNOWN_SENDER_DATA = {
     'petlove arg',     // legacy
     'nora luciana mansilla', // Titular/representante
     'mansilla nora',
+    'ignacio pazos',   // titular agencia Vía Cargo (preimpreso en remitos)
   ],
   cities: [
     'caba',
@@ -462,8 +508,89 @@ const KNOWN_SENDER_DATA = {
     'ciudad de buenos aires',
     'c.a.b.a',
     'c.a.b.a.',
+  ],
+  phones: [
+    '1134918721',  // teléfono BPM preimpreso en remitos Vía Cargo
+  ],
+  dnis: [
+    '41823314',    // DNI/CUIT del titular preimpreso en remitos Vía Cargo
   ]
 };
+
+/**
+ * Texto preimpreso del formulario Vía Cargo que aparece en TODOS los remitos
+ * (auditado sobre 397 OCRs reales — ver scripts/audit-via-cargo-fixed-text.js).
+ * Estos tokens contaminan el matcheo por nombre en texto completo si un
+ * cliente tiene un apellido o nombre que coincide con palabras del formulario.
+ *
+ * NO incluye "caballito" porque hay clientes reales con esa localidad —
+ * filtrarlo a ciegas pisaría destinos legítimos.
+ */
+const VIA_CARGO_FIXED_TEXT = [
+  // Branding y sucursales preimpresas
+  'via cargo',
+  'via bariloche',
+  'viamonte 965',
+  'viamontes 965',
+  'agencia neuquen',
+  'neuquen 1043',
+  'agencia emisora',
+  // Encabezados y campos del formulario
+  'encomienda',
+  'p reembolso',
+  'sub total',
+  'total neto',
+  'iva insc',
+  'descripcion del servicio',
+  'señor es',
+  'senor es',
+  // Contacto institucional
+  'www viacargo com',
+  '0810 222',
+];
+
+/**
+ * Códigos de agencia Vía Cargo que aparecen entre paréntesis: CAB011, BUE064,
+ * COR012, MDQ005, ROS004, MEN007, etc. Patrón: 3 letras + 3 dígitos.
+ */
+const VIA_CARGO_AGENCY_CODE_RE = /\b[a-z]{3}\d{3}\b/gi;
+
+/**
+ * Saca del texto OCR los datos preimpresos del remitente (BPM) y del
+ * formulario Vía Cargo (sucursales, headers, códigos de agencia, DNI/CUIT
+ * del titular, teléfono BPM). Devuelve el texto con esas cadenas
+ * sustituidas por espacios para que NO se cuenten como tokens encontrados
+ * durante el match por nombre en texto completo.
+ *
+ * Aplicar sólo cuando el remito es Vía Cargo (es donde está el formulario);
+ * para "otro_transporte" sólo limpiamos los datos del remitente.
+ */
+function stripFixedSenderText(ocrText, { isViaCargo: viaCargo }) {
+  if (!ocrText) return '';
+  let cleaned = ` ${ocrText} `;
+
+  const stripPhrase = (phrase) => {
+    if (!phrase) return;
+    const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Word-boundary laxo: bordes con no-alfanumérico o inicio/fin
+    const re = new RegExp(`(^|[^a-z0-9])${escaped}(?=[^a-z0-9]|$)`, 'gi');
+    cleaned = cleaned.replace(re, '$1 ');
+  };
+
+  // Remitente BPM siempre
+  for (const a of KNOWN_SENDER_DATA.addresses) stripPhrase(a);
+  for (const n of KNOWN_SENDER_DATA.names) stripPhrase(n);
+  for (const p of KNOWN_SENDER_DATA.phones || []) stripPhrase(p);
+  for (const d of KNOWN_SENDER_DATA.dnis || []) stripPhrase(d);
+
+  // Formulario Vía Cargo (sólo si aplica)
+  if (viaCargo) {
+    for (const t of VIA_CARGO_FIXED_TEXT) stripPhrase(t);
+    cleaned = cleaned.replace(VIA_CARGO_AGENCY_CODE_RE, ' ');
+  }
+
+  return cleaned;
+}
 
 /**
  * Verifica si un texto corresponde a datos CONOCIDOS del remitente (BPM / Blanquería x Mayor)
@@ -1171,11 +1298,12 @@ async function findBestMatch(detectedName, detectedAddress, detectedCity) {
     let totalWeight = 0;
     let weightedScore = 0;
 
-    // Comparar nombre (nombre_apellido del formulario)
+    // Comparar nombre (nombre_apellido del formulario).
+    // Orden-invariante: Vía Cargo suele invertir "APELLIDO NOMBRE".
     if (detectedName && shipping.nombre_apellido) {
       scores.name = calculateSimilarity(
-        normalizeText(detectedName),
-        normalizeText(shipping.nombre_apellido)
+        normalizeNameForCompare(detectedName),
+        normalizeNameForCompare(shipping.nombre_apellido)
       );
       weightedScore += scores.name * 0.4; // 40% peso
       totalWeight += 0.4;
@@ -1260,6 +1388,12 @@ async function processDocument(documentId, ocrText, textAnnotations = null) {
     // Detectar tipo de remito
     const esViaCargo = isViaCargo(ocrText);
     console.log(`   📦 Tipo de remito: ${esViaCargo ? 'VIA CARGO' : 'OTRO TRANSPORTE'}`);
+
+    // N° de guía/seguimiento (regex sobre OCR — fallback cuando no usamos Claude)
+    const trackingNumber = sanitizeTrackingNumber(extractTrackingNumber(ocrText));
+    if (trackingNumber) {
+      console.log(`   📦 Tracking detectado: ${trackingNumber}`);
+    }
 
     let match = null;
     let extraction = null;
@@ -1371,6 +1505,7 @@ async function processDocument(documentId, ocrText, textAnnotations = null) {
           suggested_order_number = $5,
           match_score = $6,
           match_details = $7,
+          tracking_number = COALESCE($9, tracking_number),
           status = 'ready',
           updated_at = NOW()
         WHERE id = $8
@@ -1382,7 +1517,8 @@ async function processDocument(documentId, ocrText, textAnnotations = null) {
         match.orderNumber,
         match.score,
         JSON.stringify(matchDetails),
-        documentId
+        documentId,
+        trackingNumber
       ]);
     } else {
       console.log(`   ⚠️ No se encontró coincidencia`);
@@ -1400,6 +1536,7 @@ async function processDocument(documentId, ocrText, textAnnotations = null) {
           suggested_order_number = NULL,
           match_score = NULL,
           match_details = $5,
+          tracking_number = COALESCE($7, tracking_number),
           status = 'ready',
           updated_at = NOW()
         WHERE id = $6
@@ -1409,7 +1546,8 @@ async function processDocument(documentId, ocrText, textAnnotations = null) {
         extraction.address,
         extraction.city,
         JSON.stringify(matchDetails),
-        documentId
+        documentId,
+        trackingNumber
       ]);
     }
 
@@ -1460,6 +1598,13 @@ async function processDocumentWithClaude(documentId, claudeData) {
     // Texto completo para guardar en DB
     const ocrText = claudeData.texto_completo || JSON.stringify(claudeData);
 
+    // N° de seguimiento: priorizar lo que devolvió Claude; si no, regex sobre el texto.
+    const trackingNumber = sanitizeTrackingNumber(claudeData.numero_guia)
+      || sanitizeTrackingNumber(extractTrackingNumber(ocrText));
+    if (trackingNumber) {
+      console.log(`   📦 Tracking detectado: ${trackingNumber}`);
+    }
+
     let match = null;
     let matchDetails = {};
     let candidates = [];
@@ -1491,9 +1636,11 @@ async function processDocumentWithClaude(documentId, claudeData) {
           let nameOk = true;
           let nameScore = null;
           if (extraction.name && row.customer_name) {
+            // Comparación orden-invariante: Vía Cargo a veces escribe
+            // "APELLIDO NOMBRE" mientras el pedido tiene "Nombre Apellido".
             nameScore = calculateSimilarity(
-              normalizeText(extraction.name),
-              normalizeText(row.customer_name)
+              normalizeNameForCompare(extraction.name),
+              normalizeNameForCompare(row.customer_name)
             );
             nameOk = nameScore >= 0.55;
           }
@@ -1547,12 +1694,13 @@ async function processDocumentWithClaude(documentId, claudeData) {
 
           if (variantesRes.rowCount > 0 && extraction.name) {
             // Quedarme con el que tenga mayor similitud de nombre con el destinatario
-            const detectedNorm = normalizeText(extraction.name);
+            // (orden-invariante para tolerar APELLIDO NOMBRE de Vía Cargo).
+            const detectedNorm = normalizeNameForCompare(extraction.name);
             const ranked = variantesRes.rows
               .map(row => ({
                 row,
                 nameScore: row.customer_name
-                  ? calculateSimilarity(detectedNorm, normalizeText(row.customer_name))
+                  ? calculateSimilarity(detectedNorm, normalizeNameForCompare(row.customer_name))
                   : 0
               }))
               .sort((a, b) => b.nameScore - a.nameScore);
@@ -1646,6 +1794,7 @@ async function processDocumentWithClaude(documentId, claudeData) {
           suggested_order_number = $5,
           match_score = $6,
           match_details = $7,
+          tracking_number = COALESCE($9, tracking_number),
           status = 'ready',
           updated_at = NOW()
         WHERE id = $8
@@ -1657,7 +1806,8 @@ async function processDocumentWithClaude(documentId, claudeData) {
         match.orderNumber,
         match.score,
         JSON.stringify(matchDetails),
-        documentId
+        documentId,
+        trackingNumber
       ]);
     } else {
       console.log(`   ⚠️ No se encontró coincidencia`);
@@ -1673,6 +1823,7 @@ async function processDocumentWithClaude(documentId, claudeData) {
           suggested_order_number = NULL,
           match_score = NULL,
           match_details = $5,
+          tracking_number = COALESCE($7, tracking_number),
           status = 'ready',
           updated_at = NOW()
         WHERE id = $6
@@ -1682,7 +1833,8 @@ async function processDocumentWithClaude(documentId, claudeData) {
         extraction.address,
         extraction.city,
         JSON.stringify(matchDetails),
-        documentId
+        documentId,
+        trackingNumber
       ]);
     }
 
@@ -1708,9 +1860,12 @@ module.exports = {
   levenshteinDistance,
   calculateSimilarity,
   normalizeText,
+  normalizeNameForCompare,
   extractName,
   extractAddress,
   extractCity,
+  extractTrackingNumber,
+  sanitizeTrackingNumber,
   extractDestinatarioFromOcr,
   extractDestinatarioWithLayout,
   extractDestinationZone,

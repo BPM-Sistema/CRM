@@ -13,7 +13,7 @@ import {
   TableHead,
   TableCell,
 } from '../components/ui';
-import { fetchOrders, fetchPrintCounts, fetchOrdersToPrint, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus, PaginationInfo, OrderFilters, ShippingTypeFilter, getEnvioNubeLabels } from '../services/api';
+import { fetchOrders, fetchPrintCounts, fetchOrdersToPrint, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus, PaginationInfo, OrderFilters, ShippingTypeFilter, getEnvioNubeLabels, PrintCounts } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -103,7 +103,7 @@ export function RealOrders() {
   const [selectedPrintStatuses, setSelectedPrintStatuses] = useState<Set<OrderStatus>>(
     new Set(['a_imprimir'])
   );
-  const [printCounts, setPrintCounts] = useState<Record<OrderStatus, number> | null>(null);
+  const [printCounts, setPrintCounts] = useState<PrintCounts | null>(null);
   const [loadingPrintCounts, setLoadingPrintCounts] = useState(false);
 
   // Estado para modal de pedidos excluidos
@@ -293,12 +293,18 @@ export function RealOrders() {
     [filteredOrders]
   );
 
-  // Contar pedidos seleccionados para imprimir - usa conteos del API
+  // Contar pedidos seleccionados para imprimir - usa conteos del API.
+  // Para 'a_imprimir' usamos el sub-count "ready" (excluye los que faltan
+  // datos de envío) para que el botón refleje exactamente lo que se va a imprimir.
   const selectedPrintCount = useMemo(() => {
     if (!printCounts) return 0;
     let total = 0;
     selectedPrintStatuses.forEach(status => {
-      total += printCounts[status] || 0;
+      if (status === 'a_imprimir') {
+        total += printCounts.a_imprimir_ready || 0;
+      } else {
+        total += printCounts[status] || 0;
+      }
     });
     return total;
   }, [printCounts, selectedPrintStatuses]);
@@ -522,26 +528,25 @@ export function RealOrders() {
       const statuses = Array.from(selectedPrintStatuses);
       const { orderNumbers, count, excluded, excludedCount } = await fetchOrdersToPrint(statuses);
 
-      if (count === 0 && excludedCount === 0) {
-        // No hay nada que imprimir - mostrar modal vacío
-        setExcludedOrders([]);
+      // Caso borde: no hay nada para imprimir.
+      // Si hay excluidos, los mostramos en el modal; si no, modal vacío.
+      if (count === 0) {
+        setExcludedOrders(excluded);
         setPrintableOrders([]);
         setExcludedModalOpen(true);
+        if (excludedCount > 0) {
+          window.dispatchEvent(new Event('refresh-notifications'));
+        }
         return;
       }
 
-      // Si hay excluidos, mostrar modal de confirmación
+      // El modal de selección ya anticipó cuántos están listos vs cuántos
+      // están sin datos de envío, así que NO abrimos el ExcludedModal sorpresa:
+      // imprimimos directo. La notificación de excluidos sigue creándose
+      // en backend para que aparezca en el panel de notifs.
       if (excludedCount > 0) {
-        setExcludedOrders(excluded);
-        setPrintableOrders(orderNumbers);
-        setExcludedModalOpen(true);
-        setIsPrintModalOpen(false);
-        // Recargar notificaciones inmediatamente
         window.dispatchEvent(new Event('refresh-notifications'));
-        return;
       }
-
-      // No hay excluidos, imprimir directamente
       proceedToPrint(orderNumbers);
     } catch (err) {
       console.error('Error al obtener pedidos:', err);
@@ -1246,7 +1251,14 @@ export function RealOrders() {
                   />
                   <span className="font-medium text-neutral-900">A Imprimir</span>
                 </div>
-                <span className="text-sm text-neutral-500">{printCounts?.a_imprimir ?? 0} pedidos</span>
+                <div className="text-right">
+                  <div className="text-sm text-neutral-500">{printCounts?.a_imprimir_ready ?? 0} listos</div>
+                  {(printCounts?.a_imprimir_missing_shipping ?? 0) > 0 && (
+                    <div className="text-xs text-amber-600">
+                      {printCounts?.a_imprimir_missing_shipping} sin datos de envío
+                    </div>
+                  )}
+                </div>
               </label>
             </div>
           )}

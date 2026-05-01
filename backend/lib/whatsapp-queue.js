@@ -83,6 +83,14 @@ async function queueWhatsApp({ telefono, plantilla, variables, orderNumber }) {
 
   // Sin cola → no enviar. Alertar por email.
   log.error({ orderNumber, plantilla }, 'WhatsApp queue unavailable — mensaje NO enviado');
+
+  // Tests no deben disparar emails reales. Si NODE_ENV es 'test', cortamos
+  // acá. (Incidente real: correr `jest tests/remitos.test.js` confirmaba un
+  // remito de fixture y mandaba email a la casilla de notificaciones.)
+  if (process.env.NODE_ENV === 'test') {
+    return { queued: false, reason: 'queue_unavailable_test_mode' };
+  }
+
   const { sendNotification } = require('./email');
   sendNotification({
     subject: `[CRM] WhatsApp NO enviado — pedido #${orderNumber || 'N/A'}`,
