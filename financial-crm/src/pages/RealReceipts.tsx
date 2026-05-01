@@ -755,11 +755,34 @@ export function RealReceipts() {
                 {/* Resultado de aplicacion */}
                 {bankApplyResult && (
                   <div className="space-y-2">
-                    <div className="flex items-center gap-4 text-sm">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                       <span className="flex items-center gap-1 text-green-700">
                         <CheckCircle2 size={14} />
                         {bankApplyResult.summary.confirmed} confirmados
                       </span>
+                      {(bankApplyResult.summary.tn_synced ?? 0) > 0 && (
+                        <span className="flex items-center gap-1 text-emerald-700" title="Marcados como pagados en Tienda Nube">
+                          <CheckCircle2 size={14} />
+                          {bankApplyResult.summary.tn_synced} en TN
+                        </span>
+                      )}
+                      {(bankApplyResult.summary.tn_skipped ?? 0) > 0 && (
+                        <span
+                          className="flex items-center gap-1 text-neutral-600"
+                          title="Pagos parciales o pedidos sin tn_order_id — no se sincronizan a TN hasta que se complete el pago"
+                        >
+                          {bankApplyResult.summary.tn_skipped} sin sincronizar (parciales)
+                        </span>
+                      )}
+                      {(bankApplyResult.summary.tn_failed ?? 0) > 0 && (
+                        <span
+                          className="flex items-center gap-1 text-red-700"
+                          title={bankApplyResult.summary.tn_errors?.map(e => `#${e.order_number}: ${e.error}`).join(' · ') || 'Error al sincronizar con TN'}
+                        >
+                          <AlertCircle size={14} />
+                          {bankApplyResult.summary.tn_failed} fallaron en TN
+                        </span>
+                      )}
                       {(bankApplyResult.summary.already_confirmed ?? 0) > 0 && (
                         <span className="flex items-center gap-1 text-gray-600">
                           <CheckCircle2 size={14} />

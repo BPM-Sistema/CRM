@@ -1103,6 +1103,43 @@ export function RealOrders() {
                             {order.pending_receipts_count} comp. pend.
                           </span>
                         )}
+                        {order.estado_pago === 'pendiente' && order.pendiente_3hs_send_at && (() => {
+                          const fmt = (s: string | null) => s
+                            ? new Date(s).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                            : '';
+                          if (order.pendiente_3hs_error?.startsWith('discarded:')) {
+                            return (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-600" title={order.pendiente_3hs_error}>
+                                WA 3hs: descartado
+                              </span>
+                            );
+                          }
+                          if (order.pendiente_3hs_error) {
+                            return (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700" title={order.pendiente_3hs_error}>
+                                WA 3hs: falló
+                              </span>
+                            );
+                          }
+                          if (order.pendiente_3hs_sent_at) {
+                            const status = order.pendiente_3hs_wa_status || 'sent';
+                            const labels: Record<string, string> = { pending: 'pendiente', sent: 'enviado', delivered: 'entregado', read: 'leído', failed: 'falló' };
+                            const color = status === 'failed' ? 'bg-red-100 text-red-700'
+                              : status === 'read' ? 'bg-emerald-100 text-emerald-700'
+                              : status === 'delivered' ? 'bg-blue-100 text-blue-700'
+                              : 'bg-neutral-100 text-neutral-700';
+                            return (
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${color}`} title={`Enviado ${fmt(order.pendiente_3hs_sent_at)}${order.pendiente_3hs_wa_status_at ? ' · status ' + fmt(order.pendiente_3hs_wa_status_at) : ''}`}>
+                                WA 3hs: {labels[status] || status}
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700" title={`Se enviará el ${fmt(order.pendiente_3hs_send_at)}`}>
+                              WA 3hs: prog. {fmt(order.pendiente_3hs_send_at)}
+                            </span>
+                          );
+                        })()}
                         {order.estado_pedido === 'cancelado' && (
                           <OrderStatusBadge status="cancelado" size="md" />
                         )}

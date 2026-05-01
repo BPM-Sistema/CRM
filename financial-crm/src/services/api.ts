@@ -95,6 +95,12 @@ export interface ApiOrder {
   subtotal: number | null;
   discount: number | null;
   shipping_cost: number | null;
+  // WhatsApp pendiente_3hs (recordatorio automático a las 3hs en horario laboral)
+  pendiente_3hs_send_at: string | null;
+  pendiente_3hs_sent_at: string | null;
+  pendiente_3hs_error: string | null;
+  pendiente_3hs_wa_status: string | null;
+  pendiente_3hs_wa_status_at: string | null;
 }
 
 export interface ApiComprobante {
@@ -2293,6 +2299,10 @@ export interface ConciliacionAplicarResult {
     confirmed: number;
     already_confirmed?: number;
     errors: number;
+    tn_synced?: number;
+    tn_failed?: number;
+    tn_skipped?: number;
+    tn_errors?: Array<{ order_number: string; error: string }>;
     bank_import: { inserted: number; duplicated: number; updated: number; error?: string } | null;
   };
   confirmed: Array<{ banco_id: string; comprobante_id: number; order_number: string; monto: number }>;

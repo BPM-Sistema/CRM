@@ -1614,7 +1614,22 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
           WHERE order_number = o.order_number
             AND label_printed_at IS NOT NULL
             AND data_updated_at > label_printed_at
-        ) as shipping_data_changed_after_print
+        ) as shipping_data_changed_after_print,
+        (SELECT send_at FROM scheduled_whatsapp
+          WHERE order_number = o.order_number AND plantilla = 'pendiente_3hs'
+          ORDER BY id DESC LIMIT 1) as pendiente_3hs_send_at,
+        (SELECT sent_at FROM scheduled_whatsapp
+          WHERE order_number = o.order_number AND plantilla = 'pendiente_3hs'
+          ORDER BY id DESC LIMIT 1) as pendiente_3hs_sent_at,
+        (SELECT error FROM scheduled_whatsapp
+          WHERE order_number = o.order_number AND plantilla = 'pendiente_3hs'
+          ORDER BY id DESC LIMIT 1) as pendiente_3hs_error,
+        (SELECT wm.status FROM whatsapp_messages wm
+          WHERE wm.order_number = o.order_number::int AND wm.template_key = 'pendiente_3hs'
+          ORDER BY wm.created_at DESC LIMIT 1) as pendiente_3hs_wa_status,
+        (SELECT wm.status_updated_at FROM whatsapp_messages wm
+          WHERE wm.order_number = o.order_number::int AND wm.template_key = 'pendiente_3hs'
+          ORDER BY wm.created_at DESC LIMIT 1) as pendiente_3hs_wa_status_at
       FROM orders_validated o
       LEFT JOIN comprobantes c ON o.order_number = c.order_number
       ${whereClause}
@@ -2293,10 +2308,8 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
 
           await client.query('COMMIT');
 
-          // Post-commit actions
-          if (estadoPago === 'confirmado_total' && orderData?.tn_order_id) {
-            marcarPagadoEnTiendanube(orderData.tn_order_id, comprobante.order_number, 'conciliacion_banco');
-          }
+          // Sync con TN se hace al final del endpoint en Promise.allSettled
+          // para poder devolver el conteo real al frontend.
 
           logEvento({
             comprobanteId: comprobante.id,
@@ -2337,7 +2350,9 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
             banco_id,
             comprobante_id: comprobante.id,
             order_number: comprobante.order_number,
-            monto: comprobante.monto
+            monto: comprobante.monto,
+            estadoPago,
+            tnOrderId: orderData?.tn_order_id || null
           });
 
         } catch (txErr) {
@@ -2353,6 +2368,27 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
     }
 
     log.info({ confirmed: confirmed.length, alreadyConfirmed: alreadyConfirmed.length, errors: errors.length }, 'Conciliación aplicar: fin');
+
+    // Sync TN en paralelo: solo los que quedaron confirmado_total con tn_order_id.
+    // Parciales (confirmado_parcial) no se marcan como pagados en TN — quedan pendientes.
+    const tnSyncTargets = confirmed.filter(c => c.estadoPago === 'confirmado_total' && c.tnOrderId);
+    const tnSkipped = confirmed.length - tnSyncTargets.length;
+    let tnSynced = 0;
+    let tnFailed = 0;
+    const tnErrors = [];
+    if (tnSyncTargets.length > 0) {
+      const results = await Promise.allSettled(
+        tnSyncTargets.map(t => marcarPagadoEnTiendanube(t.tnOrderId, t.order_number, 'conciliacion_banco'))
+      );
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled' && r.value === true) tnSynced++;
+        else {
+          tnFailed++;
+          tnErrors.push({ order_number: tnSyncTargets[i].order_number, error: r.status === 'rejected' ? r.reason?.message || String(r.reason) : 'sync devolvió false' });
+        }
+      });
+      log.info({ tnSynced, tnFailed, tnSkipped }, 'Conciliación: sync TN finalizado');
+    }
 
     // Persistir movimientos bancarios en Admin Banco con assignments resueltos.
     // Incluir tambien los ya-confirmados para que el bank_movement quede ligado.
@@ -2378,6 +2414,10 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
         confirmed: confirmed.length,
         already_confirmed: alreadyConfirmed.length,
         errors: errors.length,
+        tn_synced: tnSynced,
+        tn_failed: tnFailed,
+        tn_skipped: tnSkipped,
+        tn_errors: tnErrors,
         bank_import: bankImportResult
       },
       confirmed,
@@ -8606,11 +8646,21 @@ setInterval(async () => {
             continue;
           }
           if (ord.estado_pedido === 'cancelado' || ord.estado_pago !== 'pendiente' || ord.has_comprobante) {
+            const motivo = ord.estado_pedido === 'cancelado'
+              ? 'pedido cancelado'
+              : ord.has_comprobante
+                ? 'ya cargó comprobante'
+                : `estado de pago: ${ord.estado_pago}`;
             await pool.query(
               `UPDATE scheduled_whatsapp SET error = $1 WHERE id = $2`,
               [`discarded: estado=${ord.estado_pedido} pago=${ord.estado_pago} comp=${ord.has_comprobante}`, msg.id]
             );
-            console.log(`⏰⤴️  pendiente_3hs descartado pedido #${msg.order_number} (${ord.estado_pago}, comp=${ord.has_comprobante})`);
+            await logEvento({
+              orderNumber: String(msg.order_number),
+              accion: `pendiente_3hs descartado: ${motivo}`,
+              origen: 'sistema'
+            }).catch(() => {});
+            console.log(`⏰⤴️  pendiente_3hs descartado pedido #${msg.order_number} (${motivo})`);
             continue;
           }
         }
