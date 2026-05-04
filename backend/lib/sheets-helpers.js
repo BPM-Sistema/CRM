@@ -97,11 +97,14 @@ async function pushOrderToImprimir(orderNumber) {
     }
     if (targetRow === -1) targetRow = Math.max(rows.length, 1) + 1;
 
+    // Escribimos también `false` en col B para resetear cualquier check que
+    // hubiera quedado tildado por error en una fila vacía: cuando esa fila
+    // se ocupe con un pedido, el check arranca destildado.
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `${TAB_NAME}!A${targetRow}`,
+      range: `${TAB_NAME}!A${targetRow}:B${targetRow}`,
       valueInputOption: 'USER_ENTERED',
-      requestBody: { values: [[orderStr]] },
+      requestBody: { values: [[orderStr, false]] },
     });
 
     log.info({ orderNumber: orderStr, row: targetRow }, 'sheets: pedido agregado al tracking de a_imprimir');
