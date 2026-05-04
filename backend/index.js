@@ -1182,6 +1182,7 @@ app.get('/orders/pending-shipping-data-count', authenticate, requirePermission('
           OR LOWER(COALESCE(o.shipping_type, '')) LIKE '%via cargo%'
           OR LOWER(COALESCE(o.shipping_type, '')) LIKE '%viacargo%'
         )
+        AND o.estado_pedido NOT IN ('enviado', 'en_calle', 'retirado')
         AND NOT EXISTS (
           SELECT 1 FROM shipping_requests sr WHERE sr.order_number = o.order_number
         )
@@ -1242,6 +1243,7 @@ app.get('/orders/pending-shipping-data', authenticate, requirePermission('orders
           OR LOWER(COALESCE(o.shipping_type, '')) LIKE '%via cargo%'
           OR LOWER(COALESCE(o.shipping_type, '')) LIKE '%viacargo%'
         )
+        AND o.estado_pedido NOT IN ('enviado', 'en_calle', 'retirado')
         AND NOT EXISTS (
           SELECT 1 FROM shipping_requests sr WHERE sr.order_number = o.order_number
         )
