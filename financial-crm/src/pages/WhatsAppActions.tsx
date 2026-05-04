@@ -23,6 +23,24 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 // Plantillas que requieren variables de tracking
 const TRACKING_TEMPLATES = ['envio_extra'];
 
+// Formato compacto: "HH:mm" si la falla fue hoy, "DD/MM HH:mm" si fue antes.
+function formatFailedAt(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const now = new Date();
+  const sameDay =
+    d.getDate() === now.getDate() &&
+    d.getMonth() === now.getMonth() &&
+    d.getFullYear() === now.getFullYear();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  if (sameDay) return `${hh}:${mm}`;
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}/${mo} ${hh}:${mm}`;
+}
+
 interface Template {
   key: string;
   nombre: string;
@@ -573,6 +591,12 @@ export default function WhatsAppActions() {
                       <div className="flex items-center gap-2 text-sm flex-wrap">
                         <span className="font-medium text-neutral-900">#{m.order_number}</span>
                         <span className="text-neutral-500">{m.customer_name || m.contact_id}</span>
+                        <span
+                          className="text-neutral-400 text-xs tabular-nums"
+                          title={new Date(m.status_updated_at || m.created_at).toLocaleString('es-AR')}
+                        >
+                          {formatFailedAt(m.status_updated_at || m.created_at)}
+                        </span>
                         <span className="text-neutral-400">·</span>
                         <span className="text-neutral-500 truncate">{m.template}</span>
                         {cumplida && (
@@ -582,7 +606,7 @@ export default function WhatsAppActions() {
                         )}
                       </div>
                       <div className={`text-xs mt-0.5 truncate ${cumplida ? 'text-emerald-700' : 'text-red-600'}`}>
-                        {m.error_message || 'Error desconocido'} · {m.retry_count || 0} reintentos · {new Date(m.created_at).toLocaleString('es-AR')}
+                        {m.error_message || 'Error desconocido'} · {m.retry_count || 0} reintentos
                       </div>
                     </div>
                     <div className="ml-3 shrink-0 flex gap-2">
