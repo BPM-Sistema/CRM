@@ -3803,7 +3803,8 @@ app.post('/webhook/botmaker-status', async (req, res) => {
       );
       log.info({ status, messageId, intentTxId, matched: upd.rowCount }, 'WhatsApp status updated');
     } else if (isFailed) {
-      const errorMsg = payload.error || payload.reason || 'Unknown error';
+      const rawError = payload.error || payload.reason || 'Unknown error';
+      const errorMsg = typeof rawError === 'string' ? rawError : JSON.stringify(rawError);
       const upd = await matchAndUpdate(
         `SET status = 'failed',
              status_updated_at = NOW(),
