@@ -68,27 +68,44 @@ async function pushOrderToImprimir(orderNumber) {
   const orderStr = String(orderNumber);
 
   try {
-    // Idempotencia: leer columna A y chequear si el pedido ya está
+    // Leemos columna A y buscamos la primera fila vacía (después del header).
+    // No usamos values.append porque su detección de "fin de tabla" mira las dos
+    // columnas: si la columna B tiene checkbox/FALSE residual, salta filas
+    // donde A está vacía. Acá nos guiamos sólo por A y nunca tocamos B.
     const existing = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: `${TAB_NAME}!A:A`,
     });
     const rows = existing.data.values || [];
+
+    // Idempotencia
     const already = rows.some(r => r && String(r[0]).trim() === orderStr);
     if (already) {
       return { appended: false, reason: 'already_in_sheet' };
     }
 
-    await sheets.spreadsheets.values.append({
+    // Primera fila (1-indexada) donde A está vacía, después del header (fila 1).
+    // values.get no devuelve filas trailing vacías, así que si no hay gaps,
+    // la próxima fila libre es rows.length + 1.
+    let targetRow = -1;
+    for (let i = 1; i < rows.length; i++) {
+      const cell = rows[i]?.[0];
+      if (cell === undefined || cell === null || String(cell).trim() === '') {
+        targetRow = i + 1;
+        break;
+      }
+    }
+    if (targetRow === -1) targetRow = Math.max(rows.length, 1) + 1;
+
+    await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `${TAB_NAME}!A:B`,
+      range: `${TAB_NAME}!A${targetRow}`,
       valueInputOption: 'USER_ENTERED',
-      insertDataOption: 'INSERT_ROWS',
-      requestBody: { values: [[orderStr, false]] },
+      requestBody: { values: [[orderStr]] },
     });
 
-    log.info({ orderNumber: orderStr }, 'sheets: pedido agregado al tracking de a_imprimir');
-    return { appended: true };
+    log.info({ orderNumber: orderStr, row: targetRow }, 'sheets: pedido agregado al tracking de a_imprimir');
+    return { appended: true, row: targetRow };
   } catch (err) {
     log.error({ err: err.message, orderNumber: orderStr }, 'sheets: push falló');
     return { appended: false, reason: 'api_error' };
