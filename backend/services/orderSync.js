@@ -5,6 +5,7 @@
 
 const axios = require('axios');
 const { callTiendanube } = require('../lib/circuitBreaker');
+const { pushOrderToImprimir } = require('../lib/sheets-helpers');
 const pool = require('../db');
 const {
   addToQueue,
@@ -271,6 +272,17 @@ async function processOrderPaid(orderId, orderNumber) {
         tn_created_at = COALESCE(tn_created_at, $2)
       WHERE order_number = $1
     `, [String(pedido.number), pedido.created_at || null]);
+  }
+
+  // Tracking en Google Sheets: este path no pasa por recalcularPagos.
+  // Solo pusheamos si el pedido quedó efectivamente en a_imprimir
+  // (el UPDATE solo lo cambia si venía de pendiente_pago).
+  const stateCheck = await pool.query(
+    `SELECT estado_pedido FROM orders_validated WHERE order_number = $1`,
+    [String(pedido.number)]
+  );
+  if (stateCheck.rows[0]?.estado_pedido === 'a_imprimir') {
+    setImmediate(() => { pushOrderToImprimir(String(pedido.number)); });
   }
 
   // NO insertar en pagos_efectivo - el pago ya fue registrado por:

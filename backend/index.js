@@ -5137,6 +5137,12 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     );
     if (orderStateRes.rows.length > 0) {
       const { estado_pedido: epActual, shipping_type: stActual } = orderStateRes.rows[0];
+      // Tracking en Google Sheets: este path no pasa por recalcularPagos,
+      // así que enganchamos el push acá. Idempotente y fire-and-forget.
+      if (epActual === 'a_imprimir') {
+        const { pushOrderToImprimir } = require('./lib/sheets-helpers');
+        setImmediate(() => { pushOrderToImprimir(orderNumber); });
+      }
       if (epActual === 'a_imprimir' && requiresShippingForm(stActual)) {
         const [srCheck, waCheck] = await Promise.all([
           pool.query(`SELECT 1 FROM shipping_requests WHERE order_number = $1 LIMIT 1`, [orderNumber]),
