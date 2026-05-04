@@ -17,6 +17,7 @@
  */
 
 const { calcularEstadoPedido } = require('./payment-helpers');
+const { pushOrderToImprimir } = require('./sheets-helpers');
 
 async function recalcularPagos(clientOrPool, orderNumber, opts = {}) {
   const tolerancia = opts.tolerancia ?? 1000;
@@ -93,6 +94,12 @@ async function recalcularPagos(clientOrPool, orderNumber, opts = {}) {
     SET total_pagado = $1, saldo = $2, estado_pago = $3, estado_pedido = $4
     WHERE order_number = $5
   `, [totalPagado, saldo, estadoPago, estadoPedido, orderNumber]);
+
+  // Transición a "a_imprimir" → tracking en Google Sheets (fire-and-forget,
+  // nunca rompe el flujo aunque la API de Sheets falle).
+  if (estadoPedidoActual !== 'a_imprimir' && estadoPedido === 'a_imprimir') {
+    setImmediate(() => { pushOrderToImprimir(orderNumber); });
+  }
 
   return {
     totalPagado,
