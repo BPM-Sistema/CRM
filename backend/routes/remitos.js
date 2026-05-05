@@ -12,6 +12,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const sharp = require('sharp');
 const axios = require('axios');
 const pool = require('../db');
 const { authenticate, requirePermission } = require('../middleware/auth');
@@ -28,11 +29,15 @@ const upload = multer({
   dest: 'uploads/remitos/',
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB por archivo
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+    // HEIC/HEIF se aceptan y se convierten a JPEG en el handler.
+    // Si un archivo no es de tipo permitido, lo skipeamos con cb(null, false)
+    // en vez de tirar Error — así multer no aborta toda la request.
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/heic', 'image/heif', 'application/pdf'];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error(`Tipo de archivo no permitido: ${file.mimetype}`));
+      console.warn(`⚠️ Archivo skipeado (tipo no permitido): ${file.originalname} (${file.mimetype})`);
+      cb(null, false);
     }
   }
 });
@@ -59,10 +64,21 @@ router.post('/upload',
 
     for (const file of files) {
       try {
-        // 1. Subir a Storage (GCS)
-        const fileBuffer = fs.readFileSync(file.path);
+        // 1. Leer buffer y convertir HEIC→JPEG si corresponde (Claude Vision
+        //    no soporta HEIC; iPhone graba HEIC por default).
+        let fileBuffer = fs.readFileSync(file.path);
+        let effectiveMime = file.mimetype;
+        let effectiveName = file.originalname;
+        if (file.mimetype === 'image/heic' || file.mimetype === 'image/heif') {
+          fileBuffer = await sharp(fileBuffer).jpeg({ quality: 90 }).toBuffer();
+          effectiveMime = 'image/jpeg';
+          effectiveName = file.originalname.replace(/\.(heic|heif)$/i, '.jpg');
+          console.log(`🖼️ HEIC convertido a JPEG: ${file.originalname} → ${effectiveName}`);
+        }
+
+        // 2. Subir a Storage (GCS)
         // Sanitizar nombre de archivo: remover caracteres especiales Unicode
-        const safeName = file.originalname
+        const safeName = effectiveName
           .normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '')  // Quitar acentos
           .replace(/[^\w\s.-]/g, '')         // Solo alfanuméricos, espacios, puntos, guiones
@@ -70,22 +86,22 @@ router.post('/upload',
         const fileName = `${Date.now()}-${safeName}`;
         const storagePath = `remitos/${fileName}`;
 
-        const fileUrl = await uploadFile(storagePath, fileBuffer, file.mimetype);
+        const fileUrl = await uploadFile(storagePath, fileBuffer, effectiveMime);
 
-        // 2. Crear registro en DB con estado 'processing'
+        // 3. Crear registro en DB con estado 'processing'
         const insertRes = await pool.query(`
           INSERT INTO shipping_documents (file_url, file_name, file_type, status, uploaded_by)
           VALUES ($1, $2, $3, 'processing', $4)
           RETURNING id
-        `, [fileUrl, file.originalname, file.mimetype, req.user?.id || null]);
+        `, [fileUrl, effectiveName, effectiveMime, req.user?.id || null]);
 
         const documentId = insertRes.rows[0].id;
 
-        // 3. Eliminar archivo temporal
+        // 4. Eliminar archivo temporal
         fs.unlinkSync(file.path);
 
-        // 4. Procesar OCR en background (no esperar)
-        processOCRAsync(documentId, fileBuffer, file.mimetype);
+        // 5. Procesar OCR en background (no esperar)
+        processOCRAsync(documentId, fileBuffer, effectiveMime);
 
         // 5. Loguear evento
         logEvento({
