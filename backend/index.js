@@ -5816,12 +5816,16 @@ app.post('/stock-alerts/cron/test-send', verifyCronAuth, stockAlertsRoutes.testS
 // pipeline de remitos. Renombra cada archivo procesado agregando "_leido".
 // Configurar en Cloud Scheduler con cron "*/30 * * * *".
 app.post('/remitos/cron/drive-intake', verifyCronAuth, async (req, res) => {
-  log.info({ authMethod: req.cronAuth?.method }, 'Cron drive intake started');
+  // mode='tombstone': crea filas con status='deleted' sin descargar/encolar.
+  // Util para blindar archivos contra reingesta cuando se borraron filas
+  // fisicamente y se perdieron los source_drive_file_id.
+  const mode = req.body?.mode === 'tombstone' ? 'tombstone' : 'normal';
+  log.info({ authMethod: req.cronAuth?.method, mode }, 'Cron drive intake started');
   try {
     const { runDriveIntake } = require('./services/driveIntake');
-    const result = await runDriveIntake();
+    const result = await runDriveIntake({ mode });
     log.info(result, 'Cron drive intake done');
-    res.json({ ok: true, ...result });
+    res.json({ ok: true, mode, ...result });
   } catch (error) {
     log.error({ err: error.message }, 'Cron drive intake failed');
     res.status(500).json({ error: error.message });

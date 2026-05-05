@@ -29,6 +29,7 @@
 const path = require('path');
 const { google } = require('googleapis');
 const { ingestRemito } = require('./remitoIngest');
+const pool = require('../db');
 
 const ALLOWED_MIMES = [
   'image/jpeg',
@@ -157,8 +158,18 @@ async function renameAsRead(fileId, currentName, drive) {
  * queda en `errors[]` y la corrida sigue. El endpoint del cron decide si
  * devuelve 200 o 500 segun le convenga (tipicamente 200 para que Cloud
  * Scheduler no reintente innecesariamente).
+ *
+ * @param {object} [opts]
+ * @param {'normal'|'tombstone'} [opts.mode] - 'tombstone' crea filas
+ *   directo con status='deleted' (sin descargar ni encolar OCR). Sirve para
+ *   blindar archivos contra reingesta cuando se borraron fisicamente y se
+ *   perdieron sus fileIds.
  */
-async function runDriveIntake() {
+async function runDriveIntake(opts = {}) {
+  const mode = opts.mode || 'normal';
+  if (mode !== 'normal' && mode !== 'tombstone') {
+    throw new Error(`runDriveIntake: mode invalido "${mode}"`);
+  }
   const parentId = process.env.DRIVE_REMITOS_PARENT_FOLDER_ID;
   if (!parentId) {
     return { ok: false, reason: 'no_parent_folder_id', scanned: 0, ingested: 0, skipped: 0, errors: 0 };
@@ -195,6 +206,26 @@ async function runDriveIntake() {
     for (const file of files) {
       stats.scanned++;
       try {
+        if (mode === 'tombstone') {
+          // Modo tombstone: no descargar, no encolar OCR. Solo INSERT con
+          // status='deleted' para blindar el fileId contra futuras reingestas.
+          const insRes = await pool.query(
+            `INSERT INTO shipping_documents
+               (file_url, file_name, file_type, status,
+                source, source_drive_file_id, source_drive_folder_id)
+             VALUES ('drive://tombstone', $1, $2, 'deleted', 'drive', $3, $4)
+             ON CONFLICT (source_drive_file_id) WHERE source_drive_file_id IS NOT NULL DO NOTHING
+             RETURNING id`,
+            [file.name, file.mimeType || 'application/octet-stream', file.id, folder.id]
+          );
+          if (insRes.rows.length === 0) {
+            stats.skipped++; // ya existia (otro tombstone o ingest previo)
+          } else {
+            stats.ingested++;
+          }
+          continue; // no rename ni download en modo tombstone
+        }
+
         const buffer = await downloadFile(file.id, drive);
         const result = await ingestRemito({
           buffer,
@@ -226,6 +257,10 @@ async function runDriveIntake() {
         stats.errorDetails.push({ file: file.name, error: err.message });
       }
     }
+
+    // En modo tombstone NO tocamos Drive (ni renombrar carpeta ni nada),
+    // solo escribimos tombstones en DB.
+    if (mode === 'tombstone') continue;
 
     // Auto-marcar la carpeta como leida si TODOS sus archivos terminan en
     // "_leido" (y la carpeta no esta ya marcada). Listamos todos los archivos
