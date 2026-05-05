@@ -13,6 +13,24 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const heicConvert = require('heic-convert');
+const sharp = require('sharp');
+
+// Claude Vision rechaza imágenes > 5 MB (en base64). Pasamos todo por sharp
+// para resize a max 2000 px lado largo + JPEG calidad 85 → ~500KB-1MB,
+// bien por debajo del límite. Si sharp falla (caso raro), devolvemos el
+// buffer original para no romper el flujo.
+async function downscaleForVision(buffer) {
+  try {
+    return await sharp(buffer)
+      .rotate() // respeta EXIF orientation
+      .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 85 })
+      .toBuffer();
+  } catch (err) {
+    console.warn(`⚠️ sharp downscale falló, uso buffer original: ${err.message}`);
+    return buffer;
+  }
+}
 const axios = require('axios');
 const pool = require('../db');
 const { authenticate, requirePermission } = require('../middleware/auth');
@@ -82,6 +100,22 @@ router.post('/upload',
           effectiveMime = 'image/jpeg';
           effectiveName = file.originalname.replace(/\.(heic|heif)$/i, '.jpg');
           console.log(`🖼️ HEIC convertido a JPEG: ${file.originalname} → ${effectiveName}`);
+        }
+
+        // Downscale a max 2000px + JPEG q85 — Claude Vision rechaza > 5 MB.
+        // Aplicamos a todo lo que sea imagen (no PDF). Idempotente: si ya
+        // está chico, sharp solo recompresa sin agrandar.
+        if (effectiveMime === 'image/jpeg' || effectiveMime === 'image/png') {
+          const beforeSize = fileBuffer.length;
+          fileBuffer = await downscaleForVision(fileBuffer);
+          if (effectiveMime === 'image/png') {
+            // Después del resize ya está en JPEG, actualizar mime/nombre
+            effectiveMime = 'image/jpeg';
+            effectiveName = effectiveName.replace(/\.png$/i, '.jpg');
+          }
+          if (fileBuffer.length < beforeSize) {
+            console.log(`📉 Downscale: ${file.originalname} ${(beforeSize/1024/1024).toFixed(2)}MB → ${(fileBuffer.length/1024/1024).toFixed(2)}MB`);
+          }
         }
 
         // 2. Subir a Storage (GCS)
