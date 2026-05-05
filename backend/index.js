@@ -5670,6 +5670,23 @@ app.locals.queueWhatsApp = queueWhatsApp;
 app.post('/stock-alerts/cron/dispatch', verifyCronAuth, stockAlertsRoutes.cronDispatchHandler);
 app.post('/stock-alerts/cron/test-send', verifyCronAuth, stockAlertsRoutes.testSendHandler);
 
+// Cron de Drive intake: cada 30 min escanea la carpeta padre configurada en
+// DRIVE_REMITOS_PARENT_FOLDER_ID, baja archivos nuevos y los ingresa al
+// pipeline de remitos. Renombra cada archivo procesado agregando "_leido".
+// Configurar en Cloud Scheduler con cron "*/30 * * * *".
+app.post('/remitos/cron/drive-intake', verifyCronAuth, async (req, res) => {
+  log.info({ authMethod: req.cronAuth?.method }, 'Cron drive intake started');
+  try {
+    const { runDriveIntake } = require('./services/driveIntake');
+    const result = await runDriveIntake();
+    log.info(result, 'Cron drive intake done');
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    log.error({ err: error.message }, 'Cron drive intake failed');
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Cron semanal: canonicaliza nombres de transporte raw del ranking usando
 // Claude. Configurar en Cloud Scheduler con frecuencia semanal (ej. lunes
 // 4am) → POST https://api.bpmadministrador.com/cron/canonicalize-carriers.

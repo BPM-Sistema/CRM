@@ -10,14 +10,12 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
 const pool = require('../db');
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { enviarWhatsAppPlantilla } = require('../lib/whatsapp-helpers');
-const { uploadFile } = require('../lib/storage');
-const { remitosQueue } = require('../lib/queues');
+const { ingestRemito } = require('../services/remitoIngest');
 
 const { logEvento } = require('../utils/logging');
 const { syncEstadoToTN } = require('../lib/tn-sync');
@@ -62,74 +60,34 @@ router.post('/upload',
 
     for (const file of files) {
       try {
-        // 1. Subir archivo CRUDO a GCS (sin tocar). La conversión HEIC y el
-        //    OCR los hace el worker async, así no bloqueamos el container web
-        //    con WASM CPU-intensivo (heic-convert).
-        const fileBuffer = fs.readFileSync(file.path);
-
-        // Sanitizar nombre de archivo: remover caracteres especiales Unicode
-        const safeName = file.originalname
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '')  // Quitar acentos
-          .replace(/[^\w\s.-]/g, '')         // Solo alfanuméricos, espacios, puntos, guiones
-          .replace(/\s+/g, '_');             // Espacios a guiones bajos
-        const fileName = `${Date.now()}-${safeName}`;
-        const storagePath = `remitos/${fileName}`;
-
-        const fileUrl = await uploadFile(storagePath, fileBuffer, file.mimetype);
-
-        // 2. Crear registro en DB con estado 'processing'
-        const insertRes = await pool.query(`
-          INSERT INTO shipping_documents (file_url, file_name, file_type, status, uploaded_by)
-          VALUES ($1, $2, $3, 'processing', $4)
-          RETURNING id
-        `, [fileUrl, file.originalname, file.mimetype, req.user?.id || null]);
-
-        const documentId = insertRes.rows[0].id;
-
-        // 3. Eliminar archivo temporal
+        const buffer = fs.readFileSync(file.path);
+        const result = await ingestRemito({
+          buffer,
+          mimetype: file.mimetype,
+          originalName: file.originalname,
+          uploadedBy: req.user?.id || null,
+          uploadedByName: req.user?.name,
+          source: 'manual',
+        });
         fs.unlinkSync(file.path);
 
-        // 4. Encolar job de procesamiento (HEIC convert + resize + Claude OCR)
-        if (remitosQueue) {
-          await remitosQueue.add('process-remito', {
-            documentId,
-            storagePath,
-            originalName: file.originalname,
-            mimetype: file.mimetype
-          });
-        } else {
-          console.error('❌ Queue de remitos no disponible — documento queda en processing sin worker');
-        }
-
-        // 5. Loguear evento
-        logEvento({
-          orderNumber: null, // Aún no sabemos el pedido
-          accion: 'remito_subido',
-          origen: 'operador',
-          userId: req.user?.id,
-          username: req.user?.name
-        });
-
         results.push({
-          id: documentId,
+          id: result.documentId,
           fileName: file.originalname,
-          status: 'processing'
+          status: result.status,
         });
-
       } catch (error) {
-        console.error(`❌ Error procesando ${file.originalname}:`, error.message);
+        console.error('Error procesando ' + file.originalname + ':', error.message);
         errors.push({
           fileName: file.originalname,
-          error: error.message
+          error: error.message,
         });
-
-        // Limpiar archivo temporal si existe
         if (fs.existsSync(file.path)) {
           fs.unlinkSync(file.path);
         }
       }
     }
+
 
     res.json({
       ok: true,
