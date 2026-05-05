@@ -1321,7 +1321,7 @@ export function ShippingDocuments() {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/jpeg,image/png,application/pdf"
+            accept="image/jpeg,image/png,image/heic,image/heif,application/pdf,.heic,.heif"
             multiple
             onChange={handleFileSelect}
             className="hidden"
