@@ -55,12 +55,20 @@ function parseMovimiento(raw) {
 }
 
 async function detectAssignment(client, amount, postedAt, senderName) {
+  // Solo agarrar comprobantes confirmados que NO tengan ya un mov bancario asignado.
+  // Sin este filtro, dos pagos del mismo monto en pocos días se pegaban al mismo
+  // comprobante (caso comp #1782 / mov #2050, mayo 2026).
   const res = await client.query(
     `SELECT c.id, c.order_number
      FROM comprobantes c
      WHERE c.estado = 'confirmado'
        AND c.monto = $1
        AND ABS(EXTRACT(EPOCH FROM (c.created_at - $2::timestamptz))) < 172800
+       AND NOT EXISTS (
+         SELECT 1 FROM bank_movements bm
+         WHERE bm.linked_comprobante_id = c.id
+           AND bm.assignment_status = 'assigned'
+       )
      ORDER BY c.created_at DESC
      LIMIT 1`,
     [amount, postedAt]
@@ -70,13 +78,18 @@ async function detectAssignment(client, amount, postedAt, senderName) {
     return { status: 'assigned', comprobante_id: res.rows[0].id, order_number: res.rows[0].order_number };
   }
 
-  // Check approximate match
+  // Check approximate match (mismo guard)
   const approx = await client.query(
     `SELECT c.id, c.order_number
      FROM comprobantes c
      WHERE c.estado = 'confirmado'
        AND ABS(c.monto - $1) <= 1
        AND ABS(EXTRACT(EPOCH FROM (c.created_at - $2::timestamptz))) < 604800
+       AND NOT EXISTS (
+         SELECT 1 FROM bank_movements bm
+         WHERE bm.linked_comprobante_id = c.id
+           AND bm.assignment_status = 'assigned'
+       )
      ORDER BY c.created_at DESC
      LIMIT 1`,
     [amount, postedAt]

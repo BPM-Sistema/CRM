@@ -109,13 +109,20 @@ async function matchFromBankMovement(client, movementId, amount, postedAt, refer
     }
 
     // 2. Match por monto exacto + fecha cercana (±2 días)
+    // Excluir comprobantes que ya tengan un bm vinculado (assigned/matched/review)
+    // para que un segundo mov del mismo monto+fecha no se pegue al mismo comp.
     const res = await client.query(
-      `SELECT id, order_number, monto
-       FROM comprobantes
-       WHERE estado IN ('pendiente', 'a_confirmar')
-         AND monto = $1
-         AND ABS(COALESCE(fecha_comprobante, created_at::date) - $2::date) <= 2
-       ORDER BY ABS(COALESCE(fecha_comprobante, created_at::date) - $2::date) ASC
+      `SELECT c.id, c.order_number, c.monto
+       FROM comprobantes c
+       WHERE c.estado IN ('pendiente', 'a_confirmar')
+         AND c.monto = $1
+         AND ABS(COALESCE(c.fecha_comprobante, c.created_at::date) - $2::date) <= 2
+         AND NOT EXISTS (
+           SELECT 1 FROM bank_movements bm
+           WHERE bm.linked_comprobante_id = c.id
+             AND bm.assignment_status IN ('assigned','matched','review')
+         )
+       ORDER BY ABS(COALESCE(c.fecha_comprobante, c.created_at::date) - $2::date) ASC
        LIMIT 2`,
       [amount, postedAt]
     );
