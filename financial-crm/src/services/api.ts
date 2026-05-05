@@ -1620,6 +1620,38 @@ export async function fetchShippingDataChangedList(): Promise<ShippingDataChange
 }
 
 // Subir remitos (múltiples archivos)
+// Cloud Run rechaza requests > 32 MiB en HTTP/1.1, así que dividimos los
+// archivos en batches que no superen ~20 MiB (margen de seguridad).
+const UPLOAD_BATCH_SIZE_BYTES = 20 * 1024 * 1024;
+
+function chunkFilesBySize(files: File[], maxBytes: number): File[][] {
+  const batches: File[][] = [];
+  let current: File[] = [];
+  let currentBytes = 0;
+  for (const f of files) {
+    // Si un archivo solo ya excede el batch, mandarlo en su propio batch
+    // (igual va a caber en los 32 MiB del límite real, asumiendo que es < 32MB).
+    if (f.size >= maxBytes) {
+      if (current.length > 0) {
+        batches.push(current);
+        current = [];
+        currentBytes = 0;
+      }
+      batches.push([f]);
+      continue;
+    }
+    if (currentBytes + f.size > maxBytes && current.length > 0) {
+      batches.push(current);
+      current = [];
+      currentBytes = 0;
+    }
+    current.push(f);
+    currentBytes += f.size;
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
+}
+
 export async function uploadRemitos(files: File[]): Promise<{
   ok: boolean;
   uploaded: number;
@@ -1627,25 +1659,53 @@ export async function uploadRemitos(files: File[]): Promise<{
   results: Array<{ id: number; fileName: string; status: string }>;
   errorDetails: Array<{ fileName: string; error: string }>;
 }> {
-  const formData = new FormData();
-  files.forEach(file => formData.append('files', file));
-
+  const batches = chunkFilesBySize(files, UPLOAD_BATCH_SIZE_BYTES);
   const token = localStorage.getItem('auth_token');
-  const response = await fetch(`${API_BASE_URL}/remitos/upload`, {
-    method: 'POST',
-    headers: {
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-    },
-    body: formData,
-  });
 
-  const data = await response.json();
+  let uploaded = 0;
+  let errors = 0;
+  const allResults: Array<{ id: number; fileName: string; status: string }> = [];
+  const allErrorDetails: Array<{ fileName: string; error: string }> = [];
 
-  if (!response.ok) {
-    throw new Error(data.error || 'Error al subir remitos');
+  for (const batch of batches) {
+    const formData = new FormData();
+    batch.forEach(file => formData.append('files', file));
+
+    const response = await fetch(`${API_BASE_URL}/remitos/upload`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      // Si el batch entero falló, marcar todos sus archivos como error y seguir
+      // con los siguientes batches (no abortar la operación completa).
+      let msg = `Error al subir batch (HTTP ${response.status})`;
+      try {
+        const data = await response.json();
+        if (data?.error) msg = data.error;
+      } catch { /* response no es JSON */ }
+      errors += batch.length;
+      batch.forEach(f => allErrorDetails.push({ fileName: f.name, error: msg }));
+      continue;
+    }
+
+    const data = await response.json();
+    uploaded += data.uploaded || 0;
+    errors += data.errors || 0;
+    if (Array.isArray(data.results)) allResults.push(...data.results);
+    if (Array.isArray(data.errorDetails)) allErrorDetails.push(...data.errorDetails);
   }
 
-  return data;
+  return {
+    ok: errors === 0,
+    uploaded,
+    errors,
+    results: allResults,
+    errorDetails: allErrorDetails,
+  };
 }
 
 // Listar remitos con paginación y filtros
