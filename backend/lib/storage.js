@@ -37,6 +37,18 @@ async function uploadFile(path, buffer, contentType) {
 }
 
 /**
+ * Download a file from storage as a Buffer.
+ * @param {string} path - Storage path (e.g. 'remitos/1234-file.heic')
+ * @returns {Promise<Buffer>}
+ */
+async function downloadFile(path) {
+  const bucket = getGCS().bucket(GCS_BUCKET);
+  const file = bucket.file(path);
+  const [contents] = await file.download();
+  return contents;
+}
+
+/**
  * Get public URL for a file path.
  * @param {string} path - Storage path
  * @returns {string} Public URL
@@ -55,4 +67,4 @@ async function healthCheck() {
   return true;
 }
 
-module.exports = { uploadFile, getPublicUrl, healthCheck };
+module.exports = { uploadFile, downloadFile, getPublicUrl, healthCheck };

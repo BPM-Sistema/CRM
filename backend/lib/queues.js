@@ -35,7 +35,7 @@ const defaultJobOptions = {
 
 // AI Bot queues pausadas — descomentar cuando se active el bot en prod
 // const AI_BOT_QUEUES = ['meta-events', 'ai-generate', 'ai-send-reply'];
-const QUEUE_NAMES = ['whatsapp'];
+const QUEUE_NAMES = ['whatsapp', 'remitos'];
 
 // Custom job options per queue (falls back to defaultJobOptions)
 const queueJobOptions = {
@@ -55,6 +55,15 @@ const queueJobOptions = {
     attempts: 3,
     backoff: { type: 'exponential', delay: 5000 },
     removeOnComplete: { count: 2000 },
+    removeOnFail: { count: 5000 }
+  },
+  'remitos': {
+    // Procesamiento de remitos (HEIC convert + resize + Claude Vision OCR).
+    // Conversión HEIC con WASM es lenta y CPU-intensiva: lo corremos en
+    // workers para no bloquear el container web.
+    attempts: 2,
+    backoff: { type: 'exponential', delay: 5000 },
+    removeOnComplete: { count: 1000 },
     removeOnFail: { count: 5000 }
   }
 };
@@ -105,6 +114,7 @@ async function getQueueStats() {
 module.exports = {
   queues,
   whatsappQueue: queues['whatsapp'],
+  remitosQueue: queues['remitos'],
   // AI Bot queues pausadas — descomentar cuando se active el bot en prod
   metaEventsQueue: null, // queues['meta-events'],
   aiGenerateQueue: null, // queues['ai-generate'],

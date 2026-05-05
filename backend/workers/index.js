@@ -10,6 +10,7 @@ require('dotenv').config();
 const { logger, workerLogger: log } = require('../lib/logger');
 const { redis } = require('../lib/redis');
 const { createWhatsAppWorker } = require('./whatsapp.worker');
+const { createRemitosWorker } = require('./remitos.worker');
 // AI Bot workers — loaded defensively so BPM workers always start even if bot code fails
 // AI Bot workers — PAUSADOS, descomentar cuando se active el bot en prod
 // let createMetaEventsWorker, createAiGenerateWorker, createAiSendReplyWorker;
@@ -83,6 +84,10 @@ async function start() {
   const whatsappWorker = createWhatsAppWorker(connection);
   workers.push(whatsappWorker);
   log.info('WhatsApp worker iniciado');
+
+  const remitosWorker = createRemitosWorker(connection);
+  workers.push(remitosWorker);
+  log.info('Remitos worker iniciado');
 
   // AI Bot workers — isolated in try-catch so BPM workers survive if bot fails
   try {

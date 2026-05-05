@@ -12,32 +12,12 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const heicConvert = require('heic-convert');
-const sharp = require('sharp');
-
-// Claude Vision rechaza imágenes > 5 MB (en base64). Pasamos todo por sharp
-// para resize a max 2000 px lado largo + JPEG calidad 85 → ~500KB-1MB,
-// bien por debajo del límite. Si sharp falla (caso raro), devolvemos el
-// buffer original para no romper el flujo.
-async function downscaleForVision(buffer) {
-  try {
-    return await sharp(buffer)
-      .rotate() // respeta EXIF orientation
-      .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 85 })
-      .toBuffer();
-  } catch (err) {
-    console.warn(`⚠️ sharp downscale falló, uso buffer original: ${err.message}`);
-    return buffer;
-  }
-}
 const axios = require('axios');
 const pool = require('../db');
 const { authenticate, requirePermission } = require('../middleware/auth');
-const { processDocumentWithClaude } = require('../services/shippingDocuments');
-const { analizarRemito } = require('../services/claudeVision');
 const { enviarWhatsAppPlantilla } = require('../lib/whatsapp-helpers');
 const { uploadFile } = require('../lib/storage');
+const { remitosQueue } = require('../lib/queues');
 
 const { logEvento } = require('../utils/logging');
 const { syncEstadoToTN } = require('../lib/tn-sync');
@@ -82,45 +62,13 @@ router.post('/upload',
 
     for (const file of files) {
       try {
-        // 1. Leer buffer y convertir HEIC→JPEG si corresponde (Claude Vision
-        //    no soporta HEIC; iPhone graba HEIC por default).
-        let fileBuffer = fs.readFileSync(file.path);
-        let effectiveMime = file.mimetype;
-        let effectiveName = file.originalname;
-        // Detectar HEIC por mimetype OR por extensión: macOS Finder a veces
-        // manda HEIC con mimetype vacío o "application/octet-stream" porque
-        // el browser no siempre tiene el mapping del MIME para .heic/.heif.
-        const isHeicByExt = /\.(heic|heif)$/i.test(file.originalname);
-        const isHeicByMime = file.mimetype === 'image/heic' || file.mimetype === 'image/heif';
-        if (isHeicByMime || isHeicByExt) {
-          // Usamos heic-convert (libheif → WASM, JS puro) en vez de sharp,
-          // porque las prebuilt binaries de sharp en Cloud Run no incluyen
-          // el plugin libde265 para decodificar HEVC (lo que iPhone usa).
-          fileBuffer = await heicConvert({ buffer: fileBuffer, format: 'JPEG', quality: 0.9 });
-          effectiveMime = 'image/jpeg';
-          effectiveName = file.originalname.replace(/\.(heic|heif)$/i, '.jpg');
-          console.log(`🖼️ HEIC convertido a JPEG: ${file.originalname} → ${effectiveName}`);
-        }
+        // 1. Subir archivo CRUDO a GCS (sin tocar). La conversión HEIC y el
+        //    OCR los hace el worker async, así no bloqueamos el container web
+        //    con WASM CPU-intensivo (heic-convert).
+        const fileBuffer = fs.readFileSync(file.path);
 
-        // Downscale a max 2000px + JPEG q85 — Claude Vision rechaza > 5 MB.
-        // Aplicamos a todo lo que sea imagen (no PDF). Idempotente: si ya
-        // está chico, sharp solo recompresa sin agrandar.
-        if (effectiveMime === 'image/jpeg' || effectiveMime === 'image/png') {
-          const beforeSize = fileBuffer.length;
-          fileBuffer = await downscaleForVision(fileBuffer);
-          if (effectiveMime === 'image/png') {
-            // Después del resize ya está en JPEG, actualizar mime/nombre
-            effectiveMime = 'image/jpeg';
-            effectiveName = effectiveName.replace(/\.png$/i, '.jpg');
-          }
-          if (fileBuffer.length < beforeSize) {
-            console.log(`📉 Downscale: ${file.originalname} ${(beforeSize/1024/1024).toFixed(2)}MB → ${(fileBuffer.length/1024/1024).toFixed(2)}MB`);
-          }
-        }
-
-        // 2. Subir a Storage (GCS)
         // Sanitizar nombre de archivo: remover caracteres especiales Unicode
-        const safeName = effectiveName
+        const safeName = file.originalname
           .normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '')  // Quitar acentos
           .replace(/[^\w\s.-]/g, '')         // Solo alfanuméricos, espacios, puntos, guiones
@@ -128,22 +76,31 @@ router.post('/upload',
         const fileName = `${Date.now()}-${safeName}`;
         const storagePath = `remitos/${fileName}`;
 
-        const fileUrl = await uploadFile(storagePath, fileBuffer, effectiveMime);
+        const fileUrl = await uploadFile(storagePath, fileBuffer, file.mimetype);
 
-        // 3. Crear registro en DB con estado 'processing'
+        // 2. Crear registro en DB con estado 'processing'
         const insertRes = await pool.query(`
           INSERT INTO shipping_documents (file_url, file_name, file_type, status, uploaded_by)
           VALUES ($1, $2, $3, 'processing', $4)
           RETURNING id
-        `, [fileUrl, effectiveName, effectiveMime, req.user?.id || null]);
+        `, [fileUrl, file.originalname, file.mimetype, req.user?.id || null]);
 
         const documentId = insertRes.rows[0].id;
 
-        // 4. Eliminar archivo temporal
+        // 3. Eliminar archivo temporal
         fs.unlinkSync(file.path);
 
-        // 5. Procesar OCR en background (no esperar)
-        processOCRAsync(documentId, fileBuffer, effectiveMime);
+        // 4. Encolar job de procesamiento (HEIC convert + resize + Claude OCR)
+        if (remitosQueue) {
+          await remitosQueue.add('process-remito', {
+            documentId,
+            storagePath,
+            originalName: file.originalname,
+            mimetype: file.mimetype
+          });
+        } else {
+          console.error('❌ Queue de remitos no disponible — documento queda en processing sin worker');
+        }
 
         // 5. Loguear evento
         logEvento({
@@ -183,39 +140,6 @@ router.post('/upload',
     });
   }
 );
-
-/**
- * Procesa remito con Claude Vision de forma asíncrona
- */
-async function processOCRAsync(documentId, fileBuffer, mimeType) {
-  try {
-    console.log(`🔄 Iniciando análisis Claude Vision para documento ${documentId}...`);
-
-    const claudeData = await analizarRemito(fileBuffer, mimeType);
-
-    if (!claudeData.es_remito) {
-      console.log(`⚠️ Documento ${documentId} no es un remito`);
-      await pool.query(`
-        UPDATE shipping_documents
-        SET status = 'ready', ocr_processed_at = NOW(),
-            ocr_text = $1, match_details = '{"noMatchReason": "not_a_remito"}',
-            updated_at = NOW()
-        WHERE id = $2
-      `, [claudeData.texto_completo || '', documentId]);
-      return;
-    }
-
-    await processDocumentWithClaude(documentId, claudeData);
-
-  } catch (error) {
-    console.error(`❌ Error Claude Vision documento ${documentId}:`, error.message);
-    await pool.query(`
-      UPDATE shipping_documents
-      SET status = 'error', error_message = $1, updated_at = NOW()
-      WHERE id = $2
-    `, [`Claude Vision Error: ${error.message}`, documentId]);
-  }
-}
 
 /**
  * GET /remitos
