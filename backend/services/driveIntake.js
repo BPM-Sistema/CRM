@@ -179,13 +179,9 @@ async function runDriveIntake() {
   }
 
   for (const folder of subfolders) {
-    // Subcarpetas marcadas como leidas (sufijo "_leido") se ignoran enteras.
-    // Sirve para "archivar" carpetas viejas sin moverlas (mismo patron que
-    // archivos individuales).
-    if (folder.name.endsWith('_leido')) {
-      continue;
-    }
-
+    // El sufijo "_leido" en carpetas es puramente visual: no excluye el
+    // escaneo. Igual procesamos archivos nuevos, pero la idempotencia por
+    // `source_drive_file_id` UNIQUE evita reprocesar los que ya estan.
     let files;
     try {
       files = await listSupportedFiles(folder.id, drive);
@@ -232,21 +228,23 @@ async function runDriveIntake() {
     }
 
     // Auto-marcar la carpeta como leida si TODOS sus archivos terminan en
-    // "_leido". Listamos todos los archivos (sin filtro de mime) para que un
-    // .docx sin _leido bloquee el rename — asi el operador se da cuenta que
-    // hay algo no procesado adentro.
-    try {
-      const allFiles = await listAllFiles(folder.id, drive);
-      if (allFiles.length > 0 && allFiles.every(f => f.name.endsWith('_leido'))) {
-        await drive.files.update({
-          fileId: folder.id,
-          requestBody: { name: `${folder.name}_leido` },
-        });
-        stats.foldersMarked = (stats.foldersMarked || 0) + 1;
-        console.log(`📂 Carpeta marcada como leida: ${folder.name} → ${folder.name}_leido`);
+    // "_leido" (y la carpeta no esta ya marcada). Listamos todos los archivos
+    // (sin filtro de mime) para que un .docx sin _leido bloquee el rename —
+    // asi el operador se da cuenta que hay algo no procesado adentro.
+    if (!folder.name.endsWith('_leido')) {
+      try {
+        const allFiles = await listAllFiles(folder.id, drive);
+        if (allFiles.length > 0 && allFiles.every(f => f.name.endsWith('_leido'))) {
+          await drive.files.update({
+            fileId: folder.id,
+            requestBody: { name: `${folder.name}_leido` },
+          });
+          stats.foldersMarked = (stats.foldersMarked || 0) + 1;
+          console.log(`📂 Carpeta marcada como leida: ${folder.name} → ${folder.name}_leido`);
+        }
+      } catch (err) {
+        console.warn(`[driveIntake] no se pudo evaluar/marcar carpeta ${folder.name}:`, err.message);
       }
-    } catch (err) {
-      console.warn(`[driveIntake] no se pudo evaluar/marcar carpeta ${folder.name}:`, err.message);
     }
   }
 
