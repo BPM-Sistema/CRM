@@ -2023,12 +2023,53 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
     const matched = [];
     const unmatched = [];
     const usedComprobanteIds = new Set();
+    const usedBancoIds = new Set();
 
     for (const mov of entrantes) {
       const importe = Math.round(parseFloat(mov.Importe));
       const fechaBanco = mov['Fecha/Hora'].split(' ')[0];
       const horaBanco = mov['Fecha/Hora'].split(' ')[1] || '';
       const nombreOrigen = (mov['Nombre Destino'] || '').trim();
+
+      // Guard intra-archivo: si el mismo mov.ID aparece duplicado en el extracto,
+      // solo el primero puede generar match — los demás van a unmatched.
+      if (mov.ID && usedBancoIds.has(mov.ID)) {
+        unmatched.push({
+          banco_id: mov.ID,
+          importe,
+          fecha: fechaBanco,
+          hora: horaBanco,
+          nombre: nombreOrigen,
+          motivo: 'Movimiento duplicado en el extracto subido'
+        });
+        continue;
+      }
+
+      // Guard contra DB: movimiento ya conciliado en una corrida previa.
+      // Una transferencia bancaria solo puede asignarse a UN comprobante/pedido.
+      // Sin este chequeo, re-importar el mismo extracto generaba matches "fantasma"
+      // contra otros comprobantes pendientes del mismo monto+fecha sin pago real detrás.
+      if (mov.ID) {
+        const alreadyAssigned = await pool.query(
+          `SELECT linked_order_number, linked_comprobante_id
+           FROM bank_movements
+           WHERE movement_uid = $1 AND assignment_status = 'assigned'
+           LIMIT 1`,
+          [mov.ID]
+        );
+        if (alreadyAssigned.rows.length > 0) {
+          const prev = alreadyAssigned.rows[0];
+          unmatched.push({
+            banco_id: mov.ID,
+            importe,
+            fecha: fechaBanco,
+            hora: horaBanco,
+            nombre: nombreOrigen,
+            motivo: `Movimiento ya conciliado al pedido #${prev.linked_order_number} (comprobante #${prev.linked_comprobante_id})`
+          });
+          continue;
+        }
+      }
 
       // Pre-check: movimiento ya pre-vinculado a un comprobante pendiente (auto-match previo con ±2 días).
       // Si el comprobante sigue pendiente/a_confirmar, ofrecerlo como match exacto para que "Aplicar" lo confirme.
@@ -2048,6 +2089,7 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
         const prelink = prelinkRes.rows[0];
         if (prelink && !usedComprobanteIds.has(prelink.id)) {
           usedComprobanteIds.add(prelink.id);
+          if (mov.ID) usedBancoIds.add(mov.ID);
           matched.push({
             banco_id: mov.ID,
             comprobante_id: prelink.id,
@@ -2103,6 +2145,7 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
         if (posible && !usedComprobanteIds.has(posible.id)) {
           // Posible match → va a la lista de matched pero con tipo 'posible'
           usedComprobanteIds.add(posible.id);
+          if (mov.ID) usedBancoIds.add(mov.ID);
 
           // Calcular diferencia de tiempo
           const fechaBancoDate = new Date(mov['Fecha/Hora']);
@@ -2145,6 +2188,7 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
       }
 
       usedComprobanteIds.add(comprobante.id);
+      if (mov.ID) usedBancoIds.add(mov.ID);
 
       matched.push({
         banco_id: mov.ID,
@@ -2159,6 +2203,56 @@ app.post('/comprobantes/conciliacion-preview', authenticate, requirePermission('
         fecha_comprobante: comprobante.created_at,
         numero_operacion: comprobante.numero_operacion || null,
         tipo: 'exacto'
+      });
+    }
+
+    // Pre-vinculados huérfanos: bank_movements con status matched/review cuyo
+    // comprobante sigue pendiente, pero el mov no vino en el archivo subido.
+    // Sin esto, esos comprobantes quedaban varados aunque el banco ya estuviera
+    // identificado — se exigía re-subir el extracto viejo.
+    const usedCompForOrphan = Array.from(usedComprobanteIds);
+    const orphanRes = await pool.query(
+      `SELECT
+         bm.id as bm_id, bm.movement_uid, bm.amount, bm.posted_at,
+         bm.sender_name, bm.assignment_status,
+         c.id as comp_id, c.order_number, c.monto, c.numero_operacion,
+         c.created_at as comp_created_at,
+         ov.customer_name, ov.monto_tiendanube
+       FROM bank_movements bm
+       JOIN comprobantes c ON c.id = bm.linked_comprobante_id
+       LEFT JOIN orders_validated ov ON ov.order_number = c.order_number
+       WHERE bm.assignment_status IN ('matched','review')
+         AND c.estado IN ('pendiente','a_confirmar')
+         ${usedCompForOrphan.length > 0 ? `AND c.id NOT IN (${usedCompForOrphan.map((_, i) => `$${i + 1}`).join(',')})` : ''}
+       ORDER BY bm.posted_at DESC`,
+      usedCompForOrphan.length > 0 ? usedCompForOrphan : []
+    );
+
+    for (const row of orphanRes.rows) {
+      // No duplicar si el banco_id ya se usó (debería ser imposible, pero por las dudas)
+      if (row.movement_uid && usedBancoIds.has(row.movement_uid)) continue;
+
+      usedComprobanteIds.add(row.comp_id);
+      if (row.movement_uid) usedBancoIds.add(row.movement_uid);
+
+      const postedAt = row.posted_at instanceof Date ? row.posted_at : new Date(row.posted_at);
+      const fechaBancoStr = postedAt.toISOString().split('T')[0];
+      const horaBancoStr = postedAt.toISOString().split('T')[1].slice(0, 8);
+
+      matched.push({
+        banco_id: row.movement_uid,
+        comprobante_id: row.comp_id,
+        order_number: row.order_number,
+        monto: Number(row.amount),
+        monto_pedido: row.monto_tiendanube || null,
+        nombre_banco: row.sender_name || '',
+        nombre_cliente: row.customer_name || '',
+        fecha_banco: fechaBancoStr,
+        hora_banco: horaBancoStr,
+        fecha_comprobante: row.comp_created_at,
+        numero_operacion: row.numero_operacion || null,
+        tipo: 'pre_vinculado',
+        status_actual: row.assignment_status
       });
     }
 
@@ -2279,6 +2373,27 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
           }
 
           const comprobante = compRes.rows[0];
+
+          // Guard: el mov bancario solo puede vincularse a un comprobante.
+          // Si ya está assigned a otro distinto, rechazar — evita doble-asignación
+          // del mismo pago real (mismo problema del comp #1035 vs #1088 / abril 2026).
+          if (banco_id) {
+            const movCheck = await client.query(
+              `SELECT linked_order_number, linked_comprobante_id
+               FROM bank_movements
+               WHERE movement_uid = $1 AND assignment_status = 'assigned'
+               LIMIT 1`,
+              [banco_id]
+            );
+            if (movCheck.rows.length > 0 && movCheck.rows[0].linked_comprobante_id !== comprobante.id) {
+              await client.query('ROLLBACK');
+              errors.push({
+                comprobante_id, banco_id,
+                error: `Movimiento bancario ya conciliado al pedido #${movCheck.rows[0].linked_order_number} (comprobante #${movCheck.rows[0].linked_comprobante_id})`
+              });
+              continue;
+            }
+          }
 
           // Bloquear confirmacion sobre pedido cancelado (ver guard equivalente
           // en /comprobantes/:id/confirmar).
@@ -2407,6 +2522,32 @@ app.post('/comprobantes/conciliacion-aplicar', authenticate, requirePermission('
       } catch (err) {
         log.error({ err: err.message }, 'Bank import from conciliación aplicar failed');
         bankImportResult = { error: err.message };
+      }
+    }
+
+    // Promover bank_movements pre-vinculados (matched/review) a 'assigned' para
+    // todos los comprobantes confirmados — cubre el caso de pre_vinculado donde
+    // el mov bancario ya estaba en DB y no vino en el archivo subido.
+    const confirmedCompIds = [...confirmed, ...alreadyConfirmed]
+      .map(c => c.comprobante_id)
+      .filter(Boolean);
+    if (confirmedCompIds.length > 0) {
+      try {
+        const promoteRes = await pool.query(
+          `UPDATE bank_movements
+           SET assignment_status = 'assigned',
+               matched_by = COALESCE(matched_by, 'manual_confirm'),
+               matched_at = COALESCE(matched_at, NOW())
+           WHERE linked_comprobante_id = ANY($1::int[])
+             AND assignment_status IN ('matched','review')
+           RETURNING id`,
+          [confirmedCompIds]
+        );
+        if (promoteRes.rowCount > 0) {
+          log.info({ promoted: promoteRes.rowCount }, 'Conciliación: bank_movements promovidos matched→assigned');
+        }
+      } catch (err) {
+        log.error({ err: err.message }, 'Conciliación: error promoviendo bank_movements');
       }
     }
 
