@@ -119,6 +119,11 @@ router.get('/',
         conditions.push(`sd.status = $${paramIndex}`);
         params.push(status);
         paramIndex++;
+      } else {
+        // Soft delete: si no se filtra explícitamente por status, ocultamos
+        // los 'deleted' (que el cron de Drive intake mantiene como tombstone
+        // para evitar reingestar el mismo archivo).
+        conditions.push(`sd.status <> 'deleted'`);
       }
 
       if (search) {
@@ -202,6 +207,7 @@ router.get('/stats',
           status,
           COUNT(*) as count
         FROM shipping_documents
+        WHERE status <> 'deleted'
         GROUP BY status
       `);
 
@@ -383,8 +389,15 @@ router.delete('/:id',
     try {
       const { id } = req.params;
 
+      // Soft delete: marcamos status='deleted' en vez de DELETE fisico para
+      // que el cron de Drive intake siga viendo el source_drive_file_id en
+      // shipping_documents y no reingese el archivo. La fila se oculta del
+      // listado y de los stats (filtros agregados en GET / y GET /stats).
       const result = await pool.query(
-        'DELETE FROM shipping_documents WHERE id = $1 RETURNING id',
+        `UPDATE shipping_documents
+         SET status = 'deleted', updated_at = NOW()
+         WHERE id = $1 AND status <> 'deleted'
+         RETURNING id`,
         [id]
       );
 
@@ -392,7 +405,7 @@ router.delete('/:id',
         return res.status(404).json({ error: 'Remito no encontrado' });
       }
 
-      console.log(`🗑️ Remito ${id} eliminado`);
+      console.log(`🗑️ Remito ${id} eliminado (soft delete)`);
 
       res.json({ ok: true, remito_id: id });
 
@@ -466,7 +479,7 @@ router.get('/:id',
           ov.monto_tiendanube as order_total
         FROM shipping_documents sd
         LEFT JOIN orders_validated ov ON COALESCE(sd.confirmed_order_number, sd.suggested_order_number) = ov.order_number
-        WHERE sd.id = $1
+        WHERE sd.id = $1 AND sd.status <> 'deleted'
       `, [id]);
 
       if (remitoRes.rowCount === 0) {
