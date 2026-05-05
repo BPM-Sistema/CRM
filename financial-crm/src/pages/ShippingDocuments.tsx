@@ -543,8 +543,13 @@ function RemitoCard({ remito, onConfirm, onDelete, onOpen, onPreviewOrder, isLoa
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
           <Maximize2 size={28} className="text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
         </div>
-        <div className="absolute top-3 right-3">
+        <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5">
           <StatusBadge status={remito.status} />
+          {remito.source === 'drive' && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-yellow-300 text-yellow-900 shadow-sm">
+              Drive
+            </span>
+          )}
         </div>
       </div>
 
@@ -858,6 +863,11 @@ function RemitoModal({
           <div className="flex items-center gap-3">
             <h2 className="font-semibold">{remito.file_name || 'Remito'}</h2>
             <StatusBadge status={remito.status} />
+            {remito.source === 'drive' && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-yellow-300 text-yellow-900">
+                Drive
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {remito.file_url && (

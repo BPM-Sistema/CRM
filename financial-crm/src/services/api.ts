@@ -1529,6 +1529,7 @@ export interface Remito {
   error_message: string | null;
   created_at: string;
   updated_at: string;
+  source?: 'manual' | 'drive';
   // Joined from orders_validated
   order_customer_name?: string | null;
   order_address?: string | null;
