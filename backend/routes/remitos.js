@@ -12,7 +12,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const sharp = require('sharp');
+const heicConvert = require('heic-convert');
 const axios = require('axios');
 const pool = require('../db');
 const { authenticate, requirePermission } = require('../middleware/auth');
@@ -69,8 +69,16 @@ router.post('/upload',
         let fileBuffer = fs.readFileSync(file.path);
         let effectiveMime = file.mimetype;
         let effectiveName = file.originalname;
-        if (file.mimetype === 'image/heic' || file.mimetype === 'image/heif') {
-          fileBuffer = await sharp(fileBuffer).jpeg({ quality: 90 }).toBuffer();
+        // Detectar HEIC por mimetype OR por extensión: macOS Finder a veces
+        // manda HEIC con mimetype vacío o "application/octet-stream" porque
+        // el browser no siempre tiene el mapping del MIME para .heic/.heif.
+        const isHeicByExt = /\.(heic|heif)$/i.test(file.originalname);
+        const isHeicByMime = file.mimetype === 'image/heic' || file.mimetype === 'image/heif';
+        if (isHeicByMime || isHeicByExt) {
+          // Usamos heic-convert (libheif → WASM, JS puro) en vez de sharp,
+          // porque las prebuilt binaries de sharp en Cloud Run no incluyen
+          // el plugin libde265 para decodificar HEVC (lo que iPhone usa).
+          fileBuffer = await heicConvert({ buffer: fileBuffer, format: 'JPEG', quality: 0.9 });
           effectiveMime = 'image/jpeg';
           effectiveName = file.originalname.replace(/\.(heic|heif)$/i, '.jpg');
           console.log(`🖼️ HEIC convertido a JPEG: ${file.originalname} → ${effectiveName}`);
