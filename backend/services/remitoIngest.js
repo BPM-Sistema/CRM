@@ -95,7 +95,7 @@ async function ingestRemito({
          (file_url, file_name, file_type, status, uploaded_by,
           source, source_drive_file_id, source_drive_folder_id)
        VALUES ($1, $2, $3, 'processing', $4, 'drive', $5, $6)
-       ON CONFLICT (source_drive_file_id) DO NOTHING
+       ON CONFLICT (source_drive_file_id) WHERE source_drive_file_id IS NOT NULL DO NOTHING
        RETURNING id`,
       [fileUrl, originalName, mimetype, uploadedBy, driveFileId, driveFolderId]
     );
