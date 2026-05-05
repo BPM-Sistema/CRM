@@ -24,6 +24,36 @@ const { downloadFile, uploadFile } = require('../lib/storage');
 const { analizarRemito } = require('../services/claudeVision');
 const { processDocumentWithClaude } = require('../services/shippingDocuments');
 
+/**
+ * Detecta el formato real de un archivo mirando los primeros bytes (magic
+ * bytes / file signature), independiente del nombre/extension/mimetype que
+ * declaren. Esto evita errores cuando un archivo dice ser HEIC pero su
+ * contenido es JPEG (caso real: iPhone exporta HEIC convertido o Drive
+ * devuelve la version "preview" en JPEG aunque el original sea HEIC).
+ *
+ * @returns {'heic'|'jpeg'|'png'|'pdf'|'unknown'}
+ */
+function detectFormat(buffer) {
+  if (!buffer || buffer.length < 12) return 'unknown';
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) return 'jpeg';
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (buffer.toString('hex', 0, 8) === '89504e470d0a1a0a') return 'png';
+  // PDF: %PDF
+  if (buffer.toString('ascii', 0, 4) === '%PDF') return 'pdf';
+  // HEIC/HEIF: bytes 4-12 contienen "ftyp" + brand (heic, heix, mif1, etc.)
+  const ftyp = buffer.toString('ascii', 4, 12);
+  if (/^ftyp(heic|heix|hevc|heim|hevx|hevm|mif1|msf1|avif)/.test(ftyp)) return 'heic';
+  return 'unknown';
+}
+
+const FMT_TO_MIME = {
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  pdf: 'application/pdf',
+  heic: 'image/heic',
+};
+
 async function processRemitoJob(job) {
   const { documentId, storagePath, originalName, mimetype } = job.data;
 
@@ -34,13 +64,24 @@ async function processRemitoJob(job) {
   let fileBuffer = await downloadFile(storagePath);
   let effectiveMime = mimetype;
 
-  // 2. HEIC → JPEG (heic-convert es WASM puro, funciona en cualquier plataforma)
-  const isHeicByExt = /\.(heic|heif)$/i.test(originalName);
-  const isHeicByMime = mimetype === 'image/heic' || mimetype === 'image/heif';
-  if (isHeicByMime || isHeicByExt) {
+  // 2. Detectar formato real por magic bytes — el nombre/mimetype pueden
+  //    mentir (caso real: archivo .HEIC con contenido JPEG por exports
+  //    raros de iPhone/Drive). Si el formato detectado difiere del
+  //    declarado, logueamos y procedemos con el real.
+  const detectedFmt = detectFormat(fileBuffer);
+  const detectedMime = FMT_TO_MIME[detectedFmt] || mimetype;
+  if (detectedFmt !== 'unknown' && detectedMime !== mimetype) {
+    jobLog.warn({ declaredMime: mimetype, detectedFmt, detectedMime },
+      'Formato real difiere del declarado, uso magic bytes');
+  }
+  // Solo intentamos heic-convert si los bytes son HEIC reales.
+  if (detectedFmt === 'heic') {
     fileBuffer = await heicConvert({ buffer: fileBuffer, format: 'JPEG', quality: 0.9 });
     effectiveMime = 'image/jpeg';
     jobLog.info({ size: fileBuffer.length }, 'HEIC convertido a JPEG');
+  } else if (detectedFmt !== 'unknown') {
+    // Si los bytes son jpeg/png/pdf, usamos ese mime real (no el declarado).
+    effectiveMime = detectedMime;
   }
 
   // 3. Downscale a 2000px + JPEG q85 — Claude Vision rechaza > 5MB.
@@ -61,9 +102,12 @@ async function processRemitoJob(job) {
     }
   }
 
-  // 3.5. Si convertimos HEIC, subir la versión JPEG procesada a GCS para que
-  // las cards del frontend muestren la imagen (los browsers no muestran HEIC).
-  if (isHeicByMime || isHeicByExt) {
+  // 3.5. Si convertimos HEIC (detectado por bytes reales), subir la version
+  // JPEG procesada a GCS para que las cards del frontend muestren la imagen
+  // (los browsers no muestran HEIC). Tambien actualizamos file_url y file_type
+  // si el archivo declarado era HEIC pero los bytes resultaron JPEG real
+  // (corrige el mismatch del tipo en DB).
+  if (detectedFmt === 'heic' || /\.(heic|heif)$/i.test(originalName) || mimetype === 'image/heic' || mimetype === 'image/heif') {
     try {
       const jpegPath = storagePath.replace(/\.(heic|heif)$/i, '.jpg');
       const jpegUrl = await uploadFile(jpegPath, fileBuffer, 'image/jpeg');
