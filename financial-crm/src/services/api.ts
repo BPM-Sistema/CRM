@@ -135,6 +135,7 @@ export interface ApiComprobanteList {
   bank_sender_name: string | null;
   bank_posted_at: string | null;
   bank_matched_by: string | null;
+  pedido_ya_cubierto?: boolean;
 }
 
 export interface ApiComprobanteDetail {
@@ -160,6 +161,7 @@ export interface ApiComprobanteDetail {
   confirmed_by: string | null;
   confirmed_at: string | null;
   confirmed_by_name: string | null;
+  pedido_ya_cubierto?: boolean;
 }
 
 export interface ApiLog {

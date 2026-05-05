@@ -1739,7 +1739,29 @@ app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async
         bm.id as bank_movement_id,
         bm.sender_name as bank_sender_name,
         bm.posted_at as bank_posted_at,
-        bm.matched_by as bank_matched_by
+        bm.matched_by as bank_matched_by,
+        -- Flag: el pedido ya está totalmente cubierto sin contar este comprobante.
+        -- Util para detectar duplicados que entran cuando el pedido ya esta pago
+        -- (caso comp #1864 / pedido #33241, mayo 2026).
+        CASE
+          WHEN o.monto_tiendanube IS NOT NULL AND o.monto_tiendanube > 0 THEN
+            (
+              COALESCE(o.pago_online_tn, 0)
+              + COALESCE((
+                  SELECT SUM(c2.monto)
+                  FROM comprobantes c2
+                  WHERE c2.order_number = c.order_number
+                    AND c2.estado = 'confirmado'
+                    AND c2.id <> c.id
+                ), 0)
+              + COALESCE((
+                  SELECT SUM(pe.monto)
+                  FROM pagos_efectivo pe
+                  WHERE pe.order_number = c.order_number
+                ), 0)
+            ) >= o.monto_tiendanube
+          ELSE FALSE
+        END as pedido_ya_cubierto
       FROM comprobantes c
       LEFT JOIN orders_validated o ON c.order_number = o.order_number
       LEFT JOIN financieras f ON c.financiera_id = f.id
@@ -1805,7 +1827,26 @@ app.get('/comprobantes/:id', authenticate, requirePermission('receipts.view'), a
         o.monto_tiendanube as orden_total,
         o.total_pagado as orden_pagado,
         o.saldo as orden_saldo,
-        o.estado_pago as orden_estado_pago
+        o.estado_pago as orden_estado_pago,
+        CASE
+          WHEN o.monto_tiendanube IS NOT NULL AND o.monto_tiendanube > 0 THEN
+            (
+              COALESCE(o.pago_online_tn, 0)
+              + COALESCE((
+                  SELECT SUM(c2.monto)
+                  FROM comprobantes c2
+                  WHERE c2.order_number = c.order_number
+                    AND c2.estado = 'confirmado'
+                    AND c2.id <> c.id
+                ), 0)
+              + COALESCE((
+                  SELECT SUM(pe.monto)
+                  FROM pagos_efectivo pe
+                  WHERE pe.order_number = c.order_number
+                ), 0)
+            ) >= o.monto_tiendanube
+          ELSE FALSE
+        END as pedido_ya_cubierto
       FROM comprobantes c
       LEFT JOIN orders_validated o ON c.order_number = o.order_number
       LEFT JOIN financieras f ON c.financiera_id = f.id

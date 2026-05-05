@@ -189,6 +189,11 @@ function ComprobanteCard({ comp, onClick, selectionMode, isSelected, onToggleSel
         )}
       </div>
       <div className="p-4">
+        {comp.pedido_ya_cubierto && comp.estado !== 'confirmado' && comp.estado !== 'rechazado' && (
+          <div className="mb-2 flex items-center justify-center gap-1 px-2 py-1 bg-orange-500 text-white rounded-md text-xs font-semibold">
+            ⚠️ Pedido ya pago en total
+          </div>
+        )}
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-neutral-900">
             ${Number(comp.monto).toLocaleString('es-AR')}
