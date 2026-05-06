@@ -921,9 +921,25 @@ export function RealOrderDetail() {
                         {shippingRequest.destino_tipo === 'SUCURSAL' ? 'Sucursal' : 'Domicilio'}
                       </span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between mb-1">
                       <span className="text-neutral-500">Destinatario:</span>
                       <span className="font-medium">{shippingRequest.nombre_apellido}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 mb-1">
+                      <span className="text-neutral-500 shrink-0">Dirección:</span>
+                      <span className="font-medium text-right">{shippingRequest.direccion_entrega}</span>
+                    </div>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-neutral-500">Localidad:</span>
+                      <span className="font-medium text-right">{shippingRequest.localidad}</span>
+                    </div>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-neutral-500">Provincia:</span>
+                      <span className="font-medium text-right">{shippingRequest.provincia}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500">Código postal:</span>
+                      <span className="font-medium">{shippingRequest.codigo_postal}</span>
                     </div>
                   </div>
 
