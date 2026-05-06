@@ -3922,8 +3922,100 @@ function verifyTiendaNubeSignature(req) {
 
 
 // ===========================================
-// WEBHOOK: Botmaker Message Status
+// WEBHOOK: Botmaker Message Status (+ inbound + eventos)
 // ===========================================
+// El webhook unificado de Botmaker manda en la misma URL: status (delivered/read),
+// mensajes del usuario, eventos (click URL, etc). Si type=status → lógica de update
+// de whatsapp_messages. Caso contrario → handleBotmakerInbound() persiste en
+// whatsapp_inbound_messages para que aparezca en el CRM (panel recordatorios).
+async function handleBotmakerInbound(payload) {
+  if (!payload) return;
+
+  const items = [];
+  if (Array.isArray(payload.messages) && payload.messages.length > 0) {
+    for (const m of payload.messages) {
+      items.push({
+        contact_id: m.from || m.contactId || payload.contactId || payload.from,
+        chat_id: m.chatId || payload.chatId,
+        message_id: m._id || m.id || m.messageId,
+        message_type: m.type || 'text',
+        message_text: m.text || m.body || m.message || null,
+        button_id: m.buttonId || m.button?.id || m.button_payload || null,
+        url_clicked: null,
+        raw: m
+      });
+    }
+  } else if (payload.type === 'url-click' || payload.type === 'click' || payload.url) {
+    items.push({
+      contact_id: payload.contactId || payload.from,
+      chat_id: payload.chatId,
+      message_id: payload.messageId || payload.eventId,
+      message_type: 'url_click',
+      message_text: null,
+      button_id: payload.buttonId || null,
+      url_clicked: payload.url,
+      raw: payload
+    });
+  } else {
+    items.push({
+      contact_id: payload.contactId || payload.from,
+      chat_id: payload.chatId,
+      message_id: payload.messageId || payload.id,
+      message_type: payload.type || 'other',
+      message_text: payload.text || payload.message?.text || payload.body || null,
+      button_id: payload.buttonId || payload.button?.id || null,
+      url_clicked: null,
+      raw: payload
+    });
+  }
+
+  for (const it of items) {
+    if (!it.contact_id) continue;
+
+    // Correlación best-effort por phone (último pedido del cliente).
+    let orderNumber = null;
+    try {
+      const phoneClean = String(it.contact_id).replace(/[^\d+]/g, '');
+      if (phoneClean) {
+        const orderRes = await pool.query(
+          `SELECT order_number FROM orders_validated
+           WHERE REPLACE(REPLACE(REPLACE(customer_phone, ' ', ''), '-', ''), '(', '') ILIKE $1
+           ORDER BY
+             CASE WHEN estado_pedido = 'pendiente_pago' THEN 0 ELSE 1 END,
+             created_at DESC
+           LIMIT 1`,
+          [`%${phoneClean.replace(/^\+/, '')}%`]
+        );
+        if (orderRes.rowCount > 0) orderNumber = parseInt(orderRes.rows[0].order_number);
+      }
+    } catch (corrErr) {
+      log.warn({ err: corrErr.message }, 'Botmaker inbound: error correlating');
+    }
+
+    try {
+      await pool.query(
+        `INSERT INTO whatsapp_inbound_messages
+          (contact_id, chat_id, message_id, message_type, message_text, button_id, url_clicked, raw_payload, order_number)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
+         ON CONFLICT (message_id) DO NOTHING`,
+        [
+          it.contact_id,
+          it.chat_id || null,
+          it.message_id || null,
+          it.message_type,
+          it.message_text,
+          it.button_id,
+          it.url_clicked,
+          JSON.stringify(it.raw),
+          orderNumber
+        ]
+      );
+    } catch (insErr) {
+      log.error({ err: insErr.message }, 'Botmaker inbound: insert failed');
+    }
+  }
+}
+
 // GET para validación de Botmaker
 app.get('/webhook/botmaker-status', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'Webhook endpoint ready' });
@@ -3954,8 +4046,16 @@ app.post('/webhook/botmaker-status', async (req, res) => {
     // siguientes callbacks (delivered → read) matcheen directo por el ID real de WhatsApp.
     const { type, status, contactId, messageId, intentTxId } = payload;
 
+    // Si NO es status, puede ser mensaje del usuario o evento — derivamos al
+    // handler de inbound (guarda en whatsapp_inbound_messages para que aparezca
+    // en el panel de recordatorios y en cualquier UI que muestre la respuesta del cliente).
     if (type !== 'status') {
-      return res.status(200).json({ received: true, ignored: true });
+      try {
+        await handleBotmakerInbound(payload);
+      } catch (inErr) {
+        log.error({ err: inErr.message, type }, 'Botmaker inbound handler failed');
+      }
+      return res.status(200).json({ received: true, kind: 'inbound' });
     }
 
     if (!messageId && !intentTxId) {

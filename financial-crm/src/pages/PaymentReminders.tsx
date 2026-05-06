@@ -388,32 +388,73 @@ export default function PaymentReminders() {
               </div>
             </div>
 
-            {/* Mensajes WA enviados */}
+            {/* Timeline conversación: mensajes enviados (BPM) + respuestas del cliente, ordenado cronológicamente */}
             <div>
-              <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">Mensajes enviados (todos los templates)</div>
-              {history.messages.length === 0 && <div className="text-sm text-neutral-400">Sin mensajes registrados.</div>}
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Conversación</div>
+                {history.inbound.length > 0 && (
+                  <Badge variant="success" size="sm">
+                    {history.inbound.length} respuesta{history.inbound.length === 1 ? '' : 's'} del cliente
+                  </Badge>
+                )}
+              </div>
+              {history.messages.length === 0 && history.inbound.length === 0 && (
+                <div className="text-sm text-neutral-400">Sin mensajes registrados.</div>
+              )}
               <div className="space-y-1">
-                {history.messages.map(m => {
-                  let waVariant: 'success' | 'warning' | 'danger' | 'default' = 'default';
-                  if (m.status === 'delivered' || m.status === 'read' || m.status === 'sent') waVariant = 'success';
-                  else if (m.status === 'failed' || m.status === 'error') waVariant = 'danger';
-                  else if (m.status === 'pending') waVariant = 'warning';
-                  return (
-                    <div key={m.id} className="px-2 py-1.5 bg-neutral-50 rounded text-sm">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-xs">{m.template_key || m.template}</span>
-                        <Badge variant={waVariant} size="sm">{m.status}</Badge>
-                      </div>
-                      <div className="text-xs text-neutral-500 mt-0.5">
-                        {formatDate(m.created_at)}
-                        {m.status_updated_at && m.status_updated_at !== m.created_at && (
-                          <span className="ml-2">· actualizado {formatDate(m.status_updated_at)}</span>
+                {(() => {
+                  type Item =
+                    | { kind: 'out'; ts: string; data: typeof history.messages[number] }
+                    | { kind: 'in'; ts: string; data: typeof history.inbound[number] };
+                  const merged: Item[] = [
+                    ...history.messages.map(m => ({ kind: 'out' as const, ts: m.created_at, data: m })),
+                    ...history.inbound.map(i => ({ kind: 'in' as const, ts: i.received_at, data: i }))
+                  ].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+
+                  return merged.map((item, idx) => {
+                    if (item.kind === 'out') {
+                      const m = item.data;
+                      let waVariant: 'success' | 'warning' | 'danger' | 'default' = 'default';
+                      if (m.status === 'delivered' || m.status === 'read' || m.status === 'sent') waVariant = 'success';
+                      else if (m.status === 'failed' || m.status === 'error') waVariant = 'danger';
+                      else if (m.status === 'pending') waVariant = 'warning';
+                      return (
+                        <div key={`out-${m.id}`} className="px-2 py-1.5 bg-blue-50 border-l-2 border-blue-300 rounded-r text-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-mono text-xs text-blue-700">↗ BPM · {m.template_key || m.template}</span>
+                            <Badge variant={waVariant} size="sm">{m.status}</Badge>
+                          </div>
+                          <div className="text-xs text-neutral-500 mt-0.5">
+                            {formatDate(m.created_at)}
+                            {m.status_updated_at && m.status_updated_at !== m.created_at && (
+                              <span className="ml-2">· {m.status === 'read' ? 'leído' : m.status} {formatDate(m.status_updated_at)}</span>
+                            )}
+                          </div>
+                          {m.error_message && <div className="text-xs text-red-600 mt-0.5">{m.error_message}</div>}
+                        </div>
+                      );
+                    }
+                    const i = item.data;
+                    return (
+                      <div key={`in-${i.id}-${idx}`} className="px-2 py-1.5 bg-green-50 border-l-2 border-green-400 rounded-r text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-xs text-green-700">↙ Cliente</span>
+                          <span className="text-xs text-neutral-500">{i.message_type}</span>
+                        </div>
+                        {i.message_text && (
+                          <div className="text-sm text-neutral-800 mt-0.5 whitespace-pre-wrap break-words">{i.message_text}</div>
                         )}
+                        {i.button_id && (
+                          <div className="text-xs text-neutral-700 mt-0.5">Botón: <span className="font-mono">{i.button_id}</span></div>
+                        )}
+                        {i.url_clicked && (
+                          <div className="text-xs text-neutral-700 mt-0.5">Clickeó: <a href={i.url_clicked} target="_blank" rel="noreferrer" className="text-blue-600 underline break-all">{i.url_clicked}</a></div>
+                        )}
+                        <div className="text-xs text-neutral-500 mt-0.5">{formatDate(i.received_at)}</div>
                       </div>
-                      {m.error_message && <div className="text-xs text-red-600 mt-0.5">{m.error_message}</div>}
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </div>
             </div>
           </div>

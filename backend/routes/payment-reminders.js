@@ -178,11 +178,29 @@ router.get('/:orderNumber/history', requirePermission('payment_reminders.view'),
       [orderNumber]
     );
 
+    // Mensajes entrantes del cliente: por order_number directo (correlación que
+    // hace el webhook al recibir) y como fallback por phone (por si la
+    // correlación quedó null).
+    const phone = orderRes.rows[0].customer_phone;
+    const phoneClean = phone ? String(phone).replace(/[^\d+]/g, '') : null;
+    const inboundRes = await pool.query(
+      `SELECT id, contact_id, chat_id, message_id, message_type,
+              message_text, button_id, url_clicked, received_at, order_number
+         FROM whatsapp_inbound_messages
+         WHERE order_number = $1::int
+            OR ($2::text IS NOT NULL AND
+                REPLACE(REPLACE(REPLACE(contact_id, ' ', ''), '-', ''), '(', '') ILIKE $3)
+         ORDER BY received_at DESC
+         LIMIT 200`,
+      [orderNumber, phoneClean, phoneClean ? `%${phoneClean.replace(/^\+/, '')}%` : null]
+    );
+
     res.json({
       ok: true,
       order: orderRes.rows[0],
       messages: messagesRes.rows,
-      scheduled: scheduledRes.rows
+      scheduled: scheduledRes.rows,
+      inbound: inboundRes.rows
     });
   } catch (err) {
     console.error('[payment-reminders] history error:', err);

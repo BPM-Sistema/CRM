@@ -65,6 +65,18 @@ export interface RemindersHistoryResponse {
     error: string | null;
     created_at: string;
   }[];
+  inbound: {
+    id: number;
+    contact_id: string;
+    chat_id: string | null;
+    message_id: string | null;
+    message_type: string;
+    message_text: string | null;
+    button_id: string | null;
+    url_clicked: string | null;
+    received_at: string;
+    order_number: number | null;
+  }[];
 }
 
 export interface ListParams {
