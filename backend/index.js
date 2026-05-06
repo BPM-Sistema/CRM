@@ -4940,7 +4940,10 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
       // Recordatorio pendiente_10hs: segundo recordatorio, +10h del pedido
       // (7h después de pendiente_3hs). Mismo cron + guard que pendiente_3hs.
-      // Botmaker: solo {{1}} en botón URL = nro pedido. Body sin variables.
+      // Botmaker: body sin variables; botón URL usa ${2}. Mandamos {1} y {2}
+      // con el order_number en ambos slots: si solo mandamos uno y el slot no
+      // matchea, Botmaker cae al sample-value y manda el nro de ejemplo a todos
+      // los clientes (bug del 06/05/2026 que mandó 32743 a 512 personas).
       try {
         const existsRes10 = await pool.query(
           `SELECT 1 FROM scheduled_whatsapp
@@ -4956,7 +4959,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
              VALUES ($1, 'pendiente_10hs', $2::jsonb, $3, $4)`,
             [
               telefono,
-              JSON.stringify({ '1': String(pedido.number) }),
+              JSON.stringify({ '1': String(pedido.number), '2': String(pedido.number) }),
               String(pedido.number),
               sendAt10
             ]

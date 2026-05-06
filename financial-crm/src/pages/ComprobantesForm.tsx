@@ -4,9 +4,17 @@ import { Check, AlertCircle, Loader2, FileImage, AlertTriangle } from 'lucide-re
 
 const API_BASE = import.meta.env.VITE_API_URL || 'https://api.bpmadministrador.com';
 
+// Mitigación bug 2026-05-06: el template pendiente_10hs en Botmaker tenía 32743
+// como sample-value del slot {{2}} y se mandó a 512 clientes con el botón URL
+// apuntando a ese pedido. Si llega el form con ?order=32743 lo ignoramos para
+// que el cliente escriba su propio nro en lugar de subir comprobante al pedido
+// equivocado.
+const BLOCKED_ORDER_FROM_URL = new Set(['32743']);
+
 export function ComprobantesForm() {
   const [searchParams] = useSearchParams();
-  const orderFromUrl = searchParams.get('order') || '';
+  const rawOrderFromUrl = searchParams.get('order') || '';
+  const orderFromUrl = BLOCKED_ORDER_FROM_URL.has(rawOrderFromUrl) ? '' : rawOrderFromUrl;
 
   const [orderNumber, setOrderNumber] = useState(orderFromUrl);
   const isOrderFromUrl = orderFromUrl.length > 0;

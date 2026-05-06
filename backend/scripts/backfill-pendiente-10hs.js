@@ -89,7 +89,7 @@ async function main() {
       await pool.query(
         `INSERT INTO scheduled_whatsapp (telefono, plantilla, variables, order_number, send_at)
          VALUES ($1, 'pendiente_10hs', $2::jsonb, $3, $4)`,
-        [r.customer_phone, JSON.stringify({ '1': String(r.order_number) }), String(r.order_number), sendAt]
+        [r.customer_phone, JSON.stringify({ '1': String(r.order_number), '2': String(r.order_number) }), String(r.order_number), sendAt]
       );
       inserted++;
     } catch (err) {
