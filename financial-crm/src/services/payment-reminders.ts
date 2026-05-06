@@ -8,6 +8,15 @@ export interface ReminderStep {
   label: string;
 }
 
+export interface InboundPreview {
+  message_text: string | null;
+  message_type: string;
+  button_id: string | null;
+  url_clicked: string | null;
+  received_at: string;
+  from_name: string | null;
+}
+
 export interface ReminderRow {
   order_number: string;
   customer_name: string | null;
@@ -16,6 +25,8 @@ export interface ReminderRow {
   created_at: string;
   estado_pedido: string;
   estado_pago: string;
+  inbound_count: number;
+  last_inbound: InboundPreview[] | null;
   // Por cada step (pendiente_3hs, pendiente_10hs)
   [key: string]: any;
 }

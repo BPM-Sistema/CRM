@@ -36,6 +36,41 @@ function formatMoney(v: string | number | null) {
   return `$${n.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
 }
 
+function InboundCell({ row }: { row: ReminderRow }) {
+  const count = row.inbound_count || 0;
+  const last = row.last_inbound || [];
+  if (count === 0) return <span className="text-neutral-300 text-xs">—</span>;
+  return (
+    <div className="relative group inline-block">
+      <Badge variant="success" size="sm">
+        💬 {count}
+      </Badge>
+      <div className="hidden group-hover:block absolute z-50 left-0 top-full mt-1 w-80 max-w-[80vw] bg-white border border-neutral-200 rounded-lg shadow-xl p-2 text-xs">
+        <div className="font-semibold text-neutral-700 mb-1">
+          Últimas respuestas {last.length < count ? `(${last.length} de ${count})` : ''}
+        </div>
+        <div className="space-y-1.5 max-h-72 overflow-y-auto">
+          {last.map((m, idx) => (
+            <div key={idx} className="border-l-2 border-green-400 pl-2 py-0.5">
+              {m.from_name && <div className="text-neutral-500">{m.from_name}</div>}
+              {m.message_text && (
+                <div className="text-neutral-800 whitespace-pre-wrap break-words">{m.message_text}</div>
+              )}
+              {m.url_clicked && (
+                <div className="text-blue-600 break-all">Clickeó: {m.url_clicked}</div>
+              )}
+              {m.button_id && !m.message_text && !m.url_clicked && (
+                <div className="text-neutral-700">Botón: {m.button_id}</div>
+              )}
+              <div className="text-neutral-400 text-[10px] mt-0.5">{formatDate(m.received_at)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StepCell({
   row,
   step
@@ -280,15 +315,16 @@ export default function PaymentReminders() {
                 {steps.map(s => (
                   <th key={s.key} className="text-left px-3 py-2">{s.label}</th>
                 ))}
+                <th className="text-left px-3 py-2">Respuestas</th>
                 <th className="text-right px-3 py-2">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {loading && (
-                <tr><td colSpan={6 + steps.length} className="px-3 py-8 text-center text-neutral-400">Cargando…</td></tr>
+                <tr><td colSpan={7 + steps.length} className="px-3 py-8 text-center text-neutral-400">Cargando…</td></tr>
               )}
               {!loading && orders.length === 0 && (
-                <tr><td colSpan={6 + steps.length} className="px-3 py-8 text-center text-neutral-400">Sin resultados.</td></tr>
+                <tr><td colSpan={7 + steps.length} className="px-3 py-8 text-center text-neutral-400">Sin resultados.</td></tr>
               )}
               {!loading && orders.map(row => (
                 <tr key={row.order_number} className="hover:bg-neutral-50">
@@ -314,6 +350,7 @@ export default function PaymentReminders() {
                   {steps.map(s => (
                     <td key={s.key} className="px-3 py-2"><StepCell row={row} step={s} /></td>
                   ))}
+                  <td className="px-3 py-2"><InboundCell row={row} /></td>
                   <td className="px-3 py-2 text-right">
                     <Button size="sm" variant="ghost" onClick={() => openHistory(row.order_number)}>
                       Historial

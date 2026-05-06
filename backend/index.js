@@ -49,7 +49,7 @@ const { runSyncJob } = require('./services/orderSync');
 const { getQueueStats, getSyncState, markCompleted: markQueueCompleted, markFailed: markQueueFailed } = require('./services/syncQueue');
 const { tiendanube: tnConfig, whatsapp: waConfig, isEnabled: isIntegrationEnabled } = require('./services/integrationConfig');
 const { verificarConsistencia, getInconsistencias } = require('./utils/orderVerification');
-const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crearNotificacion } = require('./utils/notifications');
+const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crearNotificacion, notificarUsuariosConPermiso } = require('./utils/notifications');
 const { enviarWhatsAppPlantilla } = require('./lib/whatsapp-helpers');
 const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, isForbiddenCarrier, normalizePhoneForComparison, mapShippingToEstadoPedido } = require('./lib/payment-helpers');
 const { recalcularPagos } = require('./lib/recalcularPagos');
@@ -3931,15 +3931,22 @@ function verifyTiendaNubeSignature(req) {
 async function handleBotmakerInbound(payload) {
   if (!payload) return;
 
+  // Shape real que manda Botmaker para mensajes de usuario (verificado en prod
+  // 2026-05-06): payload plano top-level con campos { _id_, from: "user",
+  // fromName, message, fromCustomer, chatId, contactId, date, operatorId,
+  // clientPayload }. Notar que el id es "_id_" (con underscore TRAILING) y
+  // "from" es literal "user" — el phone real esta en chatId/contactId si
+  // Botmaker los envia.
   const items = [];
   if (Array.isArray(payload.messages) && payload.messages.length > 0) {
     for (const m of payload.messages) {
       items.push({
-        contact_id: m.from || m.contactId || payload.contactId || payload.from,
+        contact_id: m.contactId || m.from || payload.contactId || payload.chatId,
         chat_id: m.chatId || payload.chatId,
-        message_id: m._id || m.id || m.messageId,
+        message_id: m._id_ || m._id || m.id || m.messageId,
         message_type: m.type || 'text',
         message_text: m.text || m.body || m.message || null,
+        from_name: m.fromName || payload.fromName || null,
         button_id: m.buttonId || m.button?.id || m.button_payload || null,
         url_clicked: null,
         raw: m
@@ -3947,22 +3954,37 @@ async function handleBotmakerInbound(payload) {
     }
   } else if (payload.type === 'url-click' || payload.type === 'click' || payload.url) {
     items.push({
-      contact_id: payload.contactId || payload.from,
+      contact_id: payload.contactId || payload.chatId || payload.from,
       chat_id: payload.chatId,
-      message_id: payload.messageId || payload.eventId,
+      message_id: payload._id_ || payload.messageId || payload.eventId,
       message_type: 'url_click',
       message_text: null,
+      from_name: payload.fromName || null,
       button_id: payload.buttonId || null,
       url_clicked: payload.url,
       raw: payload
     });
+  } else if (payload.fromCustomer === true || payload.message || payload.fromName) {
+    // Mensaje plano del usuario (caso real de Botmaker).
+    items.push({
+      contact_id: payload.contactId || payload.chatId || payload.from || 'user',
+      chat_id: payload.chatId,
+      message_id: payload._id_ || payload._id || payload.id,
+      message_type: payload.type || 'text',
+      message_text: payload.message || payload.text || payload.body || null,
+      from_name: payload.fromName || null,
+      button_id: payload.buttonId || payload.button?.id || null,
+      url_clicked: null,
+      raw: payload
+    });
   } else {
     items.push({
-      contact_id: payload.contactId || payload.from,
+      contact_id: payload.contactId || payload.chatId || payload.from,
       chat_id: payload.chatId,
-      message_id: payload.messageId || payload.id,
+      message_id: payload._id_ || payload.messageId || payload.id,
       message_type: payload.type || 'other',
       message_text: payload.text || payload.message?.text || payload.body || null,
+      from_name: payload.fromName || null,
       button_id: payload.buttonId || payload.button?.id || null,
       url_clicked: null,
       raw: payload
@@ -3972,11 +3994,16 @@ async function handleBotmakerInbound(payload) {
   for (const it of items) {
     if (!it.contact_id) continue;
 
-    // Correlación best-effort por phone (último pedido del cliente).
+    // Correlación best-effort:
+    //   1) si contact_id parece phone, buscar por phone (caso clicks de URL)
+    //   2) si tenemos from_name, matchear con customer_name de un pedido que
+    //      haya recibido pendiente_3hs/10hs en las últimas 48h (heurístico
+    //      pero funcional — Botmaker no manda phone en mensajes de usuario).
     let orderNumber = null;
     try {
       const phoneClean = String(it.contact_id).replace(/[^\d+]/g, '');
-      if (phoneClean) {
+      const looksLikePhone = phoneClean && /^\+?\d{7,}$/.test(phoneClean);
+      if (looksLikePhone) {
         const orderRes = await pool.query(
           `SELECT order_number FROM orders_validated
            WHERE REPLACE(REPLACE(REPLACE(customer_phone, ' ', ''), '-', ''), '(', '') ILIKE $1
@@ -3987,6 +4014,24 @@ async function handleBotmakerInbound(payload) {
           [`%${phoneClean.replace(/^\+/, '')}%`]
         );
         if (orderRes.rowCount > 0) orderNumber = parseInt(orderRes.rows[0].order_number);
+      }
+      if (!orderNumber && it.from_name) {
+        // Match por nombre con pedido que recibió un recordatorio recientemente.
+        const nameClean = String(it.from_name).replace(/null/gi, '').trim();
+        if (nameClean.length >= 3) {
+          const byName = await pool.query(
+            `SELECT o.order_number
+             FROM whatsapp_messages wm
+             JOIN orders_validated o ON o.order_number = wm.order_number::text
+             WHERE wm.template_key IN ('pendiente_3hs','pendiente_10hs')
+               AND wm.created_at > NOW() - INTERVAL '48 hours'
+               AND LOWER(o.customer_name) ILIKE LOWER($1)
+             ORDER BY wm.created_at DESC
+             LIMIT 1`,
+            [`%${nameClean}%`]
+          );
+          if (byName.rowCount > 0) orderNumber = parseInt(byName.rows[0].order_number);
+        }
       }
     } catch (corrErr) {
       log.warn({ err: corrErr.message }, 'Botmaker inbound: error correlating');
@@ -3999,8 +4044,8 @@ async function handleBotmakerInbound(payload) {
       // duplicables de forma confiable.
       await pool.query(
         `INSERT INTO whatsapp_inbound_messages
-          (contact_id, chat_id, message_id, message_type, message_text, button_id, url_clicked, raw_payload, order_number)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
+          (contact_id, chat_id, message_id, message_type, message_text, button_id, url_clicked, raw_payload, order_number, from_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)
          ON CONFLICT (message_id) WHERE message_id IS NOT NULL DO NOTHING`,
         [
           it.contact_id,
@@ -4011,9 +4056,39 @@ async function handleBotmakerInbound(payload) {
           it.button_id,
           it.url_clicked,
           JSON.stringify(it.raw),
-          orderNumber
+          orderNumber,
+          it.from_name || null
         ]
       );
+
+      // Notificar (campanita del CRM) cuando el cliente responde texto, clickea
+      // un botón o un URL. Va a usuarios con payment_reminders.view (admin + Melu).
+      // Si encontramos order_number por correlación, mostramos el pedido para que
+      // se pueda saltar directo al detalle.
+      const isUserAction = !!(it.message_text || it.button_id || it.url_clicked);
+      if (isUserAction) {
+        const who = it.from_name || it.contact_id || 'Cliente';
+        let titulo;
+        let descripcion;
+        if (it.url_clicked) {
+          titulo = `${who} clickeó CARGAR COMPROBANTE`;
+          descripcion = orderNumber ? `Pedido #${orderNumber}` : `URL: ${it.url_clicked}`;
+        } else if (it.button_id) {
+          titulo = `${who} clickeó botón "${it.button_id}"`;
+          descripcion = orderNumber ? `Pedido #${orderNumber}` : '';
+        } else {
+          const text = String(it.message_text || '').slice(0, 140);
+          titulo = `${who} respondió por WhatsApp`;
+          descripcion = orderNumber ? `Pedido #${orderNumber} — ${text}` : text;
+        }
+        notificarUsuariosConPermiso('payment_reminders.view', {
+          tipo: 'whatsapp_reply',
+          titulo,
+          descripcion,
+          referenciaTipo: orderNumber ? 'order' : 'inbound',
+          referenciaId: orderNumber ? String(orderNumber) : null
+        }).catch(err => log.warn({ err: err.message }, 'Botmaker inbound: notify failed'));
+      }
     } catch (insErr) {
       log.error({ err: insErr.message }, 'Botmaker inbound: insert failed');
     }

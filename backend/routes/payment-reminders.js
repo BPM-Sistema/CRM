@@ -92,7 +92,16 @@ router.get('/', requirePermission('payment_reminders.view'), async (req, res) =>
         o.created_at,
         o.estado_pedido,
         o.estado_pago,
-        ${buildStepSubqueries()}
+        ${buildStepSubqueries()},
+        (SELECT COUNT(*)::int FROM whatsapp_inbound_messages
+          WHERE order_number = o.order_number::int) AS inbound_count,
+        (SELECT json_agg(row_to_json(x)) FROM (
+          SELECT message_text, message_type, button_id, url_clicked, received_at, from_name
+          FROM whatsapp_inbound_messages
+          WHERE order_number = o.order_number::int
+          ORDER BY received_at DESC
+          LIMIT 5
+        ) x) AS last_inbound
       FROM orders_validated o
       ${whereClause}
       ORDER BY o.created_at DESC
