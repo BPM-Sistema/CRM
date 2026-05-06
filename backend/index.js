@@ -3931,14 +3931,38 @@ function verifyTiendaNubeSignature(req) {
 async function handleBotmakerInbound(payload) {
   if (!payload) return;
 
-  // Shape real que manda Botmaker para mensajes de usuario (verificado en prod
-  // 2026-05-06): payload plano top-level con campos { _id_, from: "user",
-  // fromName, message, fromCustomer, chatId, contactId, date, operatorId,
-  // clientPayload }. Notar que el id es "_id_" (con underscore TRAILING) y
-  // "from" es literal "user" — el phone real esta en chatId/contactId si
-  // Botmaker los envia.
+  // Botmaker manda DOS shapes distintos en el mismo endpoint:
+  //
+  // SHAPE A — eventos (type=event, ej click en URL): TRAE contactId real
+  //   { v, type:"event", bsuid, events:[{name:"url-click", info:[...]}],
+  //     contactId, customerId, chatPlatform, chatChannelId, whatsappNumber }
+  //
+  // SHAPE B — mensajes del usuario (texto, botones): NO trae contactId
+  //   { _id_, date, from:"user", message, fromName, fromCustomer, operatorId,
+  //     clientPayload }
+  //
+  // Para shape A → correlacion 100% por phone (contactId).
+  // Para shape B → correlacion best-effort por fromName.
   const items = [];
-  if (Array.isArray(payload.messages) && payload.messages.length > 0) {
+
+  if (payload.type === 'event' && Array.isArray(payload.events)) {
+    for (const ev of payload.events) {
+      const info = Array.isArray(ev.info) ? ev.info : [];
+      const url = info.find(x => x.name === 'url')?.value || null;
+      const isUrlClick = ev.name === 'url-click' || ev.name === 'click' || !!url;
+      items.push({
+        contact_id: payload.contactId || payload.whatsappNumber || 'event',
+        chat_id: payload.chatChannelId || payload.customerId,
+        message_id: payload._id_ || payload.id || `event_${payload.bsuid}_${ev.name}_${Date.now()}`,
+        message_type: isUrlClick ? 'url_click' : (ev.name || 'event'),
+        message_text: null,
+        from_name: payload.fromName || null,
+        button_id: null,
+        url_clicked: url,
+        raw: payload
+      });
+    }
+  } else if (Array.isArray(payload.messages) && payload.messages.length > 0) {
     for (const m of payload.messages) {
       items.push({
         contact_id: m.contactId || m.from || payload.contactId || payload.chatId,
