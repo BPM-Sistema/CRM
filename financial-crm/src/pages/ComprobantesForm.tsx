@@ -11,7 +11,11 @@ const API_BASE = import.meta.env.VITE_API_URL || 'https://api.bpmadministrador.c
 // equivocado.
 const BLOCKED_ORDER_FROM_URL = new Set(['32743']);
 
-export function ComprobantesForm() {
+interface ComprobantesFormProps {
+  requirePhone?: boolean;
+}
+
+export function ComprobantesForm({ requirePhone = false }: ComprobantesFormProps = {}) {
   const [searchParams] = useSearchParams();
   const rawOrderFromUrl = searchParams.get('order') || '';
   const orderFromUrl = BLOCKED_ORDER_FROM_URL.has(rawOrderFromUrl) ? '' : rawOrderFromUrl;
@@ -19,6 +23,8 @@ export function ComprobantesForm() {
   const [orderNumber, setOrderNumber] = useState(orderFromUrl);
   const isOrderFromUrl = orderFromUrl.length > 0;
   const [file, setFile] = useState<File | null>(null);
+  const [phone, setPhone] = useState('');
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -100,12 +106,25 @@ export function ComprobantesForm() {
       return;
     }
 
+    // Si el form requiere teléfono (flujo /comprobantes-wpp), validar.
+    let normalizedPhoneDigits = '';
+    if (requirePhone) {
+      normalizedPhoneDigits = phone.replace(/\D/g, '');
+      if (normalizedPhoneDigits.length < 10) {
+        setPhoneError('Ingresá tu número con código de área, sin 0 ni 15.');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
       const formData = new FormData();
       formData.append('orderNumber', orderNumber);
       formData.append('file', file);
+      if (requirePhone && normalizedPhoneDigits) {
+        formData.append('verified_phone', normalizedPhoneDigits);
+      }
 
       const response = await fetch(`${API_BASE}/upload`, {
         method: 'POST',
@@ -149,6 +168,11 @@ export function ComprobantesForm() {
           <p className="text-neutral-600 mb-4">
             Recibimos tu comprobante correctamente. En breve vamos a verificar el pago.
           </p>
+          {requirePhone && (
+            <p className="text-neutral-600 mb-4 text-sm">
+              Los próximos mensajes del pedido te van a llegar a este número de WhatsApp.
+            </p>
+          )}
           <p className="text-neutral-600 mb-6">
             Si tenés alguna consulta, escribinos al WhatsApp
             <br />
@@ -207,11 +231,17 @@ export function ComprobantesForm() {
           </h1>
           {isOrderFromUrl ? (
             <p className="text-neutral-600">
-              Subí el comprobante para el pedido <span className="font-semibold">#{orderFromUrl}</span>
+              {requirePhone
+                ? <>Confirmá tu WhatsApp y subí el comprobante para el pedido <span className="font-semibold">#{orderFromUrl}</span></>
+                : <>Subí el comprobante para el pedido <span className="font-semibold">#{orderFromUrl}</span></>
+              }
             </p>
           ) : (
             <p className="text-neutral-600">
-              Ingresá tu número de pedido y subí el comprobante
+              {requirePhone
+                ? 'Ingresá tu número de pedido, confirmá tu WhatsApp y subí el comprobante'
+                : 'Ingresá tu número de pedido y subí el comprobante'
+              }
             </p>
           )}
         </div>
@@ -239,6 +269,35 @@ export function ComprobantesForm() {
               </p>
             )}
           </div>
+
+          {/* Teléfono de WhatsApp (solo flujo de verificación) */}
+          {requirePhone && (
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-1.5">
+                Tu número de WhatsApp <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="tel"
+                inputMode="numeric"
+                value={phone}
+                onChange={(e) => {
+                  setPhone(e.target.value);
+                  if (phoneError) setPhoneError(null);
+                }}
+                placeholder="Ej: 11 6677 8899"
+                className={`w-full rounded-lg border ${phoneError ? 'border-red-300 ring-2 ring-red-100' : 'border-neutral-200 bg-white'} px-4 py-3 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent transition-all`}
+              />
+              <p className="mt-1.5 text-xs text-neutral-500">
+                Con código de área, sin el 0 ni el 15.
+              </p>
+              {phoneError && (
+                <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+                  <AlertCircle size={14} />
+                  {phoneError}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Comprobante */}
           <div>
