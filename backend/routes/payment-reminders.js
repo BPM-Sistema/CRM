@@ -47,7 +47,9 @@ router.get('/', requirePermission('payment_reminders.view'), async (req, res) =>
     const stepFilter = STEPS.find(s => s.key === `pendiente_${req.query.step}`)?.key || null;
     const statusFilter = req.query.status || 'any'; // programado | enviado | descartado | sin_programar | any
 
-    const conditions = [`o.estado_pedido = 'pendiente_pago'`];
+    // Excluir 4 pedidos legacy con order_number tipo "#XXXXX" que rompen los
+    // ::int de las subqueries. Son data antigua sin uso operativo.
+    const conditions = [`o.estado_pedido = 'pendiente_pago'`, `o.order_number ~ '^[0-9]+$'`];
     const params = [];
     let i = 1;
 
