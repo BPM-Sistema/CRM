@@ -127,10 +127,11 @@ router.get('/',
       }
 
       if (search) {
-        // Match por confirmed_order_number, suggested_order_number o detected_name
+        // Match por número actual del remito (confirmado si existe, sugerido si no)
+        // o por nombre detectado. Así un remito reasignado deja de aparecer al
+        // buscar su número original sugerido por OCR.
         conditions.push(`(
-          sd.confirmed_order_number ILIKE $${paramIndex} OR
-          sd.suggested_order_number ILIKE $${paramIndex} OR
+          COALESCE(sd.confirmed_order_number, sd.suggested_order_number) ILIKE $${paramIndex} OR
           sd.detected_name ILIKE $${paramIndex}
         )`);
         params.push(`%${search}%`);
