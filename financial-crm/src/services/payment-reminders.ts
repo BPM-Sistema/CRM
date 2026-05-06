@@ -135,6 +135,10 @@ export async function reprogramarReminder(scheduledId: number): Promise<{ ok: bo
   return r.json();
 }
 
+// Marca que alguien clickeó el teléfono del pedido en el panel para abrir
+// Botmaker. Habilita los botones Cancelar/Esperar para ese pedido. Es global:
+// cualquier admin con permission lo marca y todos lo ven al refrescar.
+// Best-effort: si falla no rompe el flujo (Botmaker igual se abre).
 export async function markPhoneClicked(orderNumber: string): Promise<{ ok: boolean }> {
   try {
     const r = await authFetch(`${API_BASE_URL}/admin/payment-reminders/${orderNumber}/phone-click`, {
