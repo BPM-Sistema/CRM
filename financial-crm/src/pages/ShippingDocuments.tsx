@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useUrlFilters } from '../hooks';
-import { RefreshCw, Upload, FileText, Check, X, AlertCircle, Loader2, Eye, ChevronLeft, ChevronRight, Search, Maximize2, ExternalLink, Trash2, Package, ZoomIn, ZoomOut, RotateCcw, MapPin, User, Phone, Mail, ShoppingBag, DollarSign, Truck } from 'lucide-react';
+import { RefreshCw, Upload, FileText, Check, X, AlertCircle, Loader2, Eye, ChevronLeft, ChevronRight, Search, Maximize2, ExternalLink, Trash2, Package, ZoomIn, ZoomOut, RotateCcw, User, Phone, Mail, Truck } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card } from '../components/ui';
 import { AccessDenied } from '../components/AccessDenied';
@@ -226,28 +226,6 @@ function OrderDrawer({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  // Format address from JSONB
-  const formatAddress = (addr: Record<string, string> | null) => {
-    if (!addr) return null;
-    const parts = [
-      addr.address,
-      addr.locality,
-      addr.city,
-      addr.province,
-      addr.zipcode
-    ].filter(Boolean);
-    return parts.join(', ');
-  };
-
-  // Format currency
-  const formatMoney = (amount: number) => {
-    return new Intl.NumberFormat('es-AR', {
-      style: 'currency',
-      currency: 'ARS',
-      minimumFractionDigits: 0
-    }).format(amount);
-  };
-
   return (
     <>
       {/* Overlay */}
@@ -284,237 +262,51 @@ function OrderDrawer({
               {error}
             </div>
           ) : orderData ? (
-            <div className="space-y-5">
-              {/* Datos extraídos del remito (OCR) — comparar con hoja de envío */}
-              {remito && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-2">
-                  <h3 className="font-medium text-amber-900 flex items-center gap-2">
-                    <FileText size={16} />
-                    Datos extraídos del remito
-                  </h3>
-                  <dl className="text-sm space-y-1">
-                    <div className="flex gap-2">
-                      <dt className="text-amber-700 w-28 shrink-0">Nombre:</dt>
-                      <dd className="text-amber-900 font-medium">{remito.detected_name || '—'}</dd>
-                    </div>
-                    <div className="flex gap-2">
-                      <dt className="text-amber-700 w-28 shrink-0">Dirección:</dt>
-                      <dd className="text-amber-900">{remito.detected_address || '—'}</dd>
-                    </div>
-                    <div className="flex gap-2">
-                      <dt className="text-amber-700 w-28 shrink-0">Ciudad:</dt>
-                      <dd className="text-amber-900">{remito.detected_city || '—'}</dd>
-                    </div>
-                    {remito.tracking_number && (
-                      <div className="flex gap-2">
-                        <dt className="text-amber-700 w-28 shrink-0">Tracking:</dt>
-                        <dd className="text-amber-900 font-mono text-xs">{remito.tracking_number}</dd>
-                      </div>
-                    )}
-                  </dl>
-                </div>
-              )}
-
-              {/* Datos de la hoja de envío (shipping_request) */}
-              {shipping && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
-                  <h3 className="font-medium text-blue-900 flex items-center gap-2">
-                    <Truck size={16} />
-                    Datos de la hoja de envío
-                  </h3>
-                  <dl className="text-sm space-y-1">
-                    <div className="flex gap-2">
-                      <dt className="text-blue-700 w-28 shrink-0">Nombre:</dt>
-                      <dd className="text-blue-900 font-medium">{shipping.nombre_apellido}</dd>
-                    </div>
-                    <div className="flex gap-2">
-                      <dt className="text-blue-700 w-28 shrink-0">DNI:</dt>
-                      <dd className="text-blue-900">{shipping.dni}</dd>
-                    </div>
-                    <div className="flex gap-2">
-                      <dt className="text-blue-700 w-28 shrink-0">Tel:</dt>
-                      <dd className="text-blue-900">{shipping.telefono}</dd>
-                    </div>
-                    <div className="flex gap-2">
-                      <dt className="text-blue-700 w-28 shrink-0">Tipo:</dt>
-                      <dd className="text-blue-900">{shipping.destino_tipo}</dd>
-                    </div>
-                    <div className="flex gap-2">
-                      <dt className="text-blue-700 w-28 shrink-0">Dirección:</dt>
-                      <dd className="text-blue-900">{shipping.direccion_entrega}</dd>
-                    </div>
-                    <div className="flex gap-2">
-                      <dt className="text-blue-700 w-28 shrink-0">Localidad:</dt>
-                      <dd className="text-blue-900">{shipping.localidad}, {shipping.provincia} ({shipping.codigo_postal})</dd>
-                    </div>
-                    <div className="flex gap-2">
-                      <dt className="text-blue-700 w-28 shrink-0">Empresa:</dt>
-                      <dd className="text-blue-900">{shipping.empresa_envio}{shipping.empresa_envio_otro ? ` (${shipping.empresa_envio_otro})` : ''}</dd>
-                    </div>
-                    {shipping.comentarios && (
-                      <div className="flex gap-2">
-                        <dt className="text-blue-700 w-28 shrink-0">Coment.:</dt>
-                        <dd className="text-blue-900">{shipping.comentarios}</dd>
-                      </div>
-                    )}
-                  </dl>
-                </div>
-              )}
-              {remito && !shipping && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-600">
-                  El cliente aún no completó la hoja de envío para este pedido.
-                </div>
-              )}
-
-              {/* Customer info */}
-              <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                <h3 className="font-medium text-gray-700 flex items-center gap-2">
-                  <User size={16} />
+            <div className="grid grid-cols-2 gap-3">
+              {/* Cliente */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
+                <h3 className="font-medium text-gray-700 flex items-center gap-2 text-sm">
+                  <User size={14} />
                   Cliente
                 </h3>
-                <p className="font-semibold text-lg">{orderData.customer.name}</p>
+                <p className="font-semibold text-sm break-words">{orderData.customer.name}</p>
                 {orderData.customer.phone && (
-                  <p className="text-sm text-gray-600 flex items-center gap-2">
-                    <Phone size={14} />
+                  <p className="text-xs text-gray-600 flex items-start gap-1 break-all">
+                    <Phone size={12} className="mt-0.5 shrink-0" />
                     {orderData.customer.phone}
                   </p>
                 )}
                 {orderData.customer.email && (
-                  <p className="text-sm text-gray-600 flex items-center gap-2">
-                    <Mail size={14} />
+                  <p className="text-xs text-gray-600 flex items-start gap-1 break-all">
+                    <Mail size={12} className="mt-0.5 shrink-0" />
                     {orderData.customer.email}
                   </p>
                 )}
               </div>
 
-              {/* Shipping address */}
-              {orderData.shipping_address && (
-                <div className="bg-blue-50 rounded-lg p-4 space-y-2">
-                  <h3 className="font-medium text-blue-700 flex items-center gap-2">
-                    <MapPin size={16} />
-                    Dirección de envío
+              {/* Hoja de envío */}
+              {shipping ? (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-1.5 text-xs">
+                  <h3 className="font-medium text-blue-900 flex items-center gap-2 text-sm mb-1">
+                    <Truck size={14} />
+                    Hoja de envío
                   </h3>
-                  <p className="text-blue-900">
-                    {formatAddress(orderData.shipping_address as Record<string, string>)}
+                  <p className="font-semibold text-blue-900 text-sm break-words">{shipping.nombre_apellido}</p>
+                  <p className="text-blue-800">DNI: {shipping.dni}</p>
+                  <p className="text-blue-800 break-all">Tel: {shipping.telefono}</p>
+                  <p className="text-blue-800">{shipping.destino_tipo}</p>
+                  <p className="text-blue-900 break-words">{shipping.direccion_entrega}</p>
+                  <p className="text-blue-800 break-words">{shipping.localidad}, {shipping.provincia} ({shipping.codigo_postal})</p>
+                  <p className="text-blue-800">
+                    {shipping.empresa_envio}{shipping.empresa_envio_otro ? ` — ${shipping.empresa_envio_otro}` : ''}
                   </p>
-                </div>
-              )}
-
-              {/* Shipping type */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-medium text-gray-700 flex items-center gap-2">
-                  <Truck size={16} />
-                  Envío
-                </h3>
-                <p className="mt-1">{orderData.shipping.type}</p>
-                {orderData.shipping.tracking_number && (
-                  <p className="text-sm text-gray-500 mt-1">
-                    Tracking: {orderData.shipping.tracking_number}
-                  </p>
-                )}
-              </div>
-
-              {/* Order status */}
-              <div className="flex gap-3">
-                <div className="flex-1 bg-amber-50 rounded-lg p-3 text-center">
-                  <p className="text-xs text-amber-600 mb-1">Estado Pago</p>
-                  <p className="font-medium text-amber-800">
-                    {orderData.internal?.estado_pago || orderData.payment_status || '-'}
-                  </p>
-                </div>
-                <div className="flex-1 bg-purple-50 rounded-lg p-3 text-center">
-                  <p className="text-xs text-purple-600 mb-1">Estado Pedido</p>
-                  <p className="font-medium text-purple-800">
-                    {orderData.internal?.estado_pedido || orderData.shipping_status || '-'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Totals */}
-              <div className="bg-emerald-50 rounded-lg p-4">
-                <h3 className="font-medium text-emerald-700 flex items-center gap-2 mb-3">
-                  <DollarSign size={16} />
-                  Total
-                </h3>
-                <div className="space-y-1 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Subtotal</span>
-                    <span>{formatMoney(orderData.totals.subtotal)}</span>
-                  </div>
-                  {orderData.totals.discount > 0 && (
-                    <div className="flex justify-between text-red-600">
-                      <span>Descuento</span>
-                      <span>-{formatMoney(orderData.totals.discount)}</span>
-                    </div>
-                  )}
-                  {orderData.totals.shipping > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Envío</span>
-                      <span>{formatMoney(orderData.totals.shipping)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between font-bold text-lg pt-2 border-t border-emerald-200">
-                    <span>Total</span>
-                    <span className="text-emerald-700">{formatMoney(orderData.totals.total)}</span>
-                  </div>
-                  {orderData.internal?.total_pagado !== null && orderData.internal?.total_pagado !== undefined && (
-                    <div className="flex justify-between text-sm pt-1">
-                      <span className="text-gray-600">Pagado</span>
-                      <span className="text-emerald-600">{formatMoney(orderData.internal.total_pagado)}</span>
-                    </div>
-                  )}
-                  {orderData.internal?.saldo !== null && orderData.internal?.saldo !== undefined && orderData.internal.saldo > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Saldo</span>
-                      <span className="text-amber-600">{formatMoney(orderData.internal.saldo)}</span>
-                    </div>
+                  {shipping.comentarios && (
+                    <p className="text-blue-800 italic break-words">"{shipping.comentarios}"</p>
                   )}
                 </div>
-              </div>
-
-              {/* Products */}
-              {orderData.products.length > 0 && (
-                <div>
-                  <h3 className="font-medium text-gray-700 flex items-center gap-2 mb-3">
-                    <ShoppingBag size={16} />
-                    Productos ({orderData.products.length})
-                  </h3>
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {orderData.products.map((product, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-start justify-between p-3 bg-gray-50 rounded-lg text-sm"
-                      >
-                        <div className="flex-1">
-                          <p className="font-medium">{product.name}</p>
-                          {product.variant && (
-                            <p className="text-gray-500 text-xs">{product.variant}</p>
-                          )}
-                          <p className="text-gray-500 text-xs">
-                            {product.quantity} x {formatMoney(product.price)}
-                          </p>
-                        </div>
-                        <p className="font-medium">{formatMoney(product.total)}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Notes */}
-              {(orderData.note || orderData.owner_note) && (
-                <div className="bg-yellow-50 rounded-lg p-4 space-y-2">
-                  <h3 className="font-medium text-yellow-700">Notas</h3>
-                  {orderData.note && (
-                    <p className="text-sm text-yellow-800">
-                      <strong>Cliente:</strong> {orderData.note}
-                    </p>
-                  )}
-                  {orderData.owner_note && (
-                    <p className="text-sm text-yellow-800">
-                      <strong>Interna:</strong> {orderData.owner_note}
-                    </p>
-                  )}
+              ) : (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-500 flex items-center justify-center text-center">
+                  Hoja de envío sin completar
                 </div>
               )}
             </div>
