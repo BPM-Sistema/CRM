@@ -4085,34 +4085,9 @@ async function handleBotmakerInbound(payload) {
         ]
       );
 
-      // Notificar (campanita del CRM) cuando el cliente responde texto, clickea
-      // un botón o un URL. Va a usuarios con payment_reminders.view (admin + Melu).
-      // Si encontramos order_number por correlación, mostramos el pedido para que
-      // se pueda saltar directo al detalle.
-      const isUserAction = !!(it.message_text || it.button_id || it.url_clicked);
-      if (isUserAction) {
-        const who = it.from_name || it.contact_id || 'Cliente';
-        let titulo;
-        let descripcion;
-        if (it.url_clicked) {
-          titulo = `${who} clickeó CARGAR COMPROBANTE`;
-          descripcion = orderNumber ? `Pedido #${orderNumber}` : `URL: ${it.url_clicked}`;
-        } else if (it.button_id) {
-          titulo = `${who} clickeó botón "${it.button_id}"`;
-          descripcion = orderNumber ? `Pedido #${orderNumber}` : '';
-        } else {
-          const text = String(it.message_text || '').slice(0, 140);
-          titulo = `${who} respondió por WhatsApp`;
-          descripcion = orderNumber ? `Pedido #${orderNumber} — ${text}` : text;
-        }
-        notificarUsuariosConPermiso('payment_reminders.view', {
-          tipo: 'whatsapp_reply',
-          titulo,
-          descripcion,
-          referenciaTipo: orderNumber ? 'order' : 'inbound',
-          referenciaId: orderNumber ? String(orderNumber) : null
-        }).catch(err => log.warn({ err: err.message }, 'Botmaker inbound: notify failed'));
-      }
+      // Notificaciones por respuesta de cliente desactivadas — generaban demasiado
+      // ruido en la campanita. La info sigue visible en el panel
+      // /admin/payment-reminders (columna Respuestas con tooltip).
     } catch (insErr) {
       log.error({ err: insErr.message }, 'Botmaker inbound: insert failed');
     }
