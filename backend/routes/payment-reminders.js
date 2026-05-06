@@ -120,7 +120,7 @@ router.get('/', requirePermission('payment_reminders.view'), async (req, res) =>
         ) AS has_comprobante
       FROM orders_validated o
       ${whereClause}
-      ORDER BY o.created_at DESC
+      ORDER BY o.created_at ASC
       LIMIT $${i++} OFFSET $${i}`,
       [...params, limit, offset]
     );

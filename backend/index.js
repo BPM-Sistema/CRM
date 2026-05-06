@@ -4019,23 +4019,26 @@ async function handleBotmakerInbound(payload) {
     if (!it.contact_id) continue;
 
     // Correlación best-effort:
-    //   1) si contact_id parece phone, buscar por phone (caso clicks de URL)
+    //   1) si contact_id parece phone, match por ULTIMOS 10 DIGITOS (normaliza
+    //      el "9" extra de moviles AR: 5491130234660 vs +541130234660 son el
+    //      mismo número, ambos terminan en 1130234660).
     //   2) si tenemos from_name, matchear con customer_name de un pedido que
     //      haya recibido pendiente_3hs/10hs en las últimas 48h (heurístico
     //      pero funcional — Botmaker no manda phone en mensajes de usuario).
     let orderNumber = null;
     try {
-      const phoneClean = String(it.contact_id).replace(/[^\d+]/g, '');
-      const looksLikePhone = phoneClean && /^\+?\d{7,}$/.test(phoneClean);
-      if (looksLikePhone) {
+      const phoneDigits = String(it.contact_id).replace(/\D/g, '');
+      if (phoneDigits.length >= 10) {
+        const last10 = phoneDigits.slice(-10);
         const orderRes = await pool.query(
           `SELECT order_number FROM orders_validated
-           WHERE REPLACE(REPLACE(REPLACE(customer_phone, ' ', ''), '-', ''), '(', '') ILIKE $1
+           WHERE order_number ~ '^\\d+$'
+             AND RIGHT(REGEXP_REPLACE(customer_phone, '\\D', '', 'g'), 10) = $1
            ORDER BY
              CASE WHEN estado_pedido = 'pendiente_pago' THEN 0 ELSE 1 END,
              created_at DESC
            LIMIT 1`,
-          [`%${phoneClean.replace(/^\+/, '')}%`]
+          [last10]
         );
         if (orderRes.rowCount > 0) orderNumber = parseInt(orderRes.rows[0].order_number);
       }
