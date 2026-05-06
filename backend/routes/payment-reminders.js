@@ -12,6 +12,8 @@ const router = express.Router();
 const pool = require('../db');
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { nextBusinessSendAtAR } = require('../utils/businessHours');
+const { callTiendanubeWrite } = require('../lib/tnWriteClient');
+const { logEvento } = require('../utils/logging');
 
 router.use(authenticate);
 
@@ -92,6 +94,10 @@ router.get('/', requirePermission('payment_reminders.view'), async (req, res) =>
         o.created_at,
         o.estado_pedido,
         o.estado_pago,
+        o.tn_order_id,
+        o.payment_reminder_note,
+        o.payment_reminder_action_at,
+        o.payment_reminder_action_type,
         ${buildStepSubqueries()},
         (SELECT COUNT(*)::int FROM whatsapp_inbound_messages
           WHERE order_number = o.order_number::int) AS inbound_count,
@@ -101,7 +107,17 @@ router.get('/', requirePermission('payment_reminders.view'), async (req, res) =>
           WHERE order_number = o.order_number::int
           ORDER BY received_at DESC
           LIMIT 5
-        ) x) AS last_inbound
+        ) x) AS last_inbound,
+        EXISTS (
+          SELECT 1 FROM whatsapp_inbound_messages
+          WHERE order_number = o.order_number::int
+            AND message_type = 'url_click'
+        ) AS has_url_click,
+        EXISTS (
+          SELECT 1 FROM comprobantes
+          WHERE order_number = o.order_number
+            AND COALESCE(estado, '') NOT IN ('rechazado')
+        ) AS has_comprobante
       FROM orders_validated o
       ${whereClause}
       ORDER BY o.created_at DESC
@@ -258,6 +274,164 @@ router.post('/:scheduledId/reprogramar', requirePermission('payment_reminders.vi
     res.json({ ok: true, scheduled: ins.rows[0] });
   } catch (err) {
     console.error('[payment-reminders] reprogramar error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ─── POST /admin/payment-reminders/:orderNumber/action ───
+// Aplica acción de Melu a un pedido pendiente:
+//   - { action: 'cancel' }: cancela en TN (restock=true) y CRM. Bloquea si ya
+//     hay comprobante (cualquier estado distinto de 'rechazado').
+//   - { action: 'wait', note: 'dice que paga' }: guarda nota.
+// Una vez aplicada, payment_reminder_action_at queda seteado y la UI
+// esconde los botones del pedido.
+router.post('/:orderNumber/action', requirePermission('payment_reminders.view'), async (req, res) => {
+  const { orderNumber } = req.params;
+  const action = String(req.body?.action || '').trim();
+  const note = String(req.body?.note || '').trim();
+
+  if (!/^\d+$/.test(orderNumber)) {
+    return res.status(400).json({ ok: false, error: 'orderNumber inválido' });
+  }
+  if (!['cancel', 'wait'].includes(action)) {
+    return res.status(400).json({ ok: false, error: "action debe ser 'cancel' o 'wait'" });
+  }
+  if (action === 'wait' && note.length < 3) {
+    return res.status(400).json({ ok: false, error: 'La nota debe tener al menos 3 caracteres' });
+  }
+
+  try {
+    // 1. Pedido + idempotencia + comprobante
+    const orderRes = await pool.query(
+      `SELECT o.order_number, o.tn_order_id, o.estado_pedido,
+              o.payment_reminder_action_at, o.payment_reminder_action_type,
+              EXISTS (
+                SELECT 1 FROM comprobantes
+                WHERE order_number = o.order_number
+                  AND COALESCE(estado,'') NOT IN ('rechazado')
+              ) AS has_comprobante
+         FROM orders_validated o
+         WHERE o.order_number = $1`,
+      [orderNumber]
+    );
+    if (orderRes.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Pedido no encontrado' });
+    }
+    const order = orderRes.rows[0];
+
+    if (order.payment_reminder_action_at) {
+      return res.status(409).json({
+        ok: false,
+        error: `Ya se aplicó acción "${order.payment_reminder_action_type}" en este pedido`,
+        action_applied: order.payment_reminder_action_type,
+        action_at: order.payment_reminder_action_at
+      });
+    }
+
+    if (action === 'wait') {
+      await pool.query(
+        `UPDATE orders_validated
+            SET payment_reminder_note = $1,
+                payment_reminder_action_at = NOW(),
+                payment_reminder_action_type = 'wait'
+          WHERE order_number = $2`,
+        [note, orderNumber]
+      );
+      await logEvento({
+        orderNumber,
+        accion: `payment_reminder_wait: ${note.slice(0, 200)}`,
+        origen: 'panel',
+        userId: req.user?.id,
+        username: req.user?.email || req.user?.name
+      });
+      return res.json({ ok: true, action: 'wait', note });
+    }
+
+    // action === 'cancel'
+    if (order.has_comprobante) {
+      return res.status(409).json({
+        ok: false,
+        error: 'El pedido tiene un comprobante cargado, no se puede cancelar desde acá. Revisar el comprobante primero.'
+      });
+    }
+    if (order.estado_pedido === 'cancelado') {
+      // Idempotencia silenciosa: si ya está cancelado, marcamos action_at y devolvemos OK.
+      await pool.query(
+        `UPDATE orders_validated
+            SET payment_reminder_action_at = COALESCE(payment_reminder_action_at, NOW()),
+                payment_reminder_action_type = COALESCE(payment_reminder_action_type, 'cancel')
+          WHERE order_number = $1`,
+        [orderNumber]
+      );
+      return res.json({ ok: true, action: 'cancel', note: 'Ya estaba cancelado' });
+    }
+
+    // 2. TN primero (si falla, NO tocamos DB → Melu reintenta sin queda inconsistente)
+    if (!order.tn_order_id) {
+      return res.status(409).json({
+        ok: false,
+        error: 'El pedido no tiene tn_order_id, no se puede cancelar en TiendaNube'
+      });
+    }
+    const storeId = process.env.TIENDANUBE_STORE_ID;
+    const token = process.env.TIENDANUBE_ACCESS_TOKEN;
+    if (!storeId || !token) {
+      return res.status(500).json({
+        ok: false,
+        error: 'Configuración de TiendaNube faltante en el servidor'
+      });
+    }
+
+    try {
+      await callTiendanubeWrite({
+        method: 'POST',
+        url: `https://api.tiendanube.com/v1/${storeId}/orders/${order.tn_order_id}/cancel`,
+        headers: {
+          'Authentication': `bearer ${token}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'BPM Administrador (netubpm@gmail.com)'
+        },
+        data: { reason: 'customer', email: true, restock: true }
+      });
+    } catch (tnErr) {
+      const status = tnErr.response?.status;
+      const data = tnErr.response?.data;
+      console.error('[payment-reminders] TN cancel failed:', { status, data, msg: tnErr.message });
+      // 404 (pedido borrado en TN) o si TN dice "ya estaba cancelado" → tratar como éxito y seguir
+      const alreadyCancelled = status === 404 ||
+        (typeof data === 'string' && /already.*cancel/i.test(data)) ||
+        (data && typeof data === 'object' && JSON.stringify(data).match(/already.*cancel/i));
+      if (!alreadyCancelled) {
+        return res.status(502).json({
+          ok: false,
+          error: `No se pudo cancelar en TiendaNube (status=${status || 'sin respuesta'}). DB queda intacta, podés reintentar.`,
+          tn_status: status,
+          tn_data: data
+        });
+      }
+    }
+
+    // 3. DB después (TN OK o ya cancelado en TN)
+    await pool.query(
+      `UPDATE orders_validated
+          SET estado_pedido = 'cancelado',
+              payment_reminder_action_at = NOW(),
+              payment_reminder_action_type = 'cancel',
+              updated_at = NOW()
+        WHERE order_number = $1`,
+      [orderNumber]
+    );
+    await logEvento({
+      orderNumber,
+      accion: 'payment_reminder_cancel: TN restock=true',
+      origen: 'panel',
+      userId: req.user?.id,
+      username: req.user?.email || req.user?.name
+    });
+
+    res.json({ ok: true, action: 'cancel', tn_restocked: true });
+  } catch (err) {
+    console.error('[payment-reminders] action error:', err);
     res.status(500).json({ ok: false, error: err.message });
   }
 });

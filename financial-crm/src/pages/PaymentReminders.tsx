@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Bell, ExternalLink, MessageSquare, RefreshCw, Search, Send } from 'lucide-react';
+import { Bell, ExternalLink, MessageSquare, RefreshCw, Search, Send, Ban, Clock } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -13,6 +13,7 @@ import {
   fetchReminderStats,
   fetchReminderHistory,
   reprogramarReminder,
+  applyReminderAction,
   type ReminderRow,
   type ReminderStep,
   type ReminderStats,
@@ -67,6 +68,123 @@ function InboundCell({ row }: { row: ReminderRow }) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ActionCell({ row, onApplied }: { row: ReminderRow; onApplied: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [showWaitInput, setShowWaitInput] = useState(false);
+  const [note, setNote] = useState('');
+
+  // Si ya se aplicó alguna acción, mostrar resultado (chip) y nada más.
+  if (row.payment_reminder_action_at) {
+    if (row.payment_reminder_action_type === 'cancel') {
+      return <Badge variant="danger" size="sm">❌ Cancelado</Badge>;
+    }
+    if (row.payment_reminder_action_type === 'wait') {
+      return (
+        <div className="text-xs">
+          <Badge variant="warning" size="sm">⏳ Esperando</Badge>
+          {row.payment_reminder_note && (
+            <div className="text-neutral-700 mt-0.5 italic max-w-[200px]" title={row.payment_reminder_note}>
+              "{row.payment_reminder_note.length > 40 ? row.payment_reminder_note.slice(0, 40) + '…' : row.payment_reminder_note}"
+            </div>
+          )}
+        </div>
+      );
+    }
+  }
+
+  // Solo mostrar botones si el cliente clickeó CARGAR COMPROBANTE.
+  if (!row.has_url_click) return <span className="text-neutral-300 text-xs">—</span>;
+
+  const onCancel = async () => {
+    if (!confirm(`¿Cancelar pedido #${row.order_number}? Se cancela en TiendaNube y los productos vuelven al stock. Esta acción no se puede deshacer.`)) return;
+    setBusy(true);
+    try {
+      const r = await applyReminderAction(row.order_number, 'cancel');
+      if (!r.ok) {
+        alert(`Error: ${r.error}`);
+        return;
+      }
+      alert('Pedido cancelado en TiendaNube y CRM. Stock devuelto.');
+      onApplied();
+    } catch (err) {
+      alert(`Error: ${(err as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onWait = async () => {
+    const cleaned = note.trim();
+    if (cleaned.length < 3) {
+      alert('La nota debe tener al menos 3 caracteres');
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await applyReminderAction(row.order_number, 'wait', cleaned);
+      if (!r.ok) {
+        alert(`Error: ${r.error}`);
+        return;
+      }
+      setShowWaitInput(false);
+      setNote('');
+      onApplied();
+    } catch (err) {
+      alert(`Error: ${(err as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (showWaitInput) {
+    return (
+      <div className="flex flex-col gap-1 min-w-[220px]">
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="ej: dice que va a pagar"
+          rows={2}
+          className="text-xs border border-neutral-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-neutral-400"
+          autoFocus
+        />
+        <div className="flex gap-1">
+          <Button size="sm" variant="primary" onClick={onWait} disabled={busy}>
+            Guardar
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => { setShowWaitInput(false); setNote(''); }} disabled={busy}>
+            Cancelar
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        onClick={onCancel}
+        disabled={busy || row.has_comprobante}
+        title={row.has_comprobante ? 'Tiene comprobante cargado, no se puede cancelar desde acá' : 'Cancelar el pedido en CRM y TiendaNube (devuelve stock)'}
+        className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1 ${
+          row.has_comprobante
+            ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed'
+            : 'bg-red-50 text-red-700 hover:bg-red-100'
+        }`}
+      >
+        <Ban size={12} /> Cancelar
+      </button>
+      <button
+        onClick={() => setShowWaitInput(true)}
+        disabled={busy}
+        title="Dejar nota para localizar después"
+        className="text-xs px-2 py-1 rounded inline-flex items-center gap-1 bg-amber-50 text-amber-700 hover:bg-amber-100"
+      >
+        <Clock size={12} /> Esperar
+      </button>
     </div>
   );
 }
@@ -316,15 +434,16 @@ export default function PaymentReminders() {
                   <th key={s.key} className="text-left px-3 py-2">{s.label}</th>
                 ))}
                 <th className="text-left px-3 py-2">Respuestas</th>
+                <th className="text-left px-3 py-2">Acción Melu</th>
                 <th className="text-right px-3 py-2">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {loading && (
-                <tr><td colSpan={7 + steps.length} className="px-3 py-8 text-center text-neutral-400">Cargando…</td></tr>
+                <tr><td colSpan={8 + steps.length} className="px-3 py-8 text-center text-neutral-400">Cargando…</td></tr>
               )}
               {!loading && orders.length === 0 && (
-                <tr><td colSpan={7 + steps.length} className="px-3 py-8 text-center text-neutral-400">Sin resultados.</td></tr>
+                <tr><td colSpan={8 + steps.length} className="px-3 py-8 text-center text-neutral-400">Sin resultados.</td></tr>
               )}
               {!loading && orders.map(row => (
                 <tr key={row.order_number} className="hover:bg-neutral-50">
@@ -351,6 +470,7 @@ export default function PaymentReminders() {
                     <td key={s.key} className="px-3 py-2"><StepCell row={row} step={s} /></td>
                   ))}
                   <td className="px-3 py-2"><InboundCell row={row} /></td>
+                  <td className="px-3 py-2"><ActionCell row={row} onApplied={load} /></td>
                   <td className="px-3 py-2 text-right">
                     <Button size="sm" variant="ghost" onClick={() => openHistory(row.order_number)}>
                       Historial

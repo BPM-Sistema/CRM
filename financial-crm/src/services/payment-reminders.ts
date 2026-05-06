@@ -25,8 +25,14 @@ export interface ReminderRow {
   created_at: string;
   estado_pedido: string;
   estado_pago: string;
+  tn_order_id: number | null;
   inbound_count: number;
   last_inbound: InboundPreview[] | null;
+  has_url_click: boolean;
+  has_comprobante: boolean;
+  payment_reminder_note: string | null;
+  payment_reminder_action_at: string | null;
+  payment_reminder_action_type: 'cancel' | 'wait' | null;
   // Por cada step (pendiente_3hs, pendiente_10hs)
   [key: string]: any;
 }
@@ -125,6 +131,19 @@ export async function fetchReminderHistory(orderNumber: string): Promise<Reminde
 export async function reprogramarReminder(scheduledId: number): Promise<{ ok: boolean; scheduled?: { id: number; send_at: string }; error?: string }> {
   const r = await authFetch(`${API_BASE_URL}/admin/payment-reminders/${scheduledId}/reprogramar`, {
     method: 'POST'
+  });
+  return r.json();
+}
+
+export async function applyReminderAction(
+  orderNumber: string,
+  action: 'cancel' | 'wait',
+  note?: string
+): Promise<{ ok: boolean; action?: string; tn_restocked?: boolean; error?: string }> {
+  const r = await authFetch(`${API_BASE_URL}/admin/payment-reminders/${orderNumber}/action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, note })
   });
   return r.json();
 }
