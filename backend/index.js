@@ -50,7 +50,7 @@ const { getQueueStats, getSyncState, markCompleted: markQueueCompleted, markFail
 const { tiendanube: tnConfig, whatsapp: waConfig, isEnabled: isIntegrationEnabled } = require('./services/integrationConfig');
 const { verificarConsistencia, getInconsistencias } = require('./utils/orderVerification');
 const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crearNotificacion, notificarUsuariosConPermiso } = require('./utils/notifications');
-const { enviarWhatsAppPlantilla } = require('./lib/whatsapp-helpers');
+const { enviarWhatsAppPlantilla, normalizeArgentinaPhone } = require('./lib/whatsapp-helpers');
 const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, isForbiddenCarrier, normalizePhoneForComparison, mapShippingToEstadoPedido } = require('./lib/payment-helpers');
 const { recalcularPagos } = require('./lib/recalcularPagos');
 const { reopenIfCancelled } = require('./lib/reopenIfCancelled');
@@ -592,7 +592,10 @@ async function guardarPedidoCompleto(pedido) {
       shipping_cost = EXCLUDED.shipping_cost,
       customer_name = COALESCE(EXCLUDED.customer_name, orders_validated.customer_name),
       customer_email = COALESCE(EXCLUDED.customer_email, orders_validated.customer_email),
-      customer_phone = COALESCE(EXCLUDED.customer_phone, orders_validated.customer_phone),
+      customer_phone = CASE
+        WHEN orders_validated.customer_phone_overridden_at IS NOT NULL THEN orders_validated.customer_phone
+        ELSE COALESCE(EXCLUDED.customer_phone, orders_validated.customer_phone)
+      END,
       shipping_type = EXCLUDED.shipping_type,
       shipping_tracking = EXCLUDED.shipping_tracking,
       shipping_address = EXCLUDED.shipping_address,
@@ -4434,7 +4437,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
       // Datos actuales extendidos para detectar cambios
       const dbExtended = await pool.query(
-        `SELECT customer_name, customer_email, customer_phone,
+        `SELECT customer_name, customer_email, customer_phone, customer_phone_overridden_at,
                 shipping_address, note, owner_note, discount, shipping_cost,
                 shipping_tracking
          FROM orders_validated WHERE order_number = $1`,
@@ -4668,7 +4671,11 @@ app.post('/webhook/tiendanube', async (req, res) => {
       if (syncCustomer && cambioCustomer) {
         if (customerNameNuevo) { setClauses.push(`customer_name = $${paramIdx++}`); setParams.push(customerNameNuevo); }
         if (customerEmailNuevo) { setClauses.push(`customer_email = $${paramIdx++}`); setParams.push(customerEmailNuevo); }
-        if (customerPhoneNuevo) { setClauses.push(`customer_phone = $${paramIdx++}`); setParams.push(customerPhoneNuevo); }
+        // Si el cliente verificó su teléfono vía /comprobantes-wpp, no pisamos con el de TN.
+        if (customerPhoneNuevo && !dbExt.customer_phone_overridden_at) {
+          setClauses.push(`customer_phone = $${paramIdx++}`);
+          setParams.push(customerPhoneNuevo);
+        }
       }
       if (syncAddress && cambioAddress) {
         setClauses.push(`shipping_address = $${paramIdx++}`);
@@ -5213,7 +5220,7 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
   });
 }, async (req, res) => {
   try {
-    const { orderNumber: rawOrderNumber } = req.body;
+    const { orderNumber: rawOrderNumber, verified_phone: rawVerifiedPhone } = req.body;
     const file = req.file;
 
     log.info({ requestId: req.requestId, orderNumber: rawOrderNumber }, '/upload started');
@@ -5227,6 +5234,20 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     const orderNumber = String(rawOrderNumber).replace(/\D/g, '');
     if (!orderNumber || orderNumber.length > 20) {
       return res.status(400).json({ error: 'Número de pedido inválido' });
+    }
+
+    // verified_phone (opcional): viene del flujo /comprobantes-wpp donde el
+    // cliente verifica su teléfono porque cargó mal el original en TN.
+    // Validación temprana: debe tener al menos 10 dígitos numéricos.
+    let verifiedPhoneDigits = null;
+    if (rawVerifiedPhone !== undefined && rawVerifiedPhone !== null && String(rawVerifiedPhone).trim() !== '') {
+      verifiedPhoneDigits = String(rawVerifiedPhone).replace(/\D/g, '');
+      if (verifiedPhoneDigits.length < 10) {
+        return res.status(400).json({ error: 'El número de WhatsApp debe tener al menos 10 dígitos.' });
+      }
+      if (verifiedPhoneDigits.length > 15) {
+        return res.status(400).json({ error: 'El número de WhatsApp no es válido.' });
+      }
     }
 
     /* ===============================
@@ -5539,6 +5560,79 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     );
 
     /* ===============================
+       1️⃣4️⃣a OVERRIDE customer_phone (flujo /comprobantes-wpp)
+       Si el cliente verificó un teléfono distinto al cargado en TN,
+       actualizamos customer_phone, marcamos override_at y refrescamos
+       los scheduled_whatsapp pendientes para el pedido. Solo en estados
+       tempranos (pendiente_pago / a_imprimir) — en otros se ignora.
+    ================================ */
+    let customerPhoneOverridden = null;
+    if (verifiedPhoneDigits) {
+      const stateRes = await pool.query(
+        `SELECT estado_pedido, customer_phone FROM orders_validated WHERE order_number = $1`,
+        [orderNumber]
+      );
+      const orderRow = stateRes.rows[0];
+      if (orderRow) {
+        const allowedStates = new Set(['pendiente_pago', 'a_imprimir']);
+        if (!allowedStates.has(orderRow.estado_pedido)) {
+          log.info({ orderNumber, estado: orderRow.estado_pedido }, 'verified_phone ignorado: pedido fuera de estado temprano');
+        } else {
+          // Comparar últimos 10 dígitos contra el phone actual (mismo número en
+          // distinto formato no debe disparar override).
+          const currentDigits = (orderRow.customer_phone || '').replace(/\D/g, '');
+          const currentLast10 = currentDigits.slice(-10);
+          const newLast10 = verifiedPhoneDigits.slice(-10);
+
+          if (currentLast10 !== newLast10) {
+            // Normalización del número escrito por el cliente. Casos comunes en AR:
+            //   10 dig sin código país          → "1166778899"        → prefijar +549
+            //   11 dig arrancando con 9         → "91166778899"       → prefijar +54
+            //   12 dig con "15" viejo (CABA/GBA)→ "111566778899"      → quitar 15, prefijar +549
+            //   12 dig con +54 sin 9            → "541166778899"      → prefijar +, normalize agrega 9
+            //   13 dig con +549                 → "5491166778899"     → prefijar +
+            // Heurística del 15: solo para 12 dígitos donde pos 3-4 = "15"
+            // (área de 2 dígitos tipo "11"). Para áreas 3-dig (351 Córdoba,
+            // 221 La Plata, etc.) el cliente debe escribirlo sin el 15.
+            let workingDigits = verifiedPhoneDigits;
+            if (workingDigits.length === 12 && workingDigits.substring(2, 4) === '15') {
+              workingDigits = workingDigits.substring(0, 2) + workingDigits.substring(4);
+            }
+            const candidate = workingDigits.length === 10
+              ? '+549' + workingDigits
+              : workingDigits.length === 11 && workingDigits.startsWith('9')
+                ? '+54' + workingDigits
+                : '+' + workingDigits;
+            const normalized = normalizeArgentinaPhone(candidate);
+            await pool.query(
+              `UPDATE orders_validated
+                 SET customer_phone = $1,
+                     customer_phone_overridden_at = NOW(),
+                     updated_at = NOW()
+               WHERE order_number = $2`,
+              [normalized, orderNumber]
+            );
+            await pool.query(
+              `UPDATE scheduled_whatsapp
+                 SET telefono = $1
+               WHERE order_number = $2 AND sent_at IS NULL AND error IS NULL`,
+              [normalized, orderNumber]
+            );
+            await logEvento({
+              orderNumber,
+              accion: `Teléfono actualizado por cliente: ${orderRow.customer_phone || '(vacío)'} → ${normalized}`,
+              origen: 'cliente'
+            }).catch(() => {});
+            log.info({ orderNumber, from: orderRow.customer_phone, to: normalized }, 'customer_phone overrideado por cliente');
+            customerPhoneOverridden = normalized;
+          } else {
+            log.info({ orderNumber }, 'verified_phone coincide con customer_phone actual, sin cambios');
+          }
+        }
+      }
+    }
+
+    /* ===============================
        1️⃣4️⃣b ENVIAR datos__envio SI CORRESPONDE
        Se envía cuando el pedido llega a a_imprimir con comprobante cargado
        y el tipo de envío requiere pedir datos al cliente.
@@ -5563,7 +5657,7 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
         if (srCheck.rows.length === 0 && waCheck.rows.length === 0) {
           try {
             await queueWhatsApp({
-              telefono: customerPhone || telefono,
+              telefono: customerPhoneOverridden || customerPhone || telefono,
               plantilla: 'datos__envio',
               variables: { '1': nombre, '2': orderNumber },
               orderNumber
