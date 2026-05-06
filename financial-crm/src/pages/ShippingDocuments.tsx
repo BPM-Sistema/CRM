@@ -12,11 +12,13 @@ import {
   confirmRemito,
   deleteRemito,
   fetchOrderPrintData,
+  fetchShippingRequest,
   Remito,
   RemitosStats,
   RemitoStatus,
   PaginationInfo,
-  ApiOrderPrintData
+  ApiOrderPrintData,
+  ShippingRequest
 } from '../services/api';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -161,19 +163,36 @@ function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClos
 }
 
 // Order preview drawer (side panel)
-function OrderDrawer({ orderNumber, onClose }: { orderNumber: string; onClose: () => void }) {
+function OrderDrawer({
+  orderNumber,
+  remito,
+  onClose,
+  onConfirmed,
+}: {
+  orderNumber: string;
+  remito?: Remito | null;
+  onClose: () => void;
+  onConfirmed?: () => void;
+}) {
   const [orderData, setOrderData] = useState<ApiOrderPrintData | null>(null);
+  const [shipping, setShipping] = useState<ShippingRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
 
-  // Fetch order data
+  // Fetch order data + hoja de envío en paralelo
   useEffect(() => {
     async function loadOrder() {
       try {
         setLoading(true);
         setError(null);
-        const data = await fetchOrderPrintData(orderNumber);
+        const [data, ship] = await Promise.all([
+          fetchOrderPrintData(orderNumber),
+          fetchShippingRequest(orderNumber).catch(() => null),
+        ]);
         setOrderData(data);
+        setShipping(ship);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error al cargar pedido');
       } finally {
@@ -182,6 +201,21 @@ function OrderDrawer({ orderNumber, onClose }: { orderNumber: string; onClose: (
     }
     loadOrder();
   }, [orderNumber]);
+
+  const handleConfirm = async () => {
+    if (!remito) return;
+    setConfirming(true);
+    setConfirmError(null);
+    try {
+      await confirmRemito(remito.id, orderNumber);
+      if (onConfirmed) onConfirmed();
+      onClose();
+    } catch (err) {
+      setConfirmError(err instanceof Error ? err.message : 'Error al confirmar');
+    } finally {
+      setConfirming(false);
+    }
+  };
 
   // Handle ESC key
   useEffect(() => {
@@ -251,6 +285,87 @@ function OrderDrawer({ orderNumber, onClose }: { orderNumber: string; onClose: (
             </div>
           ) : orderData ? (
             <div className="space-y-5">
+              {/* Datos extraídos del remito (OCR) — comparar con hoja de envío */}
+              {remito && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-2">
+                  <h3 className="font-medium text-amber-900 flex items-center gap-2">
+                    <FileText size={16} />
+                    Datos extraídos del remito
+                  </h3>
+                  <dl className="text-sm space-y-1">
+                    <div className="flex gap-2">
+                      <dt className="text-amber-700 w-28 shrink-0">Nombre:</dt>
+                      <dd className="text-amber-900 font-medium">{remito.detected_name || '—'}</dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="text-amber-700 w-28 shrink-0">Dirección:</dt>
+                      <dd className="text-amber-900">{remito.detected_address || '—'}</dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="text-amber-700 w-28 shrink-0">Ciudad:</dt>
+                      <dd className="text-amber-900">{remito.detected_city || '—'}</dd>
+                    </div>
+                    {remito.tracking_number && (
+                      <div className="flex gap-2">
+                        <dt className="text-amber-700 w-28 shrink-0">Tracking:</dt>
+                        <dd className="text-amber-900 font-mono text-xs">{remito.tracking_number}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              )}
+
+              {/* Datos de la hoja de envío (shipping_request) */}
+              {shipping && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
+                  <h3 className="font-medium text-blue-900 flex items-center gap-2">
+                    <Truck size={16} />
+                    Datos de la hoja de envío
+                  </h3>
+                  <dl className="text-sm space-y-1">
+                    <div className="flex gap-2">
+                      <dt className="text-blue-700 w-28 shrink-0">Nombre:</dt>
+                      <dd className="text-blue-900 font-medium">{shipping.nombre_apellido}</dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="text-blue-700 w-28 shrink-0">DNI:</dt>
+                      <dd className="text-blue-900">{shipping.dni}</dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="text-blue-700 w-28 shrink-0">Tel:</dt>
+                      <dd className="text-blue-900">{shipping.telefono}</dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="text-blue-700 w-28 shrink-0">Tipo:</dt>
+                      <dd className="text-blue-900">{shipping.destino_tipo}</dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="text-blue-700 w-28 shrink-0">Dirección:</dt>
+                      <dd className="text-blue-900">{shipping.direccion_entrega}</dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="text-blue-700 w-28 shrink-0">Localidad:</dt>
+                      <dd className="text-blue-900">{shipping.localidad}, {shipping.provincia} ({shipping.codigo_postal})</dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="text-blue-700 w-28 shrink-0">Empresa:</dt>
+                      <dd className="text-blue-900">{shipping.empresa_envio}{shipping.empresa_envio_otro ? ` (${shipping.empresa_envio_otro})` : ''}</dd>
+                    </div>
+                    {shipping.comentarios && (
+                      <div className="flex gap-2">
+                        <dt className="text-blue-700 w-28 shrink-0">Coment.:</dt>
+                        <dd className="text-blue-900">{shipping.comentarios}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              )}
+              {remito && !shipping && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-600">
+                  El cliente aún no completó la hoja de envío para este pedido.
+                </div>
+              )}
+
               {/* Customer info */}
               <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                 <h3 className="font-medium text-gray-700 flex items-center gap-2">
@@ -407,7 +522,31 @@ function OrderDrawer({ orderNumber, onClose }: { orderNumber: string; onClose: (
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t bg-gray-50">
+        <div className="p-4 border-t bg-gray-50 space-y-2">
+          {confirmError && (
+            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2">
+              {confirmError}
+            </div>
+          )}
+          {remito && remito.status === 'ready' && (
+            <Button
+              onClick={handleConfirm}
+              disabled={confirming || loading}
+              className="w-full bg-emerald-600 hover:bg-emerald-700"
+            >
+              {confirming ? (
+                <>
+                  <Loader2 size={16} className="animate-spin mr-2" />
+                  Confirmando...
+                </>
+              ) : (
+                <>
+                  <Check size={16} className="mr-2" />
+                  Confirmar este remito al pedido #{orderNumber}
+                </>
+              )}
+            </Button>
+          )}
           <Button variant="secondary" onClick={onClose} className="w-full">
             Cerrar
           </Button>
@@ -1481,7 +1620,13 @@ export function ShippingDocuments() {
       {previewOrderNumber && (
         <OrderDrawer
           orderNumber={previewOrderNumber}
+          remito={selectedRemito}
           onClose={() => setPreviewOrderNumber(null)}
+          onConfirmed={() => {
+            setPreviewOrderNumber(null);
+            setSelectedRemito(null);
+            loadData();
+          }}
         />
       )}
     </div>
