@@ -3993,11 +3993,15 @@ async function handleBotmakerInbound(payload) {
     }
 
     try {
+      // ON CONFLICT con WHERE matchea el index parcial (idx_whatsapp_inbound_message_id
+      // tiene WHERE message_id IS NOT NULL). Si message_id es null, no se aplica
+      // dedup y el INSERT siempre inserta — eso es OK porque eventos sin id no son
+      // duplicables de forma confiable.
       await pool.query(
         `INSERT INTO whatsapp_inbound_messages
           (contact_id, chat_id, message_id, message_type, message_text, button_id, url_clicked, raw_payload, order_number)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
-         ON CONFLICT (message_id) DO NOTHING`,
+         ON CONFLICT (message_id) WHERE message_id IS NOT NULL DO NOTHING`,
         [
           it.contact_id,
           it.chat_id || null,
