@@ -167,7 +167,7 @@ async function renameAsRead(fileId, currentName, drive) {
  */
 async function runDriveIntake(opts = {}) {
   const mode = opts.mode || 'normal';
-  if (mode !== 'normal' && mode !== 'tombstone') {
+  if (mode !== 'normal' && mode !== 'tombstone' && mode !== 'list') {
     throw new Error(`runDriveIntake: mode invalido "${mode}"`);
   }
   const parentId = process.env.DRIVE_REMITOS_PARENT_FOLDER_ID;
@@ -180,6 +180,10 @@ async function runDriveIntake(opts = {}) {
   }
 
   const stats = { scanned: 0, ingested: 0, skipped: 0, errors: 0, errorDetails: [] };
+  // Mode 'list': devuelve los fileIds vivos por carpeta (sin tocar DB).
+  // Util para dedupe/reconciliacion: comparar contra DB y soft-delete los
+  // fileIds que ya no existen en Drive.
+  const folders = mode === 'list' ? [] : null;
 
   let subfolders;
   try {
@@ -201,6 +205,16 @@ async function runDriveIntake(opts = {}) {
       stats.errors++;
       stats.errorDetails.push({ folder: folder.name, error: err.message });
       continue;
+    }
+
+    if (mode === 'list') {
+      folders.push({
+        folderId: folder.id,
+        folderName: folder.name,
+        files: files.map(f => ({ id: f.id, name: f.name, mimeType: f.mimeType })),
+      });
+      stats.scanned += files.length;
+      continue; // no procesar archivos en mode=list
     }
 
     for (const file of files) {
@@ -283,7 +297,9 @@ async function runDriveIntake(opts = {}) {
     }
   }
 
-  return { ok: true, foldersScanned: subfolders.length, ...stats };
+  const result = { ok: true, foldersScanned: subfolders.length, ...stats };
+  if (mode === 'list') result.folders = folders;
+  return result;
 }
 
 module.exports = {

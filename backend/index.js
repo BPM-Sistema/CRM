@@ -6006,9 +6006,13 @@ app.post('/stock-alerts/cron/test-send', verifyCronAuth, stockAlertsRoutes.testS
 // Configurar en Cloud Scheduler con cron "*/30 * * * *".
 app.post('/remitos/cron/drive-intake', verifyCronAuth, async (req, res) => {
   // mode='tombstone': crea filas con status='deleted' sin descargar/encolar.
-  // Util para blindar archivos contra reingesta cuando se borraron filas
-  // fisicamente y se perdieron los source_drive_file_id.
-  const mode = req.body?.mode === 'tombstone' ? 'tombstone' : 'normal';
+  //   Util para blindar archivos contra reingesta cuando se borraron filas
+  //   fisicamente y se perdieron los source_drive_file_id.
+  // mode='list': lista los fileIds vivos por carpeta sin tocar DB. Util para
+  //   reconciliacion (comparar contra DB y soft-delete fileIds que ya no
+  //   estan en Drive).
+  const requestedMode = req.body?.mode;
+  const mode = (requestedMode === 'tombstone' || requestedMode === 'list') ? requestedMode : 'normal';
   log.info({ authMethod: req.cronAuth?.method, mode }, 'Cron drive intake started');
   try {
     const { runDriveIntake } = require('./services/driveIntake');
