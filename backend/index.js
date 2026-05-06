@@ -4467,9 +4467,14 @@ app.post('/webhook/tiendanube', async (req, res) => {
       const customerNameNuevo = pedido.customer?.name || pedido.contact_name || null;
       const customerEmailNuevo = pedido.customer?.email || pedido.contact_email || null;
       const customerPhoneNuevo = pedido.contact_phone || pedido.customer?.phone || pedido.shipping_address?.phone || null;
+      // Si el cliente verificó su teléfono vía /comprobantes-wpp, ignoramos el
+      // phone para detectar "cambio de cliente" — TN sigue mandando el phone
+      // viejo y lo distinto al nuestro no es un cambio real, lo respetamos.
+      const phoneCambioReal = !dbExt.customer_phone_overridden_at &&
+                              (dbExt.customer_phone !== customerPhoneNuevo);
       const cambioCustomer = (dbExt.customer_name !== customerNameNuevo) ||
                              (dbExt.customer_email !== customerEmailNuevo) ||
-                             (dbExt.customer_phone !== customerPhoneNuevo);
+                             phoneCambioReal;
 
       // Comparar address campo a campo (JSONB reordena keys alfabéticamente, JSON.stringify no sirve)
       const addressFields = ['name', 'address', 'number', 'floor', 'locality', 'city', 'province', 'zipcode', 'phone', 'between_streets', 'reference'];
