@@ -179,7 +179,7 @@ async function findAndFixReversePaymentDivergences() {
       AND tn_order_id IS NOT NULL
       AND created_at >= NOW() - INTERVAL '90 days'
     ORDER BY created_at DESC
-    LIMIT 200
+    LIMIT 1000
   `);
 
   if (candidates.length === 0) {
