@@ -25,6 +25,7 @@ import {
   AlertTriangle,
   MapPin,
   Bell,
+  BellRing,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -103,6 +104,7 @@ const adminItems = [
   { to: '/admin/whatsapp-actions', icon: <Send size={20} />, label: 'WhatsApp Envíos', permissions: ['whatsapp.send_bulk'] },
   { to: '/admin/image-sync', icon: <ImageIcon size={20} />, label: 'Sync Imagenes', permissions: ['activity.view'] },
   { to: '/admin/stock-alerts', icon: <Bell size={20} />, label: 'Stock Alerts', permissions: ['stock_alerts.view'] },
+  { to: '/admin/payment-reminders', icon: <BellRing size={20} />, label: 'Recordatorios', permissions: ['payment_reminders.view'] },
   { to: '/admin/integrations', icon: <Settings size={20} />, label: 'Integraciones', permissions: ['integrations.view'] },
   { to: '/system-status', icon: <Monitor size={20} />, label: 'Estado Sistema', permissions: ['integrations.view'] },
   // Bot IA — PAUSADO, descomentar cuando se active

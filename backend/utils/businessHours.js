@@ -2,8 +2,8 @@
  * Horario laboral Argentina (UTC-3 fijo, sin DST).
  * L-V 9:00 a 18:00. Sábado, domingo y feriados (TODO) son no-laborables.
  *
- * Política para programar el recordatorio `pendiente_3hs`:
- *   send_at = createdAt + 3h, ajustado:
+ * Política para programar recordatorios (`pendiente_3hs`, `pendiente_10hs`, etc.):
+ *   send_at = createdAt + offsetHours, ajustado:
  *     - si cae L-V 9-18 ART → ese mismo timestamp
  *     - si cae antes de las 9 (L-V) → 9:00 AM ART ese mismo día
  *     - si cae >= 18 (L-V) → 9:00 AM ART del próximo día laboral
@@ -25,8 +25,8 @@ function arToUtc(arDate) {
   return new Date(arDate.getTime() + AR_OFFSET_MS);
 }
 
-function computeBaseSendAt(createdAt) {
-  let target = new Date(createdAt.getTime() + 3 * 60 * 60 * 1000);
+function computeBaseSendAt(createdAt, offsetHours) {
+  let target = new Date(createdAt.getTime() + offsetHours * 60 * 60 * 1000);
 
   for (let i = 0; i < 8; i++) {
     const { dow, hour, arDate } = arComponents(target);
@@ -61,9 +61,14 @@ function computeBaseSendAt(createdAt) {
  * timestamp base para repartir el envío en una ventana de 2hs y evitar el
  * bunching de cientos de pedidos a la misma hora exacta. Si el offset empuja
  * el timestamp fuera de 9-18 ART, se descarta (queda en el base original).
+ *
+ * @param {Date} createdAt - Timestamp de creación del pedido (UTC)
+ * @param {number} jitterSeed - Semilla para el jitter (típicamente order_number)
+ * @param {number} offsetHours - Horas a sumar al createdAt antes de ajustar a horario laboral. Default 3 (back-compat con pendiente_3hs)
+ * @returns {Date} Timestamp UTC ajustado a horario laboral L-V 9-18 ART
  */
-function nextBusinessSendAtAR(createdAt, jitterSeed = 0) {
-  const base = computeBaseSendAt(createdAt);
+function nextBusinessSendAtAR(createdAt, jitterSeed = 0, offsetHours = 3) {
+  const base = computeBaseSendAt(createdAt, offsetHours);
   const jitterMin = Math.abs(Number(jitterSeed) || 0) % 120;
   if (jitterMin === 0) return base;
 

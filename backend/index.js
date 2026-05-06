@@ -1631,7 +1631,22 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
           ORDER BY wm.created_at DESC LIMIT 1) as pendiente_3hs_wa_status,
         (SELECT wm.status_updated_at FROM whatsapp_messages wm
           WHERE wm.order_number = o.order_number::int AND wm.template_key = 'pendiente_3hs'
-          ORDER BY wm.created_at DESC LIMIT 1) as pendiente_3hs_wa_status_at
+          ORDER BY wm.created_at DESC LIMIT 1) as pendiente_3hs_wa_status_at,
+        (SELECT send_at FROM scheduled_whatsapp
+          WHERE order_number = o.order_number AND plantilla = 'pendiente_10hs'
+          ORDER BY id DESC LIMIT 1) as pendiente_10hs_send_at,
+        (SELECT sent_at FROM scheduled_whatsapp
+          WHERE order_number = o.order_number AND plantilla = 'pendiente_10hs'
+          ORDER BY id DESC LIMIT 1) as pendiente_10hs_sent_at,
+        (SELECT error FROM scheduled_whatsapp
+          WHERE order_number = o.order_number AND plantilla = 'pendiente_10hs'
+          ORDER BY id DESC LIMIT 1) as pendiente_10hs_error,
+        (SELECT wm.status FROM whatsapp_messages wm
+          WHERE wm.order_number = o.order_number::int AND wm.template_key = 'pendiente_10hs'
+          ORDER BY wm.created_at DESC LIMIT 1) as pendiente_10hs_wa_status,
+        (SELECT wm.status_updated_at FROM whatsapp_messages wm
+          WHERE wm.order_number = o.order_number::int AND wm.template_key = 'pendiente_10hs'
+          ORDER BY wm.created_at DESC LIMIT 1) as pendiente_10hs_wa_status_at
       FROM orders_validated o
       LEFT JOIN comprobantes c ON o.order_number = c.order_number
       ${whereClause}
@@ -4818,6 +4833,37 @@ app.post('/webhook/tiendanube', async (req, res) => {
       } catch (schedErr) {
         log.error({ err: schedErr.message, orderNumber: String(pedido.number) }, 'Error programando pendiente_3hs');
       }
+
+      // Recordatorio pendiente_10hs: segundo recordatorio, +10h del pedido
+      // (7h después de pendiente_3hs). Mismo cron + guard que pendiente_3hs.
+      // Botmaker: solo {{1}} en botón URL = nro pedido. Body sin variables.
+      try {
+        const existsRes10 = await pool.query(
+          `SELECT 1 FROM scheduled_whatsapp
+           WHERE order_number = $1 AND plantilla = 'pendiente_10hs'
+           LIMIT 1`,
+          [String(pedido.number)]
+        );
+        if (existsRes10.rows.length === 0) {
+          const createdAt10 = pedido.created_at ? new Date(pedido.created_at) : new Date();
+          const sendAt10 = nextBusinessSendAtAR(createdAt10, Number(pedido.number), 10);
+          await pool.query(
+            `INSERT INTO scheduled_whatsapp (telefono, plantilla, variables, order_number, send_at)
+             VALUES ($1, 'pendiente_10hs', $2::jsonb, $3, $4)`,
+            [
+              telefono,
+              JSON.stringify({ '1': String(pedido.number) }),
+              String(pedido.number),
+              sendAt10
+            ]
+          );
+          log.info({ orderNumber: String(pedido.number), sendAt: sendAt10.toISOString() }, 'pendiente_10hs programado');
+        } else {
+          log.info({ orderNumber: String(pedido.number) }, 'pendiente_10hs ya estaba programado, skip');
+        }
+      } catch (schedErr) {
+        log.error({ err: schedErr.message, orderNumber: String(pedido.number) }, 'Error programando pendiente_10hs');
+      }
     }
 
     // 7️⃣ Si requiere formulario de envío (Expreso a elección o Via Cargo)
@@ -5817,6 +5863,7 @@ const localOrdersRoutes = require('./routes/local-orders');
 const localBoxRoutes = require('./routes/local-box');
 const localAlertsRoutes = require('./routes/local-alerts');
 const stockAlertsRoutes = require('./routes/stock-alerts');
+const paymentRemindersRoutes = require('./routes/payment-reminders');
 const { importMovimientos } = require('./services/bankImportService');
 const { matchFromComprobante, matchOnConfirm } = require('./services/bankMatchingService');
 // AI Bot routes — PAUSADO, descomentar cuando se active el bot en prod
@@ -5840,6 +5887,7 @@ app.use('/health', healthRoutes);
 app.use('/admin/status', adminStatusRoutes);
 app.use('/system-alerts', systemAlertsRoutes);
 app.use('/admin/divergences', adminDivergencesRoutes);
+app.use('/admin/payment-reminders', paymentRemindersRoutes);
 app.use('/bank', bankRoutes);
 app.use('/local', localOrdersRoutes);
 app.use('/local/box-orders', localBoxRoutes);
@@ -8840,9 +8888,11 @@ setInterval(async () => {
 
     for (const msg of pending.rows) {
       try {
-        // Guard pendiente_3hs: descarta si el cliente ya cargó comprobante,
-        // si el pago no está más pendiente o si el pedido fue cancelado.
-        if (msg.plantilla === 'pendiente_3hs' && msg.order_number) {
+        // Guard recordatorios pendientes (pendiente_3hs, pendiente_10hs): descarta
+        // si el cliente ya cargó comprobante, si el pago no está más pendiente o si
+        // el pedido fue cancelado. Misma lógica para todos los pasos de la serie.
+        const PENDIENTE_TEMPLATES = ['pendiente_3hs', 'pendiente_10hs'];
+        if (PENDIENTE_TEMPLATES.includes(msg.plantilla) && msg.order_number) {
           const guardRes = await pool.query(
             `SELECT o.estado_pago, o.estado_pedido,
                     EXISTS(SELECT 1 FROM comprobantes c WHERE c.order_number = o.order_number) AS has_comprobante
@@ -8869,10 +8919,10 @@ setInterval(async () => {
             );
             await logEvento({
               orderNumber: String(msg.order_number),
-              accion: `pendiente_3hs descartado: ${motivo}`,
+              accion: `${msg.plantilla} descartado: ${motivo}`,
               origen: 'sistema'
             }).catch(() => {});
-            console.log(`⏰⤴️  pendiente_3hs descartado pedido #${msg.order_number} (${motivo})`);
+            console.log(`⏰⤴️  ${msg.plantilla} descartado pedido #${msg.order_number} (${motivo})`);
             continue;
           }
         }
