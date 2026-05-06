@@ -6071,6 +6071,20 @@ app.use('/health', healthRoutes);
 app.use('/admin/status', adminStatusRoutes);
 app.use('/system-alerts', systemAlertsRoutes);
 app.use('/admin/divergences', adminDivergencesRoutes);
+
+// Reverse divergence fix on-demand: corre la sincronizacion TN→BPM para
+// pedidos pendientes que TN reporta como pagados. Util para limpiar pedidos
+// viejos atrapados fuera de la ventana del cron de 7 dias.
+app.post('/admin/divergences/run-reverse-fix', authenticate, requirePermission('integrations.view'), async (req, res) => {
+  try {
+    const { findAndFixReversePaymentDivergences } = require('./lib/tnPaymentDivergence');
+    const result = await findAndFixReversePaymentDivergences();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('[reverse-fix] error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 app.use('/admin/payment-reminders', paymentRemindersRoutes);
 app.use('/bank', bankRoutes);
 app.use('/local', localOrdersRoutes);
@@ -6952,20 +6966,18 @@ function startSyncScheduler() {
     }, msUntil3am);
 
     // TN Payment Divergence check: también a las 3:00 AM (5 min después del image sync)
-    const { checkTnPaymentDivergences } = require('./lib/tnPaymentDivergence');
+    const { checkTnPaymentDivergences, findAndFixReversePaymentDivergences } = require('./lib/tnPaymentDivergence');
+    const runDivergenceJobs = async () => {
+      try { await checkTnPaymentDivergences(); }
+      catch (err) { console.error('[TN Divergence] Error:', err.message); }
+      try { await findAndFixReversePaymentDivergences(); }
+      catch (err) { console.error('[TN Reverse Divergence] Error:', err.message); }
+    };
     setTimeout(() => {
-      // Primera ejecución
-      checkTnPaymentDivergences().catch(err => {
-        console.error('[TN Divergence] Error:', err.message);
-      });
-      // Luego cada 24 horas
-      setInterval(() => {
-        checkTnPaymentDivergences().catch(err => {
-          console.error('[TN Divergence] Error:', err.message);
-        });
-      }, 24 * 60 * 60 * 1000);
+      runDivergenceJobs(); // Primera ejecución
+      setInterval(runDivergenceJobs, 24 * 60 * 60 * 1000); // cada 24 hs
     }, msUntil3am + 5 * 60 * 1000); // 5 minutos después de las 3am
-    console.log(`⏰ [TN Divergence] Programado para las 3:05 AM`);
+    console.log(`⏰ [TN Divergence] Programado para las 3:05 AM (incluye caso TN→BPM)`);
   }
 
   // Cleanup: limpiar registros antiguos una vez al día
