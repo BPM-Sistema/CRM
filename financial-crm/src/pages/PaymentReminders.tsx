@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Bell, ExternalLink, MessageSquare, RefreshCw, Search, Send, Ban, Clock, Link2, Check } from 'lucide-react';
+import { Bell, ExternalLink, MessageSquare, RefreshCw, Search, Send, Ban, Clock } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -36,30 +36,6 @@ function formatMoney(v: string | number | null) {
   const n = typeof v === 'string' ? parseFloat(v) : v;
   if (isNaN(n)) return '—';
   return `$${n.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
-}
-
-function CopyVerifyLinkButton({ orderNumber }: { orderNumber: string | number }) {
-  const [copied, setCopied] = useState(false);
-  const handle = async () => {
-    const url = `${window.location.origin}/comprobantes-wpp?order=${orderNumber}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      // Fallback básico si no hay permisos de clipboard
-      window.prompt('Copiá este link y pasáselo al cliente:', url);
-    }
-  };
-  return (
-    <button
-      onClick={handle}
-      className={`inline-flex items-center gap-1 ${copied ? 'text-emerald-600' : 'text-neutral-500 hover:text-neutral-800'}`}
-      title="Copiar link para que el cliente confirme su WhatsApp y suba el comprobante"
-    >
-      {copied ? <><Check size={12} /> Copiado</> : <><Link2 size={12} /> Link c/ verif. tel</>}
-    </button>
-  );
 }
 
 function InboundCell({ row }: { row: ReminderRow }) {
@@ -488,18 +464,15 @@ export default function PaymentReminders() {
                   </td>
                   <td className="px-3 py-2">{row.customer_name || '—'}</td>
                   <td className="px-3 py-2">
-                    <div className="flex flex-col gap-0.5 text-xs">
-                      {row.customer_phone ? (
-                        <button
-                          onClick={() => openInbox(row.customer_phone, row.order_number)}
-                          className="text-green-600 hover:text-green-800 inline-flex items-center gap-1"
-                          title="Abrir inbox en Botmaker"
-                        >
-                          <MessageSquare size={12} /> {row.customer_phone}
-                        </button>
-                      ) : <span>—</span>}
-                      <CopyVerifyLinkButton orderNumber={row.order_number} />
-                    </div>
+                    {row.customer_phone ? (
+                      <button
+                        onClick={() => openInbox(row.customer_phone, row.order_number)}
+                        className="text-green-600 hover:text-green-800 inline-flex items-center gap-1"
+                        title="Abrir inbox en Botmaker"
+                      >
+                        <MessageSquare size={12} /> {row.customer_phone}
+                      </button>
+                    ) : '—'}
                   </td>
                   <td className="px-3 py-2 text-right">{formatMoney(row.monto_tiendanube)}</td>
                   <td className="px-3 py-2 text-neutral-600">{formatDate(row.created_at)}</td>

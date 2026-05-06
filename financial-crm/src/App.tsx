@@ -91,7 +91,6 @@ export default function App() {
         {/* Rutas públicas - sin autenticación */}
         <Route path="/envio" element={<ShippingForm />} />
         <Route path="/comprobantes" element={<ComprobantesForm />} />
-        <Route path="/comprobantes-wpp" element={<ComprobantesForm requirePhone />} />
 
         {/* Resto de la app - con autenticación */}
         <Route path="*" element={

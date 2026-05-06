@@ -344,15 +344,6 @@ async function applyAutoFixes(orderNumber, divergences, opts = {}) {
   let fixed = 0;
   let skipped = 0;
 
-  // Cargar flags del pedido que afectan qué fixes se pueden aplicar.
-  // customer_phone_overridden_at: el cliente verificó su teléfono vía
-  // /comprobantes-wpp, no debemos pisarlo con el de TN.
-  const flagsRes = await pool.query(
-    `SELECT customer_phone_overridden_at FROM orders_validated WHERE order_number = $1`,
-    [orderNumber]
-  );
-  const customerPhoneLocked = !!flagsRes.rows[0]?.customer_phone_overridden_at;
-
   const setClauses = ['updated_at = NOW()'];
   const setParams = [];
   let paramIdx = 2; // $1 = order_number
@@ -425,15 +416,10 @@ async function applyAutoFixes(orderNumber, divergences, opts = {}) {
         break;
 
       case 'customer_phone':
-        if (customerPhoneLocked) {
-          skipped++;
-          details.push({ field: 'customer_phone', action: 'skipped', reason: 'customer_verified_phone_lock' });
-        } else {
-          setClauses.push(`customer_phone = $${paramIdx++}`);
-          setParams.push(d.expected_value);
-          details.push({ field: 'customer_phone', action: 'fixed', from: d.bpm_value, to: d.expected_value });
-          fixed++;
-        }
+        setClauses.push(`customer_phone = $${paramIdx++}`);
+        setParams.push(d.expected_value);
+        details.push({ field: 'customer_phone', action: 'fixed', from: d.bpm_value, to: d.expected_value });
+        fixed++;
         break;
 
       case 'shipping_address':
