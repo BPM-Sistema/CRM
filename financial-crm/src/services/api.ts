@@ -593,6 +593,30 @@ export async function updateOrderStatus(
   return data;
 }
 
+export async function updateCustomerPhone(
+  orderNumber: string,
+  phone: string
+): Promise<{
+  ok: boolean;
+  changed: boolean;
+  customer_phone: string | null;
+  old_phone: string | null;
+  reason: string;
+}> {
+  const response = await authFetch(`${API_BASE_URL}/orders/${orderNumber}/customer-phone`, {
+    method: 'PATCH',
+    body: JSON.stringify({ phone }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al actualizar teléfono');
+  }
+
+  return data;
+}
+
 // Mapear estado de pedido del backend
 export function mapEstadoPedido(estadoPedido: string | null): OrderStatus {
   if (!estadoPedido) return 'pendiente_pago';

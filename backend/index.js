@@ -50,7 +50,7 @@ const { getQueueStats, getSyncState, markCompleted: markQueueCompleted, markFail
 const { tiendanube: tnConfig, whatsapp: waConfig, isEnabled: isIntegrationEnabled } = require('./services/integrationConfig');
 const { verificarConsistencia, getInconsistencias } = require('./utils/orderVerification');
 const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crearNotificacion, notificarUsuariosConPermiso } = require('./utils/notifications');
-const { enviarWhatsAppPlantilla, normalizeArgentinaPhone } = require('./lib/whatsapp-helpers');
+const { enviarWhatsAppPlantilla } = require('./lib/whatsapp-helpers');
 const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, isForbiddenCarrier, normalizePhoneForComparison, mapShippingToEstadoPedido } = require('./lib/payment-helpers');
 const { recalcularPagos } = require('./lib/recalcularPagos');
 const { reopenIfCancelled } = require('./lib/reopenIfCancelled');
@@ -3900,6 +3900,52 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
 });
 
 
+/* =====================================================
+   PATCH — ACTUALIZAR TELÉFONO DEL CLIENTE (override manual)
+   Usado por el inline edit del detalle. Reusa el helper de
+   phone-override (mismo flag customer_phone_overridden_at que
+   protege contra los webhooks de TN).
+===================================================== */
+app.patch('/orders/:orderNumber/customer-phone', authenticate, requirePermission('orders.update_status'), async (req, res) => {
+  try {
+    const { orderNumber } = req.params;
+    const { phone } = req.body || {};
+
+    if (!phone || typeof phone !== 'string' || phone.trim() === '') {
+      return res.status(400).json({ error: 'Falta el teléfono' });
+    }
+
+    const { applyCustomerPhoneOverride } = require('./lib/phone-override');
+    const result = await applyCustomerPhoneOverride(orderNumber, phone, {
+      triggeredBy: 'admin',
+      username: req.user?.name || req.user?.username || null,
+      // Sin allowedStates — el admin puede editar en cualquier estado.
+    });
+
+    if (result.reason === 'too_short') {
+      return res.status(400).json({ error: 'El número debe tener al menos 10 dígitos.' });
+    }
+    if (result.reason === 'too_long') {
+      return res.status(400).json({ error: 'El número no es válido.' });
+    }
+    if (result.reason === 'order_not_found') {
+      return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
+
+    return res.json({
+      ok: true,
+      changed: result.applied,
+      customer_phone: result.normalized,
+      old_phone: result.oldPhone,
+      reason: result.reason,
+    });
+  } catch (error) {
+    console.error('❌ /orders/:orderNumber/customer-phone error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 function verifyTiendaNubeSignature(req) {
   const received = req.headers['x-linkedstore-hmac-sha256'];
 
@@ -5243,16 +5289,19 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
 
     // verified_phone (opcional): viene del flujo /comprobantes-wpp donde el
     // cliente verifica su teléfono porque cargó mal el original en TN.
-    // Validación temprana: debe tener al menos 10 dígitos numéricos.
-    let verifiedPhoneDigits = null;
+    // Validación temprana con el helper compartido — el override real lo
+    // aplicamos después de validar el comprobante (ver bloque 1️⃣4️⃣a).
+    const { sanitizeAndValidate: validateVerifiedPhone } = require('./lib/phone-override');
+    let verifiedPhoneRaw = null;
     if (rawVerifiedPhone !== undefined && rawVerifiedPhone !== null && String(rawVerifiedPhone).trim() !== '') {
-      verifiedPhoneDigits = String(rawVerifiedPhone).replace(/\D/g, '');
-      if (verifiedPhoneDigits.length < 10) {
+      const { error } = validateVerifiedPhone(rawVerifiedPhone);
+      if (error === 'too_short') {
         return res.status(400).json({ error: 'El número de WhatsApp debe tener al menos 10 dígitos.' });
       }
-      if (verifiedPhoneDigits.length > 15) {
+      if (error === 'too_long') {
         return res.status(400).json({ error: 'El número de WhatsApp no es válido.' });
       }
+      if (!error) verifiedPhoneRaw = String(rawVerifiedPhone);
     }
 
     /* ===============================
@@ -5567,73 +5616,19 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     /* ===============================
        1️⃣4️⃣a OVERRIDE customer_phone (flujo /comprobantes-wpp)
        Si el cliente verificó un teléfono distinto al cargado en TN,
-       actualizamos customer_phone, marcamos override_at y refrescamos
-       los scheduled_whatsapp pendientes para el pedido. Solo en estados
-       tempranos (pendiente_pago / a_imprimir) — en otros se ignora.
+       el helper actualiza customer_phone, marca override_at y refresca
+       los scheduled_whatsapp pendientes. Solo en estados tempranos
+       (pendiente_pago / a_imprimir) — en otros se ignora.
     ================================ */
     let customerPhoneOverridden = null;
-    if (verifiedPhoneDigits) {
-      const stateRes = await pool.query(
-        `SELECT estado_pedido, customer_phone FROM orders_validated WHERE order_number = $1`,
-        [orderNumber]
-      );
-      const orderRow = stateRes.rows[0];
-      if (orderRow) {
-        const allowedStates = new Set(['pendiente_pago', 'a_imprimir']);
-        if (!allowedStates.has(orderRow.estado_pedido)) {
-          log.info({ orderNumber, estado: orderRow.estado_pedido }, 'verified_phone ignorado: pedido fuera de estado temprano');
-        } else {
-          // Comparar últimos 10 dígitos contra el phone actual (mismo número en
-          // distinto formato no debe disparar override).
-          const currentDigits = (orderRow.customer_phone || '').replace(/\D/g, '');
-          const currentLast10 = currentDigits.slice(-10);
-          const newLast10 = verifiedPhoneDigits.slice(-10);
-
-          if (currentLast10 !== newLast10) {
-            // Normalización del número escrito por el cliente. Casos comunes en AR:
-            //   10 dig sin código país          → "1166778899"        → prefijar +549
-            //   11 dig arrancando con 9         → "91166778899"       → prefijar +54
-            //   12 dig con "15" viejo (CABA/GBA)→ "111566778899"      → quitar 15, prefijar +549
-            //   12 dig con +54 sin 9            → "541166778899"      → prefijar +, normalize agrega 9
-            //   13 dig con +549                 → "5491166778899"     → prefijar +
-            // Heurística del 15: solo para 12 dígitos donde pos 3-4 = "15"
-            // (área de 2 dígitos tipo "11"). Para áreas 3-dig (351 Córdoba,
-            // 221 La Plata, etc.) el cliente debe escribirlo sin el 15.
-            let workingDigits = verifiedPhoneDigits;
-            if (workingDigits.length === 12 && workingDigits.substring(2, 4) === '15') {
-              workingDigits = workingDigits.substring(0, 2) + workingDigits.substring(4);
-            }
-            const candidate = workingDigits.length === 10
-              ? '+549' + workingDigits
-              : workingDigits.length === 11 && workingDigits.startsWith('9')
-                ? '+54' + workingDigits
-                : '+' + workingDigits;
-            const normalized = normalizeArgentinaPhone(candidate);
-            await pool.query(
-              `UPDATE orders_validated
-                 SET customer_phone = $1,
-                     customer_phone_overridden_at = NOW(),
-                     updated_at = NOW()
-               WHERE order_number = $2`,
-              [normalized, orderNumber]
-            );
-            await pool.query(
-              `UPDATE scheduled_whatsapp
-                 SET telefono = $1
-               WHERE order_number = $2 AND sent_at IS NULL AND error IS NULL`,
-              [normalized, orderNumber]
-            );
-            await logEvento({
-              orderNumber,
-              accion: `Teléfono actualizado por cliente: ${orderRow.customer_phone || '(vacío)'} → ${normalized}`,
-              origen: 'cliente'
-            }).catch(() => {});
-            log.info({ orderNumber, from: orderRow.customer_phone, to: normalized }, 'customer_phone overrideado por cliente');
-            customerPhoneOverridden = normalized;
-          } else {
-            log.info({ orderNumber }, 'verified_phone coincide con customer_phone actual, sin cambios');
-          }
-        }
+    if (verifiedPhoneRaw) {
+      const { applyCustomerPhoneOverride } = require('./lib/phone-override');
+      const result = await applyCustomerPhoneOverride(orderNumber, verifiedPhoneRaw, {
+        triggeredBy: 'cliente',
+        allowedStates: new Set(['pendiente_pago', 'a_imprimir']),
+      });
+      if (result.applied) {
+        customerPhoneOverridden = result.normalized;
       }
     }
 

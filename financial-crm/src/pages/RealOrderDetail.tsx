@@ -21,6 +21,8 @@ import {
   Image,
   Tag,
   AlertTriangle,
+  Edit3,
+  X,
 } from 'lucide-react';
 import { getEventConfig, formatEventLabel } from '../utils/eventConfig';
 import { Header } from '../components/layout';
@@ -31,6 +33,7 @@ import {
   fetchOrderPrintData,
   registerCashPayment,
   updateOrderStatus,
+  updateCustomerPhone,
   resyncOrder,
   fetchShippingRequest,
   fetchBotmakerChat,
@@ -85,6 +88,12 @@ export function RealOrderDetail() {
   // Estado para remito asociado
   const [remito, setRemito] = useState<Remito | null>(null);
   const [showRemitoModal, setShowRemitoModal] = useState(false);
+
+  // Estado para inline edit del teléfono del cliente
+  const [editingPhone, setEditingPhone] = useState(false);
+  const [phoneInput, setPhoneInput] = useState('');
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [savingPhone, setSavingPhone] = useState(false);
 
   // Estado para etiqueta Envío Nube
   const [isLoadingEnvioNubeLabel, setIsLoadingEnvioNubeLabel] = useState(false);
@@ -233,6 +242,41 @@ export function RealOrderDetail() {
       alert(error instanceof Error ? error.message : 'Error al actualizar estado');
     } finally {
       setIsUpdatingStatus(false);
+    }
+  };
+
+  const startEditPhone = () => {
+    setPhoneInput(data?.order?.customer_phone || '');
+    setPhoneError(null);
+    setEditingPhone(true);
+  };
+
+  const cancelEditPhone = () => {
+    setEditingPhone(false);
+    setPhoneInput('');
+    setPhoneError(null);
+  };
+
+  const savePhone = async () => {
+    if (!orderNumber) return;
+    const digits = phoneInput.replace(/\D/g, '');
+    if (digits.length < 10) {
+      setPhoneError('Mínimo 10 dígitos. Sin 0 ni 15.');
+      return;
+    }
+    setSavingPhone(true);
+    setPhoneError(null);
+    try {
+      const r = await updateCustomerPhone(orderNumber, phoneInput);
+      setEditingPhone(false);
+      setPhoneInput('');
+      if (r.changed) {
+        await loadOrder();
+      }
+    } catch (err) {
+      setPhoneError(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setSavingPhone(false);
     }
   };
 
@@ -676,39 +720,94 @@ export function RealOrderDetail() {
                     <div className="text-sm text-neutral-500">Cliente</div>
                   </div>
                 </div>
-                {(order.customer_email || order.customer_phone) && (
-                  <div className="space-y-2 pt-2">
-                    {order.customer_email && (
-                      <a
-                        href={`mailto:${order.customer_email}`}
-                        className="flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900"
-                      >
-                        <Mail size={14} />
-                        {order.customer_email}
-                      </a>
-                    )}
-                    {order.customer_phone && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            const { url } = await fetchBotmakerChat(order.customer_phone!);
-                            if (url) {
-                              window.open(url, '_blank');
-                            } else {
-                              alert('No se encontró chat en Botmaker para este número');
-                            }
-                          } catch {
-                            alert('Error al buscar chat en Botmaker');
-                          }
+                <div className="space-y-2 pt-2">
+                  {order.customer_email && (
+                    <a
+                      href={`mailto:${order.customer_email}`}
+                      className="flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900"
+                    >
+                      <Mail size={14} />
+                      {order.customer_email}
+                    </a>
+                  )}
+                  {/* Teléfono con inline edit */}
+                  {editingPhone ? (
+                    <div className="flex items-center gap-2">
+                      <Phone size={14} className="text-neutral-400 flex-shrink-0" />
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        value={phoneInput}
+                        onChange={(e) => {
+                          setPhoneInput(e.target.value);
+                          if (phoneError) setPhoneError(null);
                         }}
-                        className="flex items-center gap-2 text-sm text-green-600 hover:text-green-800"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') savePhone();
+                          if (e.key === 'Escape') cancelEditPhone();
+                        }}
+                        autoFocus
+                        disabled={savingPhone}
+                        placeholder="11 6677 8899"
+                        className="text-sm border border-neutral-200 rounded px-2 py-1 flex-1 min-w-0 focus:outline-none focus:ring-1 focus:ring-neutral-900"
+                      />
+                      <button
+                        onClick={savePhone}
+                        disabled={savingPhone}
+                        className="text-emerald-600 hover:text-emerald-800 disabled:opacity-40"
+                        title="Guardar (Enter)"
                       >
-                        <Phone size={14} />
-                        {order.customer_phone}
+                        {savingPhone ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
                       </button>
-                    )}
-                  </div>
-                )}
+                      <button
+                        onClick={cancelEditPhone}
+                        disabled={savingPhone}
+                        className="text-neutral-400 hover:text-neutral-600 disabled:opacity-40"
+                        title="Cancelar (Esc)"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      {order.customer_phone ? (
+                        <button
+                          onClick={async () => {
+                            try {
+                              const { url } = await fetchBotmakerChat(order.customer_phone!);
+                              if (url) {
+                                window.open(url, '_blank');
+                              } else {
+                                alert('No se encontró chat en Botmaker para este número');
+                              }
+                            } catch {
+                              alert('Error al buscar chat en Botmaker');
+                            }
+                          }}
+                          className="flex items-center gap-2 text-sm text-green-600 hover:text-green-800 flex-1 min-w-0"
+                        >
+                          <Phone size={14} className="flex-shrink-0" />
+                          <span className="truncate">{order.customer_phone}</span>
+                        </button>
+                      ) : (
+                        <span className="flex items-center gap-2 text-sm text-neutral-400 flex-1">
+                          <Phone size={14} />
+                          Sin teléfono
+                        </span>
+                      )}
+                      <button
+                        onClick={startEditPhone}
+                        className="text-neutral-400 hover:text-neutral-700"
+                        title="Editar teléfono"
+                      >
+                        <Edit3 size={14} />
+                      </button>
+                    </div>
+                  )}
+                  {phoneError && (
+                    <p className="text-xs text-red-600 ml-6">{phoneError}</p>
+                  )}
+                </div>
               </div>
             </Card>
 
