@@ -28,11 +28,11 @@ export interface ReminderRow {
   tn_order_id: number | null;
   inbound_count: number;
   last_inbound: InboundPreview[] | null;
-  has_url_click: boolean;
   has_comprobante: boolean;
   payment_reminder_note: string | null;
   payment_reminder_action_at: string | null;
   payment_reminder_action_type: 'cancel' | 'wait' | null;
+  phone_clicked_at: string | null;
   // Por cada step (pendiente_3hs, pendiente_10hs)
   [key: string]: any;
 }
@@ -133,6 +133,17 @@ export async function reprogramarReminder(scheduledId: number): Promise<{ ok: bo
     method: 'POST'
   });
   return r.json();
+}
+
+export async function markPhoneClicked(orderNumber: string): Promise<{ ok: boolean }> {
+  try {
+    const r = await authFetch(`${API_BASE_URL}/admin/payment-reminders/${orderNumber}/phone-click`, {
+      method: 'POST'
+    });
+    return r.json();
+  } catch {
+    return { ok: false };
+  }
 }
 
 export async function applyReminderAction(

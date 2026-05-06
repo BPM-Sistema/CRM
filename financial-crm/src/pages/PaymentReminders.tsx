@@ -14,6 +14,7 @@ import {
   fetchReminderHistory,
   reprogramarReminder,
   applyReminderAction,
+  markPhoneClicked,
   type ReminderRow,
   type ReminderStep,
   type ReminderStats,
@@ -96,8 +97,9 @@ function ActionCell({ row, onApplied }: { row: ReminderRow; onApplied: () => voi
     }
   }
 
-  // Solo mostrar botones si el cliente clickeó CARGAR COMPROBANTE.
-  if (!row.has_url_click) return <span className="text-neutral-300 text-xs">—</span>;
+  // Mostrar botones solo si Melu ya clickeó el teléfono del pedido (abrió
+  // Botmaker para verificar pago). Eso le permite actuar al volver al panel.
+  if (!row.phone_clicked_at) return <span className="text-neutral-300 text-xs">—</span>;
 
   const onCancel = async () => {
     if (!confirm(`¿Cancelar pedido #${row.order_number}? Se cancela en TiendaNube y los productos vuelven al stock. Esta acción no se puede deshacer.`)) return;
@@ -313,7 +315,7 @@ export default function PaymentReminders() {
     }
   };
 
-  const openInbox = async (phone: string | null | undefined) => {
+  const openInbox = async (phone: string | null | undefined, orderNumber?: string) => {
     if (!phone) return alert('Sin teléfono');
     try {
       const { url } = await fetchBotmakerChat(phone);
@@ -321,6 +323,14 @@ export default function PaymentReminders() {
       else alert('No se encontró chat en Botmaker para este número');
     } catch {
       alert('Error al buscar chat en Botmaker');
+    }
+    // Marca que se entró a verificar pago. Habilita botones Cancelar/Esperar
+    // en ese pedido al volver al panel. No bloqueante: si falla solo loguea.
+    if (orderNumber) {
+      markPhoneClicked(orderNumber).then(() => {
+        // Refresco silencioso del listado para que aparezcan los botones.
+        load();
+      }).catch(() => { /* best-effort */ });
     }
   };
 
@@ -456,7 +466,7 @@ export default function PaymentReminders() {
                   <td className="px-3 py-2">
                     {row.customer_phone ? (
                       <button
-                        onClick={() => openInbox(row.customer_phone)}
+                        onClick={() => openInbox(row.customer_phone, row.order_number)}
                         className="text-green-600 hover:text-green-800 inline-flex items-center gap-1"
                         title="Abrir inbox en Botmaker"
                       >

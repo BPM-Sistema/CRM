@@ -98,6 +98,7 @@ router.get('/', requirePermission('payment_reminders.view'), async (req, res) =>
         o.payment_reminder_note,
         o.payment_reminder_action_at,
         o.payment_reminder_action_type,
+        o.phone_clicked_at,
         ${buildStepSubqueries()},
         (SELECT COUNT(*)::int FROM whatsapp_inbound_messages
           WHERE order_number = o.order_number::int) AS inbound_count,
@@ -108,11 +109,6 @@ router.get('/', requirePermission('payment_reminders.view'), async (req, res) =>
           ORDER BY received_at DESC
           LIMIT 5
         ) x) AS last_inbound,
-        EXISTS (
-          SELECT 1 FROM whatsapp_inbound_messages
-          WHERE order_number = o.order_number::int
-            AND message_type = 'url_click'
-        ) AS has_url_click,
         EXISTS (
           SELECT 1 FROM comprobantes
           WHERE order_number = o.order_number
@@ -432,6 +428,32 @@ router.post('/:orderNumber/action', requirePermission('payment_reminders.view'),
     res.json({ ok: true, action: 'cancel', tn_restocked: true });
   } catch (err) {
     console.error('[payment-reminders] action error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ─── POST /admin/payment-reminders/:orderNumber/phone-click ───
+// Marca que alguien clickeó el teléfono del cliente en el panel para abrir
+// Botmaker. Habilita los botones Cancelar/Esperar para ese pedido. Global
+// (cualquier admin con permission lo marca). Idempotente: actualiza siempre
+// el timestamp para indicar último click.
+router.post('/:orderNumber/phone-click', requirePermission('payment_reminders.view'), async (req, res) => {
+  const { orderNumber } = req.params;
+  if (!/^\d+$/.test(orderNumber)) {
+    return res.status(400).json({ ok: false, error: 'orderNumber inválido' });
+  }
+  try {
+    const r = await pool.query(
+      `UPDATE orders_validated
+          SET phone_clicked_at = NOW()
+        WHERE order_number = $1
+        RETURNING phone_clicked_at`,
+      [orderNumber]
+    );
+    if (r.rowCount === 0) return res.status(404).json({ ok: false, error: 'Pedido no encontrado' });
+    res.json({ ok: true, phone_clicked_at: r.rows[0].phone_clicked_at });
+  } catch (err) {
+    console.error('[payment-reminders] phone-click error:', err);
     res.status(500).json({ ok: false, error: err.message });
   }
 });
