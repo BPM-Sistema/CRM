@@ -14,6 +14,7 @@ import {
   TableCell,
 } from '../components/ui';
 import { fetchOrders, fetchPrintCounts, fetchOrdersToPrint, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus, PaginationInfo, OrderFilters, ShippingTypeFilter, getEnvioNubeLabels, PrintCounts } from '../services/api';
+import { ORDER_STATUSES, STATUS_FILTER_CONFIG } from '../constants/estadoPedido';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -30,14 +31,12 @@ const paymentButtons: { value: PaymentStatus | 'all'; label: string; color: stri
 
 const orderStatusButtons: { value: OrderStatus | 'all'; label: string; color: string; permission?: string }[] = [
   { value: 'all', label: 'Todos', color: 'bg-neutral-100 text-neutral-700' },
-  { value: 'pendiente_pago', label: 'Pend. Pago', color: 'bg-amber-50 text-amber-700', permission: 'orders.view_pendiente_pago' },
-  { value: 'a_imprimir', label: 'A Imprimir', color: 'bg-blue-50 text-blue-700', permission: 'orders.view_a_imprimir' },
-  { value: 'hoja_impresa', label: 'Hoja Impr.', color: 'bg-violet-50 text-violet-700', permission: 'orders.view_hoja_impresa' },
-  { value: 'armado', label: 'Armado', color: 'bg-cyan-50 text-cyan-700', permission: 'orders.view_armado' },
-  { value: 'retirado', label: 'Retirado', color: 'bg-purple-50 text-purple-700', permission: 'orders.view_retirado' },
-  { value: 'en_calle', label: 'En Calle', color: 'bg-orange-50 text-orange-700', permission: 'orders.view_en_calle' },
-  { value: 'enviado', label: 'Enviado', color: 'bg-emerald-50 text-emerald-700', permission: 'orders.view_enviado' },
-  { value: 'cancelado', label: 'Cancelado', color: 'bg-red-50 text-red-700', permission: 'orders.view_cancelado' },
+  ...ORDER_STATUSES.map(estado => ({
+    value: estado,
+    label: STATUS_FILTER_CONFIG[estado].label,
+    color: STATUS_FILTER_CONFIG[estado].color,
+    permission: STATUS_FILTER_CONFIG[estado].permission,
+  })),
 ];
 
 export function RealOrders() {
@@ -258,16 +257,9 @@ export function RealOrders() {
     reembolsado: 'orders.view_reembolsado',
   };
 
-  const orderStatusPermissions: Record<OrderStatus, string> = {
-    pendiente_pago: 'orders.view_pendiente_pago',
-    a_imprimir: 'orders.view_a_imprimir',
-    hoja_impresa: 'orders.view_hoja_impresa',
-    armado: 'orders.view_armado',
-    retirado: 'orders.view_retirado',
-    en_calle: 'orders.view_en_calle',
-    enviado: 'orders.view_enviado',
-    cancelado: 'orders.view_cancelado',
-  };
+  const orderStatusPermissions: Record<OrderStatus, string> = Object.fromEntries(
+    Object.entries(STATUS_FILTER_CONFIG).map(([estado, cfg]) => [estado, cfg.permission])
+  ) as Record<OrderStatus, string>;
 
   // Primero filtrar por permisos del usuario
   const permittedOrders = useMemo(() => {

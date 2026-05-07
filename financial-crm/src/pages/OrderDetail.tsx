@@ -515,8 +515,8 @@ export function OrderDetail() {
                   </Button>
                 )}
 
-                {/* Armado - opciones de envío */}
-                {order.orderStatus === 'armado' && (
+                {/* Empaquetado - opciones de envío */}
+                {order.orderStatus === 'empaquetado' && (
                   <>
                     {showReprint && (
                       <Button

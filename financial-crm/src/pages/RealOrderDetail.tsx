@@ -910,16 +910,16 @@ export function RealOrderDetail() {
                       className="w-full"
                       size="lg"
                       leftIcon={<Package size={18} />}
-                      onClick={() => handleUpdateOrderStatus('armado')}
+                      onClick={() => handleUpdateOrderStatus('empaquetado')}
                       disabled={isUpdatingStatus}
                     >
-                      {isUpdatingStatus ? 'Procesando...' : 'Marcar como Armado'}
+                      {isUpdatingStatus ? 'Procesando...' : 'Marcar como Empaquetado'}
                     </Button>
                   </>
                 )}
 
-                {/* Armado */}
-                {orderStatus === 'armado' && (
+                {/* Empaquetado */}
+                {orderStatus === 'empaquetado' && (
                   <>
                     <Button
                       variant="secondary"

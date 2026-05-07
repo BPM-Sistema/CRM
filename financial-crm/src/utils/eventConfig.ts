@@ -42,10 +42,53 @@ const EVENT_CONFIG: Record<string, EventConfig> = {
     label: 'Hoja impresa',
     color: 'bg-blue-100'
   },
+  // pedido_armado: logs históricos (escritos antes del rename Fase 1 PR 2).
+  // Mantener para que el feed siga renderizando bien los registros viejos.
   'pedido_armado': {
     emoji: '📦',
-    label: 'Pedido armado',
+    label: 'Pedido empaquetado',
     color: 'bg-purple-100'
+  },
+  'pedido_empaquetado': {
+    emoji: '📦',
+    label: 'Pedido empaquetado',
+    color: 'bg-purple-100'
+  },
+  // Estados nuevos del depo (Fase 1 PR 2: existen pero el flujo aún no los usa).
+  'pedido_en_preparacion': {
+    emoji: '🔧',
+    label: 'En preparación',
+    color: 'bg-amber-100'
+  },
+  'pedido_en_revision': {
+    emoji: '🔍',
+    label: 'En revisión',
+    color: 'bg-blue-100'
+  },
+  'pedido_pendiente_stock': {
+    emoji: '📭',
+    label: 'Pendiente de stock',
+    color: 'bg-orange-100'
+  },
+  'pedido_por_empaquetar': {
+    emoji: '📦',
+    label: 'Por empaquetar',
+    color: 'bg-violet-100'
+  },
+  'pedido_pendiente_datos_envio': {
+    emoji: '📋',
+    label: 'Pendiente datos de envío',
+    color: 'bg-amber-100'
+  },
+  'pedido_pendiente_retiro': {
+    emoji: '🏪',
+    label: 'Pendiente de retiro',
+    color: 'bg-emerald-100'
+  },
+  'pedido_por_enviar': {
+    emoji: '🚚',
+    label: 'Por enviar',
+    color: 'bg-emerald-100'
   },
   'pedido_retirado': {
     emoji: '🚶',
