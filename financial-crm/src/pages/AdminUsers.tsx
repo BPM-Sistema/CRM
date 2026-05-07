@@ -48,11 +48,16 @@ const PERMISSION_LABELS: Record<string, string> = {
   'orders.view_pendiente_pago': 'Pendiente de pago',
   'orders.view_a_imprimir': 'A imprimir',
   'orders.view_hoja_impresa': 'Hoja impresa',
-  'orders.view_armado': 'Armado',
-  'orders.view_retirado': 'Retirado',
+  'orders.view_armado': 'Empaquetado (legacy)',
+  'orders.view_retirado': 'Retirado (legacy)',
   'orders.view_en_calle': 'En calle',
-  'orders.view_enviado': 'Enviado',
+  'orders.view_enviado': 'Enviado (legacy)',
   'orders.view_cancelado': 'Cancelado',
+  // Permisos agrupados (Fase 1 PR 4): cubren los 7 estados nuevos del modelo.
+  'orders.view_preparacion': 'En preparación (en_preparacion + en_revision + pendiente_stock + por_empaquetar)',
+  'orders.view_empaquetado': 'Empaquetado',
+  'orders.view_listos_para_salir': 'Listos para salir (pendiente_retiro + pendiente_datos_envio + por_enviar)',
+  'orders.view_finalizados': 'Finalizados (enviado + retirado)',
   'receipts.view': 'Ver comprobantes',
   'receipts.download': 'Descargar imágenes',
   'receipts.upload_manual': 'Subir manual',
@@ -120,7 +125,11 @@ const SECTIONS = [
     subsections: [
       { title: 'Acciones', permissions: ['orders.view', 'orders.print', 'orders.update_status', 'orders.create_cash_payment'] },
       { title: 'Filtro por Estado de Pago', permissions: ['orders.view_pendiente', 'orders.view_a_confirmar', 'orders.view_parcial', 'orders.view_total', 'orders.view_rechazado'] },
-      { title: 'Filtro por Estado Logístico', permissions: ['orders.view_pendiente_pago', 'orders.view_a_imprimir', 'orders.view_hoja_impresa', 'orders.view_armado', 'orders.view_retirado', 'orders.view_en_calle', 'orders.view_enviado', 'orders.view_cancelado'] }
+      // Permisos agrupados nuevos (Fase 1 PR 4) — cubren los estados del flujo nuevo.
+      { title: 'Filtro por Estado Logístico (agrupado)', permissions: ['orders.view_pendiente_pago', 'orders.view_a_imprimir', 'orders.view_hoja_impresa', 'orders.view_preparacion', 'orders.view_empaquetado', 'orders.view_listos_para_salir', 'orders.view_en_calle', 'orders.view_finalizados', 'orders.view_cancelado'] },
+      // Permisos viejos: se mantienen por compatibilidad (algunos roles los siguen usando).
+      // No son necesarios si el rol ya tiene los agrupados nuevos. En PRs futuros pueden desaparecer.
+      { title: 'Filtro por Estado Logístico (individuales, legacy)', permissions: ['orders.view_armado', 'orders.view_retirado', 'orders.view_enviado'] }
     ]
   },
   {
