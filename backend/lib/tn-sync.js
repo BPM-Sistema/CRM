@@ -22,13 +22,7 @@ const axios = require('axios');
 const pool = require('../db');
 const { callTiendanubeWrite } = require('./tnWriteClient');
 const { isEnabled } = require('../services/integrationConfig');
-
-const ESTADO_TN_MAP = {
-  'armado':    { tnStatus: 'packed',    configKey: 'tiendanube_sync_estado_armado',    label: 'empaquetada' },
-  'enviado':   { tnStatus: 'fulfilled', configKey: 'tiendanube_sync_estado_enviado',   label: 'despachada' },
-  'retirado':  { tnStatus: 'fulfilled', configKey: 'tiendanube_sync_estado_enviado',   label: 'despachada' },
-  'cancelado': { tnStatus: 'cancelled', configKey: 'tiendanube_sync_estado_cancelado', label: 'cancelada' },
-};
+const { ESTADO_TN_MAP } = require('./estados-pedido');
 
 const VERIFY_DELAY_MS = 1500;
 const VERIFY_TIMEOUT_MS = 8000;

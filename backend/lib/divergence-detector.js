@@ -15,11 +15,7 @@
 
 const pool = require('../db');
 const { mapShippingToEstadoPedido, calcularEstadoPedido } = require('./payment-helpers');
-
-const ESTADO_PEDIDO_ORDER = {
-  'pendiente_pago': 0, 'a_imprimir': 1, 'hoja_impresa': 2,
-  'armado': 3, 'retirado': 4, 'en_calle': 4, 'enviado': 4, 'cancelado': 99,
-};
+const { ESTADO_PEDIDO_ORDER } = require('./estados-pedido');
 
 // ── Severity definitions ──────────────────────────────────────────
 

@@ -8,6 +8,7 @@
 const pool = require('../db');
 const { calcularEstadoCuenta } = require('../utils/calcularEstadoCuenta');
 const { normalizePhone } = require('../utils/phoneNormalize');
+const { ESTADO_PEDIDO_ORDER } = require('./estados-pedido');
 
 /* =====================================================
    UTIL — CALCULAR TOTAL PAGADO
@@ -160,11 +161,6 @@ function normalizePhoneForComparison(phone) {
 
    Prioridad: shipping_status > fulfillments > shipping (carrier)
 ===================================================== */
-const ESTADO_PEDIDO_ORDER = {
-  'pendiente_pago': 0, 'a_imprimir': 1, 'hoja_impresa': 2,
-  'armado': 3, 'retirado': 4, 'en_calle': 4, 'enviado': 4, 'cancelado': 99,
-};
-
 /**
  * @param {string} shippingStatus - pedido.shipping_status (unpacked/shipped/delivered)
  * @param {string} shippingCarrier - pedido.shipping (api_3988894/table/draft/pickup-point)

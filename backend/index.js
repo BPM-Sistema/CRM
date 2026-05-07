@@ -52,6 +52,7 @@ const { verificarConsistencia, getInconsistencias } = require('./utils/orderVeri
 const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crearNotificacion, notificarUsuariosConPermiso } = require('./utils/notifications');
 const { enviarWhatsAppPlantilla } = require('./lib/whatsapp-helpers');
 const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, isForbiddenCarrier, normalizePhoneForComparison, mapShippingToEstadoPedido } = require('./lib/payment-helpers');
+const { ESTADOS, ACCIONES_LOG, ESTADO_PERMISOS, accionParaEstado } = require('./lib/estados-pedido');
 const { recalcularPagos } = require('./lib/recalcularPagos');
 const { reopenIfCancelled } = require('./lib/reopenIfCancelled');
 const { syncEstadoToTN, sincronizarEstadoTiendanube } = require('./lib/tn-sync');
@@ -1431,16 +1432,10 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
       'orders.view_total': 'total',
       'orders.view_rechazado': 'rechazado',
     };
-    const estadoPedidoPermisos = {
-      'orders.view_pendiente_pago': 'pendiente_pago',
-      'orders.view_a_imprimir': 'a_imprimir',
-      'orders.view_hoja_impresa': 'hoja_impresa',
-      'orders.view_armado': 'armado',
-      'orders.view_retirado': 'retirado',
-      'orders.view_en_calle': 'en_calle',
-      'orders.view_enviado': 'enviado',
-      'orders.view_cancelado': 'cancelado',
-    };
+    // Invertir ESTADO_PERMISOS (estado→permiso) a (permiso→estado) para filtro por permisos.
+    const estadoPedidoPermisos = Object.fromEntries(
+      Object.entries(ESTADO_PERMISOS).map(([estado, perm]) => [perm, estado])
+    );
 
     // Obtener estados permitidos según permisos del usuario
     const userPerms = req.user.permissions || [];
@@ -3738,10 +3733,9 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
     const { estado_pedido } = req.body;
 
     // Validar estado_pedido
-    const estadosValidos = ['pendiente_pago', 'a_imprimir', 'hoja_impresa', 'armado', 'retirado', 'en_calle', 'enviado', 'cancelado'];
-    if (!estado_pedido || !estadosValidos.includes(estado_pedido)) {
+    if (!estado_pedido || !ESTADOS.includes(estado_pedido)) {
       return res.status(400).json({
-        error: `Estado inválido. Valores permitidos: ${estadosValidos.join(', ')}`
+        error: `Estado inválido. Valores permitidos: ${ESTADOS.join(', ')}`
       });
     }
 
@@ -3808,15 +3802,7 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
     );
 
     // Log del evento
-    const accionesEstado = {
-      'hoja_impresa': 'hoja_impresa',
-      'armado': 'pedido_armado',
-      'retirado': 'pedido_retirado',
-      'en_calle': 'pedido_en_calle',
-      'enviado': 'pedido_enviado',
-      'cancelado': 'pedido_cancelado'
-    };
-    const accionLog = accionesEstado[estado_pedido] || `estado_${estado_pedido}`;
+    const accionLog = accionParaEstado(estado_pedido);
 
     await logEvento({
       orderNumber,

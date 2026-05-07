@@ -1,19 +1,10 @@
 // Estados de pago
 export type PaymentStatus = 'pendiente' | 'a_confirmar' | 'parcial' | 'total' | 'rechazado' | 'anulado' | 'reembolsado';
 
-// Estados del pedido (flujo de trabajo)
-// Flujo retiro: pendiente_pago → a_imprimir → hoja_impresa → armado → retirado
-// Flujo envío: pendiente_pago → a_imprimir → hoja_impresa → armado → en_calle → enviado
-// Cancelado: puede ocurrir desde cualquier estado
-export type OrderStatus =
-  | 'pendiente_pago'      // Pendiente de pago (default)
-  | 'a_imprimir'          // Listo para imprimir
-  | 'hoja_impresa'        // Etiqueta impresa (hoja de pedido)
-  | 'armado'              // Armado/empaquetado
-  | 'retirado'            // Retirado por cliente
-  | 'en_calle'            // En calle (salió del depósito, en tránsito al correo)
-  | 'enviado'             // Enviado (correo recibió el paquete, en camino al cliente)
-  | 'cancelado';          // Pedido cancelado
+// Estados del pedido — definidos en constants/estadoPedido.ts (punto único de verdad).
+// Import + re-export: el alias se usa abajo en este archivo Y queda disponible para los que importen desde 'types'.
+import type { OrderStatus } from '../constants/estadoPedido';
+export type { OrderStatus };
 
 export interface Customer {
   id: string;
