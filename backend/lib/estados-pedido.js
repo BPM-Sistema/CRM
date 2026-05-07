@@ -133,6 +133,57 @@ function esRetiro({ shipping_type, empresa_envio, shipping_carrier } = {}) {
   return candidates.some(s => /pickup|retiro|deposito|depósito/i.test(s));
 }
 
+/**
+ * Detecta si el shipping_type requiere que el cliente complete un formulario
+ * de envío (Vía Cargo / Expreso a Elección). Se duplica de payment-helpers.js
+ * porque ahí está acoplado al modelo de carriers prohibidos; acá solo nos
+ * importa si el pedido necesita datos extra del cliente.
+ */
+function requiresShippingForm(shipping_type) {
+  if (!shipping_type) return false;
+  const lower = shipping_type.toLowerCase();
+  return (
+    (lower.includes('expreso') && lower.includes('elec')) ||
+    lower.includes('via cargo') ||
+    lower.includes('viacargo')
+  );
+}
+
+/**
+ * Dado un pedido en `empaquetado` con pago confirmado, deriva el siguiente
+ * estado según método de envío y disponibilidad de datos.
+ *
+ * - Retiro                         → 'pendiente_retiro'
+ * - Envío + datos cargados         → 'por_enviar'
+ * - Envío + sin datos              → 'pendiente_datos_envio'
+ *
+ * Si no se debería derivar (caso impossible), devuelve 'empaquetado' (no-op).
+ */
+function derivarEstadoDesdeEmpaquetado({ shipping_type, empresa_envio, shipping_carrier, has_shipping_request } = {}) {
+  if (esRetiro({ shipping_type, empresa_envio, shipping_carrier })) {
+    return 'pendiente_retiro';
+  }
+  // Es envío.
+  if (requiresShippingForm(shipping_type) && !has_shipping_request) {
+    return 'pendiente_datos_envio';
+  }
+  return 'por_enviar';
+}
+
+/**
+ * Dado un pedido en `pendiente_datos_envio` al que se le acaban de cargar
+ * los datos, decide a dónde mover según el estado de pago.
+ *
+ * - Pago confirmado total / a_favor → 'por_enviar'
+ * - Pago pendiente / parcial / etc  → 'empaquetado'
+ */
+function derivarEstadoTrasCargarDatos(estado_pago) {
+  if (estado_pago === 'confirmado_total' || estado_pago === 'a_favor') {
+    return 'por_enviar';
+  }
+  return 'empaquetado';
+}
+
 function isEstadoValido(s) {
   return ESTADOS.includes(s);
 }
@@ -148,6 +199,9 @@ module.exports = {
   ACCIONES_LOG,
   ESTADO_PERMISOS,
   esRetiro,
+  requiresShippingForm,
+  derivarEstadoDesdeEmpaquetado,
+  derivarEstadoTrasCargarDatos,
   isEstadoValido,
   accionParaEstado,
 };

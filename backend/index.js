@@ -52,7 +52,7 @@ const { verificarConsistencia, getInconsistencias } = require('./utils/orderVeri
 const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crearNotificacion, notificarUsuariosConPermiso } = require('./utils/notifications');
 const { enviarWhatsAppPlantilla } = require('./lib/whatsapp-helpers');
 const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, isForbiddenCarrier, normalizePhoneForComparison, mapShippingToEstadoPedido } = require('./lib/payment-helpers');
-const { ESTADOS, ACCIONES_LOG, ESTADO_PERMISOS, accionParaEstado } = require('./lib/estados-pedido');
+const { ESTADOS, ACCIONES_LOG, ESTADO_PERMISOS, accionParaEstado, derivarEstadoDesdeEmpaquetado, derivarEstadoTrasCargarDatos } = require('./lib/estados-pedido');
 const { recalcularPagos } = require('./lib/recalcularPagos');
 const { reopenIfCancelled } = require('./lib/reopenIfCancelled');
 const { syncEstadoToTN, sincronizarEstadoTiendanube } = require('./lib/tn-sync');
@@ -3752,11 +3752,15 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
     const pedido = orderRes.rows[0];
 
     // Validar reglas de negocio
-    // No se puede enviar (enviado, en_calle) si el pago no es total
-    if (['enviado', 'en_calle'].includes(estado_pedido)) {
+    // No se puede mover a estados de salida si el pago no está confirmado.
+    // Incluye los estados nuevos pendiente_retiro y por_enviar (Fase 1 PR 3):
+    // si bien el pedido puede llegar a esos estados solo vía trigger automático
+    // de pago confirmado, también validamos a nivel HTTP para que un PATCH
+    // manual no pueda forzar la combinación inválida.
+    if (['enviado', 'en_calle', 'retirado', 'pendiente_retiro', 'por_enviar'].includes(estado_pedido)) {
       if (pedido.estado_pago !== 'confirmado_total' && pedido.estado_pago !== 'a_favor') {
         return res.status(400).json({
-          error: 'No se puede enviar un pedido sin pago completo'
+          error: 'No se puede avanzar el pedido a este estado sin pago confirmado'
         });
       }
     }
@@ -3796,7 +3800,49 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
       [...updateValues, orderNumber]
     );
 
-    // Log del evento
+    // Trigger A.2: si recién marcaron 'empaquetado' y el pago YA está confirmado,
+    // derivar inmediatamente al estado siguiente (pendiente_retiro / por_enviar /
+    // pendiente_datos_envio) según método y datos. Espejo del Trigger A.1 que
+    // vive en recalcularPagos (que se dispara cuando el pago cambia).
+    let estadoFinal = estado_pedido;
+    if (estado_pedido === 'empaquetado' &&
+        (pedido.estado_pago === 'confirmado_total' || pedido.estado_pago === 'a_favor')) {
+      const ctx = await pool.query(`
+        SELECT
+          ov.shipping AS shipping_carrier,
+          EXISTS (SELECT 1 FROM shipping_requests WHERE order_number = ov.order_number) AS has_shipping_request,
+          (SELECT empresa_envio FROM shipping_requests
+            WHERE order_number = ov.order_number
+            ORDER BY created_at DESC LIMIT 1) AS empresa_envio
+        FROM orders_validated ov
+        WHERE ov.order_number = $1
+      `, [orderNumber]);
+      const o = ctx.rows[0] || {};
+      const derivado = derivarEstadoDesdeEmpaquetado({
+        shipping_type: pedido.shipping_type,
+        shipping_carrier: o.shipping_carrier,
+        empresa_envio: o.empresa_envio,
+        has_shipping_request: o.has_shipping_request,
+      });
+      if (derivado !== 'empaquetado') {
+        await pool.query(
+          `UPDATE orders_validated SET estado_pedido = $1 WHERE order_number = $2`,
+          [derivado, orderNumber]
+        );
+        estadoFinal = derivado;
+        // Log adicional para trazabilidad. Origen 'trigger_auto_pago' permite
+        // distinguir del cambio manual del operador en el log de actividad.
+        await logEvento({
+          orderNumber,
+          accion: accionParaEstado(derivado),
+          origen: 'trigger_auto_pago',
+          userId: req.user?.id,
+          username: req.user?.name,
+        });
+      }
+    }
+
+    // Log del evento (estado que pidió el operador, antes del trigger).
     const accionLog = accionParaEstado(estado_pedido);
 
     await logEvento({
@@ -7367,6 +7413,33 @@ app.post('/shipping-data', shippingFormLimiter, async (req, res) => {
       console.log(`⚠️  Pedido ${sanitizedOrderNumber}: datos modificados después de imprimir etiqueta`);
     }
 
+    // Trigger B (Fase 1 PR 3): si el pedido estaba en `pendiente_datos_envio`,
+    // ahora que tiene datos cargados podemos avanzar — a `por_enviar` si el
+    // pago ya está confirmado, o a `empaquetado` si aún falta pago. Se hace
+    // después del UPSERT para garantizar que los datos quedaron persistidos.
+    try {
+      const stateRes = await pool.query(
+        `SELECT estado_pedido, estado_pago FROM orders_validated WHERE order_number = $1`,
+        [sanitizedOrderNumber]
+      );
+      const ord = stateRes.rows[0];
+      if (ord && ord.estado_pedido === 'pendiente_datos_envio') {
+        const nuevoEstado = derivarEstadoTrasCargarDatos(ord.estado_pago);
+        await pool.query(
+          `UPDATE orders_validated SET estado_pedido = $1 WHERE order_number = $2`,
+          [nuevoEstado, sanitizedOrderNumber]
+        );
+        await logEvento({
+          orderNumber: sanitizedOrderNumber,
+          accion: accionParaEstado(nuevoEstado),
+          origen: 'trigger_auto_datos',
+        });
+      }
+    } catch (e) {
+      // Trigger fire-and-forget: si falla no rompe la respuesta al cliente.
+      console.error('⚠️ Trigger B (datos envío) falló:', e.message);
+    }
+
     res.json({
       ok: true,
       id: result.rows[0].id,
@@ -7481,6 +7554,30 @@ app.post('/shipping-data/bulk', authenticate, async (req, res) => {
           id: result.rows[0].id,
           created_at: result.rows[0].created_at
         });
+
+        // Trigger B (Fase 1 PR 3): mismo que en POST /shipping-data, replicado
+        // por cada pedido del bulk. Si estaba en pendiente_datos_envio, derivar.
+        try {
+          const stateRes = await pool.query(
+            `SELECT estado_pedido, estado_pago FROM orders_validated WHERE order_number = $1`,
+            [sanitizedOrderNumber]
+          );
+          const ord = stateRes.rows[0];
+          if (ord && ord.estado_pedido === 'pendiente_datos_envio') {
+            const nuevoEstado = derivarEstadoTrasCargarDatos(ord.estado_pago);
+            await pool.query(
+              `UPDATE orders_validated SET estado_pedido = $1 WHERE order_number = $2`,
+              [nuevoEstado, sanitizedOrderNumber]
+            );
+            await logEvento({
+              orderNumber: sanitizedOrderNumber,
+              accion: accionParaEstado(nuevoEstado),
+              origen: 'trigger_auto_datos',
+            });
+          }
+        } catch (e) {
+          console.error(`⚠️ Trigger B (bulk) falló para ${sanitizedOrderNumber}:`, e.message);
+        }
 
       } catch (err) {
         errors.push({ index: idx, order_number: r.order_number, error: err.message });

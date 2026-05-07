@@ -18,6 +18,8 @@
 
 const { calcularEstadoPedido } = require('./payment-helpers');
 const { pushOrderToImprimir } = require('./sheets-helpers');
+const { derivarEstadoDesdeEmpaquetado, accionParaEstado } = require('./estados-pedido');
+const { logEvento } = require('../utils/logging');
 
 async function recalcularPagos(clientOrPool, orderNumber, opts = {}) {
   const tolerancia = opts.tolerancia ?? 1000;
@@ -101,13 +103,56 @@ async function recalcularPagos(clientOrPool, orderNumber, opts = {}) {
     setImmediate(() => { pushOrderToImprimir(orderNumber); });
   }
 
+  // Trigger A: si el pedido quedó en `empaquetado` con pago confirmado,
+  // avanza solo a `pendiente_retiro` / `por_enviar` / `pendiente_datos_envio`.
+  // Razón: el modelo nuevo de Fase 1 PR 3 hace que la oficina no tenga que
+  // cambiar el estado manualmente cuando se confirma el pago — el sistema
+  // lo deriva según método y datos de envío.
+  let estadoFinal = estadoPedido;
+  if (estadoPedido === 'empaquetado' && (estadoPago === 'confirmado_total' || estadoPago === 'a_favor')) {
+    const ctx = await clientOrPool.query(`
+      SELECT
+        ov.shipping_type,
+        ov.shipping AS shipping_carrier,
+        EXISTS (SELECT 1 FROM shipping_requests WHERE order_number = ov.order_number) AS has_shipping_request,
+        (SELECT empresa_envio FROM shipping_requests
+          WHERE order_number = ov.order_number
+          ORDER BY created_at DESC LIMIT 1) AS empresa_envio
+      FROM orders_validated ov
+      WHERE ov.order_number = $1
+    `, [orderNumber]);
+    const o = ctx.rows[0] || {};
+    const derivado = derivarEstadoDesdeEmpaquetado({
+      shipping_type: o.shipping_type,
+      shipping_carrier: o.shipping_carrier,
+      empresa_envio: o.empresa_envio,
+      has_shipping_request: o.has_shipping_request,
+    });
+    if (derivado !== 'empaquetado') {
+      await clientOrPool.query(
+        `UPDATE orders_validated SET estado_pedido = $1 WHERE order_number = $2`,
+        [derivado, orderNumber]
+      );
+      estadoFinal = derivado;
+      // Log fire-and-forget. Origen 'trigger_auto_pago' permite distinguir
+      // estos cambios de los manuales en auditorías.
+      setImmediate(() => {
+        logEvento({
+          orderNumber,
+          accion: accionParaEstado(derivado),
+          origen: 'trigger_auto_pago',
+        });
+      });
+    }
+  }
+
   return {
     totalPagado,
     pagoOnlineTn,
     pagosLocales,
     saldo,
     estadoPago,
-    estadoPedido,
+    estadoPedido: estadoFinal,
     monto
   };
 }
