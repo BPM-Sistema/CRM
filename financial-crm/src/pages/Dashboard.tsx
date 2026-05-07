@@ -288,7 +288,8 @@ export function Dashboard() {
             kpis={[
               { label: 'Nuevos', value: stats.pedidos.nuevos_hoy, color: 'neutral' },
               { label: 'A impr', value: stats.pedidos.a_imprimir, color: 'violet', navigateTo: '/orders?estado_pedido=a_imprimir' },
-              { label: 'Armado', value: stats.pedidos.armados, color: 'blue', navigateTo: '/orders?estado_pedido=armado' },
+              { label: 'En depo', value: stats.pedidos.en_depo, color: 'blue' },
+              { label: 'Empaq', value: stats.pedidos.armados, color: 'blue', navigateTo: '/orders?estado_pedido=empaquetado' },
               { label: 'Enviado', value: stats.pedidos.enviados, color: 'green', navigateTo: '/orders?estado_pedido=enviado' },
             ]}
           />
