@@ -1,5 +1,6 @@
 import { clsx } from 'clsx';
 import { PaymentStatus, OrderStatus } from '../../types';
+import { STATUS_VARIANTS, STATUS_CONFIG } from '../../constants/estadoPedido';
 
 type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'purple' | 'cyan' | 'orange';
 type BadgeSize = 'sm' | 'md';
@@ -80,27 +81,7 @@ export function PaymentStatusBadge({ status, size = 'md', className }: PaymentSt
 }
 
 // ============ ESTADO DEL PEDIDO ============
-const orderStatusVariants: Record<OrderStatus, BadgeVariant> = {
-  pendiente_pago: 'warning',
-  a_imprimir: 'info',
-  hoja_impresa: 'purple',
-  armado: 'cyan',
-  retirado: 'purple',
-  en_calle: 'warning',
-  enviado: 'success',
-  cancelado: 'danger',
-};
-
-const orderStatusConfig: Record<OrderStatus, { icon: string; label: string }> = {
-  pendiente_pago: { icon: '\u{1F4B3}', label: 'Pend. Pago' },
-  a_imprimir: { icon: '\u{1F5A8}', label: 'A Imprimir' },
-  hoja_impresa: { icon: '\u{1F4C4}', label: 'Hoja Impresa' },
-  armado: { icon: '\u{1F4E6}', label: 'Armado' },
-  retirado: { icon: '\u{1F3E0}', label: 'Retirado' },
-  en_calle: { icon: '\u{1F69A}', label: 'En Calle' },
-  enviado: { icon: '\u{1F4E8}', label: 'Enviado' },
-  cancelado: { icon: '\u{26D4}', label: 'Cancelado' },
-};
+// Definiciones canónicas en src/constants/estadoPedido.ts.
 
 interface OrderStatusBadgeProps {
   status: OrderStatus;
@@ -109,9 +90,9 @@ interface OrderStatusBadgeProps {
 }
 
 export function OrderStatusBadge({ status, size = 'md', className }: OrderStatusBadgeProps) {
-  const config = orderStatusConfig[status];
+  const config = STATUS_CONFIG[status];
   return (
-    <Badge variant={orderStatusVariants[status]} size={size} className={className}>
+    <Badge variant={STATUS_VARIANTS[status]} size={size} className={className}>
       <span className="mr-1 text-[10px]">{config.icon}</span>
       {config.label}
     </Badge>

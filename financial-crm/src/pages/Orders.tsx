@@ -6,6 +6,7 @@ import { Button } from '../components/ui';
 import { mockOrders } from '../data/mockData';
 import { PaymentStatus, OrderStatus } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { STATUS_FILTER_CONFIG } from '../constants/estadoPedido';
 
 // Mapeo de estados a permisos
 const paymentStatusPermissions: Record<PaymentStatus, string> = {
@@ -18,16 +19,9 @@ const paymentStatusPermissions: Record<PaymentStatus, string> = {
   reembolsado: 'orders.view_reembolsado',
 };
 
-const orderStatusPermissions: Record<OrderStatus, string> = {
-  pendiente_pago: 'orders.view_pendiente_pago',
-  a_imprimir: 'orders.view_a_imprimir',
-  hoja_impresa: 'orders.view_hoja_impresa',
-  armado: 'orders.view_armado',
-  retirado: 'orders.view_retirado',
-  en_calle: 'orders.view_en_calle',
-  enviado: 'orders.view_enviado',
-  cancelado: 'orders.view_cancelado',
-};
+const orderStatusPermissions: Record<OrderStatus, string> = Object.fromEntries(
+  Object.entries(STATUS_FILTER_CONFIG).map(([estado, cfg]) => [estado, cfg.permission])
+) as Record<OrderStatus, string>;
 
 export function Orders() {
   const { hasPermission } = useAuth();
