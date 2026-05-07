@@ -42,7 +42,7 @@ async function calcularTotalPagado(orderNumber) {
    Regla de invariante a_imprimir:
    - a_imprimir requiere estado_pago en ('a_confirmar','confirmado_parcial','confirmado_total','a_favor')
    - si estado_pago queda en ('pendiente','anulado'), a_imprimir retrocede a pendiente_pago
-   - estados posteriores (hoja_impresa, armado, retirado, en_calle, enviado) no retroceden
+   - estados posteriores (hoja_impresa, empaquetado, retirado, en_calle, enviado) no retroceden
 ===================================================== */
 const ESTADOS_PAGO_HABILITAN_IMPRIMIR = ['confirmado_total', 'confirmado_parcial', 'a_favor', 'a_confirmar'];
 const ESTADOS_PAGO_BLOQUEAN_IMPRIMIR = ['pendiente', 'anulado'];
@@ -190,7 +190,7 @@ function mapShippingToEstadoPedido(shippingStatus, shippingCarrier, shippingType
       case 'packed':
       case 'unshipped':
         // unshipped en TN = preparado/empaquetado pero no despachado
-        nuevoEstado = 'armado';
+        nuevoEstado = 'empaquetado';
         break;
       case 'unpacked':
         // Estado por defecto de TN para pedidos no empaquetados — NO-OP

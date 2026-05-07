@@ -78,7 +78,7 @@ const KEY_ICONS: Record<string, typeof Settings> = {
   tiendanube_resync_inconsistent: RotateCcw,
   tiendanube_resync_bulk: RotateCcw,
   tiendanube_sync_estado_pagado: CreditCard,
-  tiendanube_sync_estado_armado: CreditCard,
+  tiendanube_sync_estado_empaquetado: CreditCard,
   tiendanube_sync_estado_enviado: CreditCard,
   tiendanube_sync_estado_cancelado: CreditCard,
   whatsapp_testing_mode: MessageSquare,
@@ -121,7 +121,7 @@ const KEY_NAMES: Record<string, string> = {
   tiendanube_resync_inconsistent: 'Inconsistencias',
   tiendanube_resync_bulk: 'Masivo',
   tiendanube_sync_estado_pagado: 'Pagado',
-  tiendanube_sync_estado_armado: 'Armado → Empaquetado',
+  tiendanube_sync_estado_empaquetado: 'Empaquetado',
   tiendanube_sync_estado_enviado: 'Enviado → Despachado',
   tiendanube_sync_estado_cancelado: 'Cancelado',
   whatsapp_testing_mode: 'Modo Testing',
@@ -454,7 +454,7 @@ export function IntegrationSettings() {
                 'tiendanube_webhooks_enabled': ['tiendanube_webhook_order_created', 'tiendanube_webhook_order_updated', 'tiendanube_webhook_order_cancelled'],
                 'tiendanube_webhook_order_updated': ['tiendanube_webhook_sync_payment', 'tiendanube_webhook_sync_shipping', 'tiendanube_webhook_sync_products', 'tiendanube_webhook_sync_customer', 'tiendanube_webhook_sync_address', 'tiendanube_webhook_sync_notes', 'tiendanube_webhook_sync_costs', 'tiendanube_webhook_sync_tracking'],
                 'tiendanube_resync_manual': ['tiendanube_resync_single', 'tiendanube_resync_inconsistent', 'tiendanube_resync_bulk'],
-                'tiendanube_mark_paid': ['tiendanube_sync_estado_pagado', 'tiendanube_sync_estado_armado', 'tiendanube_sync_estado_enviado', 'tiendanube_sync_estado_cancelado'],
+                'tiendanube_mark_paid': ['tiendanube_sync_estado_pagado', 'tiendanube_sync_estado_empaquetado', 'tiendanube_sync_estado_enviado', 'tiendanube_sync_estado_cancelado'],
               };
 
               const TN_CATEGORIES: { label: string; icon: string; keys: string[] }[] = [

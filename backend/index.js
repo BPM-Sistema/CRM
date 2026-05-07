@@ -1038,7 +1038,7 @@ app.get('/dashboard/stats', authenticate, async (req, res) => {
         SELECT
           COUNT(*) FILTER (WHERE (created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date BETWEEN (SELECT fecha_desde FROM rango) AND (SELECT fecha_hasta FROM rango)) as nuevos_hoy,
           COUNT(*) FILTER (WHERE estado_pedido = 'a_imprimir') as a_imprimir,
-          COUNT(*) FILTER (WHERE estado_pedido = 'armado') as armados,
+          COUNT(*) FILTER (WHERE estado_pedido = 'empaquetado') as armados,
           COUNT(*) FILTER (WHERE estado_pedido IN ('enviado', 'en_calle', 'retirado')) as enviados,
           COUNT(*) FILTER (WHERE estado_pedido = 'cancelado' AND (updated_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date BETWEEN (SELECT fecha_desde FROM rango) AND (SELECT fecha_hasta FROM rango)) as cancelados_hoy
         FROM orders_validated
@@ -2973,20 +2973,10 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
       'total': 'orders.view_total',
       'rechazado': 'orders.view_rechazado',
     };
-    const estadoPedidoPermisos = {
-      'pendiente_pago': 'orders.view_pendiente_pago',
-      'a_imprimir': 'orders.view_a_imprimir',
-      'hoja_impresa': 'orders.view_hoja_impresa',
-      'armado': 'orders.view_armado',
-      'retirado': 'orders.view_retirado',
-      'en_calle': 'orders.view_en_calle',
-      'enviado': 'orders.view_enviado',
-      'cancelado': 'orders.view_cancelado',
-    };
-
+    // ESTADO_PERMISOS importado de lib/estados-pedido.js (incluye estados nuevos).
     const userPerms = req.user.permissions || [];
     const requiredPagoPerm = estadoPagoPermisos[order.estado_pago];
-    const requiredPedidoPerm = estadoPedidoPermisos[order.estado_pedido];
+    const requiredPedidoPerm = ESTADO_PERMISOS[order.estado_pedido];
 
     // Lógica OR: puede ver si tiene permiso para el estado_pago O para el estado_pedido
     const hasPagoPerm = requiredPagoPerm && userPerms.includes(requiredPagoPerm);
@@ -3570,7 +3560,7 @@ app.post('/admin/resync-estados', authenticate, requirePermission('users.view'),
             if (['enviado', 'en_calle', 'retirado'].includes(nuevoEstado)) {
               setClauses.push(`shipped_at = COALESCE(shipped_at, NOW())`);
             }
-            if (nuevoEstado === 'armado') {
+            if (nuevoEstado === 'empaquetado') {
               setClauses.push(`packed_at = COALESCE(packed_at, NOW())`);
             }
             cambios.push(`envío: ${db.tn_shipping_status} → ${tnShipStatus} (estado: ${nuevoEstado})`);
@@ -3789,7 +3779,7 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
     if (estado_pedido === 'hoja_impresa' && !pedido.printed_at) {
       // Cuando se imprime la etiqueta, marcamos printed_at (solo primera vez)
       updateFields.push(`printed_at = NOW()`);
-    } else if (estado_pedido === 'armado' && !pedido.packed_at) {
+    } else if (estado_pedido === 'empaquetado' && !pedido.packed_at) {
       updateFields.push(`packed_at = NOW()`);
     } else if (['enviado', 'en_calle', 'retirado'].includes(estado_pedido) && !pedido.shipped_at) {
       updateFields.push(`shipped_at = NOW()`);
@@ -4692,7 +4682,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
           if (['enviado', 'en_calle', 'retirado'].includes(shippingDerivedEstado)) {
             setClauses.push(`shipped_at = COALESCE(shipped_at, NOW())`);
           }
-          if (shippingDerivedEstado === 'armado') {
+          if (shippingDerivedEstado === 'empaquetado') {
             setClauses.push(`packed_at = COALESCE(packed_at, NOW())`);
           }
         }

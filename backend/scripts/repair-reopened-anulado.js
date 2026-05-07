@@ -30,7 +30,11 @@ const pool = new Pool({
 const APPLY = process.argv.includes('--apply');
 
 const ESTADOS_AVANZADOS_NO_RETROCEDER = new Set([
-  'hoja_impresa', 'armado', 'retirado', 'en_calle', 'enviado'
+  'hoja_impresa',
+  'en_preparacion', 'en_revision', 'pendiente_stock', 'por_empaquetar',
+  'empaquetado',
+  'pendiente_datos_envio', 'pendiente_retiro', 'por_enviar',
+  'en_calle', 'enviado', 'retirado',
 ]);
 
 async function main() {

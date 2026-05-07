@@ -8,66 +8,118 @@
  *   - Acciones de log por transición.
  *   - Permisos RBAC por estado.
  *
- * Antes vivía duplicado en index.js, payment-helpers.js, divergence-detector.js
- * y tn-sync.js. Cambios en uno divergían silenciosamente.
+ * Los 7 estados nuevos (en_preparacion / en_revision / pendiente_stock /
+ * por_empaquetar / pendiente_datos_envio / pendiente_retiro / por_enviar) son
+ * valores válidos del enum desde Fase 1 PR 2, pero el flujo real de la oficina
+ * todavía no los usa: se activan en Fase 2 con el QR del depo.
  */
 
 const ESTADOS = [
+  // Inicial (sin comprobante).
   'pendiente_pago',
+
+  // Listo para imprimir / impreso.
   'a_imprimir',
   'hoja_impresa',
-  'armado',
-  'retirado',
+
+  // Flujo del depo (Fase 2 los usa, en Fase 1 existen pero no se transitan).
+  'en_preparacion',
+  'en_revision',
+  'pendiente_stock',
+  'por_empaquetar',
+
+  // Empaquetado (ex 'armado').
+  'empaquetado',
+
+  // Esperando algo del cliente o del transportista.
+  'pendiente_datos_envio',
+  'pendiente_retiro',
+  'por_enviar',
+
+  // Terminales.
   'en_calle',
   'enviado',
+  'retirado',
   'cancelado',
 ];
 
 // Orden jerárquico para "no retroceder" en sync TN→BPM.
-// Estados terminales (retirado/en_calle/enviado) comparten nivel 4 — son rama final.
+// Estados terminales (en_calle/enviado/retirado) comparten nivel 4 — son rama final.
+// Los estados nuevos comparten niveles según etapa lógica:
+//   3.0–3.9: depo (preparación, stock, revisión, listo para empaquetar)
+//   4.0:     empaquetado
+//   4.5–4.9: esperando algo del cliente o del transportista
+//   5+:      en calle / enviado / retirado
 // cancelado=99 evita que cualquier sync lo pise sin intención explícita.
 const ESTADO_PEDIDO_ORDER = {
-  pendiente_pago: 0,
-  a_imprimir: 1,
-  hoja_impresa: 2,
-  armado: 3,
-  retirado: 4,
-  en_calle: 4,
-  enviado: 4,
-  cancelado: 99,
+  pendiente_pago:        0,
+  a_imprimir:            1,
+  hoja_impresa:          2,
+  en_preparacion:        3.0,
+  pendiente_stock:       3.2,
+  en_revision:           3.5,
+  por_empaquetar:        3.8,
+  empaquetado:           4.0,
+  pendiente_datos_envio: 4.5,
+  pendiente_retiro:      4.7,
+  por_enviar:            4.7,
+  en_calle:              5.0,
+  enviado:               5.5,
+  retirado:              5.5,
+  cancelado:             99,
 };
 
 // Mapeo BPM → TiendaNube. Solo los estados que tienen equivalente directo.
-// El resto (pendiente_pago, a_imprimir, hoja_impresa) son control interno y no se sincronizan.
+// El resto (pendiente_pago, a_imprimir, hoja_impresa, todos los nuevos del depo)
+// son control interno y NO se sincronizan.
 const ESTADO_TN_MAP = {
-  armado:    { tnStatus: 'packed',    configKey: 'tiendanube_sync_estado_armado',    label: 'empaquetada' },
-  enviado:   { tnStatus: 'fulfilled', configKey: 'tiendanube_sync_estado_enviado',   label: 'despachada' },
-  retirado:  { tnStatus: 'fulfilled', configKey: 'tiendanube_sync_estado_enviado',   label: 'despachada' },
-  cancelado: { tnStatus: 'cancelled', configKey: 'tiendanube_sync_estado_cancelado', label: 'cancelada' },
+  empaquetado: { tnStatus: 'packed',    configKey: 'tiendanube_sync_estado_empaquetado', label: 'empaquetada' },
+  enviado:     { tnStatus: 'fulfilled', configKey: 'tiendanube_sync_estado_enviado',     label: 'despachada' },
+  retirado:    { tnStatus: 'fulfilled', configKey: 'tiendanube_sync_estado_enviado',     label: 'despachada' },
+  cancelado:   { tnStatus: 'cancelled', configKey: 'tiendanube_sync_estado_cancelado',   label: 'cancelada' },
 };
 
 // Acción de log que se inserta en `logs.accion` al entrar al estado vía PATCH /orders/:n/status.
 // Si un estado no aparece, se loguea como `estado_<nombre>` (fallback genérico).
+// Mantenemos `pedido_armado` como fallback en eventConfig (frontend) para que los
+// logs históricos (escritos antes del rename) sigan renderizándose bien.
 const ACCIONES_LOG = {
-  hoja_impresa: 'hoja_impresa',
-  armado: 'pedido_armado',
-  retirado: 'pedido_retirado',
-  en_calle: 'pedido_en_calle',
-  enviado: 'pedido_enviado',
-  cancelado: 'pedido_cancelado',
+  hoja_impresa:          'hoja_impresa',
+  en_preparacion:        'pedido_en_preparacion',
+  en_revision:           'pedido_en_revision',
+  pendiente_stock:       'pedido_pendiente_stock',
+  por_empaquetar:        'pedido_por_empaquetar',
+  empaquetado:           'pedido_empaquetado',
+  pendiente_datos_envio: 'pedido_pendiente_datos_envio',
+  pendiente_retiro:      'pedido_pendiente_retiro',
+  por_enviar:            'pedido_por_enviar',
+  retirado:              'pedido_retirado',
+  en_calle:              'pedido_en_calle',
+  enviado:               'pedido_enviado',
+  cancelado:             'pedido_cancelado',
 };
 
-// Mapeo estado → permiso requerido para verlo en el listado.
-// Hoy 1:1, en PR 4 se agrupa para los estados nuevos.
+// Mapeo estado → permiso RBAC requerido para verlo en el listado.
+// En Fase 1 PR 2 los estados nuevos comparten permiso con el viejo más cercano
+// (no agregamos permisos nuevos para no requerir migración de RBAC todavía).
+// PR 4 introduce los permisos agrupados (orders.view_preparacion,
+// orders.view_listos_para_salir, orders.view_finalizados, orders.view_empaquetado).
 const ESTADO_PERMISOS = {
-  pendiente_pago: 'orders.view_pendiente_pago',
-  a_imprimir:     'orders.view_a_imprimir',
-  hoja_impresa:   'orders.view_hoja_impresa',
-  armado:         'orders.view_armado',
-  retirado:       'orders.view_retirado',
-  en_calle:       'orders.view_en_calle',
-  enviado:        'orders.view_enviado',
-  cancelado:      'orders.view_cancelado',
+  pendiente_pago:        'orders.view_pendiente_pago',
+  a_imprimir:            'orders.view_a_imprimir',
+  hoja_impresa:          'orders.view_hoja_impresa',
+  en_preparacion:        'orders.view_armado',  // temporal; PR 4 → orders.view_preparacion
+  en_revision:           'orders.view_armado',  // temporal; PR 4 → orders.view_preparacion
+  pendiente_stock:       'orders.view_armado',  // temporal; PR 4 → orders.view_preparacion
+  por_empaquetar:        'orders.view_armado',  // temporal; PR 4 → orders.view_preparacion
+  empaquetado:           'orders.view_armado',  // temporal; PR 4 → orders.view_empaquetado
+  pendiente_datos_envio: 'orders.view_armado',  // temporal; PR 4 → orders.view_listos_para_salir
+  pendiente_retiro:      'orders.view_retirado',  // temporal; PR 4 → orders.view_listos_para_salir
+  por_enviar:            'orders.view_armado',  // temporal; PR 4 → orders.view_listos_para_salir
+  en_calle:              'orders.view_en_calle',
+  enviado:               'orders.view_enviado',
+  retirado:              'orders.view_retirado',
+  cancelado:             'orders.view_cancelado',
 };
 
 /**

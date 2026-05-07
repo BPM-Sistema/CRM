@@ -59,7 +59,10 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
 
 // Tipos de estado
 export type PaymentStatus = 'pendiente' | 'a_confirmar' | 'parcial' | 'total' | 'rechazado' | 'anulado' | 'reembolsado';
-export type OrderStatus = 'pendiente_pago' | 'a_imprimir' | 'hoja_impresa' | 'armado' | 'retirado' | 'en_calle' | 'enviado' | 'cancelado';
+// OrderStatus se define en constants/estadoPedido.ts (punto único de verdad).
+import type { OrderStatus } from '../constants/estadoPedido';
+import { ORDER_STATUSES } from '../constants/estadoPedido';
+export type { OrderStatus };
 
 // Tipos para las respuestas de la API
 export interface ApiOrder {
@@ -617,22 +620,14 @@ export async function updateCustomerPhone(
   return data;
 }
 
-// Mapear estado de pedido del backend
+// Mapear estado de pedido del backend.
+// El backend ya garantiza valores válidos (CHECK constraint en PR 5), pero por las
+// dudas (datos viejos / desync) caemos a 'pendiente_pago' si el string no matchea.
 export function mapEstadoPedido(estadoPedido: string | null): OrderStatus {
   if (!estadoPedido) return 'pendiente_pago';
-
-  const estados: Record<string, OrderStatus> = {
-    'pendiente_pago': 'pendiente_pago',
-    'a_imprimir': 'a_imprimir',
-    'hoja_impresa': 'hoja_impresa',
-    'armado': 'armado',
-    'retirado': 'retirado',
-    'en_calle': 'en_calle',
-    'enviado': 'enviado',
-    'cancelado': 'cancelado',
-  };
-
-  return estados[estadoPedido] || 'pendiente_pago';
+  return (ORDER_STATUSES as readonly string[]).includes(estadoPedido)
+    ? (estadoPedido as OrderStatus)
+    : 'pendiente_pago';
 }
 
 // Filtros para comprobantes
