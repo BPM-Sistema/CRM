@@ -92,7 +92,7 @@ export function OrderFilters({
       {showOrderStatusFilters && (
         <div>
           <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2 block">Estado del Pedido</span>
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0">
+          <div className="flex flex-wrap items-center gap-2">
             {visibleOrderStatusButtons.map((btn) => (
               <button
                 key={btn.value}

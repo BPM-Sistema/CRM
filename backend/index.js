@@ -1432,10 +1432,15 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
       'orders.view_total': 'total',
       'orders.view_rechazado': 'rechazado',
     };
-    // Invertir ESTADO_PERMISOS (estado→permiso) a (permiso→estado) para filtro por permisos.
-    const estadoPedidoPermisos = Object.fromEntries(
-      Object.entries(ESTADO_PERMISOS).map(([estado, perm]) => [perm, estado])
-    );
+    // Invertir ESTADO_PERMISOS (estado→permiso) a (permiso→[estados]).
+    // OJO: varios estados pueden compartir el mismo permiso (ej: orders.view_armado
+    // cubre empaquetado + 7 estados nuevos del depo en Fase 1). Object.fromEntries
+    // colapsaría las claves duplicadas, así que armamos un mapeo permiso→array.
+    const estadoPedidoPermisos = {};
+    for (const [estado, perm] of Object.entries(ESTADO_PERMISOS)) {
+      if (!estadoPedidoPermisos[perm]) estadoPedidoPermisos[perm] = [];
+      estadoPedidoPermisos[perm].push(estado);
+    }
 
     // Obtener estados permitidos según permisos del usuario
     const userPerms = req.user.permissions || [];
@@ -1444,7 +1449,7 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
       .map(([, estado]) => estado);
     const estadosPedidoPermitidos = Object.entries(estadoPedidoPermisos)
       .filter(([perm]) => userPerms.includes(perm))
-      .map(([, estado]) => estado);
+      .flatMap(([, estados]) => estados);
 
     // Si no tiene NINGÚN permiso granular (ni de pago ni de pedido), no puede ver nada
     if (estadosPagoPermitidos.length === 0 && estadosPedidoPermitidos.length === 0) {
