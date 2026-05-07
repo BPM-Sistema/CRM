@@ -95,22 +95,22 @@ export const STATUS_CONFIG: Record<OrderStatus, { icon: string; label: string }>
 };
 
 // Configuración para los botones de filtro (clases de Tailwind + permiso).
-// Permisos agrupados en Fase 1 PR 4 (espejo de ESTADO_PERMISOS en backend).
+// Cada estado tiene su propio permiso (simétrico 1↔1 con los botones de filtro).
 export const STATUS_FILTER_CONFIG: Record<OrderStatus, { label: string; color: string; permission: string }> = {
   pendiente_pago:        { label: 'Pend. Pago',         color: 'bg-amber-50 text-amber-700',     permission: 'orders.view_pendiente_pago' },
   a_imprimir:            { label: 'A Imprimir',         color: 'bg-blue-50 text-blue-700',       permission: 'orders.view_a_imprimir' },
   hoja_impresa:          { label: 'Hoja Impr.',         color: 'bg-violet-50 text-violet-700',   permission: 'orders.view_hoja_impresa' },
-  en_preparacion:        { label: 'En Preparación',     color: 'bg-blue-50 text-blue-700',       permission: 'orders.view_preparacion' },
-  en_revision:           { label: 'En Revisión',        color: 'bg-violet-50 text-violet-700',   permission: 'orders.view_preparacion' },
-  pendiente_stock:       { label: 'Pend. Stock',        color: 'bg-orange-50 text-orange-700',   permission: 'orders.view_preparacion' },
-  por_empaquetar:        { label: 'Por Empaquetar',     color: 'bg-cyan-50 text-cyan-700',       permission: 'orders.view_preparacion' },
+  en_preparacion:        { label: 'En Preparación',     color: 'bg-blue-50 text-blue-700',       permission: 'orders.view_en_preparacion' },
+  en_revision:           { label: 'En Revisión',        color: 'bg-violet-50 text-violet-700',   permission: 'orders.view_en_revision' },
+  pendiente_stock:       { label: 'Pend. Stock',        color: 'bg-orange-50 text-orange-700',   permission: 'orders.view_pendiente_stock' },
+  por_empaquetar:        { label: 'Por Empaquetar',     color: 'bg-cyan-50 text-cyan-700',       permission: 'orders.view_por_empaquetar' },
   empaquetado:           { label: 'Empaquetado',        color: 'bg-cyan-50 text-cyan-700',       permission: 'orders.view_empaquetado' },
-  pendiente_datos_envio: { label: 'Pend. Datos Envío',  color: 'bg-orange-50 text-orange-700',   permission: 'orders.view_listos_para_salir' },
-  pendiente_retiro:      { label: 'Pend. Retiro',       color: 'bg-emerald-50 text-emerald-700', permission: 'orders.view_listos_para_salir' },
-  por_enviar:            { label: 'Por Enviar',         color: 'bg-emerald-50 text-emerald-700', permission: 'orders.view_listos_para_salir' },
+  pendiente_datos_envio: { label: 'Pend. Datos Envío',  color: 'bg-orange-50 text-orange-700',   permission: 'orders.view_pendiente_datos_envio' },
+  pendiente_retiro:      { label: 'Pend. Retiro',       color: 'bg-emerald-50 text-emerald-700', permission: 'orders.view_pendiente_retiro' },
+  por_enviar:            { label: 'Por Enviar',         color: 'bg-emerald-50 text-emerald-700', permission: 'orders.view_por_enviar' },
   en_calle:              { label: 'En Calle',           color: 'bg-amber-50 text-amber-700',     permission: 'orders.view_en_calle' },
-  enviado:               { label: 'Enviado',            color: 'bg-emerald-50 text-emerald-700', permission: 'orders.view_finalizados' },
-  retirado:              { label: 'Retirado',           color: 'bg-purple-50 text-purple-700',   permission: 'orders.view_finalizados' },
+  enviado:               { label: 'Enviado',            color: 'bg-emerald-50 text-emerald-700', permission: 'orders.view_enviado' },
+  retirado:              { label: 'Retirado',           color: 'bg-purple-50 text-purple-700',   permission: 'orders.view_retirado' },
   cancelado:             { label: 'Cancelado',          color: 'bg-red-50 text-red-700',         permission: 'orders.view_cancelado' },
 };
 

@@ -48,16 +48,18 @@ const PERMISSION_LABELS: Record<string, string> = {
   'orders.view_pendiente_pago': 'Pendiente de pago',
   'orders.view_a_imprimir': 'A imprimir',
   'orders.view_hoja_impresa': 'Hoja impresa',
-  'orders.view_armado': 'Empaquetado (legacy)',
-  'orders.view_retirado': 'Retirado (legacy)',
-  'orders.view_en_calle': 'En calle',
-  'orders.view_enviado': 'Enviado (legacy)',
-  'orders.view_cancelado': 'Cancelado',
-  // Permisos agrupados (Fase 1 PR 4): cubren los 7 estados nuevos del modelo.
-  'orders.view_preparacion': 'En preparación (en_preparacion + en_revision + pendiente_stock + por_empaquetar)',
+  'orders.view_en_preparacion': 'En preparación',
+  'orders.view_en_revision': 'En revisión',
+  'orders.view_pendiente_stock': 'Pend. stock',
+  'orders.view_por_empaquetar': 'Por empaquetar',
   'orders.view_empaquetado': 'Empaquetado',
-  'orders.view_listos_para_salir': 'Listos para salir (pendiente_retiro + pendiente_datos_envio + por_enviar)',
-  'orders.view_finalizados': 'Finalizados (enviado + retirado)',
+  'orders.view_pendiente_datos_envio': 'Pend. datos envío',
+  'orders.view_pendiente_retiro': 'Pend. retiro',
+  'orders.view_por_enviar': 'Por enviar',
+  'orders.view_en_calle': 'En calle',
+  'orders.view_enviado': 'Enviado',
+  'orders.view_retirado': 'Retirado',
+  'orders.view_cancelado': 'Cancelado',
   'receipts.view': 'Ver comprobantes',
   'receipts.download': 'Descargar imágenes',
   'receipts.upload_manual': 'Subir manual',
@@ -125,11 +127,24 @@ const SECTIONS = [
     subsections: [
       { title: 'Acciones', permissions: ['orders.view', 'orders.print', 'orders.update_status', 'orders.create_cash_payment'] },
       { title: 'Filtro por Estado de Pago', permissions: ['orders.view_pendiente', 'orders.view_a_confirmar', 'orders.view_parcial', 'orders.view_total', 'orders.view_rechazado'] },
-      // Permisos agrupados nuevos (Fase 1 PR 4) — cubren los estados del flujo nuevo.
-      { title: 'Filtro por Estado Logístico (agrupado)', permissions: ['orders.view_pendiente_pago', 'orders.view_a_imprimir', 'orders.view_hoja_impresa', 'orders.view_preparacion', 'orders.view_empaquetado', 'orders.view_listos_para_salir', 'orders.view_en_calle', 'orders.view_finalizados', 'orders.view_cancelado'] },
-      // Permisos viejos: se mantienen por compatibilidad (algunos roles los siguen usando).
-      // No son necesarios si el rol ya tiene los agrupados nuevos. En PRs futuros pueden desaparecer.
-      { title: 'Filtro por Estado Logístico (individuales, legacy)', permissions: ['orders.view_armado', 'orders.view_retirado', 'orders.view_enviado'] }
+      // Permisos individuales por estado (1↔1 con los botones de filtro).
+      { title: 'Filtro por Estado Logístico', permissions: [
+        'orders.view_pendiente_pago',
+        'orders.view_a_imprimir',
+        'orders.view_hoja_impresa',
+        'orders.view_en_preparacion',
+        'orders.view_en_revision',
+        'orders.view_pendiente_stock',
+        'orders.view_por_empaquetar',
+        'orders.view_empaquetado',
+        'orders.view_pendiente_datos_envio',
+        'orders.view_pendiente_retiro',
+        'orders.view_por_enviar',
+        'orders.view_en_calle',
+        'orders.view_enviado',
+        'orders.view_retirado',
+        'orders.view_cancelado',
+      ] }
     ]
   },
   {

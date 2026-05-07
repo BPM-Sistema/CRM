@@ -100,29 +100,26 @@ const ACCIONES_LOG = {
 };
 
 // Mapeo estado → permiso RBAC requerido para verlo en el listado.
-// Fase 1 PR 4 introduce permisos agrupados para reducir mantenimiento:
-//   orders.view_preparacion       cubre 4 estados intermedios del depo
-//   orders.view_empaquetado       cubre solo 'empaquetado'
-//   orders.view_listos_para_salir cubre los 3 pendientes de salida
-//   orders.view_finalizados       cubre 'enviado' + 'retirado'
-// Los 8 permisos viejos (orders.view_armado, orders.view_retirado, etc.) siguen
-// existiendo en DB pero ya no se referencian aquí. La migration 088 asigna los
-// nuevos a todos los roles que tenían los viejos para que nadie pierda acceso.
+// Fase 1 PR 4 (revisión): cada estado tiene su propio permiso, simétrico 1↔1
+// con los botones de filtro. Los 4 permisos agrupados que metimos en la primera
+// versión de PR 4 (preparacion, listos_para_salir, finalizados) se eliminaron
+// en migration 089 — los roles afectados recibieron los individuales antes de
+// borrar. Lo mismo con orders.view_armado (legacy del rename de PR 2).
 const ESTADO_PERMISOS = {
   pendiente_pago:        'orders.view_pendiente_pago',
   a_imprimir:            'orders.view_a_imprimir',
   hoja_impresa:          'orders.view_hoja_impresa',
-  en_preparacion:        'orders.view_preparacion',
-  en_revision:           'orders.view_preparacion',
-  pendiente_stock:       'orders.view_preparacion',
-  por_empaquetar:        'orders.view_preparacion',
+  en_preparacion:        'orders.view_en_preparacion',
+  en_revision:           'orders.view_en_revision',
+  pendiente_stock:       'orders.view_pendiente_stock',
+  por_empaquetar:        'orders.view_por_empaquetar',
   empaquetado:           'orders.view_empaquetado',
-  pendiente_datos_envio: 'orders.view_listos_para_salir',
-  pendiente_retiro:      'orders.view_listos_para_salir',
-  por_enviar:            'orders.view_listos_para_salir',
+  pendiente_datos_envio: 'orders.view_pendiente_datos_envio',
+  pendiente_retiro:      'orders.view_pendiente_retiro',
+  por_enviar:            'orders.view_por_enviar',
   en_calle:              'orders.view_en_calle',
-  enviado:               'orders.view_finalizados',
-  retirado:              'orders.view_finalizados',
+  enviado:               'orders.view_enviado',
+  retirado:              'orders.view_retirado',
   cancelado:             'orders.view_cancelado',
 };
 
