@@ -5357,9 +5357,9 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     const isPdfPre = path.extname(file.path).toLowerCase() === '.pdf' || (fileBufPre.length > 1 && fileBufPre[0] === 0x25 && fileBufPre[1] === 0x50);
     if (isPdfPre) {
       const ppmPrefix = file.path.replace(/\.pdf$/i, '') + '_converted';
-      const { execSync } = require('child_process');
+      const { execFileSync } = require('child_process');
       try {
-        execSync(`pdftoppm -jpeg -r 200 -singlefile "${file.path}" "${ppmPrefix}"`);
+        execFileSync('pdftoppm', ['-jpeg', '-r', '200', '-singlefile', file.path, ppmPrefix]);
         const jpgPath = ppmPrefix + '.jpg';
         if (fs.existsSync(jpgPath) && fs.statSync(jpgPath).size > 0) {
           fs.unlinkSync(file.path);

@@ -13,6 +13,31 @@ const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY
 });
 
+// Detecta el media_type real por magic bytes. WhatsApp suele guardar imágenes
+// con extensión que no coincide con el contenido (ej: .png con bytes JPEG),
+// y Anthropic rechaza el request con 400 si declaramos un media_type que no
+// matchea los bytes. Fallback a la extensión si no reconocemos los bytes.
+function detectMediaType(buffer, ext) {
+  if (buffer && buffer.length >= 4) {
+    if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) return 'image/jpeg';
+    if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) return 'image/png';
+    if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38) return 'image/gif';
+    if (buffer.length >= 12 &&
+        buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+        buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) return 'image/webp';
+    if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) return 'application/pdf';
+  }
+  const byExt = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+    '.pdf': 'application/pdf'
+  };
+  return byExt[(ext || '').toLowerCase()] || 'image/jpeg';
+}
+
 const SYSTEM_PROMPT = `Sos un sistema de análisis de comprobantes de pago para una empresa argentina.
 Tu tarea es analizar la imagen de un comprobante de transferencia bancaria y extraer datos estructurados.
 
@@ -55,18 +80,9 @@ async function analizarComprobante(filePath) {
   const imageBuffer = fs.readFileSync(filePath);
   const base64Data = imageBuffer.toString('base64');
 
-  // Detectar media type por extensión + magic bytes
   const ext = path.extname(filePath).toLowerCase();
-  const isPdf = ext === '.pdf' || imageBuffer[0] === 0x25 && imageBuffer[1] === 0x50; // %P
-  const mediaTypes = {
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.webp': 'image/webp',
-    '.gif': 'image/gif',
-    '.pdf': 'application/pdf'
-  };
-  const mediaType = isPdf ? 'application/pdf' : (mediaTypes[ext] || 'image/jpeg');
+  const mediaType = detectMediaType(imageBuffer, ext);
+  const isPdf = mediaType === 'application/pdf';
 
   const startTime = Date.now();
 
@@ -199,8 +215,8 @@ REGLAS:
 async function analizarRemito(imageBuffer, mimeType) {
   const base64Data = imageBuffer.toString('base64');
 
-  const isPdf = mimeType === 'application/pdf' || (imageBuffer[0] === 0x25 && imageBuffer[1] === 0x50);
-  const mediaType = isPdf ? 'application/pdf' : (mimeType || 'image/jpeg');
+  const mediaType = detectMediaType(imageBuffer, mimeType && mimeType.startsWith('image/') ? '.' + mimeType.split('/')[1] : (mimeType === 'application/pdf' ? '.pdf' : ''));
+  const isPdf = mediaType === 'application/pdf';
 
   const contentBlock = isPdf
     ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Data } }
