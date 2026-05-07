@@ -3,7 +3,7 @@
 -- IMPORTANTE: si el PR 2 ya fue mergeado y deployado, antes de correr este rollback
 -- hay que revertir el código (git revert) — sino el código nuevo va a seguir
 -- escribiendo 'empaquetado' y la columna 'tiendanube_sync_estado_empaquetado'
--- en system_config.
+-- en integration_config.
 
 BEGIN;
 
@@ -21,11 +21,11 @@ ALTER TABLE orders_validated DROP COLUMN IF EXISTS ready_to_pack_at;
 -- 3. Volver el config key.
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM system_config WHERE key = 'tiendanube_sync_estado_empaquetado') THEN
-    IF EXISTS (SELECT 1 FROM system_config WHERE key = 'tiendanube_sync_estado_armado') THEN
-      DELETE FROM system_config WHERE key = 'tiendanube_sync_estado_empaquetado';
+  IF EXISTS (SELECT 1 FROM integration_config WHERE key = 'tiendanube_sync_estado_empaquetado') THEN
+    IF EXISTS (SELECT 1 FROM integration_config WHERE key = 'tiendanube_sync_estado_armado') THEN
+      DELETE FROM integration_config WHERE key = 'tiendanube_sync_estado_empaquetado';
     ELSE
-      UPDATE system_config
+      UPDATE integration_config
          SET key = 'tiendanube_sync_estado_armado',
              description = 'Marcar como empaquetado (packed) en TN cuando se arma el pedido'
        WHERE key = 'tiendanube_sync_estado_empaquetado';

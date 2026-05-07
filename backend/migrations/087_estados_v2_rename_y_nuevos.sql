@@ -31,12 +31,12 @@ ALTER TABLE orders_validated
 -- ON CONFLICT por si alguien ya creó la nueva key manualmente: borramos la vieja.
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM system_config WHERE key = 'tiendanube_sync_estado_armado') THEN
-    IF EXISTS (SELECT 1 FROM system_config WHERE key = 'tiendanube_sync_estado_empaquetado') THEN
+  IF EXISTS (SELECT 1 FROM integration_config WHERE key = 'tiendanube_sync_estado_armado') THEN
+    IF EXISTS (SELECT 1 FROM integration_config WHERE key = 'tiendanube_sync_estado_empaquetado') THEN
       -- Si ya existe la nueva key, borramos la vieja para evitar duplicados.
-      DELETE FROM system_config WHERE key = 'tiendanube_sync_estado_armado';
+      DELETE FROM integration_config WHERE key = 'tiendanube_sync_estado_armado';
     ELSE
-      UPDATE system_config
+      UPDATE integration_config
          SET key = 'tiendanube_sync_estado_empaquetado',
              description = 'Marcar como empaquetado (packed) en TN cuando se empaqueta el pedido'
        WHERE key = 'tiendanube_sync_estado_armado';
