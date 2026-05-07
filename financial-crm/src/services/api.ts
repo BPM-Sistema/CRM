@@ -1176,6 +1176,7 @@ export interface DashboardStats {
     nuevos_hoy: number;
     a_imprimir: number;
     armados: number;
+    en_depo: number;
     enviados: number;
     cancelados_hoy: number;
   };

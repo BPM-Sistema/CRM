@@ -1039,6 +1039,12 @@ app.get('/dashboard/stats', authenticate, async (req, res) => {
           COUNT(*) FILTER (WHERE (created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date BETWEEN (SELECT fecha_desde FROM rango) AND (SELECT fecha_hasta FROM rango)) as nuevos_hoy,
           COUNT(*) FILTER (WHERE estado_pedido = 'a_imprimir') as a_imprimir,
           COUNT(*) FILTER (WHERE estado_pedido = 'empaquetado') as armados,
+          -- En depo: suma los estados nuevos del flujo de preparación + empaquetado.
+          -- En Fase 1 PR 4 los estados nuevos están en cero hasta que el flujo del
+          -- depo los empiece a usar (Fase 2 con QR). Por ahora coincide con armados.
+          COUNT(*) FILTER (WHERE estado_pedido IN (
+            'en_preparacion','en_revision','pendiente_stock','por_empaquetar','empaquetado'
+          )) as en_depo,
           COUNT(*) FILTER (WHERE estado_pedido IN ('enviado', 'en_calle', 'retirado')) as enviados,
           COUNT(*) FILTER (WHERE estado_pedido = 'cancelado' AND (updated_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date BETWEEN (SELECT fecha_desde FROM rango) AND (SELECT fecha_hasta FROM rango)) as cancelados_hoy
         FROM orders_validated
@@ -1077,6 +1083,7 @@ app.get('/dashboard/stats', authenticate, async (req, res) => {
           'nuevos_hoy', ps.nuevos_hoy,
           'a_imprimir', ps.a_imprimir,
           'armados', ps.armados,
+          'en_depo', ps.en_depo,
           'enviados', ps.enviados,
           'cancelados_hoy', ps.cancelados_hoy
         ) as pedidos,
