@@ -203,7 +203,7 @@ REGLAS:
 - Extraé SOLO lo que ves en la imagen. No inventes datos.
 - Si ves BLANQUERIAXMAYOR o BLANQUERIA MAYOR en el documento, eso es el REMITENTE (quien envía). Todo lo demás es el DESTINATARIO (quien recibe).
 - IGNACIO PAZOS es el empleado de la agencia que firma los remitos. NO es el destinatario ni el remitente. Ignoralo.
-- Si hay un número escrito a mano (generalmente arriba a la derecha), es el número de pedido.
+- numero_pedido: número de 4-6 dígitos escrito a mano con marcador negro grueso, dígitos grandes (suele ocupar varios cm). Mirá especialmente la mitad inferior del remito: encima de la sección "Remitente" / "Firma, Aclaración y Documento del Remitente" o sobre la fila de "Sub Total Neto / Total". Ignorá números preimpresos (GUIA, REMITO, CUIT, DNI, código de barras, montos) y los tachones del operario. Si ves varios números manuscritos, elegí el que parezca un número de pedido (4-6 dígitos, sin separadores, sin signo $). Leé los dígitos con cuidado: con marcador grueso es fácil confundir 4↔6, 0↔6, 1↔7.
 - Si la imagen NO es un remito de transporte, respondé con {"es_remito": false}.`;
 
 /**
