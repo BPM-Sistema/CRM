@@ -271,14 +271,25 @@ router.post('/:id/confirm',
         return res.status(400).json({ error: 'No hay pedido para confirmar' });
       }
 
-      // Verificar que el pedido existe
+      // Verificar que el pedido existe + leer estado de pago para validación.
       const orderRes = await pool.query(
-        'SELECT order_number FROM orders_validated WHERE order_number = $1',
+        'SELECT order_number, estado_pago FROM orders_validated WHERE order_number = $1',
         [confirmedOrder]
       );
 
       if (orderRes.rowCount === 0) {
         return res.status(404).json({ error: 'Pedido no encontrado' });
+      }
+
+      // Validar pago confirmado antes de marcar como enviado (Fase 1 PR 3).
+      // Hasta hoy este endpoint hacía UPDATE estado_pedido='enviado' sin chequear
+      // el pago, lo cual permitía despachar pedidos no pagados. Coincidente con
+      // la invariante dura: nadie llega a 'enviado' sin pago confirmado.
+      const estadoPago = orderRes.rows[0].estado_pago;
+      if (estadoPago !== 'confirmado_total' && estadoPago !== 'a_favor') {
+        return res.status(400).json({
+          error: `No se puede confirmar el remito: el pedido no está pago (${estadoPago}). Confirmá el pago primero.`
+        });
       }
 
       // TEMPORALMENTE DESHABILITADO - permitir confirmar sin formulario de envío
