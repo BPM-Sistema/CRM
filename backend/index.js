@@ -7884,9 +7884,26 @@ app.post('/orders/:orderNumber/shipping-label', authenticate, async (req, res) =
       ? shipping.empresa_envio_otro
       : 'VÍA CARGO';
 
+    // Datos para meta (fecha + reimpresiones) — antes del loop para que sean
+    // estables en todas las páginas (todos los bultos comparten el mismo run).
+    const isReprint = shipping.label_printed_at !== null;
+    const reprintNum = isReprint ? (shipping.reprints_count || 0) + 1 : 0;
+    const printedAtStr = new Date().toLocaleString('es-AR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+
     // Generar N páginas (una por bulto)
     for (let i = 0; i < bultos; i++) {
       if (i > 0) doc.addPage();
+
+      // === META arriba a la derecha (fecha de impresión + reimpresiones) ===
+      doc.font('Helvetica').fontSize(7).fillColor('#666');
+      doc.text(`Impreso: ${printedAtStr}`, 400, 25, { width: 155, align: 'right' });
+      if (isReprint) {
+        doc.text(`Reimpresión #${reprintNum}`, 400, 35, { width: 155, align: 'right' });
+      }
+      doc.fillColor('black');
 
       const y = 50;
 
@@ -8129,6 +8146,10 @@ app.post('/orders/shipping-labels-batch', authenticate, async (req, res) => {
 
     const shippingIds = []; // Para marcar como impresas después
     let isFirstPage = true;
+    const printedAtStr = new Date().toLocaleString('es-AR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
 
     for (const { orderNumber, bultos, shipping } of validItems) {
       shippingIds.push({ id: shipping.id, bultos, orderNumber });
@@ -8137,9 +8158,20 @@ app.post('/orders/shipping-labels-batch', authenticate, async (req, res) => {
         ? shipping.empresa_envio_otro
         : 'VÍA CARGO';
 
+      const isReprint = shipping.label_printed_at !== null;
+      const reprintNum = isReprint ? (shipping.reprints_count || 0) + 1 : 0;
+
       for (let i = 0; i < bultos; i++) {
         if (!isFirstPage) doc.addPage();
         isFirstPage = false;
+
+        // === META arriba a la derecha (fecha de impresión + reimpresiones) ===
+        doc.font('Helvetica').fontSize(7).fillColor('#666');
+        doc.text(`Impreso: ${printedAtStr}`, 400, 25, { width: 155, align: 'right' });
+        if (isReprint) {
+          doc.text(`Reimpresión #${reprintNum}`, 400, 35, { width: 155, align: 'right' });
+        }
+        doc.fillColor('black');
 
         const y = 50;
         doc.font('Helvetica-Bold').fontSize(16);
