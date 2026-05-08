@@ -3964,6 +3964,47 @@ app.patch('/orders/:orderNumber/customer-phone', authenticate, requirePermission
       return res.status(404).json({ error: 'Pedido no encontrado' });
     }
 
+    // Si el teléfono cambió y el pedido todavía está esperando datos de envío
+    // (Vía Cargo / Expreso a Elección sin shipping_request cargado), reenviar
+    // datos__envio al número nuevo. El mensaje original probablemente se mandó
+    // al número viejo y rebotó. A diferencia del flujo /upload, acá NO chequeamos
+    // si ya se envió antes — el reenvío al nuevo número es justamente el punto.
+    if (result.applied) {
+      try {
+        const ordRes = await pool.query(
+          `SELECT estado_pedido, shipping_type, customer_name FROM orders_validated WHERE order_number = $1`,
+          [orderNumber]
+        );
+        const ord = ordRes.rows[0];
+        const ESTADOS_ELEGIBLES = new Set([
+          'a_imprimir', 'hoja_impresa', 'en_preparacion', 'en_revision',
+          'pendiente_stock', 'por_empaquetar', 'empaquetado', 'pendiente_datos_envio',
+        ]);
+        if (ord && ESTADOS_ELEGIBLES.has(ord.estado_pedido) && requiresShippingForm(ord.shipping_type)) {
+          const srRes = await pool.query(
+            `SELECT 1 FROM shipping_requests WHERE order_number = $1 LIMIT 1`,
+            [orderNumber]
+          );
+          if (srRes.rows.length === 0) {
+            await queueWhatsApp({
+              telefono: result.normalized,
+              plantilla: 'datos__envio',
+              variables: { '1': ord.customer_name || 'Cliente', '2': orderNumber },
+              orderNumber,
+            });
+            await logEvento({
+              orderNumber,
+              accion: 'Reenvío de datos__envio al nuevo número tras override de teléfono',
+              origen: 'admin',
+              username: req.user?.name || req.user?.username || null,
+            }).catch(() => {});
+          }
+        }
+      } catch (err) {
+        console.error('⚠️ Error reenviando datos__envio tras override:', err.message);
+      }
+    }
+
     return res.json({
       ok: true,
       changed: result.applied,
