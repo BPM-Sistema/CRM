@@ -10,10 +10,15 @@
  * aplicando el mismo helper que ahora usa el trigger en runtime.
  *
  * Modo DRY-RUN por defecto. Pasar --apply para escribir.
+ * Pasar --since=YYYY-MM-DDTHH:MM:SSZ para filtrar por packed_at >= timestamp
+ * (útil para limitar la reparación a los pedidos rotos desde el deploy del bug,
+ * sin tocar pedidos viejos pre-Fase 1 que también caen en la combinación
+ * empaquetado + pago confirmado pero por motivos legítimos).
  *
  * Uso:
- *   node scripts/repair-empaquetado-trigger-bug.js          # diagnóstico
- *   node scripts/repair-empaquetado-trigger-bug.js --apply  # aplicar fix
+ *   node scripts/repair-empaquetado-trigger-bug.js                                          # todos los afectados (dry-run)
+ *   node scripts/repair-empaquetado-trigger-bug.js --since=2026-05-07T19:00:00Z             # solo desde ese momento
+ *   node scripts/repair-empaquetado-trigger-bug.js --since=2026-05-07T19:00:00Z --apply     # aplicar fix
  */
 require('dotenv').config();
 const { Pool } = require('pg');
@@ -29,8 +34,15 @@ const pool = new Pool({
 });
 
 const APPLY = process.argv.includes('--apply');
+const SINCE = (() => {
+  const arg = process.argv.find(a => a.startsWith('--since='));
+  return arg ? arg.slice('--since='.length) : null;
+})();
 
 async function main() {
+  if (SINCE) console.log(`🔎 Filtrando por packed_at >= ${SINCE}\n`);
+  const params = SINCE ? [SINCE] : [];
+  const sinceClause = SINCE ? `AND ov.packed_at >= $1` : '';
   const { rows } = await pool.query(`
     SELECT
       ov.order_number,
@@ -45,8 +57,9 @@ async function main() {
     FROM orders_validated ov
     WHERE ov.estado_pedido = 'empaquetado'
       AND ov.estado_pago IN ('confirmado_total', 'a_favor')
+      ${sinceClause}
     ORDER BY ov.packed_at DESC NULLS LAST
-  `);
+  `, params);
 
   if (rows.length === 0) {
     console.log('✅ No hay pedidos afectados. Combinación empaquetado + pago confirmado: 0.');
