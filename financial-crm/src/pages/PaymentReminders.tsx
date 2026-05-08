@@ -147,7 +147,6 @@ function ActionModalBody({
   const alreadyActioned = !!row.payment_reminder_action_at;
 
   const onCancel = async () => {
-    if (!confirm(`¿Cancelar pedido #${row.order_number}? Se cancela en TiendaNube y los productos vuelven al stock. Esta acción no se puede deshacer.`)) return;
     setBusy(true);
     try {
       const r = await applyReminderAction(row.order_number, 'cancel');
@@ -155,7 +154,6 @@ function ActionModalBody({
         alert(`Error: ${r.error}`);
         return;
       }
-      alert('Pedido cancelado en TiendaNube y CRM. Stock devuelto.');
       onApplied({
         payment_reminder_action_at: new Date().toISOString(),
         payment_reminder_action_type: 'cancel',
