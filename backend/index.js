@@ -5118,6 +5118,9 @@ app.post('/webhook/tiendanube', async (req, res) => {
       // Recordatorio pendiente_3hs: programado a +3h del pedido, ajustado a
       // horario laboral L-V 9-18 ART. El cron periódico lo dispara via
       // queueWhatsApp y antes valida que el pedido siga sin comprobante / sin pago.
+      // sendAt3hs se reusa abajo como base del pendiente_10hs.
+      const createdAt = pedido.created_at ? new Date(pedido.created_at) : new Date();
+      const sendAt3hs = nextBusinessSendAtAR(createdAt, Number(pedido.number));
       try {
         const existsRes = await pool.query(
           `SELECT 1 FROM scheduled_whatsapp
@@ -5126,8 +5129,6 @@ app.post('/webhook/tiendanube', async (req, res) => {
           [String(pedido.number)]
         );
         if (existsRes.rows.length === 0) {
-          const createdAt = pedido.created_at ? new Date(pedido.created_at) : new Date();
-          const sendAt = nextBusinessSendAtAR(createdAt, Number(pedido.number));
           await pool.query(
             `INSERT INTO scheduled_whatsapp (telefono, plantilla, variables, order_number, send_at)
              VALUES ($1, 'pendiente_3hs', $2::jsonb, $3, $4)`,
@@ -5135,10 +5136,10 @@ app.post('/webhook/tiendanube', async (req, res) => {
               telefono,
               JSON.stringify({ '1': pedido.customer?.name || 'Cliente', '2': String(pedido.number) }),
               String(pedido.number),
-              sendAt
+              sendAt3hs
             ]
           );
-          log.info({ orderNumber: String(pedido.number), sendAt: sendAt.toISOString() }, 'pendiente_3hs programado');
+          log.info({ orderNumber: String(pedido.number), sendAt: sendAt3hs.toISOString() }, 'pendiente_3hs programado');
         } else {
           log.info({ orderNumber: String(pedido.number) }, 'pendiente_3hs ya estaba programado, skip');
         }
@@ -5146,8 +5147,10 @@ app.post('/webhook/tiendanube', async (req, res) => {
         log.error({ err: schedErr.message, orderNumber: String(pedido.number) }, 'Error programando pendiente_3hs');
       }
 
-      // Recordatorio pendiente_10hs: segundo recordatorio, +10h del pedido
-      // (7h después de pendiente_3hs). Mismo cron + guard que pendiente_3hs.
+      // Recordatorio pendiente_10hs: 7h después del send_at del pendiente_3hs
+      // (no del created_at del pedido), reajustado a horario laboral. Si +7h
+      // cae fuera de 9-18 ART o en fin de semana, corre al próximo día hábil
+      // 9:00. Sin jitter propio: hereda la dispersión del 3hs.
       // Botmaker: body sin variables; botón URL usa ${2}. Mandamos {1} y {2}
       // con el order_number en ambos slots: si solo mandamos uno y el slot no
       // matchea, Botmaker cae al sample-value y manda el nro de ejemplo a todos
@@ -5160,8 +5163,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
           [String(pedido.number)]
         );
         if (existsRes10.rows.length === 0) {
-          const createdAt10 = pedido.created_at ? new Date(pedido.created_at) : new Date();
-          const sendAt10 = nextBusinessSendAtAR(createdAt10, Number(pedido.number), 10);
+          const sendAt10 = nextBusinessSendAtAR(sendAt3hs, 0, 7);
           await pool.query(
             `INSERT INTO scheduled_whatsapp (telefono, plantilla, variables, order_number, send_at)
              VALUES ($1, 'pendiente_10hs', $2::jsonb, $3, $4)`,
