@@ -3816,7 +3816,6 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
         (pedido.estado_pago === 'confirmado_total' || pedido.estado_pago === 'a_favor')) {
       const ctx = await pool.query(`
         SELECT
-          ov.shipping AS shipping_carrier,
           EXISTS (SELECT 1 FROM shipping_requests WHERE order_number = ov.order_number) AS has_shipping_request,
           (SELECT empresa_envio FROM shipping_requests
             WHERE order_number = ov.order_number
@@ -3827,7 +3826,6 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
       const o = ctx.rows[0] || {};
       const derivado = derivarEstadoDesdeEmpaquetado({
         shipping_type: pedido.shipping_type,
-        shipping_carrier: o.shipping_carrier,
         empresa_envio: o.empresa_envio,
         has_shipping_request: o.has_shipping_request,
       });
