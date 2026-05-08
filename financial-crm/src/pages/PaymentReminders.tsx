@@ -97,11 +97,7 @@ function InboundCell({ row }: { row: ReminderRow }) {
   );
 }
 
-function ActionCell({ row, onApplied }: { row: ReminderRow; onApplied: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const [showWaitInput, setShowWaitInput] = useState(false);
-  const [note, setNote] = useState('');
-
+function ActionCell({ row, onOpenModal }: { row: ReminderRow; onOpenModal: (row: ReminderRow) => void }) {
   // Si ya se aplicó alguna acción, mostrar resultado (chip) y nada más.
   if (row.payment_reminder_action_at) {
     if (row.payment_reminder_action_type === 'cancel') {
@@ -121,9 +117,34 @@ function ActionCell({ row, onApplied }: { row: ReminderRow; onApplied: () => voi
     }
   }
 
-  // Mostrar botones solo si Melu ya clickeó el teléfono del pedido (abrió
-  // Botmaker para verificar pago). Eso le permite actuar al volver al panel.
+  // Si Melu ya clickeó el teléfono, mostramos un botón para reabrir el modal
+  // de acciones (por si lo cerró sin actuar).
   if (!row.phone_clicked_at) return <span className="text-neutral-300 text-xs">—</span>;
+
+  return (
+    <button
+      onClick={() => onOpenModal(row)}
+      className="text-xs px-2 py-1 rounded inline-flex items-center gap-1 bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
+      title="Abrir acciones (cancelar / nota)"
+    >
+      <Bell size={12} /> Acciones
+    </button>
+  );
+}
+
+function ActionModalBody({
+  row,
+  onClose,
+  onApplied,
+}: {
+  row: ReminderRow;
+  onClose: () => void;
+  onApplied: (patch: Partial<ReminderRow>) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(row.payment_reminder_note || '');
+
+  const alreadyActioned = !!row.payment_reminder_action_at;
 
   const onCancel = async () => {
     if (!confirm(`¿Cancelar pedido #${row.order_number}? Se cancela en TiendaNube y los productos vuelven al stock. Esta acción no se puede deshacer.`)) return;
@@ -135,7 +156,11 @@ function ActionCell({ row, onApplied }: { row: ReminderRow; onApplied: () => voi
         return;
       }
       alert('Pedido cancelado en TiendaNube y CRM. Stock devuelto.');
-      onApplied();
+      onApplied({
+        payment_reminder_action_at: new Date().toISOString(),
+        payment_reminder_action_type: 'cancel',
+      });
+      onClose();
     } catch (err) {
       alert(`Error: ${(err as Error).message}`);
     } finally {
@@ -156,9 +181,12 @@ function ActionCell({ row, onApplied }: { row: ReminderRow; onApplied: () => voi
         alert(`Error: ${r.error}`);
         return;
       }
-      setShowWaitInput(false);
-      setNote('');
-      onApplied();
+      onApplied({
+        payment_reminder_action_at: new Date().toISOString(),
+        payment_reminder_action_type: 'wait',
+        payment_reminder_note: cleaned,
+      });
+      onClose();
     } catch (err) {
       alert(`Error: ${(err as Error).message}`);
     } finally {
@@ -166,51 +194,82 @@ function ActionCell({ row, onApplied }: { row: ReminderRow; onApplied: () => voi
     }
   };
 
-  if (showWaitInput) {
-    return (
-      <div className="flex flex-col gap-1 min-w-[220px]">
+  return (
+    <div className="space-y-4">
+      <div className="text-sm">
+        <div>
+          Pedido <Link to={`/orders/${row.order_number}`} className="font-mono font-semibold text-neutral-900 hover:underline">#{row.order_number}</Link>
+          {' — '}
+          <span className="text-neutral-700">{row.customer_name || 'Sin nombre'}</span>
+        </div>
+        <div className="text-xs text-neutral-500 mt-0.5">
+          {formatMoney(row.monto_tiendanube)} · creado {formatDate(row.created_at)}
+        </div>
+      </div>
+
+      {alreadyActioned && (
+        <div className="px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm">
+          {row.payment_reminder_action_type === 'cancel' ? (
+            <>Ya está <Badge variant="danger" size="sm">❌ Cancelado</Badge></>
+          ) : (
+            <>
+              Ya tiene nota <Badge variant="warning" size="sm">⏳ Esperando</Badge>
+              {row.payment_reminder_note && <div className="italic text-neutral-700 mt-1">"{row.payment_reminder_note}"</div>}
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <div className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
+          📝 Dejar nota / esperar
+        </div>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="ej: dice que va a pagar"
-          rows={2}
-          className="text-xs border border-neutral-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-neutral-400"
-          autoFocus
+          placeholder="ej: dice que va a pagar mañana al mediodía"
+          rows={3}
+          disabled={busy || alreadyActioned}
+          className="w-full text-sm border border-neutral-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:bg-neutral-50 disabled:text-neutral-400"
+          autoFocus={!alreadyActioned}
         />
-        <div className="flex gap-1">
-          <Button size="sm" variant="primary" onClick={onWait} disabled={busy}>
-            Guardar
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => { setShowWaitInput(false); setNote(''); }} disabled={busy}>
-            Cancelar
-          </Button>
-        </div>
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={onWait}
+          disabled={busy || alreadyActioned}
+          leftIcon={<Clock size={14} />}
+        >
+          Guardar nota
+        </Button>
       </div>
-    );
-  }
 
-  return (
-    <div className="flex flex-col gap-1">
-      <button
-        onClick={onCancel}
-        disabled={busy || row.has_comprobante}
-        title={row.has_comprobante ? 'Tiene comprobante cargado, no se puede cancelar desde acá' : 'Cancelar el pedido en CRM y TiendaNube (devuelve stock)'}
-        className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1 ${
-          row.has_comprobante
-            ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed'
-            : 'bg-red-50 text-red-700 hover:bg-red-100'
-        }`}
-      >
-        <Ban size={12} /> Cancelar
-      </button>
-      <button
-        onClick={() => setShowWaitInput(true)}
-        disabled={busy}
-        title="Dejar nota para localizar después"
-        className="text-xs px-2 py-1 rounded inline-flex items-center gap-1 bg-amber-50 text-amber-700 hover:bg-amber-100"
-      >
-        <Clock size={12} /> Esperar
-      </button>
+      <div className="border-t border-neutral-100 pt-4 space-y-2">
+        <div className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
+          ❌ Cancelar pedido
+        </div>
+        <div className="text-xs text-neutral-500">
+          Cancela el pedido en TiendaNube y CRM. Devuelve stock. No se puede deshacer.
+        </div>
+        <Button
+          size="sm"
+          variant="danger"
+          onClick={onCancel}
+          disabled={busy || alreadyActioned || row.has_comprobante}
+          leftIcon={<Ban size={14} />}
+        >
+          Cancelar pedido
+        </Button>
+        {row.has_comprobante && (
+          <div className="text-xs text-amber-600">⚠️ Tiene comprobante cargado, no se puede cancelar desde acá.</div>
+        )}
+      </div>
+
+      <div className="border-t border-neutral-100 pt-3 flex justify-end">
+        <Button size="sm" variant="ghost" onClick={onClose} disabled={busy}>
+          Cerrar
+        </Button>
+      </div>
     </div>
   );
 }
@@ -273,7 +332,15 @@ export default function PaymentReminders() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [history, setHistory] = useState<RemindersHistoryResponse | null>(null);
 
+  const [actionModalRow, setActionModalRow] = useState<ReminderRow | null>(null);
+
   const canView = hasPermission('payment_reminders.view');
+
+  // Update local fila sin recargar la tabla (preserva scroll y posición).
+  const patchOrderLocal = (orderNumber: string, patch: Partial<ReminderRow>) => {
+    setOrders(prev => prev.map(r => (r.order_number === orderNumber ? { ...r, ...patch } : r)));
+    setActionModalRow(prev => (prev && prev.order_number === orderNumber ? { ...prev, ...patch } : prev));
+  };
 
   const load = async () => {
     setLoading(true);
@@ -339,7 +406,11 @@ export default function PaymentReminders() {
     }
   };
 
-  const openInbox = async (phone: string | null | undefined, orderNumber?: string) => {
+  const openInbox = async (
+    phone: string | null | undefined,
+    orderNumber?: string,
+    rowForModal?: ReminderRow,
+  ) => {
     if (!phone) return alert('Sin teléfono');
     try {
       const { url } = await fetchBotmakerChat(phone);
@@ -348,13 +419,16 @@ export default function PaymentReminders() {
     } catch {
       alert('Error al buscar chat en Botmaker');
     }
-    // Marca que se entró a verificar pago. Habilita botones Cancelar/Esperar
-    // en ese pedido al volver al panel. No bloqueante: si falla solo loguea.
+    // Abre el modal de acciones en paralelo. Cuando Melu vuelva del Botmaker,
+    // el modal sigue abierto y puede Cancelar o dejar Nota sin scrollear.
+    if (rowForModal) {
+      setActionModalRow(prev => prev ?? rowForModal);
+      // Marca optimista para que la fila refleje el click sin recargar.
+      patchOrderLocal(rowForModal.order_number, { phone_clicked_at: new Date().toISOString() });
+    }
+    // Persiste en backend de forma best-effort (sin recargar la tabla).
     if (orderNumber) {
-      markPhoneClicked(orderNumber).then(() => {
-        // Refresco silencioso del listado para que aparezcan los botones.
-        load();
-      }).catch(() => { /* best-effort */ });
+      markPhoneClicked(orderNumber).catch(() => { /* best-effort */ });
     }
   };
 
@@ -491,9 +565,9 @@ export default function PaymentReminders() {
                     <div className="flex flex-col gap-0.5 text-xs">
                       {row.customer_phone ? (
                         <button
-                          onClick={() => openInbox(row.customer_phone, row.order_number)}
+                          onClick={() => openInbox(row.customer_phone, row.order_number, row)}
                           className="text-green-600 hover:text-green-800 inline-flex items-center gap-1"
-                          title="Abrir inbox en Botmaker"
+                          title="Abrir inbox en Botmaker y panel de acciones"
                         >
                           <MessageSquare size={12} /> {row.customer_phone}
                         </button>
@@ -507,7 +581,7 @@ export default function PaymentReminders() {
                     <td key={s.key} className="px-3 py-2"><StepCell row={row} step={s} /></td>
                   ))}
                   <td className="px-3 py-2"><InboundCell row={row} /></td>
-                  <td className="px-3 py-2"><ActionCell row={row} onApplied={load} /></td>
+                  <td className="px-3 py-2"><ActionCell row={row} onOpenModal={(r) => setActionModalRow(r)} /></td>
                   <td className="px-3 py-2 text-right">
                     <Button size="sm" variant="ghost" onClick={() => openHistory(row.order_number)}>
                       Historial
@@ -530,6 +604,22 @@ export default function PaymentReminders() {
           </div>
         </div>
       </Card>
+
+      {/* Modal de acciones (cancelar / nota) — se abre al click en el chat */}
+      <Modal
+        isOpen={!!actionModalRow}
+        onClose={() => setActionModalRow(null)}
+        title={actionModalRow ? `Acciones · #${actionModalRow.order_number}` : 'Acciones'}
+        size="md"
+      >
+        {actionModalRow && (
+          <ActionModalBody
+            row={actionModalRow}
+            onClose={() => setActionModalRow(null)}
+            onApplied={(patch) => patchOrderLocal(actionModalRow.order_number, patch)}
+          />
+        )}
+      </Modal>
 
       {/* Modal historial */}
       <Modal isOpen={historyOpen} onClose={() => setHistoryOpen(false)} title="Historial WhatsApp del pedido" size="lg">
