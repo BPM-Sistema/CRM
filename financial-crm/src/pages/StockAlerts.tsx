@@ -134,6 +134,8 @@ export default function StockAlerts() {
   const [stockAlertTemplate, setStockAlertTemplate] = useState('');
   const [novedadesTemplate, setNovedadesTemplate] = useState('');
   const [availableTemplates, setAvailableTemplates] = useState<string[]>([]);
+  const [provider, setProvider] = useState<'botmaker' | 'waspy'>('botmaker');
+  const [featureEnabled, setFeatureEnabled] = useState(true);
   const [savingConfig, setSavingConfig] = useState(false);
   const [configMsg, setConfigMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
@@ -170,6 +172,8 @@ export default function StockAlerts() {
       setStockAlertTemplate(j.stockAlertTemplate || '');
       setNovedadesTemplate(j.novedadesTemplate || '');
       setAvailableTemplates(j.availableTemplates || []);
+      if (j.provider === 'botmaker' || j.provider === 'waspy') setProvider(j.provider);
+      if (typeof j.featureEnabled === 'boolean') setFeatureEnabled(j.featureEnabled);
     } catch (e) { /* silent */ }
   };
 
@@ -202,7 +206,7 @@ export default function StockAlerts() {
     try {
       const res = await authFetch(`${API_BASE_URL}/stock-alerts/config`, {
         method: 'PUT',
-        body: JSON.stringify({ stockAlertTemplate, novedadesTemplate }),
+        body: JSON.stringify({ stockAlertTemplate, novedadesTemplate, provider, featureEnabled }),
       });
       const j = await res.json();
       if (!res.ok || !j.success) throw new Error(j.error || 'Error al guardar');
@@ -517,15 +521,50 @@ export default function StockAlerts() {
         )}
       </Card>
 
-      {/* Configuración de plantillas HSM */}
+      {/* Configuración del aviso de stock */}
       {canManage && (
         <Card padding="md">
           <div className="flex items-center gap-2 mb-3">
             <MessageSquare size={16} className="text-neutral-600" />
-            <h3 className="text-sm font-semibold text-neutral-800">Configuración de plantillas WhatsApp</h3>
+            <h3 className="text-sm font-semibold text-neutral-800">Configuración del aviso de stock</h3>
           </div>
+
+          {/* Sección: Provider y kill switch */}
+          <div className="mb-4 pb-4 border-b border-neutral-100 grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+            <div>
+              <label className="text-xs text-neutral-600 block mb-1">Proveedor de envío</label>
+              <select
+                value={provider}
+                onChange={(e) => setProvider(e.target.value as 'botmaker' | 'waspy')}
+                className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-400 bg-white"
+              >
+                <option value="botmaker">Botmaker · número transaccional</option>
+                <option value="waspy">Waspy · canal marketing aislado</option>
+              </select>
+              <div className="text-[11px] text-neutral-500 mt-1 leading-relaxed">
+                Cambia solo el aviso de back-in-stock. Los WhatsApp transaccionales (pedidos, pagos, envíos) siempre van por Botmaker.
+              </div>
+            </div>
+            <div className="md:pt-5">
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={featureEnabled}
+                  onChange={(e) => setFeatureEnabled(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-neutral-900"
+                />
+                <span className="text-sm text-neutral-700 leading-tight">
+                  Feature activo
+                  <span className="block text-[11px] text-neutral-500 font-normal mt-0.5">
+                    Si lo apagás, el dispatcher sigue trackeando stock pero no manda WhatsApps por ningún proveedor.
+                  </span>
+                </span>
+              </label>
+            </div>
+          </div>
+
           <p className="text-xs text-neutral-500 mb-3">
-            Escribí el nombre HSM exacto tal como está en Botmaker. Si lo dejás vacío, el disparo automático no envía.
+            Escribí el nombre HSM exacto tal como está aprobado en el proveedor activo. Si lo dejás vacío, el disparo automático no envía.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>

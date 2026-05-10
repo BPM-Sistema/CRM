@@ -394,7 +394,7 @@ router.get('/facets', requirePermission('stock_alerts.view'), async (req, res) =
 });
 
 // =====================================================
-// GET /config — lee plantilla actual + lista de plantillas HSM ya usadas
+// GET /config — lee plantilla actual + provider + feature toggle + lista HSM
 // =====================================================
 router.get('/config', requirePermission('stock_alerts.view'), async (req, res) => {
   try {
@@ -413,11 +413,23 @@ router.get('/config', requirePermission('stock_alerts.view'), async (req, res) =
        ORDER BY plantilla_default ASC`
     );
 
+    const providerQ = await pool.query(
+      `SELECT enabled, metadata
+         FROM integration_config
+        WHERE key = 'stock_alert_provider'
+        LIMIT 1`
+    );
+    const providerRow = providerQ.rows[0];
+    const provider = providerRow?.metadata?.provider || 'botmaker';
+    const featureEnabled = providerRow ? providerRow.enabled !== false : true;
+
     res.json({
       success: true,
       stockAlertTemplate: map['stock_alert_reingreso'] || '',
       novedadesTemplate: map['novedades_ingresos'] || '',
       availableTemplates: availableQ.rows.map((r) => r.name),
+      provider,
+      featureEnabled,
     });
   } catch (error) {
     console.error('[stock-alerts] GET /config error:', error.message);
@@ -426,27 +438,59 @@ router.get('/config', requirePermission('stock_alerts.view'), async (req, res) =
 });
 
 // =====================================================
-// PUT /config — actualiza plantilla_default del catálogo
+// PUT /config — actualiza plantilla_default + provider + feature toggle
 // =====================================================
+const VALID_PROVIDERS = ['botmaker', 'waspy'];
+
 router.put('/config', requirePermission('stock_alerts.manage'), async (req, res) => {
   try {
-    const { stockAlertTemplate, novedadesTemplate } = req.body || {};
-    const updates = [];
+    const { stockAlertTemplate, novedadesTemplate, provider, featureEnabled } = req.body || {};
+
+    if (provider !== undefined && !VALID_PROVIDERS.includes(provider)) {
+      return res.status(400).json({ success: false, error: `provider debe ser uno de: ${VALID_PROVIDERS.join(', ')}` });
+    }
+    if (featureEnabled !== undefined && typeof featureEnabled !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'featureEnabled debe ser boolean' });
+    }
+
+    const templateUpdates = [];
     if (typeof stockAlertTemplate === 'string') {
-      updates.push(['stock_alert_reingreso', stockAlertTemplate.trim().slice(0, 200)]);
+      templateUpdates.push(['stock_alert_reingreso', stockAlertTemplate.trim().slice(0, 200)]);
     }
     if (typeof novedadesTemplate === 'string') {
-      updates.push(['novedades_ingresos', novedadesTemplate.trim().slice(0, 200)]);
+      templateUpdates.push(['novedades_ingresos', novedadesTemplate.trim().slice(0, 200)]);
     }
-    if (updates.length === 0) {
+
+    if (
+      templateUpdates.length === 0 &&
+      provider === undefined &&
+      featureEnabled === undefined
+    ) {
       return res.status(400).json({ success: false, error: 'Nada que actualizar' });
     }
-    for (const [key, val] of updates) {
+
+    for (const [key, val] of templateUpdates) {
       await pool.query(
         `UPDATE plantilla_tipos SET plantilla_default = $2 WHERE key = $1`,
         [key, val]
       );
     }
+
+    if (provider !== undefined) {
+      await pool.query(
+        `UPDATE integration_config
+            SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{provider}', $1::jsonb)
+          WHERE key = 'stock_alert_provider'`,
+        [JSON.stringify(provider)]
+      );
+    }
+    if (featureEnabled !== undefined) {
+      await pool.query(
+        `UPDATE integration_config SET enabled = $1 WHERE key = 'stock_alert_provider'`,
+        [featureEnabled]
+      );
+    }
+
     res.json({ success: true });
   } catch (error) {
     console.error('[stock-alerts] PUT /config error:', error.message);
