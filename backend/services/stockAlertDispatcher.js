@@ -25,6 +25,7 @@
 const axios = require('axios');
 const pool = require('../db');
 const { apiLogger: log } = require('../lib/logger');
+const waspyOutbound = require('./waspyOutbound');
 
 const TN_BASE_URL = 'https://api.tiendanube.com/v1';
 const TN_REQUEST_DELAY_MS = 650; // TN permite ~2 rps; quedamos cómodos con ~1.5 rps
@@ -78,6 +79,26 @@ async function getConfiguredTemplate() {
   );
   const v = q.rows[0]?.plantilla_default;
   return v && String(v).trim() ? String(v).trim() : null;
+}
+
+/**
+ * Lee el toggle + provider activo desde integration_config.
+ * Default seguro si la fila no existe: enabled=true, provider='botmaker'.
+ *   - enabled=false → kill switch del feature (no manda por ningún proveedor).
+ *   - provider='botmaker' (default) → flow histórico vía queueWhatsApp + worker Botmaker.
+ *   - provider='waspy' → flow nuevo vía waspyOutbound (canal marketing aislado).
+ */
+async function getStockAlertProviderConfig() {
+  const q = await pool.query(
+    `SELECT enabled, metadata FROM integration_config WHERE key = 'stock_alert_provider' LIMIT 1`
+  );
+  const row = q.rows[0];
+  if (!row) return { enabled: true, provider: 'botmaker', approvedTemplateWaspy: 'stock_alert_reingreso_v2' };
+  return {
+    enabled: row.enabled !== false,
+    provider: row.metadata?.provider || 'botmaker',
+    approvedTemplateWaspy: row.metadata?.approved_template_waspy || 'stock_alert_reingreso_v2',
+  };
 }
 
 /**
@@ -154,6 +175,15 @@ async function runDispatcher({ queueWhatsApp, dryRun = false, triggerSource = 'c
     stats.skipped_no_template = true;
   }
 
+  const providerCfg = await getStockAlertProviderConfig();
+  stats.provider = providerCfg.provider;
+  if (!providerCfg.enabled) {
+    log.warn('[stockAlertDispatcher] stock_alert_provider deshabilitado — se actualiza estado pero NO se envía');
+    stats.skipped_provider_disabled = true;
+  } else {
+    log.info({ provider: providerCfg.provider }, '[stockAlertDispatcher] provider activo para esta corrida');
+  }
+
   const storeBaseUrl = process.env.TIENDANUBE_STORE_URL || 'https://blanqueriaxmayorista.com';
 
   // 1. Pares con alertas pending
@@ -217,7 +247,8 @@ async function runDispatcher({ queueWhatsApp, dryRun = false, triggerSource = 'c
         !firstTime &&
         wasOutOfStock &&
         isInStock &&
-        !!configuredTemplate;
+        !!configuredTemplate &&
+        providerCfg.enabled;
 
       if (shouldDispatch) {
         // 5. Traer alertas pending de este par, excluyendo teléfonos que ya
@@ -254,12 +285,13 @@ async function runDispatcher({ queueWhatsApp, dryRun = false, triggerSource = 'c
         stats.dispatched_products++;
 
         for (const a of alertsQ.rows) {
-          // Variables Botmaker (convención global — misma variable sirve en body/header/botón):
-          //   headerImageUrl → header IMAGE dinámico (patrón probado en 'enviado_transporte')
+          // Variables (convención compartida con Botmaker para minimizar
+          // divergencia entre proveedores):
+          //   headerImageUrl → URL JPG/PNG del header IMAGE dinámico
           //   {{1}} = nombre (fallback "Cliente")
           //   {{2}} = producto
-          //   {{3}} = handle del producto → usado en URL dinámica del botón CTA
-          //           (https://blanqueriaxmayorista.com/productos/${3}/)
+          //   {{3}} = handle del producto → usado en URL del botón CTA
+          //           (https://blanqueriaxmayorista.com/productos/${3})
           const variables = {
             '1': a.first_name || 'Cliente',
             '2': a.product_name || productName || '',
@@ -269,19 +301,54 @@ async function runDispatcher({ queueWhatsApp, dryRun = false, triggerSource = 'c
 
           try {
             if (!dryRun) {
-              await queueWhatsApp({
-                telefono: a.phone,
-                plantilla: plantillaKey,
-                variables,
-                orderNumber: null, // esta alerta no está asociada a un pedido
-              });
+              let providerUsed = providerCfg.provider;
+              let providerMessageId = null;
+
+              if (providerCfg.provider === 'waspy') {
+                // Path nuevo: cliente HTTP directo a Waspy (canal marketing aislado).
+                // No tira: devuelve {sent:false, reason} en error, así el cron del
+                // próximo lap reintenta sin marcar notified.
+                const result = await waspyOutbound.sendStockAlertTemplate({
+                  to: a.phone,
+                  templateName: providerCfg.approvedTemplateWaspy,
+                  variables,
+                });
+                if (!result.sent) {
+                  stats.alerts_send_errors++;
+                  log.warn(
+                    { alertId: a.id, reason: result.reason, status: result.status, pair: pairLabel },
+                    '[stockAlertDispatcher] waspy send no enviado — sin marcar notified'
+                  );
+                  continue; // próxima alerta; NO marca notified ni cuenta como sent
+                }
+                providerMessageId = result.providerMessageId || null;
+              } else {
+                // Path histórico Botmaker (default). NO se toca el flow:
+                //   queueWhatsApp → BullMQ → whatsapp.worker.js → Botmaker API.
+                await queueWhatsApp({
+                  telefono: a.phone,
+                  plantilla: plantillaKey,
+                  variables,
+                  orderNumber: null, // esta alerta no está asociada a un pedido
+                });
+                providerUsed = 'botmaker';
+              }
+
               await pool.query(
                 `UPDATE stock_alerts
                  SET status = 'notified',
                      notified_at = NOW(),
-                     notified_template = $2
+                     notified_template = $2,
+                     notified_provider = $3,
+                     provider_message_id = $4
                  WHERE id = $1 AND status = 'pending'`,
-                [a.id, plantillaKey]
+                [a.id, plantillaKey, providerUsed, providerMessageId]
+              );
+            } else {
+              // Dry-run: log lo que haríamos pero no enviamos ni marcamos
+              log.info(
+                { alertId: a.id, to: a.phone, provider: providerCfg.provider, pair: pairLabel },
+                '[stockAlertDispatcher] DRY-RUN — sin envío real'
               );
             }
             stats.alerts_sent++;
