@@ -26,6 +26,7 @@ import {
   MapPin,
   Bell,
   BellRing,
+  Warehouse,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -86,6 +87,7 @@ const navItems = [
   { to: '/orders', icon: <ShoppingCart size={20} />, label: 'Pedidos', mobileIcon: <ShoppingCart size={22} />, permissions: ['orders.view', 'orders.print', 'orders.update_status', 'orders.create_cash_payment'] },
   { to: '/receipts', icon: <Receipt size={20} />, label: 'Comprobantes', mobileIcon: <Receipt size={22} />, permissions: ['receipts.view', 'receipts.confirm', 'receipts.reject', 'receipts.download', 'receipts.upload_manual'] },
   { to: '/remitos', icon: <Truck size={20} />, label: 'Remitos', mobileIcon: <Truck size={22} />, permissions: ['remitos.view', 'remitos.upload', 'remitos.confirm', 'remitos.reject'] },
+  { to: '/deposito', icon: <Warehouse size={20} />, label: 'Depósito', mobileIcon: <Warehouse size={22} />, permissions: ['deposito.ver_deposito'] },
   { to: '/transportes-ranking', icon: <MapPin size={20} />, label: 'Transportes', mobileIcon: <MapPin size={22} />, permissions: ['orders.view'] },
   { to: '/customers', icon: <UserCheck size={20} />, label: 'Clientes', mobileIcon: <UserCheck size={22} />, permissions: ['customers.view'] },
 ];
