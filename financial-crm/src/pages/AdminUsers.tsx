@@ -22,6 +22,7 @@ import {
   Settings,
   Send,
   Store,
+  Warehouse,
 } from 'lucide-react';
 import {
   fetchUsers,
@@ -107,6 +108,12 @@ const PERMISSION_LABELS: Record<string, string> = {
   'local.box.print': 'Imprimir pedidos de caja',
   'local.box.pay': 'Registrar pagos caja',
   'local.alerts.view': 'Ver alertas local',
+  'deposito.ver_deposito': 'Ver panel del depósito',
+  'deposito.gestionar_empleados': 'Crear/desactivar empleados',
+  'deposito.ver_actividades': 'Ver actividades permitidas',
+  'deposito.modificar_actividades': 'Modificar actividades permitidas',
+  'deposito.ver_codigos': 'Ver códigos de empleados',
+  'deposito.modificar_codigos': 'Regenerar códigos',
 };
 
 const SECTIONS = [
@@ -164,6 +171,17 @@ const SECTIONS = [
     color: 'bg-orange-50 text-orange-600',
     subsections: [
       { title: 'Acciones', permissions: ['remitos.view', 'remitos.upload', 'remitos.confirm', 'remitos.reject', 'remitos.reprocess'] }
+    ]
+  },
+  {
+    id: 'deposito',
+    title: 'Depósito',
+    icon: Warehouse,
+    color: 'bg-indigo-50 text-indigo-600',
+    subsections: [
+      { title: 'Panel', permissions: ['deposito.ver_deposito'] },
+      { title: 'Empleados', permissions: ['deposito.gestionar_empleados', 'deposito.ver_codigos', 'deposito.modificar_codigos'] },
+      { title: 'Actividades permitidas', permissions: ['deposito.ver_actividades', 'deposito.modificar_actividades'] }
     ]
   },
   {
