@@ -441,10 +441,8 @@ export function QrDeposito() {
                         className="mt-1 w-5 h-5 accent-amber-500"
                       />
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm">
-                          {cleanProductName(p.name)}
-                          {p.sku && <span className="text-neutral-500 font-normal"> ({p.sku})</span>}
-                        </p>
+                        <p className="font-medium text-sm">{cleanProductName(p.name)}</p>
+                        {p.sku && <p className="text-xs text-neutral-500 font-mono">{p.sku}</p>}
                         <p className="text-xs text-neutral-500">Pedido: {p.quantity} {p.quantity === 1 ? 'unidad' : 'unidades'}</p>
                       </div>
                     </label>
