@@ -40,6 +40,8 @@ import {
   fetchRemitoByOrder,
   downloadShippingLabel,
   getEnvioNubeLabel,
+  getQlickLabel,
+  isQlickShipping,
   ApiOrderDetail,
   ApiOrderPrintData,
   ShippingRequest,
@@ -101,6 +103,7 @@ export function RealOrderDetail() {
 
   // Estado para etiqueta Envío Nube
   const [isLoadingEnvioNubeLabel, setIsLoadingEnvioNubeLabel] = useState(false);
+  const [isLoadingQlickLabel, setIsLoadingQlickLabel] = useState(false);
 
   // Estado para descarga de etiqueta de transporte
   const [isLoadingShippingLabel, setIsLoadingShippingLabel] = useState(false);
@@ -193,6 +196,20 @@ export function RealOrderDetail() {
       alert(err instanceof Error ? err.message : 'Error al obtener etiqueta de Envío Nube');
     } finally {
       setIsLoadingEnvioNubeLabel(false);
+    }
+  };
+
+  const handleDownloadQlickLabel = async () => {
+    if (!orderNumber || isLoadingQlickLabel) return;
+    setIsLoadingQlickLabel(true);
+    try {
+      const url = await getQlickLabel(orderNumber);
+      window.open(url, '_blank');
+      setTimeout(loadOrder, 2000);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al obtener etiqueta Qlick');
+    } finally {
+      setIsLoadingQlickLabel(false);
     }
   };
 
@@ -1220,6 +1237,62 @@ export function RealOrderDetail() {
                       <>
                         <Tag size={16} className="mr-2" />
                         {order.envio_nube_label_printed_at ? 'Re-imprimir Etiqueta' : 'Descargar Etiqueta Envío Nube'}
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </Card>
+            )}
+
+            {/* Etiqueta Qlick (solo si el método de envío de TN es Qlick) */}
+            {isQlickShipping(order.shipping_type) && (
+              <Card>
+                <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider mb-3">
+                  Etiqueta Qlick
+                </h3>
+                <div className="space-y-3">
+                  <div className="p-3 bg-violet-50 rounded-lg text-sm border border-violet-100">
+                    <div className="flex items-center gap-2 text-violet-700">
+                      <Truck size={16} />
+                      <span className="font-medium">{order.shipping_type}</span>
+                    </div>
+                    <p className="text-xs text-violet-600 mt-1">
+                      Guía generada en Qlick (HTML térmica 150×100)
+                    </p>
+                    {order.qlick_guia_number && (
+                      <p className="text-xs text-violet-700 mt-1">
+                        Guía Nº <span className="font-mono">{order.qlick_guia_number}</span>
+                        {order.qlick_servicio_codigo ? ` · servicio ${order.qlick_servicio_codigo}` : ''}
+                        {order.qlick_importe ? ` · $${Number(order.qlick_importe).toFixed(0)}` : ''}
+                      </p>
+                    )}
+                  </div>
+                  {order.qlick_label_printed_at && (
+                    <div className="p-3 bg-emerald-50 rounded-lg text-sm border border-emerald-100">
+                      <div className="flex items-center gap-2 text-emerald-700">
+                        <CheckCircle size={16} />
+                        <span className="font-medium">Etiqueta impresa</span>
+                      </div>
+                      <p className="text-xs text-emerald-600 mt-1">
+                        {formatDistanceToNow(new Date(order.qlick_label_printed_at), { addSuffix: true, locale: es })}
+                      </p>
+                    </div>
+                  )}
+                  <Button
+                    variant="primary"
+                    className="w-full bg-violet-600 hover:bg-violet-700"
+                    onClick={handleDownloadQlickLabel}
+                    disabled={isLoadingQlickLabel}
+                  >
+                    {isLoadingQlickLabel ? (
+                      <>
+                        <Loader2 size={16} className="mr-2 animate-spin" />
+                        Generando guía...
+                      </>
+                    ) : (
+                      <>
+                        <Tag size={16} className="mr-2" />
+                        {order.qlick_label_printed_at ? 'Re-imprimir Etiqueta Qlick' : 'Generar Etiqueta Qlick'}
                       </>
                     )}
                   </Button>

@@ -95,6 +95,14 @@ export interface ApiOrder {
   tn_shipping_status: string | null;
   // Etiqueta Envío Nube
   envio_nube_label_printed_at: string | null;
+  // Etiqueta Qlick
+  qlick_guia_number: number | null;
+  qlick_remito: string | null;
+  qlick_servicio_codigo: string | null;
+  qlick_importe: number | null;
+  qlick_zona: string | null;
+  qlick_generated_at: string | null;
+  qlick_label_printed_at: string | null;
   // Desglose de montos
   subtotal: number | null;
   discount: number | null;
@@ -1919,6 +1927,78 @@ export async function getEnvioNubeLabels(orders: string[]): Promise<{
     unpaid
   };
 }
+
+// ============================================
+// Qlick - Etiquetas de envío
+// ============================================
+
+export function isQlickShipping(shippingType?: string | null): boolean {
+  if (!shippingType) return false;
+  return /qlick/i.test(shippingType);
+}
+
+// Obtener etiqueta individual Qlick (HTML para impresión térmica 150x100)
+export async function getQlickLabel(orderNumber: string): Promise<string> {
+  const response = await authFetch(`${API_BASE_URL}/orders/${orderNumber}/qlick-label`);
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Error al obtener etiqueta Qlick');
+  }
+  const html = await response.text();
+  const blob = new Blob([html], { type: 'text/html' });
+  return URL.createObjectURL(blob);
+}
+
+// Obtener etiquetas batch (HTML único con todas concatenadas)
+export async function getQlickLabels(orders: string[]): Promise<{
+  url: string;
+  success: number;
+  failed: number;
+  failedDetail: Array<{ orderNumber: string; error: string }>;
+}> {
+  const response = await authFetch(`${API_BASE_URL}/orders/qlick-labels`, {
+    method: 'POST',
+    body: JSON.stringify({ orders }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Error al obtener etiquetas Qlick');
+  }
+  const success = parseInt(response.headers.get('X-Labels-Success') || '0');
+  const failed = parseInt(response.headers.get('X-Labels-Failed') || '0');
+  let failedDetail: Array<{ orderNumber: string; error: string }> = [];
+  try {
+    const raw = response.headers.get('X-Labels-Failed-Detail');
+    if (raw) failedDetail = JSON.parse(decodeURIComponent(raw));
+  } catch {}
+  const html = await response.text();
+  const blob = new Blob([html], { type: 'text/html' });
+  return { url: URL.createObjectURL(blob), success, failed, failedDetail };
+}
+
+export interface QlickPreviewResponse {
+  total: number;
+  aptos: string[];
+  conGuia: string[];
+  yaImpresas: string[];
+  noQlick: string[];
+  sinPago: string[];
+  cancelados: string[];
+  sinDireccion: string[];
+  noEncontrados: string[];
+}
+
+export async function previewQlickLabels(orders: string[]): Promise<QlickPreviewResponse> {
+  const response = await authFetch(`${API_BASE_URL}/orders/qlick-labels/preview`, {
+    method: 'POST',
+    body: JSON.stringify({ orders }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Error al verificar etiquetas Qlick');
+  return data;
+}
+
+// ============================================
 
 // Preview de qué pedidos tienen etiquetas disponibles
 export async function previewEnvioNubeLabels(orders: string[]): Promise<EnvioNubePreviewResponse> {

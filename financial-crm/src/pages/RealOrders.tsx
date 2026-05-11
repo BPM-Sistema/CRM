@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUrlFilters } from '../hooks';
-import { RefreshCw, AlertCircle, Printer, Calendar, Search, ChevronLeft, ChevronRight, CheckSquare, X, Truck } from 'lucide-react';
+import { RefreshCw, AlertCircle, Printer, Calendar, Search, ChevronLeft, ChevronRight, CheckSquare, X, Truck, Tag } from 'lucide-react';
 import { Header } from '../components/layout';
 import { Button, Card, PaymentStatusBadge, OrderStatusBadge, Modal } from '../components/ui';
 import { AccessDenied } from '../components/AccessDenied';
@@ -13,7 +13,7 @@ import {
   TableHead,
   TableCell,
 } from '../components/ui';
-import { fetchOrders, fetchPrintCounts, fetchOrdersToPrint, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus, PaginationInfo, OrderFilters, ShippingTypeFilter, getEnvioNubeLabels, PrintCounts } from '../services/api';
+import { fetchOrders, fetchPrintCounts, fetchOrdersToPrint, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus, PaginationInfo, OrderFilters, ShippingTypeFilter, getEnvioNubeLabels, getQlickLabels, isQlickShipping, PrintCounts } from '../services/api';
 import { ORDER_STATUSES, STATUS_FILTER_CONFIG } from '../constants/estadoPedido';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
@@ -125,6 +125,17 @@ export function RealOrders() {
     return {
       selectedEnvioNubeCount: envioNubeOrders.length - printed,
       selectedEnvioNubePrintedCount: printed
+    };
+  }, [orders, selectedOrderNumbers]);
+
+  // Contar pedidos Qlick seleccionados (pendientes de imprimir)
+  const { selectedQlickCount, selectedQlickPrintedCount } = useMemo(() => {
+    if (selectedOrderNumbers.size === 0) return { selectedQlickCount: 0, selectedQlickPrintedCount: 0 };
+    const qlickOrders = orders.filter(o => selectedOrderNumbers.has(o.order_number) && isQlickShipping(o.shipping_type));
+    const printed = qlickOrders.filter(o => o.qlick_label_printed_at).length;
+    return {
+      selectedQlickCount: qlickOrders.length - printed,
+      selectedQlickPrintedCount: printed,
     };
   }, [orders, selectedOrderNumbers]);
 
@@ -510,6 +521,45 @@ export function RealOrders() {
     }
   };
 
+  // Imprimir etiquetas Qlick batch (HTML único con todas concatenadas)
+  const printQlickLabels = async () => {
+    if (selectedOrderNumbers.size === 0) return;
+
+    setIsLoadingLabels(true);
+    try {
+      const selectedOrders = orders.filter(o => selectedOrderNumbers.has(o.order_number));
+      const qlickOrders = selectedOrders.filter(o => isQlickShipping(o.shipping_type));
+
+      if (qlickOrders.length === 0) {
+        alert('Ninguno de los pedidos seleccionados usa Qlick');
+        return;
+      }
+
+      const orderNumbers = qlickOrders.map(o => o.order_number);
+      const result = await getQlickLabels(orderNumbers);
+
+      window.open(result.url, '_blank');
+
+      const messages: string[] = [];
+      if (result.success > 0) messages.push(`✅ ${result.success} etiquetas Qlick generadas`);
+      if (result.failed > 0) {
+        messages.push(`❌ ${result.failed} fallaron`);
+        for (const f of result.failedDetail.slice(0, 10)) {
+          messages.push(`  • #${f.orderNumber}: ${f.error}`);
+        }
+      }
+      if (result.failed > 0) alert(messages.join('\n'));
+
+      clearSelection();
+      loadOrders();
+    } catch (err) {
+      console.error('Error al obtener etiquetas Qlick:', err);
+      alert(err instanceof Error ? err.message : 'Error al obtener etiquetas Qlick');
+    } finally {
+      setIsLoadingLabels(false);
+    }
+  };
+
   const [isPrinting, setIsPrinting] = useState(false);
 
   const handlePrintSelected = async () => {
@@ -595,6 +645,22 @@ export function RealOrders() {
                     : `Etiquetas Envío Nube${selectedEnvioNubeCount > 0 ? ` (${selectedEnvioNubeCount})` : ''}`
                   }
                 </Button>
+                {(selectedQlickCount > 0 || selectedQlickPrintedCount > 0) && (
+                  <Button
+                    variant={selectedQlickCount > 0 ? 'primary' : 'secondary'}
+                    size="sm"
+                    leftIcon={<Tag size={16} />}
+                    onClick={printQlickLabels}
+                    disabled={selectedQlickCount === 0 || isLoadingLabels}
+                    className={selectedQlickCount > 0 ? 'bg-violet-600 hover:bg-violet-700' : ''}
+                    title={selectedQlickPrintedCount > 0 ? `${selectedQlickPrintedCount} ya impresas (se re-imprimirán)` : undefined}
+                  >
+                    {isLoadingLabels
+                      ? `Generando ${selectedQlickCount} etiquetas Qlick...`
+                      : `Etiquetas Qlick${selectedQlickCount > 0 ? ` (${selectedQlickCount})` : ''}`
+                    }
+                  </Button>
+                )}
                 <Button
                   variant="secondary"
                   size="sm"

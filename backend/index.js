@@ -28,6 +28,7 @@ const fs = require('fs');
 const axios = require('axios');
 const { callTiendanube, callBotmaker } = require('./lib/circuitBreaker');
 const { callTiendanubeWrite } = require('./lib/tnWriteClient');
+const qlick = require('./lib/qlick');
 
 const { uploadFile: storageUploadFile, getPublicUrl: storageGetPublicUrl } = require('./lib/storage');
 const { calcularEstadoCuenta } = require('./utils/calcularEstadoCuenta');
@@ -2980,6 +2981,13 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
         tn_payment_status,
         tn_shipping_status,
         envio_nube_label_printed_at,
+        qlick_guia_number,
+        qlick_remito,
+        qlick_servicio_codigo,
+        qlick_importe,
+        qlick_zona,
+        qlick_generated_at,
+        qlick_label_printed_at,
         subtotal,
         discount,
         shipping_cost,
@@ -8764,6 +8772,239 @@ app.post('/orders/envio-nube-labels/preview', authenticate, async (req, res) => 
 
   } catch (error) {
     console.error('❌ POST /orders/envio-nube-labels/preview error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/* =====================================================
+   QLICK — Generación de guías y etiquetas
+===================================================== */
+
+async function cargarDatosPedidoQlick(orderNumber) {
+  const orderRes = await pool.query(`
+    SELECT order_number, customer_name, customer_email, customer_phone,
+           shipping_type, shipping_address, estado_pedido, estado_pago,
+           qlick_guia_number, qlick_remito, qlick_servicio_codigo, qlick_importe, qlick_zona,
+           qlick_generated_at, qlick_label_printed_at, tn_order_id
+    FROM orders_validated WHERE order_number = $1
+  `, [orderNumber]);
+  if (orderRes.rows.length === 0) return null;
+  const order = orderRes.rows[0];
+
+  const srRes = await pool.query(`
+    SELECT label_bultos, destino_tipo, dni, codigo_postal, provincia, localidad, direccion_entrega
+    FROM shipping_requests WHERE order_number = $1
+    ORDER BY created_at DESC LIMIT 1
+  `, [orderNumber]);
+  const shippingRequest = srRes.rows[0] || null;
+
+  const itemsRes = await pool.query(`
+    SELECT name, quantity FROM order_products WHERE order_number = $1
+  `, [orderNumber]);
+  order.items = itemsRes.rows;
+
+  return { order, shippingRequest };
+}
+
+async function generarGuiaYPersistir(orderNumber, { force = false } = {}) {
+  const data = await cargarDatosPedidoQlick(orderNumber);
+  if (!data) return { ok: false, status: 404, error: 'Pedido no encontrado' };
+  const { order, shippingRequest } = data;
+
+  if (order.estado_pedido === 'cancelado') {
+    return { ok: false, status: 400, error: 'Pedido cancelado' };
+  }
+  if (order.estado_pago === 'pendiente') {
+    return { ok: false, status: 400, error: 'Pedido sin pago confirmado' };
+  }
+  if (!qlick.isQlickShipping(order.shipping_type)) {
+    return { ok: false, status: 400, error: 'El pedido no usa Qlick', shipping_type: order.shipping_type };
+  }
+  if (!order.shipping_address) {
+    return { ok: false, status: 400, error: 'Pedido sin dirección de envío en TN' };
+  }
+
+  // Si ya hay guía y no es forzado, devolverla
+  if (order.qlick_guia_number && !force) {
+    return {
+      ok: true,
+      reused: true,
+      guia: Number(order.qlick_guia_number),
+      remito: order.qlick_remito,
+      servicio: order.qlick_servicio_codigo,
+      importe: order.qlick_importe ? Number(order.qlick_importe) : null,
+      zona: order.qlick_zona,
+    };
+  }
+
+  const bultos = shippingRequest?.label_bultos || 1;
+  const r = await qlick.generarGuia({
+    order,
+    shippingAddress: order.shipping_address,
+    shippingRequest,
+    bultos,
+  });
+  if (!r.ok) {
+    return { ok: false, status: 502, error: `Qlick rechazó la guía: ${r.error}`, raw: r.raw };
+  }
+
+  await pool.query(`
+    UPDATE orders_validated
+    SET qlick_guia_number = $1, qlick_remito = $2, qlick_servicio_codigo = $3,
+        qlick_importe = $4, qlick_zona = $5, qlick_generated_at = NOW()
+    WHERE order_number = $6
+  `, [r.guia, r.remito, r.codigo_servicio, r.importe, r.zona, orderNumber]);
+
+  return {
+    ok: true,
+    reused: false,
+    guia: r.guia,
+    remito: r.remito,
+    servicio: r.codigo_servicio,
+    importe: r.importe,
+    zona: r.zona,
+  };
+}
+
+/**
+ * GET /orders/:orderNumber/qlick-label
+ * Genera (si hace falta) la guía Qlick y devuelve la etiqueta HTML lista para imprimir.
+ */
+app.get('/orders/:orderNumber/qlick-label', authenticate, async (req, res) => {
+  try {
+    const { orderNumber } = req.params;
+    const result = await generarGuiaYPersistir(orderNumber);
+    if (!result.ok) return res.status(result.status || 500).json({ error: result.error, raw: result.raw });
+
+    const html = await qlick.descargarEtiquetaHTML(result.guia);
+
+    await pool.query(`
+      UPDATE orders_validated SET qlick_label_printed_at = NOW()
+      WHERE order_number = $1
+    `, [orderNumber]);
+
+    await logEvento({
+      orderNumber,
+      accion: result.reused ? 'qlick_label_reimpresa' : 'qlick_label_generada',
+      origen: 'crm',
+      userId: req.user?.id,
+      username: req.user?.name,
+    });
+
+    console.log(`🏷️ Etiqueta Qlick ${result.reused ? 're-' : ''}emitida pedido #${orderNumber} guia=${result.guia}`);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (error) {
+    console.error('❌ GET /orders/:orderNumber/qlick-label error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /orders/qlick-labels
+ * Body: { orders: ["12345", ...], force?: boolean }
+ * Genera las guías que falten y devuelve un HTML único con todas las etiquetas concatenadas.
+ */
+app.post('/orders/qlick-labels', authenticate, async (req, res) => {
+  try {
+    const { orders, force = false } = req.body || {};
+    if (!Array.isArray(orders) || orders.length === 0) {
+      return res.status(400).json({ error: 'Body { orders: [...] } requerido' });
+    }
+    if (orders.length > 50) {
+      return res.status(400).json({ error: 'Máximo 50 pedidos por lote' });
+    }
+
+    const ok = [];
+    const failed = [];
+    for (const orderNumber of orders) {
+      const r = await generarGuiaYPersistir(String(orderNumber), { force });
+      if (r.ok) ok.push({ orderNumber, guia: r.guia, reused: !!r.reused });
+      else failed.push({ orderNumber, error: r.error });
+    }
+
+    if (ok.length === 0) {
+      return res.status(422).json({ error: 'Ninguna guía pudo generarse', failed });
+    }
+
+    const ids = ok.map((x) => x.guia);
+    const html = await qlick.descargarEtiquetaHTML(ids);
+
+    await pool.query(`
+      UPDATE orders_validated SET qlick_label_printed_at = NOW()
+      WHERE order_number = ANY($1::text[])
+    `, [ok.map((x) => x.orderNumber)]);
+
+    for (const x of ok) {
+      await logEvento({
+        orderNumber: x.orderNumber,
+        accion: x.reused ? 'qlick_label_reimpresa_batch' : 'qlick_label_generada_batch',
+        origen: 'crm',
+        userId: req.user?.id,
+        username: req.user?.name,
+      });
+    }
+
+    res.setHeader('X-Labels-Success', String(ok.length));
+    res.setHeader('X-Labels-Failed', String(failed.length));
+    res.setHeader('X-Labels-Failed-Detail', encodeURIComponent(JSON.stringify(failed)));
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (error) {
+    console.error('❌ POST /orders/qlick-labels error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /orders/qlick-labels/preview
+ * Body: { orders: ["12345", ...] }
+ * Sin generar guías: muestra qué pedidos son aptos, ya tienen guía o serían rechazados.
+ */
+app.post('/orders/qlick-labels/preview', authenticate, async (req, res) => {
+  try {
+    const { orders } = req.body || {};
+    if (!Array.isArray(orders) || orders.length === 0) {
+      return res.status(400).json({ error: 'Body { orders: [...] } requerido' });
+    }
+    const r = await pool.query(`
+      SELECT order_number, shipping_type, estado_pedido, estado_pago,
+             qlick_guia_number, qlick_label_printed_at,
+             shipping_address IS NOT NULL AS has_address
+      FROM orders_validated WHERE order_number = ANY($1::text[])
+    `, [orders.map(String)]);
+
+    const aptos = [];
+    const yaImpresas = [];
+    const conGuia = [];
+    const noQlick = [];
+    const sinPago = [];
+    const cancelados = [];
+    const sinDireccion = [];
+    const noEncontrados = [];
+
+    const foundSet = new Set(r.rows.map((x) => x.order_number));
+    for (const o of orders) {
+      if (!foundSet.has(String(o))) noEncontrados.push(String(o));
+    }
+
+    for (const row of r.rows) {
+      if (row.estado_pedido === 'cancelado') { cancelados.push(row.order_number); continue; }
+      if (!qlick.isQlickShipping(row.shipping_type)) { noQlick.push(row.order_number); continue; }
+      if (row.estado_pago === 'pendiente') { sinPago.push(row.order_number); continue; }
+      if (!row.has_address) { sinDireccion.push(row.order_number); continue; }
+      if (row.qlick_label_printed_at) { yaImpresas.push(row.order_number); continue; }
+      if (row.qlick_guia_number) { conGuia.push(row.order_number); continue; }
+      aptos.push(row.order_number);
+    }
+
+    res.json({
+      total: orders.length,
+      aptos, conGuia, yaImpresas,
+      noQlick, sinPago, cancelados, sinDireccion, noEncontrados,
+    });
+  } catch (error) {
+    console.error('❌ POST /orders/qlick-labels/preview error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
