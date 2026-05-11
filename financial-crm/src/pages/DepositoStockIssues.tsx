@@ -36,6 +36,8 @@ export function DepositoStockIssues() {
   const [pageSize] = useState(50);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
   const [orderNumberFilter, setOrderNumberFilter] = useState('');
+  const [skuFilter, setSkuFilter] = useState('');
+  const [productSearchFilter, setProductSearchFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [resolvingId, setResolvingId] = useState<number | null>(null);
@@ -47,6 +49,8 @@ export function DepositoStockIssues() {
     try {
       const filters: StockIssuesFilters = { status: statusFilter };
       if (orderNumberFilter.trim()) filters.orderNumber = orderNumberFilter.trim();
+      if (skuFilter.trim()) filters.sku = skuFilter.trim();
+      if (productSearchFilter.trim()) filters.productSearch = productSearchFilter.trim();
       const r = await fetchStockIssues(filters, { page, limit: pageSize });
       setItems(r.items);
       setTotal(r.total);
@@ -57,7 +61,7 @@ export function DepositoStockIssues() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, orderNumberFilter, page, pageSize]);
+  }, [statusFilter, orderNumberFilter, skuFilter, productSearchFilter, page, pageSize]);
 
   useEffect(() => { if (canView) load(); }, [canView, load]);
 
@@ -124,15 +128,37 @@ export function DepositoStockIssues() {
               ))}
             </div>
           </div>
-          <div>
-            <p className="text-xs uppercase tracking-wider text-neutral-500 mb-2">Pedido</p>
-            <input
-              type="text"
-              value={orderNumberFilter}
-              onChange={e => updateOrderFilter(e.target.value)}
-              placeholder="Nº de pedido"
-              className="w-full sm:w-48 border border-neutral-300 rounded-lg px-3 py-1.5 text-sm"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-wider text-neutral-500 mb-2">Pedido</p>
+              <input
+                type="text"
+                value={orderNumberFilter}
+                onChange={e => updateOrderFilter(e.target.value)}
+                placeholder="Nº de pedido"
+                className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm"
+              />
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wider text-neutral-500 mb-2">SKU</p>
+              <input
+                type="text"
+                value={skuFilter}
+                onChange={e => { setSkuFilter(e.target.value); setPage(1); }}
+                placeholder="Código SKU"
+                className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm"
+              />
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wider text-neutral-500 mb-2">Producto</p>
+              <input
+                type="text"
+                value={productSearchFilter}
+                onChange={e => { setProductSearchFilter(e.target.value); setPage(1); }}
+                placeholder="Nombre del producto"
+                className="w-full border border-neutral-300 rounded-lg px-3 py-1.5 text-sm"
+              />
+            </div>
           </div>
         </div>
 

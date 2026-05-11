@@ -288,6 +288,16 @@ export function Deposito() {
               Empleado {employeeIds.length > 0 && <span className="text-indigo-600">({employeeIds.length})</span>}
             </p>
             <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => { setEmployeeIds([]); setPage(1); }}
+                className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                  employeeIds.length === 0
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                }`}
+              >
+                TODOS
+              </button>
               {employees.map(e => (
                 <button
                   key={e.id}
@@ -313,6 +323,16 @@ export function Deposito() {
               Acción {transitions.length > 0 && <span className="text-indigo-600">({transitions.length})</span>}
             </p>
             <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => { setTransitions([]); setPage(1); }}
+                className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                  transitions.length === 0
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                }`}
+              >
+                TODAS
+              </button>
               {TRANSITIONS_OPTIONS.map(t => (
                 <button
                   key={t.value}
