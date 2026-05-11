@@ -227,18 +227,25 @@ router.post('/:orderNumber/transition', async (req, res) => {
       // 6b.3. INSERT de stock issues cuando pasa a pendiente_stock.
       // Uno por producto faltante. Snapshot de product_name/variant/sku.
       if (to_status === 'pendiente_stock' && stockMissingValidated) {
-        // Cargar snapshot de los productos para el insert.
+        // Cargar snapshot + quantity para validar y registrar.
         const opIds = stockMissingValidated.map(s => s.order_product_id);
         const snapshotRes = await client.query(
-          `SELECT id, name, variant, sku FROM order_products
+          `SELECT id, name, variant, sku, quantity FROM order_products
            WHERE id = ANY($1) AND order_number = $2`,
           [opIds, orderNumber]
         );
         const snapshotById = new Map(snapshotRes.rows.map(r => [r.id, r]));
-        // Validar que todos los order_product_id existen en este pedido.
+        // Validar que todos los order_product_id existen en este pedido +
+        // que quantity_missing no exceda la cantidad pedida (defensa en
+        // profundidad: el frontend ya lo limita pero un POST directo podría
+        // saltearse esa validación).
         for (const item of stockMissingValidated) {
-          if (!snapshotById.has(item.order_product_id)) {
+          const snap = snapshotById.get(item.order_product_id);
+          if (!snap) {
             throw new Error(`Producto inválido (order_product_id=${item.order_product_id} no pertenece a este pedido)`);
+          }
+          if (item.quantity_missing > snap.quantity) {
+            throw new Error(`Cantidad faltante (${item.quantity_missing}) excede la cantidad pedida (${snap.quantity}) para "${snap.name}"`);
           }
         }
         for (const item of stockMissingValidated) {
