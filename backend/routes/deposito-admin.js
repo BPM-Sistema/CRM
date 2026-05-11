@@ -193,17 +193,253 @@ router.get('/metrics', requirePermission('deposito.ver_deposito'), async (req, r
   }
 });
 
+// ─── Whitelist de transiciones válidas ────────────────────────
+// Coincide con qr-deposito-transitions.js. Mantener sincronizado.
+const VALID_TRANSITIONS = new Set([
+  'en_preparacion',
+  'en_revision',
+  'pendiente_stock',
+  'por_empaquetar',
+  'empaquetado',
+]);
+
+// ─── Helper: generar código random de 4 dígitos único entre activos ──
+async function generateUniqueCode(client, maxAttempts = 100) {
+  for (let i = 0; i < maxAttempts; i++) {
+    const code = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+    const exists = await client.query(
+      `SELECT 1 FROM warehouse_users WHERE codigo = $1 AND active = true LIMIT 1`,
+      [code]
+    );
+    if (exists.rowCount === 0) return code;
+  }
+  throw new Error('No se pudo generar un código único — demasiados empleados activos.');
+}
+
 // ─── GET /employees ────────────────────────────────────────
-// Listado liviano para popular los filtros del panel (no es ABM aún — eso es PR 7b).
+// Listado con count de permisos + última acción. Incluye activos e inactivos
+// (frontend decide mostrar/ocultar inactivos con un toggle).
 router.get('/employees', requirePermission('deposito.ver_deposito'), async (req, res) => {
   try {
-    const r = await pool.query(
-      `SELECT id, nombre, active FROM warehouse_users ORDER BY nombre ASC`
-    );
+    const r = await pool.query(`
+      SELECT
+        u.id,
+        u.nombre,
+        u.active,
+        u.created_at,
+        COALESCE(p.permissions_count, 0)::int AS permissions_count,
+        last.last_action_at
+      FROM warehouse_users u
+      LEFT JOIN (
+        SELECT warehouse_user_id, COUNT(*) AS permissions_count
+        FROM warehouse_user_permissions
+        GROUP BY warehouse_user_id
+      ) p ON p.warehouse_user_id = u.id
+      LEFT JOIN (
+        SELECT warehouse_user_id, MAX(created_at) AS last_action_at
+        FROM warehouse_state_transitions
+        WHERE warehouse_user_id IS NOT NULL
+        GROUP BY warehouse_user_id
+      ) last ON last.warehouse_user_id = u.id
+      ORDER BY u.active DESC, u.nombre ASC
+    `);
     res.json({ ok: true, items: r.rows });
   } catch (err) {
     console.error('❌ GET /admin/deposito/employees error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /employees/:id/permissions ────────────────────────
+router.get('/employees/:id/permissions', requirePermission('deposito.ver_actividades'), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: 'id inválido' });
+    const r = await pool.query(
+      `SELECT transicion FROM warehouse_user_permissions WHERE warehouse_user_id = $1 ORDER BY transicion`,
+      [id]
+    );
+    res.json({ ok: true, permissions: r.rows.map(x => x.transicion) });
+  } catch (err) {
+    console.error('❌ GET permissions error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /employees ───────────────────────────────────────
+// Crea empleado activo con código random de 4 dígitos. Si pasa `permissions`
+// (array de transiciones), las inserta también. Devuelve el código generado
+// — el admin tiene que anotarlo o usar "Ver código" después.
+router.post('/employees', requirePermission('deposito.gestionar_empleados'), async (req, res) => {
+  const { nombre, permissions } = req.body || {};
+  if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
+    return res.status(400).json({ error: 'nombre es obligatorio' });
+  }
+  const nombreTrim = nombre.trim();
+
+  // Validar permisos contra la whitelist (silenciosamente skip los inválidos).
+  let validPermissions = [];
+  if (Array.isArray(permissions)) {
+    validPermissions = permissions.filter(p => VALID_TRANSITIONS.has(p));
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const codigo = await generateUniqueCode(client);
+    const insertRes = await client.query(
+      `INSERT INTO warehouse_users (nombre, codigo, active)
+       VALUES ($1, $2, true)
+       RETURNING id, nombre, active, codigo, created_at`,
+      [nombreTrim, codigo]
+    );
+    const employee = insertRes.rows[0];
+    for (const t of validPermissions) {
+      await client.query(
+        `INSERT INTO warehouse_user_permissions (warehouse_user_id, transicion)
+         VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [employee.id, t]
+      );
+    }
+    await client.query('COMMIT');
+    res.status(201).json({
+      ok: true,
+      employee: {
+        id: employee.id,
+        nombre: employee.nombre,
+        active: employee.active,
+        codigo: employee.codigo,
+        permissions: validPermissions,
+      },
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('❌ POST /employees error:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ─── PATCH /employees/:id ──────────────────────────────────
+// Editar nombre y/o estado active.
+router.patch('/employees/:id', requirePermission('deposito.gestionar_empleados'), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: 'id inválido' });
+
+    const updates = [];
+    const params = [];
+    let idx = 1;
+    if (typeof req.body.nombre === 'string' && req.body.nombre.trim()) {
+      updates.push(`nombre = $${idx++}`);
+      params.push(req.body.nombre.trim());
+    }
+    if (typeof req.body.active === 'boolean') {
+      updates.push(`active = $${idx++}`);
+      params.push(req.body.active);
+    }
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'Nada para actualizar' });
+    }
+    updates.push(`updated_at = NOW()`);
+    params.push(id);
+
+    const r = await pool.query(
+      `UPDATE warehouse_users SET ${updates.join(', ')} WHERE id = $${idx}
+       RETURNING id, nombre, active`,
+      params
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Empleado no encontrado' });
+    res.json({ ok: true, employee: r.rows[0] });
+  } catch (err) {
+    console.error('❌ PATCH /employees/:id error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── PUT /employees/:id/permissions ────────────────────────
+// Reemplaza el set de transiciones del empleado. DELETE + INSERT atomic.
+router.put('/employees/:id/permissions', requirePermission('deposito.modificar_actividades'), async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'id inválido' });
+
+  const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : null;
+  if (permissions === null) {
+    return res.status(400).json({ error: 'permissions debe ser un array' });
+  }
+  const valid = permissions.filter(p => VALID_TRANSITIONS.has(p));
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Verificar existencia del empleado.
+    const exists = await client.query(`SELECT 1 FROM warehouse_users WHERE id = $1`, [id]);
+    if (exists.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Empleado no encontrado' });
+    }
+    await client.query(`DELETE FROM warehouse_user_permissions WHERE warehouse_user_id = $1`, [id]);
+    for (const t of valid) {
+      await client.query(
+        `INSERT INTO warehouse_user_permissions (warehouse_user_id, transicion)
+         VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [id, t]
+      );
+    }
+    await client.query('COMMIT');
+    res.json({ ok: true, permissions: valid });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('❌ PUT permissions error:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ─── GET /employees/:id/code ───────────────────────────────
+// Devuelve el código plain text. Permiso separado para auditar accesos.
+router.get('/employees/:id/code', requirePermission('deposito.ver_codigos'), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: 'id inválido' });
+    const r = await pool.query(`SELECT codigo FROM warehouse_users WHERE id = $1`, [id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Empleado no encontrado' });
+    res.json({ ok: true, codigo: r.rows[0].codigo });
+  } catch (err) {
+    console.error('❌ GET code error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /employees/:id/regenerate-code ───────────────────
+// Genera un nuevo código random y devuelve el nuevo.
+router.post('/employees/:id/regenerate-code', requirePermission('deposito.modificar_codigos'), async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'id inválido' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const exists = await client.query(`SELECT id FROM warehouse_users WHERE id = $1`, [id]);
+    if (exists.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Empleado no encontrado' });
+    }
+    const codigo = await generateUniqueCode(client);
+    await client.query(
+      `UPDATE warehouse_users SET codigo = $1, updated_at = NOW() WHERE id = $2`,
+      [codigo, id]
+    );
+    await client.query('COMMIT');
+    res.json({ ok: true, codigo });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('❌ regenerate-code error:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 

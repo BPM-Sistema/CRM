@@ -11,9 +11,10 @@
  */
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { format, parseISO, subDays, startOfDay, endOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { Users } from 'lucide-react';
 import { Header } from '../components/layout';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -189,9 +190,22 @@ export function Deposito() {
     return orderDir === 'asc' ? ' ▲' : ' ▼';
   };
 
+  const canManageEmployees = hasPermission('deposito.gestionar_empleados') || hasPermission('deposito.ver_codigos') || hasPermission('deposito.ver_actividades');
+
   return (
     <>
-      <Header title="Depósito" subtitle="Actividad del depo y métricas" />
+      <Header
+        title="Depósito"
+        subtitle="Actividad del depo y métricas"
+        actions={canManageEmployees ? (
+          <Link
+            to="/deposito/empleados"
+            className="flex items-center gap-2 px-3 py-2 text-sm bg-neutral-100 hover:bg-neutral-200 rounded-lg"
+          >
+            <Users size={16} /> Empleados
+          </Link>
+        ) : undefined}
+      />
 
       <div className="p-4 space-y-4">
         {/* Métricas */}
