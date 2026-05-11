@@ -15,8 +15,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { parseISO, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Plus, ArrowLeft } from 'lucide-react';
+import { Plus, ArrowLeft, ArrowRight } from 'lucide-react';
 import { Header } from '../components/layout';
+import { Switch } from '../components/ui/Switch';
 import { useAuth } from '../contexts/AuthContext';
 import {
   fetchEmployees,
@@ -29,12 +30,16 @@ import {
   EmployeeRow,
 } from '../services/deposito-api';
 
+// Cada permiso del depo es un to_status. Pero un mismo to_status puede venir
+// de múltiples from_status (ej: en_revision viene de en_preparacion O
+// pendiente_stock). Mostramos los froms posibles para que sea claro qué
+// transiciones habilita cada checkbox.
 const TRANSITIONS = [
-  { value: 'en_preparacion',  label: 'En Preparación'  },
-  { value: 'en_revision',     label: 'En Revisión'     },
-  { value: 'pendiente_stock', label: 'Pend. Stock'     },
-  { value: 'por_empaquetar',  label: 'Por Empaquetar'  },
-  { value: 'empaquetado',     label: 'Empaquetado'     },
+  { value: 'en_preparacion',  to: 'En Preparación', froms: ['Hoja Impresa'] },
+  { value: 'en_revision',     to: 'En Revisión',    froms: ['En Preparación', 'Pend. Stock'] },
+  { value: 'pendiente_stock', to: 'Pend. Stock',    froms: ['En Preparación', 'En Revisión'] },
+  { value: 'por_empaquetar',  to: 'Por Empaquetar', froms: ['En Revisión'] },
+  { value: 'empaquetado',     to: 'Empaquetado',    froms: ['Por Empaquetar'] },
 ];
 
 interface ModalState {
@@ -222,13 +227,8 @@ export function DepositoEmpleados() {
       <div className="p-4 space-y-4">
         {/* Header de la tabla */}
         <div className="flex items-center justify-between gap-2">
-          <label className="flex items-center gap-2 text-sm text-neutral-700">
-            <input
-              type="checkbox"
-              checked={showInactive}
-              onChange={e => setShowInactive(e.target.checked)}
-              className="w-4 h-4"
-            />
+          <label className="flex items-center gap-3 text-sm text-neutral-700 cursor-pointer select-none">
+            <Switch checked={showInactive} onChange={() => setShowInactive(v => !v)} />
             Mostrar inactivos
           </label>
           {canManage && (
@@ -329,14 +329,18 @@ export function DepositoEmpleados() {
                   <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">Permisos</label>
                   <div className="space-y-2">
                     {TRANSITIONS.map(t => (
-                      <label key={t.value} className="flex items-center gap-2 cursor-pointer">
+                      <label key={t.value} className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-neutral-50">
                         <input
                           type="checkbox"
                           checked={formPermissions.includes(t.value)}
                           onChange={() => togglePermission(t.value)}
                           className="w-4 h-4"
                         />
-                        <span className="text-sm">{t.label}</span>
+                        <span className="flex items-center gap-1.5 text-sm flex-wrap">
+                          <span className="text-neutral-600">{t.froms.join(' / ')}</span>
+                          <ArrowRight size={14} className="text-neutral-400 shrink-0" />
+                          <span className="font-semibold text-indigo-700">{t.to}</span>
+                        </span>
                       </label>
                     ))}
                   </div>
@@ -377,7 +381,7 @@ export function DepositoEmpleados() {
                 <p className="text-xs text-neutral-500">Tildá las transiciones que este empleado puede disparar desde el QR.</p>
                 <div className="space-y-2">
                   {TRANSITIONS.map(t => (
-                    <label key={t.value} className="flex items-center gap-2 cursor-pointer">
+                    <label key={t.value} className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-neutral-50">
                       <input
                         type="checkbox"
                         checked={formPermissions.includes(t.value)}
@@ -385,7 +389,11 @@ export function DepositoEmpleados() {
                         disabled={!canModifyPerms}
                         className="w-4 h-4"
                       />
-                      <span className="text-sm">{t.label}</span>
+                      <span className="flex items-center gap-1.5 text-sm flex-wrap">
+                        <span className="text-neutral-600">{t.froms.join(' / ')}</span>
+                        <ArrowRight size={14} className="text-neutral-400 shrink-0" />
+                        <span className="font-semibold text-indigo-700">{t.to}</span>
+                      </span>
                     </label>
                   ))}
                 </div>

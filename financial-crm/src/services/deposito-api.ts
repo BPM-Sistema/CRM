@@ -205,6 +205,8 @@ export interface StockIssue {
 export interface StockIssuesFilters {
   status?: 'open' | 'resolved' | 'all';
   orderNumber?: string;
+  sku?: string;
+  productSearch?: string;
   fromDate?: string;
   toDate?: string;
 }
@@ -226,6 +228,8 @@ export async function fetchStockIssues(
   const params = new URLSearchParams();
   if (filters.status) params.set('status', filters.status);
   if (filters.orderNumber) params.set('order_number', filters.orderNumber);
+  if (filters.sku) params.set('sku', filters.sku);
+  if (filters.productSearch) params.set('product_search', filters.productSearch);
   if (filters.fromDate) params.set('from_date', filters.fromDate);
   if (filters.toDate) params.set('to_date', filters.toDate);
   if (opts.page) params.set('page', String(opts.page));

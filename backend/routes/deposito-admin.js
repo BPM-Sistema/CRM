@@ -451,6 +451,8 @@ router.get('/stock-issues', requirePermission('deposito.ver_deposito'), async (r
   try {
     const status = req.query.status || 'open';
     const orderNumber = req.query.order_number ? String(req.query.order_number).trim() : null;
+    const sku = req.query.sku ? String(req.query.sku).trim() : null;
+    const productSearch = req.query.product_search ? String(req.query.product_search).trim() : null;
     const fromDate = req.query.from_date || null;
     const toDate = req.query.to_date || null;
 
@@ -469,6 +471,14 @@ router.get('/stock-issues', requirePermission('deposito.ver_deposito'), async (r
     if (orderNumber) {
       clauses.push(`i.order_number = $${idx++}`);
       params.push(orderNumber);
+    }
+    if (sku) {
+      clauses.push(`i.sku ILIKE $${idx++}`);
+      params.push(`%${sku}%`);
+    }
+    if (productSearch) {
+      clauses.push(`i.product_name ILIKE $${idx++}`);
+      params.push(`%${productSearch}%`);
     }
     if (fromDate) {
       clauses.push(`i.created_at >= $${idx++}`);
