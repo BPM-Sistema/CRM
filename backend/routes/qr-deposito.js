@@ -159,11 +159,18 @@ router.post('/:orderNumber/transition', async (req, res) => {
 
       // 6b. Sync con shipping_requests (si existe). Mantiene la columna vieja
       // alineada con la nueva. data_updated_at prende el badge oficina.
+      // Solo afecta la fila MÁS RECIENTE — preservar el histórico de filas
+      // anteriores (cada SR vieja queda con el label_bultos que tenía al
+      // imprimirse en su momento).
       if (trans.requiresBultos) {
         await client.query(
           `UPDATE shipping_requests
            SET label_bultos = $1, data_updated_at = NOW()
-           WHERE order_number = $2`,
+           WHERE id = (
+             SELECT id FROM shipping_requests
+             WHERE order_number = $2
+             ORDER BY created_at DESC LIMIT 1
+           )`,
           [bultosFinal, orderNumber]
         );
       }

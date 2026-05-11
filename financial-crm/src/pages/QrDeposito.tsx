@@ -248,14 +248,21 @@ export function QrDeposito() {
             {/* Reconfigurar bultos */}
             <div className="bg-white rounded-2xl shadow-sm p-5 space-y-3">
               {!showBultosInput ? (
-                <button
-                  type="button"
-                  onClick={() => setShowBultosInput(true)}
-                  disabled={submitting}
-                  className="w-full py-4 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white font-semibold rounded-xl transition-colors"
-                >
-                  RECONFIGURAR BULTOS
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowBultosInput(true)}
+                    disabled={submitting || codigo.length !== 4}
+                    className="w-full py-4 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors"
+                  >
+                    RECONFIGURAR BULTOS
+                  </button>
+                  {codigo.length !== 4 && (
+                    <p className="text-xs text-neutral-400 text-center mt-2">
+                      Ingresá tu código primero
+                    </p>
+                  )}
+                </>
               ) : (
                 <>
                   <label className="block text-xs uppercase tracking-wider text-neutral-500 text-center">
