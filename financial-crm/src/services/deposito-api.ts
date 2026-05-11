@@ -41,11 +41,40 @@ export interface EmployeeRow {
   id: number;
   nombre: string;
   active: boolean;
+  created_at?: string;
+  permissions_count?: number;
+  last_action_at?: string | null;
 }
 
 export interface EmployeesResponse {
   ok: true;
   items: EmployeeRow[];
+}
+
+export interface CreateEmployeeResponse {
+  ok: true;
+  employee: {
+    id: number;
+    nombre: string;
+    active: boolean;
+    codigo: string;
+    permissions: string[];
+  };
+}
+
+export interface UpdateEmployeeResponse {
+  ok: true;
+  employee: { id: number; nombre: string; active: boolean };
+}
+
+export interface PermissionsResponse {
+  ok: true;
+  permissions: string[];
+}
+
+export interface CodeResponse {
+  ok: true;
+  codigo: string;
 }
 
 // ─── Filtros ───────────────────────────────────────────────
@@ -98,5 +127,68 @@ export async function fetchMetrics(filters: DepositoFilters): Promise<MetricsRes
 export async function fetchEmployees(): Promise<EmployeesResponse> {
   const r = await authFetch(`${API_BASE_URL}/admin/deposito/employees`);
   if (!r.ok) throw new Error(`Error ${r.status} al cargar empleados`);
+  return r.json();
+}
+
+export async function fetchEmployeePermissions(id: number): Promise<PermissionsResponse> {
+  const r = await authFetch(`${API_BASE_URL}/admin/deposito/employees/${id}/permissions`);
+  if (!r.ok) throw new Error(`Error ${r.status} al cargar permisos`);
+  return r.json();
+}
+
+export async function createEmployee(payload: { nombre: string; permissions: string[] }): Promise<CreateEmployeeResponse> {
+  const r = await authFetch(`${API_BASE_URL}/admin/deposito/employees`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || `Error ${r.status} al crear empleado`);
+  }
+  return r.json();
+}
+
+export async function updateEmployee(id: number, payload: { nombre?: string; active?: boolean }): Promise<UpdateEmployeeResponse> {
+  const r = await authFetch(`${API_BASE_URL}/admin/deposito/employees/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || `Error ${r.status} al actualizar empleado`);
+  }
+  return r.json();
+}
+
+export async function updateEmployeePermissions(id: number, permissions: string[]): Promise<PermissionsResponse> {
+  const r = await authFetch(`${API_BASE_URL}/admin/deposito/employees/${id}/permissions`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ permissions }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || `Error ${r.status} al actualizar permisos`);
+  }
+  return r.json();
+}
+
+export async function fetchEmployeeCode(id: number): Promise<CodeResponse> {
+  const r = await authFetch(`${API_BASE_URL}/admin/deposito/employees/${id}/code`);
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || `Error ${r.status} al obtener código`);
+  }
+  return r.json();
+}
+
+export async function regenerateEmployeeCode(id: number): Promise<CodeResponse> {
+  const r = await authFetch(`${API_BASE_URL}/admin/deposito/employees/${id}/regenerate-code`, { method: 'POST' });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || `Error ${r.status} al regenerar código`);
+  }
   return r.json();
 }
