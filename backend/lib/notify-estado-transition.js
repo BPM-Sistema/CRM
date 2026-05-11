@@ -1,53 +1,42 @@
 /**
  * Disparadores de WhatsApp por transición de estado del pedido (Fase 2 PR 1).
  *
- * Mira el estado destino + estado de pago y, si corresponde, encola un WhatsApp.
- * Cada disparador tiene un toggle propio en `integration_config` que controla
- * si está activo (independiente del toggle de la plantilla en sí).
+ * Mira el estado destino + estado de pago y, si corresponde, encola un WhatsApp
+ * vía enviarWhatsAppPlantilla. Esa función ya chequea el toggle whatsapp_tpl_<key>
+ * del catálogo plantilla_tipos, aplica la convención de testing, normaliza el
+ * teléfono y dedup.
  *
  * Llamar desde TODO lugar donde se setea `estado_pedido`:
  *   - PATCH /orders/:n/status (manual + trigger A.2)
  *   - recalcularPagos.js (trigger A.1)
  *
- * Reutilización temporal de plantillas (hasta que se creen custom en Botmaker):
- *   empaquetado + pago no confirmado_total → pendiente_3hs
- *   pendiente_datos_envio                  → datos__envio
- *   pendiente_retiro                       → retiros_local
+ * Plantillas (definidas en plantilla_tipos, migration 094):
+ *   aviso_empaquetado_pendiente_pago → template Botmaker pendiente_3hs (reutilizado)
+ *   aviso_pendiente_datos_envio      → template Botmaker datos__envio  (reutilizado)
+ *   aviso_pendiente_retiro           → template Botmaker retiros_local (reutilizado)
+ *
+ * Cuando se creen templates custom en Botmaker, basta editar plantilla_default
+ * desde el panel — el helper no necesita cambios.
  */
 
 const pool = require('../db');
-const { queueWhatsApp } = require('./whatsapp-queue');
-const { isEnabled } = require('../services/integrationConfig');
+const { enviarWhatsAppPlantilla } = require('./whatsapp-helpers');
 
-const TRANSITIONS = {
-  empaquetado_pendiente_pago: { plantilla: 'pendiente_3hs',  label: 'empaquetado+pendiente_pago' },
-  pendiente_datos_envio:      { plantilla: 'datos__envio',   label: 'pendiente_datos_envio'      },
-  pendiente_retiro_aviso:     { plantilla: 'retiros_local',  label: 'pendiente_retiro'           },
-};
-
-function resolveTrigger(toEstado, estadoPago) {
+function resolvePlantilla(toEstado, estadoPago) {
   if (toEstado === 'empaquetado' &&
       estadoPago !== 'confirmado_total' && estadoPago !== 'a_favor') {
-    return 'empaquetado_pendiente_pago';
+    return 'aviso_empaquetado_pendiente_pago';
   }
-  if (toEstado === 'pendiente_datos_envio') return 'pendiente_datos_envio';
-  if (toEstado === 'pendiente_retiro')      return 'pendiente_retiro_aviso';
+  if (toEstado === 'pendiente_datos_envio') return 'aviso_pendiente_datos_envio';
+  if (toEstado === 'pendiente_retiro')      return 'aviso_pendiente_retiro';
   return null;
 }
 
 async function notifyEstadoTransition({ orderNumber, fromEstado, toEstado, estadoPago }) {
   if (!toEstado || fromEstado === toEstado) return;
 
-  const triggerKey = resolveTrigger(toEstado, estadoPago);
-  if (!triggerKey) return;
-
-  const { plantilla, label } = TRANSITIONS[triggerKey];
-
-  const on = await isEnabled(triggerKey, { logBlocked: false });
-  if (!on) {
-    console.log(`🔕 [notify-estado-transition] ${triggerKey} OFF → skip ${plantilla} #${orderNumber} (${label})`);
-    return;
-  }
+  const plantilla = resolvePlantilla(toEstado, estadoPago);
+  if (!plantilla) return;
 
   // Re-leer el pedido del pool global. Doble propósito:
   //   1. Tener customer_name/customer_phone con datos frescos.
@@ -79,7 +68,9 @@ async function notifyEstadoTransition({ orderNumber, fromEstado, toEstado, estad
   }
 
   try {
-    await queueWhatsApp({
+    // enviarWhatsAppPlantilla chequea: catálogo + toggle whatsapp_tpl_<key> +
+    // testing config + normalización de teléfono + encola con dedup.
+    await enviarWhatsAppPlantilla({
       telefono: order.customer_phone,
       plantilla,
       variables: {
