@@ -90,6 +90,13 @@
       '.bpm-sa-modal-success .bpm-sa-check-icon{font-size:44px;line-height:1;margin-bottom:10px;color:' + ACCENT + ';}',
       '.bpm-sa-modal-success p{margin:0;font-family:' + FONT + ';font-size:14px;color:#333;line-height:1.5;}',
 
+      // ========= Picker de variantes (cuando hay varias OOS) =========
+      '.bpm-sa-modal-picker{margin:0 0 4px;}',
+      '.bpm-sa-modal-picker .bpm-sa-picker-lead{margin:0 0 10px;font-family:' + FONT + ';font-size:12px;color:#555;line-height:1.45;}',
+      '.bpm-sa-modal-picker .bpm-sa-picker-list{display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto;}',
+      '.bpm-sa-modal-picker .bpm-sa-picker-option{padding:10px 12px;background:#fff;border:1px solid #d8d8d6;border-radius:9px;font-family:' + FONT + ';font-size:13px;color:#1a1a1a;cursor:pointer;text-align:left;font-weight:500;}',
+      '.bpm-sa-modal-picker .bpm-sa-picker-option:hover{background:' + ACCENT + ';color:#fff;border-color:' + ACCENT + ';}',
+
       // Mobile: mantiene centered con más padding lateral mínimo
       '@media (max-width:480px){.bpm-sa-modal{padding:14px;}}',
     ].join('');
@@ -357,7 +364,7 @@
   }
 
   // =====================================================
-  // Listado: detectar "todos los variants sin stock"
+  // Listado: detectar variantes sin stock y ofrecerlas en el modal
   // =====================================================
   function parseItemVariants(itemEl) {
     var holder = itemEl.querySelector('[data-variants]');
@@ -365,10 +372,13 @@
     try { return JSON.parse(holder.getAttribute('data-variants')); } catch (e) { return null; }
   }
 
-  function itemIsFullyOutOfStock(itemEl) {
+  // Devuelve sólo las variantes sin stock (las que tienen sentido para "avisame").
+  // Si ALL están OOS o sólo ALGUNAS lo están, igual mostramos el botón — el cliente
+  // elige cuál en el modal.
+  function getItemOosVariants(itemEl) {
     var variants = parseItemVariants(itemEl);
-    if (!variants || !Array.isArray(variants) || variants.length === 0) return false;
-    return variants.every(function (v) { return v && v.available !== true; });
+    if (!variants || !Array.isArray(variants) || variants.length === 0) return [];
+    return variants.filter(function (v) { return v && v.available !== true; });
   }
 
   function getItemProductName(itemEl) {
@@ -377,10 +387,24 @@
     return null;
   }
 
+  function variantLabelFromObject(v) {
+    if (!v) return '';
+    // Tiendanube: data-variants trae { id, values: ["Talle: M", "Color: Rojo"], ... }
+    // o { id, name: "..." } según tema. Probamos en orden.
+    if (typeof v.name === 'string' && v.name.trim()) return v.name.trim();
+    if (Array.isArray(v.values)) return v.values.join(' / ');
+    if (v.values && typeof v.values === 'object') {
+      return Object.keys(v.values).map(function (k) { return v.values[k]; }).join(' / ');
+    }
+    return String(v.id || '');
+  }
+
   function decorateListing() {
     $$('.js-item-product[data-product-id]').forEach(function (item) {
       if (item.getAttribute('data-bpm-sa-decorated') === '1') return;
-      if (!itemIsFullyOutOfStock(item)) return;
+
+      var oosVariants = getItemOosVariants(item);
+      if (oosVariants.length === 0) return; // todas con stock → no mostrar nada
 
       var productId = item.getAttribute('data-product-id');
       if (!productId) return;
@@ -402,14 +426,28 @@
       btn.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        // Quitar focus para que no se quede el hover verde pegado
         btn.blur();
-        openModal({
-          productId: productId,
-          productName: productName,
-          variantId: null,
-          variantName: null,
-        });
+        // Si hay una sola variante OOS, auto-seleccionar — sin paso de picker.
+        // Si hay varias, el modal va a mostrar el selector primero.
+        if (oosVariants.length === 1) {
+          var only = oosVariants[0];
+          openModal({
+            productId: productId,
+            productName: productName,
+            variantId: String(only.id),
+            variantName: variantLabelFromObject(only),
+          });
+        } else {
+          openModal({
+            productId: productId,
+            productName: productName,
+            variantId: null,
+            variantName: null,
+            oosVariants: oosVariants.map(function (v) {
+              return { id: String(v.id), label: variantLabelFromObject(v) };
+            }),
+          });
+        }
       });
 
       anchor.appendChild(btn);
@@ -429,6 +467,11 @@
     modalEl.innerHTML = [
       '<div class="bpm-sa-modal-card" role="dialog" aria-modal="true">',
       '  <button type="button" class="bpm-sa-modal-close" aria-label="Cerrar">&times;</button>',
+      '  <div class="bpm-sa-modal-picker" style="display:none;">',
+      '    <h4>📲 ¿Cuál opción te interesa?</h4>',
+      '    <p class="bpm-sa-picker-lead">Elegí qué versión querés que te avisemos cuando vuelva.</p>',
+      '    <div class="bpm-sa-picker-list"></div>',
+      '  </div>',
       '  <div class="bpm-sa-modal-form">',
       '    <h4>📲 Avisame cuando reingrese</h4>',
       '    <p class="bpm-sa-modal-lead">Si querés enterarte rápido apenas ingrese este producto, dejá tu WhatsApp acá.</p>',
@@ -490,22 +533,58 @@
     m.setAttribute('data-product-name', ctx.productName || '');
     m.setAttribute('data-variant-name', ctx.variantName || '');
 
-    m.querySelector('.bpm-sa-modal-form').style.display = '';
-    m.querySelector('.bpm-sa-modal-success').style.display = 'none';
+    var picker = m.querySelector('.bpm-sa-modal-picker');
+    var form = m.querySelector('.bpm-sa-modal-form');
+    var success = m.querySelector('.bpm-sa-modal-success');
+
     var name = m.querySelector('.bpm-sa-modal-name'); name.value = ''; name.disabled = false;
     var phone = m.querySelector('.bpm-sa-modal-phone'); phone.value = ''; phone.disabled = false;
     var news = m.querySelector('.bpm-sa-modal-news'); if (news) news.checked = false;
     var msg = m.querySelector('.bpm-sa-modal-msg'); msg.textContent = ''; msg.className = 'bpm-sa-modal-msg';
     var btn = m.querySelector('.bpm-sa-modal-submit'); btn.disabled = false; btn.textContent = 'Confirmar';
 
-    var key = (ctx.productId || '') + ':' + (ctx.variantId || 'null');
-    if (alreadySent(key)) {
-      m.querySelector('.bpm-sa-modal-form').style.display = 'none';
-      m.querySelector('.bpm-sa-modal-success').style.display = '';
+    var needsPicker = !ctx.variantId && Array.isArray(ctx.oosVariants) && ctx.oosVariants.length > 1;
+
+    if (needsPicker) {
+      var list = picker.querySelector('.bpm-sa-picker-list');
+      list.innerHTML = '';
+      ctx.oosVariants.forEach(function (v) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'bpm-sa-picker-option';
+        b.textContent = v.label || ('Variante ' + v.id);
+        b.addEventListener('click', function () {
+          m.setAttribute('data-variant-id', v.id);
+          m.setAttribute('data-variant-name', v.label || '');
+          picker.style.display = 'none';
+          form.style.display = '';
+          var key2 = (ctx.productId || '') + ':' + v.id;
+          if (alreadySent(key2)) {
+            form.style.display = 'none';
+            success.style.display = '';
+          } else {
+            setTimeout(function () { name.focus(); }, 50);
+          }
+        });
+        list.appendChild(b);
+      });
+      picker.style.display = '';
+      form.style.display = 'none';
+      success.style.display = 'none';
+    } else {
+      picker.style.display = 'none';
+      form.style.display = '';
+      success.style.display = 'none';
+
+      var key = (ctx.productId || '') + ':' + (ctx.variantId || 'null');
+      if (alreadySent(key)) {
+        form.style.display = 'none';
+        success.style.display = '';
+      }
     }
 
     m.classList.add('open');
-    setTimeout(function () { name.focus(); }, 50);
+    if (!needsPicker) setTimeout(function () { name.focus(); }, 50);
   }
 
   function closeModal() {
