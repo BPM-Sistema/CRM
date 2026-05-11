@@ -671,6 +671,7 @@ async function guardarPedidoCompleto(pedido) {
 
 // queueWhatsApp vive en lib/whatsapp-queue.js (compartido con whatsapp-helpers)
 const { queueWhatsApp } = require('./lib/whatsapp-queue');
+const { notifyEstadoTransition } = require('./lib/notify-estado-transition');
 
 
 
@@ -3859,6 +3860,16 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
     });
 
     console.log(`📦 Estado de pedido ${orderNumber} actualizado a: ${estado_pedido}`);
+
+    // WhatsApps de Fase 2 PR 1: disparar según estado destino + estado_pago.
+    // Cada uno controlado por su toggle en integration_config. Fire-and-forget:
+    // un error encolando no debe romper el endpoint.
+    notifyEstadoTransition(pool, {
+      orderNumber,
+      fromEstado: pedido.estado_pedido,
+      toEstado: estadoFinal,
+      estadoPago: pedido.estado_pago,
+    }).catch(err => log.error({ err: err.message, orderNumber }, 'notifyEstadoTransition fallo'));
 
     // WhatsApp automático cuando se marca como "enviado" con Envío Nube
     if (estado_pedido === 'enviado') {
