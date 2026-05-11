@@ -7850,7 +7850,8 @@ app.post('/orders/:orderNumber/shipping-label', authenticate, async (req, res) =
 
     // 2. Obtener datos del pedido
     const orderRes = await pool.query(`
-      SELECT order_number, customer_name, customer_phone, monto_tiendanube, estado_pedido
+      SELECT order_number, customer_name, customer_phone, monto_tiendanube,
+             estado_pedido, estado_pago
       FROM orders_validated
       WHERE order_number = $1
     `, [orderNumber]);
@@ -7863,6 +7864,15 @@ app.post('/orders/:orderNumber/shipping-label', authenticate, async (req, res) =
     if (order.estado_pedido === 'cancelado') {
       return res.status(400).json({
         error: 'No se puede imprimir etiqueta: el pedido está cancelado.'
+      });
+    }
+
+    // Fase 2 PR 2: bloquear etiqueta sin pago confirmado total. Sin etiqueta
+    // el bulto no sale físicamente, lo que evita despachos sin cobrar. Cierra
+    // el agujero que dejaba imprimir etiqueta con pago a_confirmar o parcial.
+    if (order.estado_pago !== 'confirmado_total' && order.estado_pago !== 'a_favor') {
+      return res.status(400).json({
+        error: `No se puede imprimir etiqueta: el pago no está confirmado total (estado_pago=${order.estado_pago || 'desconocido'}).`
       });
     }
 
@@ -8077,6 +8087,22 @@ app.post('/orders/shipping-labels-batch', authenticate, async (req, res) => {
       return res.status(400).json({
         error: 'Hay pedidos cancelados en el batch. Quitalos para continuar.',
         cancelled: cancelledList
+      });
+    }
+
+    // 1.6 Fase 2 PR 2: bloquear pedidos sin pago confirmado total. Sin etiqueta
+    // el bulto no sale físicamente, lo que evita despachos sin cobrar.
+    const unpaidRes = await pool.query(
+      `SELECT order_number, estado_pago FROM orders_validated
+       WHERE order_number = ANY($1)
+         AND estado_pago NOT IN ('confirmado_total', 'a_favor')`,
+      [orderNumbers]
+    );
+    if (unpaidRes.rowCount > 0) {
+      const unpaidList = unpaidRes.rows.map(r => ({ order_number: r.order_number, estado_pago: r.estado_pago }));
+      return res.status(400).json({
+        error: 'Hay pedidos sin pago confirmado total en el batch. Quitalos para continuar.',
+        unpaid: unpaidList
       });
     }
 

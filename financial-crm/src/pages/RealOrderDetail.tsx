@@ -354,19 +354,21 @@ export function RealOrderDetail() {
   // Lógica de permisos (RBAC + reglas de negocio)
   const canRegisterPayment = hasPermission('orders.create_cash_payment') && saldoPendiente > 0 && paymentStatus !== 'rechazado';
 
-  // Lógica de impresión:
-  // - Pedidos normales: solo necesitan comprobante válido
-  // - Pedidos con "Expreso a elección" o "Via Cargo": también necesitan datos de envío
+  // Lógica de impresión: solo bloquea por pago.
+  // Fase 2 PR 2: se sacó el bloqueo por datos de envío faltantes — el depo
+  // puede armar/empaquetar sin que el cliente haya cargado datos todavía.
+  // La red de seguridad contra despacho sin pago sigue cubierta por:
+  // (a) constraints de Fase 1 en /orders/:n/status para estados de salida y
+  // (b) PR 2 también bloquea imprimir etiqueta de envío sin pago confirmado.
   const hasValidPayment = ['a_confirmar', 'parcial', 'total'].includes(paymentStatus);
   const shippingTypeLower = (order.shipping_type || '').toLowerCase();
-  // Detectar tipos de envío que requieren formulario /envio (igual que backend)
   const requiresShippingData =
     (shippingTypeLower.includes('expreso') && shippingTypeLower.includes('elec')) ||
     shippingTypeLower.includes('via cargo') ||
     shippingTypeLower.includes('viacargo');
   // Cualquier envío (no retiro) - para ocultar botón "Retirado"
   const isShippedOrder = requiresShippingData || shippingTypeLower.includes('env');
-  const canPrint = hasValidPayment && (!requiresShippingData || shippingRequest !== null);
+  const canPrint = hasValidPayment;
 
   const canShip = paymentStatus === 'total';
 
@@ -864,9 +866,7 @@ export function RealOrderDetail() {
                     ) : (
                       <div className="p-4 bg-amber-50 rounded-xl text-center">
                         <p className="text-sm text-amber-700">
-                          {!hasValidPayment
-                            ? 'Esperando comprobante de pago para poder imprimir.'
-                            : 'Esperando datos de envío para poder imprimir (Expreso a elección / Via Cargo).'}
+                          Esperando comprobante de pago para poder imprimir.
                         </p>
                       </div>
                     )}
@@ -890,7 +890,7 @@ export function RealOrderDetail() {
                     ) : (
                       <div className="p-4 bg-amber-50 rounded-xl text-center">
                         <p className="text-sm text-amber-700">
-                          Esperando datos de envío para poder imprimir (Expreso a elección / Via Cargo).
+                          Esperando comprobante de pago para poder imprimir.
                         </p>
                       </div>
                     )}
