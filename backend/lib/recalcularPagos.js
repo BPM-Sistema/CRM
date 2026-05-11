@@ -20,6 +20,7 @@ const { calcularEstadoPedido } = require('./payment-helpers');
 const { pushOrderToImprimir } = require('./sheets-helpers');
 const { derivarEstadoDesdeEmpaquetado, accionParaEstado } = require('./estados-pedido');
 const { logEvento } = require('../utils/logging');
+const { notifyEstadoTransition } = require('./notify-estado-transition');
 
 async function recalcularPagos(clientOrPool, orderNumber, opts = {}) {
   const tolerancia = opts.tolerancia ?? 1000;
@@ -142,6 +143,21 @@ async function recalcularPagos(clientOrPool, orderNumber, opts = {}) {
         });
       });
     }
+  }
+
+  // WhatsApps de Fase 2 PR 1: disparar si la transición lo amerita.
+  // setImmediate + el helper usa pool global (no clientOrPool) y re-verifica
+  // el estado actual del pedido. Si el caller hace rollback de la transacción,
+  // el estado en DB no coincidirá con estadoFinal y el helper hace skip.
+  if (estadoFinal !== estadoPedidoActual) {
+    setImmediate(() => {
+      notifyEstadoTransition({
+        orderNumber,
+        fromEstado: estadoPedidoActual,
+        toEstado: estadoFinal,
+        estadoPago,
+      }).catch(() => { /* loggeado adentro */ });
+    });
   }
 
   return {
