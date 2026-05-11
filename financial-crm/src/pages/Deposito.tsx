@@ -14,13 +14,14 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { format, parseISO, subDays, startOfDay, endOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Users } from 'lucide-react';
+import { Users, AlertTriangle } from 'lucide-react';
 import { Header } from '../components/layout';
 import { useAuth } from '../contexts/AuthContext';
 import {
   fetchTransitions,
   fetchMetrics,
   fetchEmployees,
+  fetchStockIssues,
   TransitionRow,
   EmployeeRow,
   DepositoFilters,
@@ -98,6 +99,7 @@ export function Deposito() {
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
   const [metrics, setMetrics] = useState<DepositoMetrics | null>(null);
+  const [openIssuesCount, setOpenIssuesCount] = useState(0);
 
   // Estado UI.
   const [page, setPage] = useState(1);
@@ -149,6 +151,10 @@ export function Deposito() {
   useEffect(() => {
     if (!canView) return;
     fetchEmployees().then(r => setEmployees(r.items)).catch(() => {});
+    // Cargar count de issues abiertos para mostrar badge en el botón.
+    fetchStockIssues({ status: 'open' }, { page: 1, limit: 1 })
+      .then(r => setOpenIssuesCount(r.open_count))
+      .catch(() => {});
   }, [canView]);
 
   useEffect(() => {
@@ -197,14 +203,29 @@ export function Deposito() {
       <Header
         title="Depósito"
         subtitle="Actividad del depo y métricas"
-        actions={canManageEmployees ? (
-          <Link
-            to="/deposito/empleados"
-            className="flex items-center gap-2 px-3 py-2 text-sm bg-neutral-100 hover:bg-neutral-200 rounded-lg"
-          >
-            <Users size={16} /> Empleados
-          </Link>
-        ) : undefined}
+        actions={
+          <div className="flex items-center gap-2">
+            <Link
+              to="/deposito/stock-issues"
+              className="relative flex items-center gap-2 px-3 py-2 text-sm bg-neutral-100 hover:bg-neutral-200 rounded-lg"
+            >
+              <AlertTriangle size={16} /> Stock Pendientes
+              {openIssuesCount > 0 && (
+                <span className="ml-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-amber-500 text-white text-xs font-bold">
+                  {openIssuesCount}
+                </span>
+              )}
+            </Link>
+            {canManageEmployees && (
+              <Link
+                to="/deposito/empleados"
+                className="flex items-center gap-2 px-3 py-2 text-sm bg-neutral-100 hover:bg-neutral-200 rounded-lg"
+              >
+                <Users size={16} /> Empleados
+              </Link>
+            )}
+          </div>
+        }
       />
 
       <div className="p-4 space-y-4">

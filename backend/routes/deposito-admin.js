@@ -443,4 +443,103 @@ router.post('/employees/:id/regenerate-code', requirePermission('deposito.modifi
   }
 });
 
+// ─── GET /stock-issues ─────────────────────────────────────
+// Listado de stock issues con filtros. PR 4.5 los crea cuando el depo
+// pasa un pedido a pendiente_stock desde el QR. Se cierran automáticamente
+// cuando el pedido sale de pendiente_stock, o manualmente desde acá.
+router.get('/stock-issues', requirePermission('deposito.ver_deposito'), async (req, res) => {
+  try {
+    const status = req.query.status || 'open';
+    const orderNumber = req.query.order_number ? String(req.query.order_number).trim() : null;
+    const fromDate = req.query.from_date || null;
+    const toDate = req.query.to_date || null;
+
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const offset = (page - 1) * limit;
+
+    const clauses = [];
+    const params = [];
+    let idx = 1;
+    if (status === 'open') {
+      clauses.push(`i.resolved_at IS NULL`);
+    } else if (status === 'resolved') {
+      clauses.push(`i.resolved_at IS NOT NULL`);
+    }
+    if (orderNumber) {
+      clauses.push(`i.order_number = $${idx++}`);
+      params.push(orderNumber);
+    }
+    if (fromDate) {
+      clauses.push(`i.created_at >= $${idx++}`);
+      params.push(fromDate);
+    }
+    if (toDate) {
+      clauses.push(`i.created_at <= $${idx++}`);
+      params.push(toDate);
+    }
+    const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+
+    const listSql = `
+      SELECT
+        i.id, i.order_number, i.order_product_id,
+        i.product_name, i.variant, i.sku, i.quantity_missing,
+        i.created_at, i.resolved_at, i.resolved_by_user_id,
+        u.id AS reported_by_id, u.nombre AS reported_by_nombre,
+        admin_u.name AS resolved_by_user_name
+      FROM warehouse_stock_issues i
+      LEFT JOIN warehouse_users u ON u.id = i.reported_by_warehouse_user_id
+      LEFT JOIN users admin_u ON admin_u.id = i.resolved_by_user_id
+      ${whereClause}
+      ORDER BY i.created_at DESC, i.id DESC
+      LIMIT $${idx} OFFSET $${idx + 1}
+    `;
+    const countSql = `SELECT COUNT(*)::int AS total FROM warehouse_stock_issues i ${whereClause}`;
+
+    const [listRes, countRes, openCountRes] = await Promise.all([
+      pool.query(listSql, [...params, limit, offset]),
+      pool.query(countSql, params),
+      pool.query(`SELECT COUNT(*)::int AS open_count FROM warehouse_stock_issues WHERE resolved_at IS NULL`),
+    ]);
+
+    res.json({
+      ok: true,
+      items: listRes.rows,
+      total: countRes.rows[0].total,
+      open_count: openCountRes.rows[0].open_count,
+      page,
+      pageSize: limit,
+      pages: Math.ceil(countRes.rows[0].total / limit),
+    });
+  } catch (err) {
+    console.error('❌ GET /stock-issues error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── PATCH /stock-issues/:id/resolve ───────────────────────
+// Marca el issue como resuelto manualmente. resolved_by_user_id queda
+// con el admin actual (distinto de NULL que indica auto-resolve).
+router.patch('/stock-issues/:id/resolve', requirePermission('deposito.ver_deposito'), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: 'id inválido' });
+
+    const r = await pool.query(
+      `UPDATE warehouse_stock_issues
+       SET resolved_at = NOW(), resolved_by_user_id = $1
+       WHERE id = $2 AND resolved_at IS NULL
+       RETURNING id, order_number, resolved_at`,
+      [req.user?.id || null, id]
+    );
+    if (r.rowCount === 0) {
+      return res.status(404).json({ error: 'Issue no encontrado o ya resuelto' });
+    }
+    res.json({ ok: true, issue: r.rows[0] });
+  } catch (err) {
+    console.error('❌ resolve issue error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

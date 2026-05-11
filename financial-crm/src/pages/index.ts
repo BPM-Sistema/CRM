@@ -20,3 +20,4 @@ export { default as PaymentReminders } from './PaymentReminders';
 export { QrDeposito } from './QrDeposito';
 export { Deposito } from './Deposito';
 export { DepositoEmpleados } from './DepositoEmpleados';
+export { DepositoStockIssues } from './DepositoStockIssues';
