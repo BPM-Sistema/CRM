@@ -72,6 +72,16 @@ const BUTTON_LABEL: Record<string, string> = {
 // Botones secundarios (chiquitos abajo). El resto son principales (grandes).
 const SECONDARY_BUTTONS = new Set(['pendiente_stock']);
 
+/**
+ * Limpia el nombre del producto sacando un precio que venga al final entre
+ * paréntesis, ej: "Combo Blanquería (250.000)" → "Combo Blanquería".
+ * Solo matchea números con separador de miles (3+ dígitos con . o ,) para
+ * no confundirse con tamaños o packs legítimos ("(180)", "(Pack x10)").
+ */
+function cleanProductName(name: string): string {
+  return name.replace(/\s*\(\d{1,3}(?:[.,]\d{3})+\)\s*$/, '').trim();
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 export function QrDeposito() {
@@ -431,8 +441,10 @@ export function QrDeposito() {
                         className="mt-1 w-5 h-5 accent-amber-500"
                       />
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm">{p.name}</p>
-                        {p.variant && <p className="text-xs text-neutral-500">{p.variant}</p>}
+                        <p className="font-medium text-sm">
+                          {cleanProductName(p.name)}
+                          {p.sku && <span className="text-neutral-500 font-normal"> ({p.sku})</span>}
+                        </p>
                         <p className="text-xs text-neutral-500">Pedido: {p.quantity} {p.quantity === 1 ? 'unidad' : 'unidades'}</p>
                       </div>
                     </label>
