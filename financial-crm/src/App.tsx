@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/layout';
-import { Dashboard, RealOrders, RealOrderDetail, RealReceipts, RealReceiptDetail, AdminUsers, Financieras, ShippingForm, ShippingDocuments, ComprobantesForm, IntegrationSettings, TransportesRanking } from './pages';
+import { Dashboard, RealOrders, RealOrderDetail, RealReceipts, RealReceiptDetail, AdminUsers, Financieras, ShippingForm, ShippingDocuments, ComprobantesForm, IntegrationSettings, TransportesRanking, QrDeposito } from './pages';
 import Customers from './pages/Customers';
 import ActivityLog from './pages/ActivityLog';
 import SyncQueue from './pages/SyncQueue';
@@ -92,6 +92,8 @@ export default function App() {
         <Route path="/envio" element={<ShippingForm />} />
         <Route path="/comprobantes" element={<ComprobantesForm />} />
         <Route path="/comprobantes-wpp" element={<ComprobantesForm requirePhone />} />
+        {/* QR del depo — público, sin auth ni Layout */}
+        <Route path="/q/:orderNumber" element={<QrDeposito />} />
 
         {/* Resto de la app - con autenticación */}
         <Route path="*" element={
