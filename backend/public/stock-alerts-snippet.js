@@ -372,13 +372,16 @@
     try { return JSON.parse(holder.getAttribute('data-variants')); } catch (e) { return null; }
   }
 
-  // Devuelve sólo las variantes sin stock (las que tienen sentido para "avisame").
-  // Si ALL están OOS o sólo ALGUNAS lo están, igual mostramos el botón — el cliente
-  // elige cuál en el modal.
+  // Sólo mostramos el botón si TODAS las variantes están OOS. Si alguna está
+  // disponible, el producto en sí está "en stock" y no tiene sentido ofrecer
+  // suscripción desde el listado (el cliente puede comprar la variante que sí
+  // está disponible o entrar al PDP y suscribirse a la específica que le falta).
   function getItemOosVariants(itemEl) {
     var variants = parseItemVariants(itemEl);
     if (!variants || !Array.isArray(variants) || variants.length === 0) return [];
-    return variants.filter(function (v) { return v && v.available !== true; });
+    var anyAvailable = variants.some(function (v) { return v && v.available === true; });
+    if (anyAvailable) return [];
+    return variants;
   }
 
   function getItemProductName(itemEl) {
@@ -387,16 +390,20 @@
     return null;
   }
 
+  // Tiendanube guarda los valores de variante en option0 / option1 / option2 como
+  // strings (ej. {option0:"Twin", option1:"Gris claro", option2:null}). Los
+  // concatenamos para mostrarle al cliente algo como "Twin / Gris claro".
   function variantLabelFromObject(v) {
     if (!v) return '';
-    // Tiendanube: data-variants trae { id, values: ["Talle: M", "Color: Rojo"], ... }
-    // o { id, name: "..." } según tema. Probamos en orden.
+    var parts = [];
+    ['option0', 'option1', 'option2'].forEach(function (k) {
+      var val = v[k];
+      if (typeof val === 'string' && val.trim()) parts.push(val.trim());
+    });
+    if (parts.length) return parts.join(' / ');
+    // Fallback genérico si el tema cambia el shape
     if (typeof v.name === 'string' && v.name.trim()) return v.name.trim();
-    if (Array.isArray(v.values)) return v.values.join(' / ');
-    if (v.values && typeof v.values === 'object') {
-      return Object.keys(v.values).map(function (k) { return v.values[k]; }).join(' / ');
-    }
-    return String(v.id || '');
+    return 'Variante #' + (v.id || '');
   }
 
   function decorateListing() {
@@ -404,7 +411,7 @@
       if (item.getAttribute('data-bpm-sa-decorated') === '1') return;
 
       var oosVariants = getItemOosVariants(item);
-      if (oosVariants.length === 0) return; // todas con stock → no mostrar nada
+      if (oosVariants.length === 0) return; // hay alguna en stock → no mostrar
 
       var productId = item.getAttribute('data-product-id');
       if (!productId) return;
