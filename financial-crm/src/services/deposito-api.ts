@@ -184,6 +184,66 @@ export async function fetchEmployeeCode(id: number): Promise<CodeResponse> {
   return r.json();
 }
 
+// ─── Stock Issues (PR 7c) ──────────────────────────────────
+
+export interface StockIssue {
+  id: number;
+  order_number: string;
+  order_product_id: number | null;
+  product_name: string;
+  variant: string | null;
+  sku: string | null;
+  quantity_missing: number;
+  created_at: string;
+  resolved_at: string | null;
+  resolved_by_user_id: string | null;
+  reported_by_id: number | null;
+  reported_by_nombre: string | null;
+  resolved_by_user_name: string | null;
+}
+
+export interface StockIssuesFilters {
+  status?: 'open' | 'resolved' | 'all';
+  orderNumber?: string;
+  fromDate?: string;
+  toDate?: string;
+}
+
+export interface StockIssuesResponse {
+  ok: true;
+  items: StockIssue[];
+  total: number;
+  open_count: number;
+  page: number;
+  pageSize: number;
+  pages: number;
+}
+
+export async function fetchStockIssues(
+  filters: StockIssuesFilters = {},
+  opts: { page?: number; limit?: number } = {}
+): Promise<StockIssuesResponse> {
+  const params = new URLSearchParams();
+  if (filters.status) params.set('status', filters.status);
+  if (filters.orderNumber) params.set('order_number', filters.orderNumber);
+  if (filters.fromDate) params.set('from_date', filters.fromDate);
+  if (filters.toDate) params.set('to_date', filters.toDate);
+  if (opts.page) params.set('page', String(opts.page));
+  if (opts.limit) params.set('limit', String(opts.limit));
+  const r = await authFetch(`${API_BASE_URL}/admin/deposito/stock-issues?${params.toString()}`);
+  if (!r.ok) throw new Error(`Error ${r.status} al cargar issues`);
+  return r.json();
+}
+
+export async function resolveStockIssue(id: number): Promise<{ ok: true; issue: { id: number; order_number: string; resolved_at: string } }> {
+  const r = await authFetch(`${API_BASE_URL}/admin/deposito/stock-issues/${id}/resolve`, { method: 'PATCH' });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || `Error ${r.status} al resolver issue`);
+  }
+  return r.json();
+}
+
 export async function regenerateEmployeeCode(id: number): Promise<CodeResponse> {
   const r = await authFetch(`${API_BASE_URL}/admin/deposito/employees/${id}/regenerate-code`, { method: 'POST' });
   if (!r.ok) {
