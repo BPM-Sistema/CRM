@@ -419,6 +419,9 @@ export function RealOrders() {
         if (Array.isArray(err.missing) && err.missing.length > 0) {
           lines.push(`Sin datos de envío: ${err.missing.join(', ')}`);
         }
+        if (Array.isArray(err.unpaid) && err.unpaid.length > 0) {
+          lines.push(`Sin pago confirmado total: ${err.unpaid.map((u: { order_number: string }) => u.order_number).join(', ')}`);
+        }
         alert(lines.join('\n'));
         return;
       }

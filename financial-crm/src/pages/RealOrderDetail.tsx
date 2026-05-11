@@ -1153,11 +1153,18 @@ export function RealOrderDetail() {
                     );
                   })()}
 
+                  {!canShip && (
+                    <div className="p-3 bg-amber-50 rounded-lg text-center">
+                      <p className="text-xs text-amber-700">
+                        Para imprimir la etiqueta, el pago debe estar confirmado como "Total"
+                      </p>
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={handleDownloadShippingLabel}
-                    disabled={isLoadingShippingLabel}
-                    className="flex items-center justify-center gap-2 w-full py-3 px-4 bg-violet-600 hover:bg-violet-700 disabled:bg-violet-400 text-white font-medium rounded-xl transition-colors"
+                    disabled={isLoadingShippingLabel || !canShip}
+                    className="flex items-center justify-center gap-2 w-full py-3 px-4 bg-violet-600 hover:bg-violet-700 disabled:bg-violet-400 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-colors"
                   >
                     <Download size={18} />
                     {isLoadingShippingLabel
