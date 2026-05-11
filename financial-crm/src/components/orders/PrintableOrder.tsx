@@ -1,6 +1,7 @@
 import { forwardRef } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { QRCodeSVG } from 'qrcode.react';
 import { ApiOrderPrintData, getTotalUnits } from '../../services/api';
 
 interface PrintableOrderProps {
@@ -105,10 +106,19 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
 
         {/* Cliente y Envío en línea */}
         <div className="print-no-break grid grid-cols-2 gap-3 mb-3 text-[11px]">
-          <div className="border border-gray-400 p-2">
-            <h2 className="font-bold text-gray-500 uppercase mb-1">Cliente</h2>
-            <p className="font-semibold">{data.customer.name}</p>
-            {data.customer.phone && <p>Tel: {data.customer.phone}</p>}
+          <div className="border border-gray-400 p-2 flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <h2 className="font-bold text-gray-500 uppercase mb-1">Cliente</h2>
+              <p className="font-semibold">{data.customer.name}</p>
+              {data.customer.phone && <p>Tel: {data.customer.phone}</p>}
+            </div>
+            {/* QR del pedido (Fase 2 PR 5) — apunta a /q/:orderNumber */}
+            <QRCodeSVG
+              value={`${window.location.origin}/q/${data.order_number}`}
+              size={132}
+              level="M"
+              style={{ width: '3.5cm', height: '3.5cm', flexShrink: 0 }}
+            />
           </div>
 
           <div className="border border-gray-400 p-2">
@@ -182,13 +192,19 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
         </div>
 
 
-        {/* Firma compacta */}
+        {/* Firma compacta + QR del pedido (Fase 2 PR 5) */}
         <div className="print-no-break mt-4 pt-2 border-t border-gray-400">
-          <div className="grid grid-cols-2 gap-4 text-[10px]">
+          <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center text-[10px]">
             <div>
               <p className="text-gray-500 mb-4">Armado:</p>
               <div className="border-b border-gray-400"></div>
             </div>
+            <QRCodeSVG
+              value={`${window.location.origin}/q/${data.order_number}`}
+              size={132}
+              level="M"
+              style={{ width: '3.5cm', height: '3.5cm' }}
+            />
             <div>
               <p className="text-gray-500 mb-4">Verificado:</p>
               <div className="border-b border-gray-400"></div>
