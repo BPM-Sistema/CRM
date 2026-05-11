@@ -368,6 +368,7 @@ export function RealReceipts() {
       financieraId: overrideFilters?.financieraId !== undefined ? overrideFilters.financieraId : financieraFilter,
       estado: overrideFilters?.estado !== undefined ? overrideFilters.estado : (estadoFilter === 'all' ? null : estadoFilter),
       fecha: overrideFilters?.fecha !== undefined ? overrideFilters.fecha : getFechaParam(),
+      search: overrideFilters?.search !== undefined ? overrideFilters.search : (searchQuery || null),
     };
 
     setLoading(true);
@@ -382,7 +383,7 @@ export function RealReceipts() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, financieraFilter, estadoFilter, getFechaParam]);
+  }, [currentPage, financieraFilter, estadoFilter, getFechaParam, searchQuery]);
 
   const handleRefresh = () => loadComprobantes();
 
@@ -441,7 +442,7 @@ export function RealReceipts() {
   // Recargar cuando cambian los filtros desde la URL
   useEffect(() => {
     loadComprobantes();
-  }, [estadoFilter, fechaFilter, customDate, financieraFilter, currentPage]);
+  }, [estadoFilter, fechaFilter, customDate, financieraFilter, currentPage, searchQuery]);
 
   // Refetch al volver a la pestaña (sin polling para evitar sync issues)
   useEffect(() => {

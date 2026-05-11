@@ -1698,6 +1698,7 @@ app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async
     const financieraId = req.query.financiera_id ? parseInt(req.query.financiera_id) : null;
     const estado = req.query.estado || null; // 'a_confirmar', 'confirmado', 'rechazado'
     const fecha = req.query.fecha || null; // 'hoy' o 'YYYY-MM-DD'
+    const q = (req.query.q || '').toString().trim();
 
     // Construir WHERE dinámico
     const conditions = [];
@@ -1707,6 +1708,17 @@ app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async
     if (financieraId) {
       conditions.push(`c.financiera_id = $${paramIndex++}`);
       params.push(financieraId);
+    }
+
+    if (q) {
+      // Búsqueda por id del comprobante, order_number, numero_operacion, o nombre del cliente.
+      // Server-side para que funcione contra los 2k+ comprobantes y no solo la página.
+      const like = `%${q}%`;
+      conditions.push(
+        `(c.id::text = $${paramIndex} OR c.order_number ILIKE $${paramIndex + 1} OR c.numero_operacion ILIKE $${paramIndex + 1} OR o.customer_name ILIKE $${paramIndex + 1})`
+      );
+      params.push(q, like);
+      paramIndex += 2;
     }
 
     if (estado) {
@@ -1734,9 +1746,12 @@ app.get('/comprobantes', authenticate, requirePermission('receipts.view'), async
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    // Contar total (con filtros)
+    // Contar total (con filtros). El JOIN a orders_validated es necesario porque
+    // la búsqueda libre (q) filtra también por o.customer_name.
     const countRes = await pool.query(
-      `SELECT COUNT(*) as total FROM comprobantes c ${whereClause}`,
+      `SELECT COUNT(*) as total FROM comprobantes c
+       LEFT JOIN orders_validated o ON c.order_number = o.order_number
+       ${whereClause}`,
       params
     );
     const total = parseInt(countRes.rows[0].total);

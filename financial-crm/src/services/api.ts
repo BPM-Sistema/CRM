@@ -635,6 +635,7 @@ export interface ComprobantesFilters {
   financieraId?: number | null;
   estado?: 'a_confirmar' | 'confirmado' | 'rechazado' | null;
   fecha?: 'hoy' | string | null; // 'hoy' o 'YYYY-MM-DD'
+  search?: string | null;        // búsqueda libre: id, order_number, numero_operacion, customer_name
 }
 
 // Obtener todos los comprobantes (con paginación y filtros server-side)
@@ -661,6 +662,9 @@ export async function fetchComprobantes(
   }
   if (filters?.fecha) {
     params.append('fecha', filters.fecha);
+  }
+  if (filters?.search) {
+    params.append('q', filters.search);
   }
 
   const response = await authFetch(`${API_BASE_URL}/comprobantes?${params}`);
