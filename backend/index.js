@@ -6245,6 +6245,7 @@ const localAlertsRoutes = require('./routes/local-alerts');
 const stockAlertsRoutes = require('./routes/stock-alerts');
 const paymentRemindersRoutes = require('./routes/payment-reminders');
 const qrDepositoRoutes = require('./routes/qr-deposito');
+const depositoAdminRoutes = require('./routes/deposito-admin');
 const { importMovimientos } = require('./services/bankImportService');
 const { matchFromComprobante, matchOnConfirm } = require('./services/bankMatchingService');
 // AI Bot routes — PAUSADO, descomentar cuando se active el bot en prod
@@ -6285,6 +6286,8 @@ app.post('/admin/divergences/run-reverse-fix', authenticate, requirePermission('
 app.use('/admin/payment-reminders', paymentRemindersRoutes);
 // QR del depo — endpoints sin auth (la auth la maneja el código del empleado).
 app.use('/q', qrDepositoRoutes);
+// Panel admin del depo (autenticado + permiso deposito.ver_deposito).
+app.use('/admin/deposito', depositoAdminRoutes);
 app.use('/bank', bankRoutes);
 app.use('/local', localOrdersRoutes);
 app.use('/local/box-orders', localBoxRoutes);
