@@ -17,3 +17,4 @@ export { default as WhatsAppActions } from './WhatsAppActions';
 export { AdminBankPanel } from './AdminBankPanel';
 export { TransportesRanking } from './TransportesRanking';
 export { default as PaymentReminders } from './PaymentReminders';
+export { QrDeposito } from './QrDeposito';

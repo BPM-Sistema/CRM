@@ -80,6 +80,7 @@ export interface ApiOrder {
   printed_at: string | null;
   packed_at: string | null;
   shipped_at: string | null;
+  bultos: number;
   monto_original: number | null;
   comprobantes_count: string;
   pending_receipts_count: number;

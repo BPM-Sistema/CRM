@@ -2982,7 +2982,8 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
         envio_nube_label_printed_at,
         subtotal,
         discount,
-        shipping_cost
+        shipping_cost,
+        bultos
       FROM orders_validated
       WHERE order_number = $1
     `, [orderNumber]);
@@ -6243,6 +6244,7 @@ const localBoxRoutes = require('./routes/local-box');
 const localAlertsRoutes = require('./routes/local-alerts');
 const stockAlertsRoutes = require('./routes/stock-alerts');
 const paymentRemindersRoutes = require('./routes/payment-reminders');
+const qrDepositoRoutes = require('./routes/qr-deposito');
 const { importMovimientos } = require('./services/bankImportService');
 const { matchFromComprobante, matchOnConfirm } = require('./services/bankMatchingService');
 // AI Bot routes — PAUSADO, descomentar cuando se active el bot en prod
@@ -6281,6 +6283,8 @@ app.post('/admin/divergences/run-reverse-fix', authenticate, requirePermission('
   }
 });
 app.use('/admin/payment-reminders', paymentRemindersRoutes);
+// QR del depo — endpoints sin auth (la auth la maneja el código del empleado).
+app.use('/q', qrDepositoRoutes);
 app.use('/bank', bankRoutes);
 app.use('/local', localOrdersRoutes);
 app.use('/local/box-orders', localBoxRoutes);

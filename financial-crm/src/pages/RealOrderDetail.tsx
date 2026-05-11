@@ -120,6 +120,9 @@ export function RealOrderDetail() {
       setData(orderData);
       setShippingRequest(shippingData);
       setRemito(remitoData);
+      // Bultos canónicos vienen ahora de OV (Fase 2 PR 4). Inicializa el
+      // input de impresión de etiqueta con el valor actual del pedido.
+      if (orderData?.order?.bultos) setBultos(orderData.order.bultos);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar pedido');
     } finally {
