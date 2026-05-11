@@ -40,6 +40,32 @@ function normalizeArgentinaPhone(phone) {
     return normalized;
   }
 
+  // AR sin código país: viene del frontend del CRM y de stock-alerts-snippet
+  // que ya stripea el "54" antes de mandar (queda area + número).
+  //   - 10 dígitos puros: AR mobile sin código país. Ej: 1133999552 → +5491133999552
+  //   - 11 dígitos con leading 0: formato AR viejo. Ej: 01133999552 → +5491133999552
+  //     (strip del 0, prepend +549).
+  //   - 11 dígitos arrancando con 9: el snippet stripeó "54" de "549..." y dejó
+  //     el "9" pegado. Ej: 91133999552 → +5491133999552 (sólo prepend +54).
+  const digits = String(phone).replace(/\D/g, '');
+  if (digits === phone || `+${digits}` === phone) {
+    if (digits.length === 10) {
+      const normalized = '+549' + digits;
+      console.log(`📱 Normalizando teléfono AR (10 dig): ${phone} → ${normalized}`);
+      return normalized;
+    }
+    if (digits.length === 11 && digits.startsWith('0')) {
+      const normalized = '+549' + digits.slice(1);
+      console.log(`📱 Normalizando teléfono AR (11 dig leading 0): ${phone} → ${normalized}`);
+      return normalized;
+    }
+    if (digits.length === 11 && digits.startsWith('9')) {
+      const normalized = '+54' + digits;
+      console.log(`📱 Normalizando teléfono AR (11 dig leading 9): ${phone} → ${normalized}`);
+      return normalized;
+    }
+  }
+
   // Otros países o formatos, no tocar
   return phone;
 }
