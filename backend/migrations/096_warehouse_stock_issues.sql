@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS warehouse_stock_issues (
   resolved_at                     TIMESTAMPTZ,
   -- user_id del admin (FK a users del CRM si lo cierran manualmente).
   -- NULL cuando se resuelve automáticamente al salir de pendiente_stock.
-  resolved_by_user_id             INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  -- users.id es UUID en el schema del CRM.
+  resolved_by_user_id             UUID REFERENCES users(id) ON DELETE SET NULL,
   created_at                      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
