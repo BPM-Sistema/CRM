@@ -51,6 +51,15 @@ router.get('/:orderNumber', async (req, res) => {
       selfTransition: !!t.selfTransition,
     }));
 
+    // Productos del pedido — los necesita el modal de pendiente_stock (PR 4.5).
+    const productsRes = await pool.query(
+      `SELECT id, product_id, name, variant, sku, quantity
+       FROM order_products
+       WHERE order_number = $1
+       ORDER BY name ASC`,
+      [orderNumber]
+    );
+
     res.json({
       ok: true,
       order: {
@@ -60,6 +69,7 @@ router.get('/:orderNumber', async (req, res) => {
         bultos: order.bultos,
       },
       buttons,
+      products: productsRes.rows,
     });
   } catch (err) {
     console.error('❌ GET /q/:orderNumber error:', err.message);
@@ -71,7 +81,7 @@ router.get('/:orderNumber', async (req, res) => {
 router.post('/:orderNumber/transition', async (req, res) => {
   try {
     const { orderNumber } = req.params;
-    const { codigo, to_status, bultos } = req.body || {};
+    const { codigo, to_status, bultos, stock_missing } = req.body || {};
 
     // 1. Validar inputs básicos.
     if (!codigo || !/^[0-9]{4}$/.test(codigo)) {
@@ -79,6 +89,32 @@ router.post('/:orderNumber/transition', async (req, res) => {
     }
     if (!to_status || typeof to_status !== 'string') {
       return res.status(400).json({ error: 'to_status requerido' });
+    }
+
+    // 1.5. Si va a pendiente_stock, stock_missing es obligatorio (>=1 item).
+    let stockMissingValidated = null;
+    if (to_status === 'pendiente_stock') {
+      if (!Array.isArray(stock_missing) || stock_missing.length === 0) {
+        return res.status(400).json({
+          error: 'Para pasar a Pend. Stock tenés que indicar al menos un producto faltante',
+        });
+      }
+      // Validar cada item del array.
+      stockMissingValidated = [];
+      for (const item of stock_missing) {
+        if (!item || typeof item !== 'object') {
+          return res.status(400).json({ error: 'stock_missing: item inválido' });
+        }
+        const opId = parseInt(item.order_product_id, 10);
+        const qty = parseInt(item.quantity_missing, 10);
+        if (!Number.isInteger(opId) || opId < 1) {
+          return res.status(400).json({ error: 'stock_missing: order_product_id inválido' });
+        }
+        if (!Number.isInteger(qty) || qty < 1) {
+          return res.status(400).json({ error: 'stock_missing: quantity_missing debe ser >= 1' });
+        }
+        stockMissingValidated.push({ order_product_id: opId, quantity_missing: qty });
+      }
     }
 
     // 2. Cargar pedido.
@@ -173,6 +209,56 @@ router.post('/:orderNumber/transition', async (req, res) => {
            )`,
           [bultosFinal, orderNumber]
         );
+      }
+
+      // 6b.2. Auto-resolve de stock issues abiertos cuando sale de pendiente_stock.
+      // Fase 2 PR 4.5: cuando el pedido sale de pendiente_stock (típicamente
+      // pasa a en_revision), cerrar todos los issues abiertos automáticamente.
+      // resolved_by_user_id queda NULL → indica que fue auto-resolve.
+      if (order.estado_pedido === 'pendiente_stock' && to_status !== 'pendiente_stock') {
+        await client.query(
+          `UPDATE warehouse_stock_issues
+           SET resolved_at = NOW(), resolved_by_user_id = NULL
+           WHERE order_number = $1 AND resolved_at IS NULL`,
+          [orderNumber]
+        );
+      }
+
+      // 6b.3. INSERT de stock issues cuando pasa a pendiente_stock.
+      // Uno por producto faltante. Snapshot de product_name/variant/sku.
+      if (to_status === 'pendiente_stock' && stockMissingValidated) {
+        // Cargar snapshot + quantity para validar y registrar.
+        const opIds = stockMissingValidated.map(s => s.order_product_id);
+        const snapshotRes = await client.query(
+          `SELECT id, name, variant, sku, quantity FROM order_products
+           WHERE id = ANY($1) AND order_number = $2`,
+          [opIds, orderNumber]
+        );
+        const snapshotById = new Map(snapshotRes.rows.map(r => [r.id, r]));
+        // Validar que todos los order_product_id existen en este pedido +
+        // que quantity_missing no exceda la cantidad pedida (defensa en
+        // profundidad: el frontend ya lo limita pero un POST directo podría
+        // saltearse esa validación).
+        for (const item of stockMissingValidated) {
+          const snap = snapshotById.get(item.order_product_id);
+          if (!snap) {
+            throw new Error(`Producto inválido (order_product_id=${item.order_product_id} no pertenece a este pedido)`);
+          }
+          if (item.quantity_missing > snap.quantity) {
+            throw new Error(`Cantidad faltante (${item.quantity_missing}) excede la cantidad pedida (${snap.quantity}) para "${snap.name}"`);
+          }
+        }
+        for (const item of stockMissingValidated) {
+          const snap = snapshotById.get(item.order_product_id);
+          await client.query(
+            `INSERT INTO warehouse_stock_issues
+               (order_number, order_product_id, product_name, variant, sku,
+                quantity_missing, reported_by_warehouse_user_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [orderNumber, snap.id, snap.name, snap.variant, snap.sku,
+             item.quantity_missing, empleado.id]
+          );
+        }
       }
 
       // 6c. Trigger A.2 si pasa a empaquetado con pago confirmado.

@@ -29,6 +29,20 @@ interface OrderData {
   bultos: number;
 }
 
+interface OrderProduct {
+  id: number;
+  product_id: number | null;
+  name: string;
+  variant: string | null;
+  sku: string | null;
+  quantity: number;
+}
+
+interface StockMissingItem {
+  order_product_id: number;
+  quantity_missing: number;
+}
+
 const STATUS_LABEL: Record<string, string> = {
   hoja_impresa:          'HOJA IMPRESA',
   en_preparacion:        'EN PREPARACIÓN',
@@ -64,9 +78,13 @@ export function QrDeposito() {
   const { orderNumber } = useParams<{ orderNumber: string }>();
   const [order, setOrder] = useState<OrderData | null>(null);
   const [buttons, setButtons] = useState<ButtonDef[]>([]);
+  const [products, setProducts] = useState<OrderProduct[]>([]);
   const [codigo, setCodigo] = useState('');
   const [bultos, setBultos] = useState<number>(1);
   const [showBultosInput, setShowBultosInput] = useState(false);
+  const [showStockModal, setShowStockModal] = useState(false);
+  // Map order_product_id -> quantity_missing (0 = no tildado).
+  const [stockMissing, setStockMissing] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +103,7 @@ export function QrDeposito() {
       }
       setOrder(data.order);
       setButtons(data.buttons || []);
+      setProducts(data.products || []);
       setBultos(data.order.bultos || 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error de red');
@@ -100,12 +119,25 @@ export function QrDeposito() {
       setError('Ingresá tu código de 4 dígitos primero');
       return;
     }
+    // Pendiente stock: abrir modal en vez de ejecutar directo (Fase 2 PR 4.5).
+    // Hay que elegir qué productos faltan antes de confirmar la transición.
+    if (toStatus === 'pendiente_stock') {
+      // Inicializa el map con todos los productos sin tildar (qty=0).
+      const init: Record<number, number> = {};
+      products.forEach(p => { init[p.id] = 0; });
+      setStockMissing(init);
+      setShowStockModal(true);
+      return;
+    }
+    await executeTransition({ to_status: toStatus, bultos: requiresBultos ? bultos : undefined });
+  };
+
+  const executeTransition = async (extra: { to_status: string; bultos?: number; stock_missing?: StockMissingItem[] }) => {
     setSubmitting(true);
     setError(null);
     setSuccess(null);
     try {
-      const body: Record<string, unknown> = { codigo, to_status: toStatus };
-      if (requiresBultos) body.bultos = bultos;
+      const body: Record<string, unknown> = { codigo, ...extra };
       const r = await fetch(`${API_BASE_URL}/q/${orderNumber}/transition`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -119,12 +151,25 @@ export function QrDeposito() {
       setSuccess(`✓ ${data.empleado} → ${STATUS_LABEL[data.estado_final] || data.estado_final}`);
       setCodigo('');
       setShowBultosInput(false);
+      setShowStockModal(false);
+      setStockMissing({});
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error de red');
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const confirmStockMissing = () => {
+    const items: StockMissingItem[] = Object.entries(stockMissing)
+      .filter(([, qty]) => qty > 0)
+      .map(([id, qty]) => ({ order_product_id: Number(id), quantity_missing: qty }));
+    if (items.length === 0) {
+      setError('Seleccioná al menos un producto faltante');
+      return;
+    }
+    executeTransition({ to_status: 'pendiente_stock', stock_missing: items });
   };
 
   if (loading) {
@@ -347,6 +392,99 @@ export function QrDeposito() {
           </div>
         )}
       </div>
+
+      {/* Modal: productos faltantes (Fase 2 PR 4.5) */}
+      {showStockModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex flex-col">
+          <div className="bg-white flex-1 overflow-y-auto p-4 space-y-3 max-w-md mx-auto w-full">
+            <div className="flex items-center justify-between pb-2 border-b border-neutral-200">
+              <h2 className="text-lg font-bold">Productos faltantes</h2>
+              <button
+                type="button"
+                onClick={() => { setShowStockModal(false); setError(null); }}
+                disabled={submitting}
+                className="text-neutral-500 hover:text-neutral-900 text-2xl"
+              >×</button>
+            </div>
+            <p className="text-sm text-neutral-600">
+              Marcá los productos que faltan y cuántas unidades de cada uno.
+            </p>
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700 text-center">
+                {error}
+              </div>
+            )}
+            <div className="space-y-2">
+              {products.map(p => {
+                const qty = stockMissing[p.id] || 0;
+                const tildado = qty > 0;
+                return (
+                  <div key={p.id} className={`rounded-xl p-3 border-2 ${tildado ? 'border-amber-400 bg-amber-50' : 'border-neutral-200 bg-white'}`}>
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tildado}
+                        onChange={e => setStockMissing(prev => ({
+                          ...prev,
+                          [p.id]: e.target.checked ? p.quantity : 0,
+                        }))}
+                        className="mt-1 w-5 h-5 accent-amber-500"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">{p.name}</p>
+                        {p.variant && <p className="text-xs text-neutral-500">{p.variant}</p>}
+                        <p className="text-xs text-neutral-500">Pedido: {p.quantity} {p.quantity === 1 ? 'unidad' : 'unidades'}</p>
+                      </div>
+                    </label>
+                    {tildado && (
+                      <div className="mt-3 flex items-center justify-center gap-3 pt-3 border-t border-amber-200">
+                        <span className="text-xs text-neutral-600">Faltan:</span>
+                        <button
+                          type="button"
+                          onClick={() => setStockMissing(prev => ({ ...prev, [p.id]: Math.max(1, qty - 1) }))}
+                          disabled={qty <= 1}
+                          className="w-9 h-9 rounded-full bg-neutral-200 text-lg font-bold disabled:opacity-40"
+                        >−</button>
+                        <span className="text-2xl font-bold w-12 text-center">{qty}</span>
+                        <button
+                          type="button"
+                          onClick={() => setStockMissing(prev => ({ ...prev, [p.id]: Math.min(p.quantity, qty + 1) }))}
+                          disabled={qty >= p.quantity}
+                          className="w-9 h-9 rounded-full bg-neutral-200 text-lg font-bold disabled:opacity-40"
+                        >+</button>
+                        <span className="text-xs text-neutral-500">/ {p.quantity}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {products.length === 0 && (
+                <p className="text-sm text-neutral-500 text-center py-6">
+                  Este pedido no tiene productos cargados.
+                </p>
+              )}
+            </div>
+            <div className="sticky bottom-0 bg-white pt-3 border-t border-neutral-200 flex gap-2">
+              <button
+                type="button"
+                onClick={() => { setShowStockModal(false); setError(null); }}
+                disabled={submitting}
+                className="flex-1 py-3 bg-neutral-200 text-neutral-700 rounded-xl"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmStockMissing}
+                disabled={submitting}
+                className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white font-semibold rounded-xl"
+              >
+                {submitting ? 'Procesando…' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
