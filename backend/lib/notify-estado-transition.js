@@ -15,6 +15,7 @@
  *   pendiente_retiro                       → retiros_local
  */
 
+const pool = require('../db');
 const { queueWhatsApp } = require('./whatsapp-queue');
 const { isEnabled } = require('../services/integrationConfig');
 
@@ -34,7 +35,7 @@ function resolveTrigger(toEstado, estadoPago) {
   return null;
 }
 
-async function notifyEstadoTransition(clientOrPool, { orderNumber, fromEstado, toEstado, estadoPago }) {
+async function notifyEstadoTransition({ orderNumber, fromEstado, toEstado, estadoPago }) {
   if (!toEstado || fromEstado === toEstado) return;
 
   const triggerKey = resolveTrigger(toEstado, estadoPago);
@@ -48,16 +49,27 @@ async function notifyEstadoTransition(clientOrPool, { orderNumber, fromEstado, t
     return;
   }
 
+  // Re-leer el pedido del pool global. Doble propósito:
+  //   1. Tener customer_name/customer_phone con datos frescos.
+  //   2. Confirmar que `toEstado` realmente quedó persistido (si el caller
+  //      hizo rollback de la transacción, el estado actual no coincidirá
+  //      con `toEstado` y abortamos sin mandar el WhatsApp).
   let order;
   try {
-    const r = await clientOrPool.query(
-      `SELECT customer_name, customer_phone FROM orders_validated WHERE order_number = $1`,
+    const r = await pool.query(
+      `SELECT customer_name, customer_phone, estado_pedido
+       FROM orders_validated WHERE order_number = $1`,
       [orderNumber]
     );
     if (r.rowCount === 0) return;
     order = r.rows[0];
   } catch (err) {
     console.error(`❌ [notify-estado-transition] Error leyendo pedido #${orderNumber}: ${err.message}`);
+    return;
+  }
+
+  if (order.estado_pedido !== toEstado) {
+    console.log(`⏭️ [notify-estado-transition] #${orderNumber} estado actual=${order.estado_pedido} ≠ esperado=${toEstado} → skip (posible rollback)`);
     return;
   }
 

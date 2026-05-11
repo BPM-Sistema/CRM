@@ -146,10 +146,12 @@ async function recalcularPagos(clientOrPool, orderNumber, opts = {}) {
   }
 
   // WhatsApps de Fase 2 PR 1: disparar si la transición lo amerita.
-  // Fire-and-forget (no romper recalcularPagos si algo falla en el helper).
+  // setImmediate + el helper usa pool global (no clientOrPool) y re-verifica
+  // el estado actual del pedido. Si el caller hace rollback de la transacción,
+  // el estado en DB no coincidirá con estadoFinal y el helper hace skip.
   if (estadoFinal !== estadoPedidoActual) {
     setImmediate(() => {
-      notifyEstadoTransition(clientOrPool, {
+      notifyEstadoTransition({
         orderNumber,
         fromEstado: estadoPedidoActual,
         toEstado: estadoFinal,

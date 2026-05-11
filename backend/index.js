@@ -3864,7 +3864,7 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
     // WhatsApps de Fase 2 PR 1: disparar según estado destino + estado_pago.
     // Cada uno controlado por su toggle en integration_config. Fire-and-forget:
     // un error encolando no debe romper el endpoint.
-    notifyEstadoTransition(pool, {
+    notifyEstadoTransition({
       orderNumber,
       fromEstado: pedido.estado_pedido,
       toEstado: estadoFinal,
