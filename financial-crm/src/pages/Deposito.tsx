@@ -120,6 +120,12 @@ export function Deposito() {
     };
   }, [quickDate, customFrom, customTo, employeeIds, transitions]);
 
+  // Wrappers de setter que también resetean page (evita doble fetch
+  // que tendría un useEffect separado watcheando los filtros).
+  const updateQuickDate = (q: QuickDate) => { setQuickDate(q); setPage(1); };
+  const updateCustomFrom = (v: string) => { setCustomFrom(v); setPage(1); };
+  const updateCustomTo = (v: string) => { setCustomTo(v); setPage(1); };
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -149,9 +155,6 @@ export function Deposito() {
     load();
   }, [canView, load]);
 
-  // Cambiar filtros resetea a página 1.
-  useEffect(() => { setPage(1); }, [employeeIds, transitions, quickDate, customFrom, customTo]);
-
   if (!canView) {
     return (
       <>
@@ -165,6 +168,7 @@ export function Deposito() {
 
   const toggleInArray = <T extends string | number>(arr: T[], value: T, setter: (a: T[]) => void) => {
     setter(arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value]);
+    setPage(1);
   };
 
   const toggleSort = (col: string) => {
@@ -213,7 +217,7 @@ export function Deposito() {
               {QUICK_DATE_OPTIONS.map(opt => (
                 <button
                   key={opt.key}
-                  onClick={() => setQuickDate(opt.key)}
+                  onClick={() => updateQuickDate(opt.key)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                     quickDate === opt.key
                       ? 'bg-indigo-600 text-white'
@@ -229,14 +233,14 @@ export function Deposito() {
                 <input
                   type="date"
                   value={customFrom}
-                  onChange={e => setCustomFrom(e.target.value)}
+                  onChange={e => updateCustomFrom(e.target.value)}
                   className="border border-neutral-300 rounded-lg px-2 py-1 text-sm"
                 />
                 <span className="text-neutral-500">a</span>
                 <input
                   type="date"
                   value={customTo}
-                  onChange={e => setCustomTo(e.target.value)}
+                  onChange={e => updateCustomTo(e.target.value)}
                   className="border border-neutral-300 rounded-lg px-2 py-1 text-sm"
                 />
               </div>
@@ -299,6 +303,7 @@ export function Deposito() {
                   setQuickDate('hoy');
                   setCustomFrom('');
                   setCustomTo('');
+                  setPage(1);
                 }}
                 className="text-sm text-neutral-500 hover:text-neutral-900"
               >
