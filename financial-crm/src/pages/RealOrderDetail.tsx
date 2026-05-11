@@ -52,6 +52,7 @@ import {
 import { formatDistanceToNow, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
+import { ORDER_STATUSES, STATUS_CONFIG } from '../constants/estadoPedido';
 
 export function RealOrderDetail() {
   const { orderNumber } = useParams<{ orderNumber: string }>();
@@ -71,6 +72,9 @@ export function RealOrderDetail() {
 
   // Estado para actualizar estado del pedido
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
+  // Tester mode: dropdown para cambio libre de estado (solo con permiso orders.tester)
+  const [testerStatus, setTesterStatus] = useState<OrderStatus | ''>('');
 
   // Estado para impresión
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
@@ -997,6 +1001,44 @@ export function RealOrderDetail() {
                 )}
               </div>
             </Card>
+
+            {/* Tester — cambio libre de estado (solo con permiso orders.tester) */}
+            {hasPermission('orders.tester') && (
+              <Card className="border-2 border-dashed border-amber-300 bg-amber-50/30">
+                <h3 className="text-sm font-semibold text-amber-700 uppercase tracking-wider mb-1">
+                  Tester — Cambio Manual de Estado
+                </h3>
+                <p className="text-xs text-neutral-600 mb-3">
+                  Mueve el pedido a cualquier estado válido. Respeta las constraints de pago.
+                </p>
+                <div className="flex gap-2">
+                  <select
+                    className="flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-50"
+                    value={testerStatus}
+                    onChange={(e) => setTesterStatus(e.target.value as OrderStatus | '')}
+                    disabled={isUpdatingStatus}
+                  >
+                    <option value="">Elegir estado…</option>
+                    {ORDER_STATUSES.filter((s) => s !== orderStatus).map((s) => (
+                      <option key={s} value={s}>
+                        {STATUS_CONFIG[s].label}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    variant="secondary"
+                    onClick={async () => {
+                      if (!testerStatus) return;
+                      await handleUpdateOrderStatus(testerStatus);
+                      setTesterStatus('');
+                    }}
+                    disabled={!testerStatus || isUpdatingStatus}
+                  >
+                    {isUpdatingStatus ? 'Cambiando…' : 'Cambiar'}
+                  </Button>
+                </div>
+              </Card>
+            )}
 
             {/* Etiqueta de Envío (solo si hay shipping_request) */}
             {shippingRequest && (
