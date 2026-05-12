@@ -31,6 +31,18 @@ function formatDate(iso: string | null) {
   });
 }
 
+function buildPageNumbers(current: number, total: number): Array<number | '…'> {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: Array<number | '…'> = [1];
+  const left = Math.max(2, current - 1);
+  const right = Math.min(total - 1, current + 1);
+  if (left > 2) pages.push('…');
+  for (let i = left; i <= right; i++) pages.push(i);
+  if (right < total - 1) pages.push('…');
+  pages.push(total);
+  return pages;
+}
+
 function formatMoney(v: string | number | null) {
   if (v == null) return '—';
   const n = typeof v === 'string' ? parseFloat(v) : v;
@@ -98,23 +110,27 @@ function InboundCell({ row }: { row: ReminderRow }) {
 }
 
 function ActionCell({ row, onOpenModal }: { row: ReminderRow; onOpenModal: (row: ReminderRow) => void }) {
-  // Si ya se aplicó alguna acción, mostrar resultado (chip) y nada más.
-  if (row.payment_reminder_action_at) {
-    if (row.payment_reminder_action_type === 'cancel') {
-      return <Badge variant="danger" size="sm">❌ Cancelado</Badge>;
-    }
-    if (row.payment_reminder_action_type === 'wait') {
-      return (
-        <div className="text-xs">
-          <Badge variant="warning" size="sm">⏳ Esperando</Badge>
-          {row.payment_reminder_note && (
-            <div className="text-neutral-700 mt-0.5 italic max-w-[200px]" title={row.payment_reminder_note}>
-              "{row.payment_reminder_note.length > 40 ? row.payment_reminder_note.slice(0, 40) + '…' : row.payment_reminder_note}"
-            </div>
-          )}
-        </div>
-      );
-    }
+  // Si está cancelado → estado terminal, sin acciones adicionales.
+  if (row.payment_reminder_action_at && row.payment_reminder_action_type === 'cancel') {
+    return <Badge variant="danger" size="sm">❌ Cancelado</Badge>;
+  }
+  // Si está en "Esperando", mostrar la nota PERO dejar abrir el modal para
+  // permitir cancelar después si el cliente nunca terminó pagando.
+  if (row.payment_reminder_action_at && row.payment_reminder_action_type === 'wait') {
+    return (
+      <button
+        onClick={() => onOpenModal(row)}
+        className="text-xs text-left inline-flex flex-col items-start gap-0.5 hover:bg-neutral-50 rounded p-1 -m-1"
+        title="Abrir acciones (cambiar nota / cancelar)"
+      >
+        <Badge variant="warning" size="sm">⏳ Esperando</Badge>
+        {row.payment_reminder_note && (
+          <div className="text-neutral-700 italic max-w-[200px]" title={row.payment_reminder_note}>
+            "{row.payment_reminder_note.length > 40 ? row.payment_reminder_note.slice(0, 40) + '…' : row.payment_reminder_note}"
+          </div>
+        )}
+      </button>
+    );
   }
 
   // Si Melu ya clickeó el teléfono, mostramos un botón para reabrir el modal
@@ -145,6 +161,8 @@ function ActionModalBody({
   const [note, setNote] = useState(row.payment_reminder_note || '');
 
   const alreadyActioned = !!row.payment_reminder_action_at;
+  const isWaiting = alreadyActioned && row.payment_reminder_action_type === 'wait';
+  const isCancelled = alreadyActioned && row.payment_reminder_action_type === 'cancel';
 
   const onCancel = async () => {
     setBusy(true);
@@ -205,29 +223,28 @@ function ActionModalBody({
         </div>
       </div>
 
-      {alreadyActioned && (
+      {isCancelled && (
         <div className="px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm">
-          {row.payment_reminder_action_type === 'cancel' ? (
-            <>Ya está <Badge variant="danger" size="sm">❌ Cancelado</Badge></>
-          ) : (
-            <>
-              Ya tiene nota <Badge variant="warning" size="sm">⏳ Esperando</Badge>
-              {row.payment_reminder_note && <div className="italic text-neutral-700 mt-1">"{row.payment_reminder_note}"</div>}
-            </>
-          )}
+          Ya está <Badge variant="danger" size="sm">❌ Cancelado</Badge>
+        </div>
+      )}
+      {isWaiting && (
+        <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm">
+          En <Badge variant="warning" size="sm">⏳ Esperando</Badge> — podés actualizar la nota o, si el cliente no paga, cancelar el pedido abajo.
+          {row.payment_reminder_note && <div className="italic text-neutral-700 mt-1">"{row.payment_reminder_note}"</div>}
         </div>
       )}
 
       <div className="space-y-2">
         <div className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-          📝 Dejar nota / esperar
+          📝 {isWaiting ? 'Actualizar nota' : 'Dejar nota / esperar'}
         </div>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="ej: dice que va a pagar mañana al mediodía"
           rows={3}
-          disabled={busy || alreadyActioned}
+          disabled={busy || isCancelled}
           className="w-full text-sm border border-neutral-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:bg-neutral-50 disabled:text-neutral-400"
           autoFocus={!alreadyActioned}
         />
@@ -235,10 +252,10 @@ function ActionModalBody({
           size="sm"
           variant="primary"
           onClick={onWait}
-          disabled={busy || alreadyActioned}
+          disabled={busy || isCancelled}
           leftIcon={<Clock size={14} />}
         >
-          Guardar nota
+          {isWaiting ? 'Actualizar nota' : 'Guardar nota'}
         </Button>
       </div>
 
@@ -253,7 +270,7 @@ function ActionModalBody({
           size="sm"
           variant="danger"
           onClick={onCancel}
-          disabled={busy || alreadyActioned || row.has_comprobante}
+          disabled={busy || isCancelled || row.has_comprobante}
           leftIcon={<Ban size={14} />}
         >
           Cancelar pedido
@@ -596,9 +613,27 @@ export default function PaymentReminders() {
           <div className="text-neutral-500">
             {total} pedido{total === 1 ? '' : 's'} — página {page} de {totalPages}
           </div>
-          <div className="flex gap-1">
-            <Button size="sm" variant="ghost" disabled={page <= 1 || loading} onClick={() => setPage(p => Math.max(1, p - 1))}>Anterior</Button>
-            <Button size="sm" variant="ghost" disabled={page >= totalPages || loading} onClick={() => setPage(p => p + 1)}>Siguiente</Button>
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="ghost" disabled={page <= 1 || loading} onClick={() => setPage(1)} title="Primera">«</Button>
+            <Button size="sm" variant="ghost" disabled={page <= 1 || loading} onClick={() => setPage(p => Math.max(1, p - 1))} title="Anterior">‹</Button>
+            {buildPageNumbers(page, totalPages).map((p, i) =>
+              p === '…' ? (
+                <span key={`gap-${i}`} className="px-2 text-neutral-400 select-none">…</span>
+              ) : (
+                <Button
+                  key={p}
+                  size="sm"
+                  variant={p === page ? 'primary' : 'ghost'}
+                  disabled={loading || p === page}
+                  onClick={() => setPage(p as number)}
+                  className="min-w-[2rem]"
+                >
+                  {p}
+                </Button>
+              )
+            )}
+            <Button size="sm" variant="ghost" disabled={page >= totalPages || loading} onClick={() => setPage(p => p + 1)} title="Siguiente">›</Button>
+            <Button size="sm" variant="ghost" disabled={page >= totalPages || loading} onClick={() => setPage(totalPages)} title="Última">»</Button>
           </div>
         </div>
       </Card>

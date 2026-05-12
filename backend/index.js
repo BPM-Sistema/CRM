@@ -5519,6 +5519,13 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     }
     console.log('🧠 Claude Vision OK | monto:', datosClaude.monto, '| banco:', datosClaude.banco);
 
+    // El monto SIEMPRE se almacena como valor absoluto: si el cliente sube el
+    // movimiento desde su extracto, Claude puede capturar "- $ 180.690" (débito
+    // del lado del cliente). Para nosotros ese movimiento es un ingreso, así
+    // que normalizamos el signo acá para que el resto del flujo (dedupe,
+    // matching banco, saldo del pedido) lo trate como positivo.
+    if (datosClaude.monto != null) datosClaude.monto = Math.abs(Number(datosClaude.monto));
+
     const textoOcr = datosClaude.textoOcr || '';
     const cuentaDestino = datosClaude.cuenta;
 

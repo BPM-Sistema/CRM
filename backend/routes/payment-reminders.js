@@ -317,11 +317,13 @@ router.post('/:orderNumber/action', requirePermission('payment_reminders.view'),
     }
     const order = orderRes.rows[0];
 
-    if (order.payment_reminder_action_at) {
+    // 'cancel' es terminal: no permitir ninguna acción sobre un pedido ya cancelado.
+    // 'wait' es reversible: se puede actualizar la nota o escalar a 'cancel'.
+    if (order.payment_reminder_action_type === 'cancel') {
       return res.status(409).json({
         ok: false,
-        error: `Ya se aplicó acción "${order.payment_reminder_action_type}" en este pedido`,
-        action_applied: order.payment_reminder_action_type,
+        error: 'El pedido ya fue cancelado desde este panel',
+        action_applied: 'cancel',
         action_at: order.payment_reminder_action_at
       });
     }
