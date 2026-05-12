@@ -7530,6 +7530,12 @@ app.post('/shipping-data', shippingFormLimiter, async (req, res) => {
           accion: accionParaEstado(nuevoEstado),
           origen: 'trigger_auto_datos',
         });
+      } else if (ord && ord.estado_pedido === 'pendiente_pago') {
+        // Trigger C: con la regla nueva, un Via Cargo / Expreso a eleccion
+        // con pago confirmado_total/a_favor queda en pendiente_pago hasta
+        // que el cliente cargue datos. Al cargarlos, recalcularPagos reevalua
+        // y avanza a a_imprimir si corresponde.
+        await recalcularPagos(pool, sanitizedOrderNumber);
       }
     } catch (e) {
       // Trigger fire-and-forget: si falla no rompe la respuesta al cliente.

@@ -36,18 +36,30 @@ async function calcularTotalPagado(orderNumber) {
 
 /* =====================================================
    UTIL — CALCULAR ESTADO PEDIDO (centralizado)
-   Regla: si hay plata pagada o comprobante en verificacion -> puede avanzar en flujo logistico
-   Independiente del metodo de pago (transferencia, efectivo, etc.)
 
-   Regla de invariante a_imprimir:
-   - a_imprimir requiere estado_pago en ('a_confirmar','confirmado_parcial','confirmado_total','a_favor')
+   Regla de transicion pendiente_pago -> a_imprimir (segun tipo de envio):
+   - Retiro (pickup/retiro/deposito): estado_pago in (confirmado_parcial, confirmado_total, a_favor)
+   - Via Cargo / Expreso a eleccion: estado_pago in (confirmado_total, a_favor) AND shipping_request cargado
+   - Resto (Envio Nube, etc.): estado_pago in (confirmado_total, a_favor)
+
+   Sin el contexto { shippingType, hasShippingRequest } la funcion es conservadora:
+   NO avanza a a_imprimir aunque el pago habilite. Asi obligamos a los callers
+   nuevos a pasar el contexto y evitamos que un caller viejo accidentalmente
+   pase pedidos Via Cargo sin datos a a_imprimir.
+
+   Regla de retroceso (independiente del envio):
    - si estado_pago queda en ('pendiente','anulado'), a_imprimir retrocede a pendiente_pago
    - estados posteriores (hoja_impresa, empaquetado, retirado, en_calle, enviado) no retroceden
 ===================================================== */
+// Mantenido por compatibilidad con codigo que importa la constante.
+// La logica de habilitacion ahora vive dentro de calcularEstadoPedido y depende del tipo de envio.
 const ESTADOS_PAGO_HABILITAN_IMPRIMIR = ['confirmado_total', 'confirmado_parcial', 'a_favor', 'a_confirmar'];
 const ESTADOS_PAGO_BLOQUEAN_IMPRIMIR = ['pendiente', 'anulado'];
 
-function calcularEstadoPedido(estadoPago, estadoPedidoActual) {
+const ESTADOS_PAGO_RETIRO_OK = ['confirmado_parcial', 'confirmado_total', 'a_favor'];
+const ESTADOS_PAGO_ENVIO_OK = ['confirmado_total', 'a_favor'];
+
+function calcularEstadoPedido(estadoPago, estadoPedidoActual, ctx = {}) {
   // Si el pago queda invalido y el pedido todavia no se imprimio, retrocede a pendiente_pago.
   // Solo aplica a a_imprimir: estados posteriores (hoja_impresa+) no retroceden porque ya hubo trabajo fisico.
   if (estadoPedidoActual === 'a_imprimir' && ESTADOS_PAGO_BLOQUEAN_IMPRIMIR.includes(estadoPago)) {
@@ -59,12 +71,24 @@ function calcularEstadoPedido(estadoPago, estadoPedidoActual) {
     return estadoPedidoActual;
   }
 
-  // Desde pendiente_pago, avanzar a a_imprimir si hay pago o comprobante en verificacion
-  if (ESTADOS_PAGO_HABILITAN_IMPRIMIR.includes(estadoPago)) {
-    return 'a_imprimir';
+  const { shippingType, hasShippingRequest } = ctx;
+  if (shippingType === undefined) {
+    // Caller no paso contexto: ser conservador y no avanzar.
+    return 'pendiente_pago';
   }
 
-  return 'pendiente_pago';
+  if (isPickupShipping(shippingType)) {
+    return ESTADOS_PAGO_RETIRO_OK.includes(estadoPago) ? 'a_imprimir' : 'pendiente_pago';
+  }
+
+  if (requiresShippingForm(shippingType)) {
+    return (ESTADOS_PAGO_ENVIO_OK.includes(estadoPago) && hasShippingRequest === true)
+      ? 'a_imprimir'
+      : 'pendiente_pago';
+  }
+
+  // Resto de envios (Envio Nube, etc.): exige pago total/a_favor, no formulario.
+  return ESTADOS_PAGO_ENVIO_OK.includes(estadoPago) ? 'a_imprimir' : 'pendiente_pago';
 }
 
 /* =====================================================
@@ -80,6 +104,16 @@ function requiresShippingForm(shippingType) {
     lower.includes('via cargo') ||
     lower.includes('viacargo')
   );
+}
+
+/* =====================================================
+   UTIL — ES ENVIO POR RETIRO
+   Detecta si el envio es retiro en deposito / pickup point.
+   Misma logica que ya esta duplicada en index.js (print-data) y mapShippingToEstadoPedido.
+===================================================== */
+function isPickupShipping(shippingType) {
+  if (!shippingType) return false;
+  return /pickup|retiro|deposito|depósito/i.test(shippingType);
 }
 
 /* =====================================================
@@ -232,7 +266,10 @@ module.exports = {
   calcularEstadoPedido,
   ESTADOS_PAGO_HABILITAN_IMPRIMIR,
   ESTADOS_PAGO_BLOQUEAN_IMPRIMIR,
+  ESTADOS_PAGO_RETIRO_OK,
+  ESTADOS_PAGO_ENVIO_OK,
   requiresShippingForm,
+  isPickupShipping,
   isForbiddenCarrier,
   normalizePhoneForComparison,
   normalizePhone,

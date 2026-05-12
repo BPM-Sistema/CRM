@@ -31,6 +31,8 @@ async function recalcularPagos(clientOrPool, orderNumber, opts = {}) {
       ov.pago_online_tn,
       ov.estado_pedido,
       ov.estado_pago,
+      ov.shipping_type,
+      EXISTS (SELECT 1 FROM shipping_requests WHERE order_number = ov.order_number) AS has_shipping_request,
       COALESCE(c.total, 0) as comp_total,
       COALESCE(e.total, 0) as ef_total,
       COALESCE(cp.pending_count, 0) as comp_pending_count
@@ -90,7 +92,10 @@ async function recalcularPagos(clientOrPool, orderNumber, opts = {}) {
     estadoPago = 'pendiente';
   }
 
-  const estadoPedido = calcularEstadoPedido(estadoPago, estadoPedidoActual);
+  const estadoPedido = calcularEstadoPedido(estadoPago, estadoPedidoActual, {
+    shippingType: row.shipping_type,
+    hasShippingRequest: row.has_shipping_request === true,
+  });
 
   await clientOrPool.query(`
     UPDATE orders_validated

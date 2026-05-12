@@ -85,20 +85,81 @@ describe('Financial Consistency', () => {
   describe('calcularEstadoPedido', () => {
     const { calcularEstadoPedido } = require('../lib/payment-helpers');
 
-    test('moves from pendiente_pago to a_imprimir on confirmado_total', () => {
-      expect(calcularEstadoPedido('confirmado_total', 'pendiente_pago')).toBe('a_imprimir');
+    // Retiro: confirmado_parcial o superior habilita
+    test('retiro avanza a a_imprimir con confirmado_parcial', () => {
+      expect(calcularEstadoPedido('confirmado_parcial', 'pendiente_pago', {
+        shippingType: 'Retiro en depósito',
+      })).toBe('a_imprimir');
     });
 
-    test('moves from pendiente_pago to a_imprimir on a_confirmar (comprobante cargado)', () => {
-      expect(calcularEstadoPedido('a_confirmar', 'pendiente_pago')).toBe('a_imprimir');
+    test('retiro avanza a a_imprimir con confirmado_total', () => {
+      expect(calcularEstadoPedido('confirmado_total', 'pendiente_pago', {
+        shippingType: 'pickup',
+      })).toBe('a_imprimir');
     });
 
-    test('moves from pendiente_pago to a_imprimir on confirmado_parcial', () => {
-      expect(calcularEstadoPedido('confirmado_parcial', 'pendiente_pago')).toBe('a_imprimir');
+    test('retiro NO avanza con a_confirmar (comprobante sin verificar)', () => {
+      expect(calcularEstadoPedido('a_confirmar', 'pendiente_pago', {
+        shippingType: 'Retiro en depósito',
+      })).toBe('pendiente_pago');
     });
 
+    // Via Cargo / Expreso a elección: exige confirmado_total/a_favor + datos
+    test('Via Cargo avanza a a_imprimir con confirmado_total y datos cargados', () => {
+      expect(calcularEstadoPedido('confirmado_total', 'pendiente_pago', {
+        shippingType: 'Via Cargo',
+        hasShippingRequest: true,
+      })).toBe('a_imprimir');
+    });
+
+    test('Via Cargo NO avanza sin datos cargados aunque pago sea total', () => {
+      expect(calcularEstadoPedido('confirmado_total', 'pendiente_pago', {
+        shippingType: 'Via Cargo',
+        hasShippingRequest: false,
+      })).toBe('pendiente_pago');
+    });
+
+    test('Via Cargo NO avanza con confirmado_parcial', () => {
+      expect(calcularEstadoPedido('confirmado_parcial', 'pendiente_pago', {
+        shippingType: 'Via Cargo',
+        hasShippingRequest: true,
+      })).toBe('pendiente_pago');
+    });
+
+    test('Expreso a elección NO avanza sin datos', () => {
+      expect(calcularEstadoPedido('confirmado_total', 'pendiente_pago', {
+        shippingType: 'Expreso a elección',
+        hasShippingRequest: false,
+      })).toBe('pendiente_pago');
+    });
+
+    // Otros envíos (Envío Nube, etc.): exige confirmado_total/a_favor, no formulario
+    test('Envío Nube avanza con confirmado_total sin formulario', () => {
+      expect(calcularEstadoPedido('confirmado_total', 'pendiente_pago', {
+        shippingType: 'Envío Nube',
+      })).toBe('a_imprimir');
+    });
+
+    test('Envío Nube NO avanza con confirmado_parcial', () => {
+      expect(calcularEstadoPedido('confirmado_parcial', 'pendiente_pago', {
+        shippingType: 'Envío Nube',
+      })).toBe('pendiente_pago');
+    });
+
+    // a_favor cuenta como pago completo
+    test('avanza con a_favor (pago en exceso)', () => {
+      expect(calcularEstadoPedido('a_favor', 'pendiente_pago', {
+        shippingType: 'Envío Nube',
+      })).toBe('a_imprimir');
+    });
+
+    // Sin contexto: conservador, no avanza
+    test('sin contexto de shipping, no avanza aunque pago sea total', () => {
+      expect(calcularEstadoPedido('confirmado_total', 'pendiente_pago')).toBe('pendiente_pago');
+    });
+
+    // Retroceso por pago invalidado (independiente del envío)
     test('retrocede from a_imprimir to pendiente_pago if pago becomes pendiente', () => {
-      // Invariante: a_imprimir requiere pago valido. Si el pago se invalida antes de imprimir, retrocede.
       expect(calcularEstadoPedido('pendiente', 'a_imprimir')).toBe('pendiente_pago');
     });
 
