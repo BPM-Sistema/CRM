@@ -81,7 +81,7 @@ router.get('/:orderNumber', async (req, res) => {
 router.post('/:orderNumber/transition', async (req, res) => {
   try {
     const { orderNumber } = req.params;
-    const { codigo, to_status, bultos, stock_missing } = req.body || {};
+    const { codigo, to_status, bultos, stock_missing, error_count } = req.body || {};
 
     // 1. Validar inputs básicos.
     if (!codigo || !/^[0-9]{4}$/.test(codigo)) {
@@ -142,6 +142,18 @@ router.post('/:orderNumber/transition', async (req, res) => {
         return res.status(400).json({ error: 'Cantidad de bultos debe ser un entero entre 1 y 10' });
       }
       bultosFinal = n;
+    }
+
+    // 4.5. Validar error_count cuando viene (solo aplica si salimos de en_revision).
+    // Es opcional: si no viene o es 0, no se registra nada. Si viene, debe ser
+    // entero positivo (tope blando 100 para evitar input absurdo).
+    let errorCountFinal = 0;
+    if (order.estado_pedido === 'en_revision' && error_count !== undefined && error_count !== null) {
+      const n = parseInt(error_count, 10);
+      if (!Number.isInteger(n) || n < 0 || n > 100) {
+        return res.status(400).json({ error: 'Cantidad de errores debe ser un entero entre 0 y 100' });
+      }
+      errorCountFinal = n;
     }
 
     // 5. Validar código del empleado + permiso para esta transición.
@@ -287,6 +299,27 @@ router.post('/:orderNumber/transition', async (req, res) => {
           estadoFinal = derivado;
           derivadoLog = derivado;
         }
+      }
+
+      // 6c.5. Registrar errores de revisión si el revisor anotó alguno.
+      // Solo aplica cuando salimos de en_revision. Busca al "preparador" como
+      // el último empleado que movió el pedido a en_revision (cubre el caso
+      // de paso por pendiente_stock — esa segunda salida re-asigna el dato).
+      // Si el pedido nunca pasó por QR (manualizado desde oficina), queda NULL.
+      if (errorCountFinal > 0) {
+        const prepRes = await client.query(
+          `SELECT warehouse_user_id FROM warehouse_state_transitions
+           WHERE order_number = $1 AND to_status = 'en_revision'
+           ORDER BY created_at DESC LIMIT 1`,
+          [orderNumber]
+        );
+        const preparedBy = prepRes.rows[0]?.warehouse_user_id || null;
+        await client.query(
+          `INSERT INTO revision_errors
+             (order_number, reviewer_user_id, prepared_by_user_id, error_count)
+           VALUES ($1, $2, $3, $4)`,
+          [orderNumber, empleado.id, preparedBy, errorCountFinal]
+        );
       }
 
       // 6d. Log nuevo del depo.

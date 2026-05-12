@@ -256,3 +256,30 @@ export async function regenerateEmployeeCode(id: number): Promise<CodeResponse> 
   }
   return r.json();
 }
+
+// ─── Errores de revisión ───────────────────────────────────
+
+export interface RevisionErrorRow {
+  warehouse_user_id: number;
+  nombre: string;
+  pedidos_preparados: number;
+  total_errores: number;
+  promedio: number | null;
+}
+
+export interface RevisionErrorsResponse {
+  ok: true;
+  desde: string;
+  hasta: string;
+  rows: RevisionErrorRow[];
+}
+
+export async function fetchRevisionErrors(desde?: string, hasta?: string): Promise<RevisionErrorsResponse> {
+  const params = new URLSearchParams();
+  if (desde) params.set('desde', desde);
+  if (hasta) params.set('hasta', hasta);
+  const qs = params.toString();
+  const r = await authFetch(`${API_BASE_URL}/admin/deposito/errores${qs ? '?' + qs : ''}`);
+  if (!r.ok) throw new Error(`Error ${r.status} al cargar errores de revisión`);
+  return r.json();
+}

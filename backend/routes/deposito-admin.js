@@ -552,4 +552,62 @@ router.patch('/stock-issues/:id/resolve', requirePermission('deposito.ver_deposi
   }
 });
 
+// ─── GET /errores ──────────────────────────────────────────
+// Stats de errores de revisión por empleado dentro de un rango de fechas.
+// Default últimos 30 días. "pedidos_preparados" cuenta transiciones únicas
+// a en_revision (= terminó de preparar el pedido).
+router.get('/errores', requirePermission('deposito.ver_deposito'), async (req, res) => {
+  try {
+    const desde = req.query.desde
+      ? new Date(req.query.desde)
+      : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const hasta = req.query.hasta ? new Date(req.query.hasta) : new Date();
+    if (isNaN(desde.getTime()) || isNaN(hasta.getTime())) {
+      return res.status(400).json({ error: 'Fechas inválidas' });
+    }
+
+    const r = await pool.query(
+      `SELECT
+         wu.id AS warehouse_user_id,
+         wu.nombre,
+         COUNT(DISTINCT wst.order_number) FILTER (
+           WHERE wst.to_status = 'en_revision'
+             AND wst.created_at BETWEEN $1 AND $2
+         )::int AS pedidos_preparados,
+         COALESCE((
+           SELECT SUM(re.error_count)::int
+             FROM revision_errors re
+            WHERE re.prepared_by_user_id = wu.id
+              AND re.created_at BETWEEN $1 AND $2
+         ), 0) AS total_errores
+       FROM warehouse_users wu
+       LEFT JOIN warehouse_state_transitions wst ON wst.warehouse_user_id = wu.id
+       WHERE wu.active = true
+       GROUP BY wu.id, wu.nombre
+       ORDER BY total_errores DESC, wu.nombre ASC`,
+      [desde.toISOString(), hasta.toISOString()]
+    );
+
+    const rows = r.rows.map(row => ({
+      warehouse_user_id: row.warehouse_user_id,
+      nombre: row.nombre,
+      pedidos_preparados: row.pedidos_preparados,
+      total_errores: row.total_errores,
+      promedio: row.pedidos_preparados > 0
+        ? Number((row.total_errores / row.pedidos_preparados).toFixed(2))
+        : null,
+    }));
+
+    res.json({
+      ok: true,
+      desde: desde.toISOString(),
+      hasta: hasta.toISOString(),
+      rows,
+    });
+  } catch (err) {
+    console.error('❌ GET /admin/deposito/errores error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

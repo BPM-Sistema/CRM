@@ -91,6 +91,7 @@ export function QrDeposito() {
   const [products, setProducts] = useState<OrderProduct[]>([]);
   const [codigo, setCodigo] = useState('');
   const [bultos, setBultos] = useState<number>(1);
+  const [errorCount, setErrorCount] = useState<number>(0);
   const [showBultosInput, setShowBultosInput] = useState(false);
   const [showStockModal, setShowStockModal] = useState(false);
   // Map order_product_id -> quantity_missing (0 = no tildado).
@@ -139,10 +140,14 @@ export function QrDeposito() {
       setShowStockModal(true);
       return;
     }
-    await executeTransition({ to_status: toStatus, bultos: requiresBultos ? bultos : undefined });
+    await executeTransition({
+      to_status: toStatus,
+      bultos: requiresBultos ? bultos : undefined,
+      error_count: order?.estado_pedido === 'en_revision' && errorCount > 0 ? errorCount : undefined,
+    });
   };
 
-  const executeTransition = async (extra: { to_status: string; bultos?: number; stock_missing?: StockMissingItem[] }) => {
+  const executeTransition = async (extra: { to_status: string; bultos?: number; stock_missing?: StockMissingItem[]; error_count?: number }) => {
     setSubmitting(true);
     setError(null);
     setSuccess(null);
@@ -160,6 +165,7 @@ export function QrDeposito() {
       }
       setSuccess(`✓ ${data.empleado} → ${STATUS_LABEL[data.estado_final] || data.estado_final}`);
       setCodigo('');
+      setErrorCount(0);
       setShowBultosInput(false);
       setShowStockModal(false);
       setStockMissing({});
@@ -179,7 +185,11 @@ export function QrDeposito() {
       setError('Seleccioná al menos un producto faltante');
       return;
     }
-    executeTransition({ to_status: 'pendiente_stock', stock_missing: items });
+    executeTransition({
+      to_status: 'pendiente_stock',
+      stock_missing: items,
+      error_count: order?.estado_pedido === 'en_revision' && errorCount > 0 ? errorCount : undefined,
+    });
   };
 
   if (loading) {
@@ -252,6 +262,33 @@ export function QrDeposito() {
         {success && (
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-700 text-center font-medium">
             {success}
+          </div>
+        )}
+
+        {/* Errores de revisión (solo en en_revision; opcional) */}
+        {order.estado_pedido === 'en_revision' && (
+          <div className="bg-white rounded-2xl shadow-sm p-5">
+            <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2 text-center">
+              Errores en el armado
+            </label>
+            <div className="flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setErrorCount(Math.max(0, errorCount - 1))}
+                className="w-12 h-12 rounded-full bg-neutral-200 text-2xl font-bold disabled:opacity-40"
+                disabled={submitting || errorCount <= 0}
+              >−</button>
+              <span className={`text-4xl font-bold w-16 text-center ${errorCount > 0 ? 'text-red-600' : 'text-neutral-400'}`}>{errorCount}</span>
+              <button
+                type="button"
+                onClick={() => setErrorCount(Math.min(100, errorCount + 1))}
+                className="w-12 h-12 rounded-full bg-neutral-200 text-2xl font-bold disabled:opacity-40"
+                disabled={submitting || errorCount >= 100}
+              >+</button>
+            </div>
+            <p className="text-xs text-neutral-400 text-center mt-2">
+              Si no hubo errores, dejá en 0.
+            </p>
           </div>
         )}
 

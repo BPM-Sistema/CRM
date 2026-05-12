@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { format, parseISO, subDays, startOfDay, endOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Users, AlertTriangle } from 'lucide-react';
+import { Users, AlertTriangle, Bug } from 'lucide-react';
 import { Header } from '../components/layout';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -215,6 +215,12 @@ export function Deposito() {
                   {openIssuesCount}
                 </span>
               )}
+            </Link>
+            <Link
+              to="/deposito/errores"
+              className="flex items-center gap-2 px-3 py-2 text-sm bg-neutral-100 hover:bg-neutral-200 rounded-lg"
+            >
+              <Bug size={16} /> Errores
             </Link>
             {canManageEmployees && (
               <Link

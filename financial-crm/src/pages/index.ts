@@ -21,3 +21,4 @@ export { QrDeposito } from './QrDeposito';
 export { Deposito } from './Deposito';
 export { DepositoEmpleados } from './DepositoEmpleados';
 export { DepositoStockIssues } from './DepositoStockIssues';
+export { DepositoErrores } from './DepositoErrores';
