@@ -8431,7 +8431,7 @@ app.get('/orders/:orderNumber/envio-nube-label', authenticate, async (req, res) 
 
     // 1. Obtener tn_order_id de la DB
     const orderRes = await pool.query(`
-      SELECT tn_order_id, shipping_type, customer_name, estado_pedido
+      SELECT tn_order_id, shipping_type, customer_name, estado_pedido, estado_pago
       FROM orders_validated
       WHERE order_number = $1
     `, [orderNumber]);
@@ -8444,6 +8444,14 @@ app.get('/orders/:orderNumber/envio-nube-label', authenticate, async (req, res) 
 
     if (order.estado_pedido === 'cancelado') {
       return res.status(400).json({ error: 'No se puede imprimir etiqueta: el pedido está cancelado.' });
+    }
+
+    // Bloquear etiqueta sin pago confirmado total. Mismo criterio que el endpoint
+    // de Via Cargo (shipping-label) — sin etiqueta el bulto no sale fisicamente.
+    if (order.estado_pago !== 'confirmado_total' && order.estado_pago !== 'a_favor') {
+      return res.status(400).json({
+        error: `No se puede imprimir etiqueta: el pago no está confirmado total (estado_pago=${order.estado_pago || 'desconocido'}).`
+      });
     }
 
     if (!order.tn_order_id) {
@@ -8569,9 +8577,11 @@ app.post('/orders/envio-nube-labels', authenticate, async (req, res) => {
         continue;
       }
 
-      // Excluir pedidos sin pago
-      if (order.estado_pago === 'pendiente') {
-        unpaid.push({ order: orderNumber, customer: order.customer_name });
+      // Bloquear sin pago confirmado total. Mismo criterio que el batch de Via Cargo
+      // (shipping-labels-batch). Antes solo bloqueaba 'pendiente', lo que permitia
+      // imprimir con a_confirmar o confirmado_parcial.
+      if (order.estado_pago !== 'confirmado_total' && order.estado_pago !== 'a_favor') {
+        unpaid.push({ order: orderNumber, customer: order.customer_name, estado_pago: order.estado_pago });
         continue;
       }
 
@@ -8721,7 +8731,7 @@ app.post('/orders/envio-nube-labels/preview', authenticate, async (req, res) => 
 
     // 1. Obtener info de todos los pedidos
     const orderRes = await pool.query(`
-      SELECT order_number, tn_order_id, shipping_type, customer_name, estado_pedido
+      SELECT order_number, tn_order_id, shipping_type, customer_name, estado_pedido, estado_pago
       FROM orders_validated
       WHERE order_number = ANY($1)
     `, [orders]);
@@ -8744,6 +8754,12 @@ app.post('/orders/envio-nube-labels/preview', authenticate, async (req, res) => 
 
       if (order.estado_pedido === 'cancelado') {
         results.unavailable.push({ order: orderNumber, reason: 'Pedido cancelado' });
+        continue;
+      }
+
+      // Bloquear sin pago confirmado total. Espejo de los endpoints reales de impresion.
+      if (order.estado_pago !== 'confirmado_total' && order.estado_pago !== 'a_favor') {
+        results.unavailable.push({ order: orderNumber, reason: `Pago no confirmado total (${order.estado_pago || 'desconocido'})` });
         continue;
       }
 
