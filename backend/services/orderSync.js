@@ -151,15 +151,35 @@ async function processOrderCreated(orderId, orderNumber) {
   const customerPhone = pedido.contact_phone || pedido.customer?.phone ||
                         pedido.shipping_address?.phone || pedido.customer?.default_address?.phone || null;
 
+  // Campos de TN/envío que SIEMPRE hay que persistir para que el resto del CRM
+  // pueda operar (sin tn_order_id no se puede marcar pago en TN, sin
+  // shipping_type/address no se pide datos_envio). Faltaban en este path —
+  // dejaban pedidos huérfanos cuando el webhook fallaba y el sync_cron
+  // los levantaba como fallback (caso 32391+32392, mayo 2026).
+  const shippingType = pedido.shipping_pickup_type === 'pickup' ? 'pickup' : 'ship';
+  const shippingCost = Math.round(Number(pedido.shipping_cost_owner || pedido.shipping_cost_customer || 0));
+
   // Guardar en DB
   await pool.query(`
-    INSERT INTO orders_validated (order_number, monto_tiendanube, currency, customer_name, customer_email, customer_phone, estado_pedido, tn_created_at)
-    VALUES ($1, $2, $3, $4, $5, $6, 'pendiente_pago', $7)
+    INSERT INTO orders_validated (
+      order_number, monto_tiendanube, currency,
+      customer_name, customer_email, customer_phone,
+      estado_pedido, tn_created_at,
+      tn_order_id, tn_order_token, tn_gateway,
+      shipping_type, shipping_address, shipping_cost
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, 'pendiente_pago', $7, $8, $9, $10, $11, $12, $13)
     ON CONFLICT (order_number) DO UPDATE SET
       customer_name = COALESCE(orders_validated.customer_name, EXCLUDED.customer_name),
       customer_email = COALESCE(orders_validated.customer_email, EXCLUDED.customer_email),
       customer_phone = COALESCE(orders_validated.customer_phone, EXCLUDED.customer_phone),
-      tn_created_at = COALESCE(orders_validated.tn_created_at, EXCLUDED.tn_created_at)
+      tn_created_at = COALESCE(orders_validated.tn_created_at, EXCLUDED.tn_created_at),
+      tn_order_id = COALESCE(orders_validated.tn_order_id, EXCLUDED.tn_order_id),
+      tn_order_token = COALESCE(orders_validated.tn_order_token, EXCLUDED.tn_order_token),
+      tn_gateway = COALESCE(orders_validated.tn_gateway, EXCLUDED.tn_gateway),
+      shipping_type = COALESCE(orders_validated.shipping_type, EXCLUDED.shipping_type),
+      shipping_address = COALESCE(orders_validated.shipping_address, EXCLUDED.shipping_address),
+      shipping_cost = COALESCE(NULLIF(orders_validated.shipping_cost, 0), EXCLUDED.shipping_cost)
   `, [
     String(pedido.number),
     Math.round(Number(pedido.total)),
@@ -167,7 +187,13 @@ async function processOrderCreated(orderId, orderNumber) {
     customerName,
     customerEmail,
     customerPhone,
-    pedido.created_at || null
+    pedido.created_at || null,
+    pedido.id || null,
+    pedido.token || null,
+    pedido.gateway || null,
+    shippingType,
+    pedido.shipping_address ? JSON.stringify(pedido.shipping_address) : null,
+    shippingCost,
   ]);
 
   // Sincronizar productos (UPSERT + DELETE de removidos)
@@ -253,6 +279,14 @@ async function processOrderPaid(orderId, orderNumber) {
     [String(pedido.number)]
   );
 
+  // Mismos fields de TN/envío que processOrderCreated — sin esto los pedidos
+  // que entran directo como 'paid' quedan huérfanos.
+  const shippingType = pedido.shipping_pickup_type === 'pickup' ? 'pickup' : 'ship';
+  const shippingCost = Math.round(Number(pedido.shipping_cost_owner || pedido.shipping_cost_customer || 0));
+  const pagoOnlineTn = (pedido.paid_at && pedido.gateway && pedido.gateway !== 'offline')
+    ? Math.round(Number(pedido.total || 0))
+    : 0;
+
   if (existing.rowCount === 0) {
     // Crear como pagado directamente. Caso defensivo: order_paid llegó sin
     // un order_created previo. shipping_type queda NULL hasta que el
@@ -260,23 +294,70 @@ async function processOrderPaid(orderId, orderNumber) {
     // espera que un evento posterior corra recalcularPagos y ajuste si
     // corresponde, ej. Vía Cargo sin datos → pendiente_datos_envio).
     await pool.query(`
-      INSERT INTO orders_validated (order_number, monto_tiendanube, total_pagado, saldo, estado_pago, estado_pedido, currency, tn_created_at)
-      VALUES ($1, $2, $2, 0, 'confirmado_total', 'a_imprimir', $3, $4)
-    `, [String(pedido.number), Math.round(Number(pedido.total)), pedido.currency || 'ARS', pedido.created_at || null]);
+      INSERT INTO orders_validated (
+        order_number, monto_tiendanube, total_pagado, saldo,
+        estado_pago, estado_pedido, currency, tn_created_at,
+        tn_order_id, tn_order_token, tn_gateway,
+        tn_payment_status, tn_paid_at, tn_total_paid, pago_online_tn,
+        shipping_type, shipping_address, shipping_cost
+      )
+      VALUES ($1, $2, $2, 0, 'confirmado_total', 'a_imprimir', $3, $4,
+              $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    `, [
+      String(pedido.number),
+      Math.round(Number(pedido.total)),
+      pedido.currency || 'ARS',
+      pedido.created_at || null,
+      pedido.id || null,
+      pedido.token || null,
+      pedido.gateway || null,
+      pedido.payment_status || null,
+      pedido.paid_at || null,
+      Math.round(Number(pedido.total || 0)),
+      pagoOnlineTn,
+      shippingType,
+      pedido.shipping_address ? JSON.stringify(pedido.shipping_address) : null,
+      shippingCost,
+    ]);
 
     // Tracking en Google Sheets para el caso INSERT (no pasa por recalcularPagos).
     setImmediate(() => { pushOrderToImprimir(String(pedido.number)); });
   } else {
     // Actualizar como pagado. NO tocamos estado_pedido — recalcularPagos lo
     // determina abajo según shipping_type + shipping_request + pago.
+    // COALESCE para los TN/shipping fields preserva datos ya cargados (no pisa
+    // shipping_address corregida manualmente, ni tn_order_id pre-existente).
     await pool.query(`
       UPDATE orders_validated SET
         estado_pago = 'confirmado_total',
         total_pagado = monto_tiendanube,
         saldo = 0,
-        tn_created_at = COALESCE(tn_created_at, $2)
+        tn_created_at = COALESCE(tn_created_at, $2),
+        tn_order_id = COALESCE(tn_order_id, $3),
+        tn_order_token = COALESCE(tn_order_token, $4),
+        tn_gateway = COALESCE(tn_gateway, $5),
+        tn_payment_status = COALESCE(tn_payment_status, $6),
+        tn_paid_at = COALESCE(tn_paid_at, $7),
+        tn_total_paid = COALESCE(NULLIF(tn_total_paid, 0), $8),
+        pago_online_tn = COALESCE(NULLIF(pago_online_tn, 0), $9),
+        shipping_type = COALESCE(shipping_type, $10),
+        shipping_address = COALESCE(shipping_address, $11),
+        shipping_cost = COALESCE(NULLIF(shipping_cost, 0), $12)
       WHERE order_number = $1
-    `, [String(pedido.number), pedido.created_at || null]);
+    `, [
+      String(pedido.number),
+      pedido.created_at || null,
+      pedido.id || null,
+      pedido.token || null,
+      pedido.gateway || null,
+      pedido.payment_status || null,
+      pedido.paid_at || null,
+      Math.round(Number(pedido.total || 0)),
+      pagoOnlineTn,
+      shippingType,
+      pedido.shipping_address ? JSON.stringify(pedido.shipping_address) : null,
+      shippingCost,
+    ]);
 
     // recalcularPagos recalcula estado_pedido por la lógica central y
     // pushea a Google Sheets internamente si transiciona a a_imprimir.
