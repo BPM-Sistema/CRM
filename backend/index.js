@@ -5717,18 +5717,28 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
     );
 
     /* ===============================
-       1️⃣4️⃣ UPDATE ESTADO PAGO A "A CONFIRMAR" Y HABILITAR IMPRESIÓN
+       1️⃣4️⃣ UPDATE ESTADO PAGO A "A CONFIRMAR"
+       2026-05-13: ya NO movemos estado_pedido a a_imprimir desde acá. La
+       lógica centralizada en calcularEstadoPedido (vía recalcularPagos)
+       decide el estado correcto según pago + tipo de envío + datos. Con
+       estado_pago=a_confirmar (sin pago confirmado todavía), el pedido se
+       queda en pendiente_pago hasta que admin verifique el comprobante.
     ================================ */
     await pool.query(
       `update orders_validated
-       set estado_pago = 'a_confirmar',
-           estado_pedido = CASE
-             WHEN estado_pedido = 'pendiente_pago' THEN 'a_imprimir'
-             ELSE estado_pedido
-           END
+       set estado_pago = 'a_confirmar'
        where order_number = $1 and estado_pago = 'pendiente'`,
       [orderNumber]
     );
+    // recalcularPagos re-evalúa el estado según la lógica central. En la
+    // práctica con estado_pago=a_confirmar queda en pendiente_pago, pero
+    // dejamos la llamada por consistencia y por si en algún flujo paralelo
+    // ya entró un pago confirmado.
+    try {
+      await recalcularPagos(pool, orderNumber);
+    } catch (recalcErr) {
+      log.error({ err: recalcErr.message, orderNumber }, 'Error en recalcularPagos post-upload');
+    }
 
     /* ===============================
        1️⃣4️⃣a OVERRIDE customer_phone (flujo /comprobantes-wpp)
@@ -5751,40 +5761,32 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
 
     /* ===============================
        1️⃣4️⃣b ENVIAR datos__envio SI CORRESPONDE
-       Se envía cuando el pedido queda en `pendiente_datos_envio` tras subir
-       el comprobante (pago OK + Vía Cargo / Expreso a Elección + sin form
-       cargado). Si el pedido llegó a `a_imprimir`, ya tiene shipping_request
-       cargado por definición de calcularEstadoPedido — pedirle datos sería
-       contradictorio.
+       Mandamos el msj apenas el cliente sube comprobante (no esperamos a la
+       confirmación admin del pago) — así el cliente puede ir cargando datos
+       en paralelo. El estado del pedido sigue en pendiente_pago hasta que
+       admin confirme; el msj es independiente del estado.
+       Idempotencia: solo mandamos si requiere form, no tiene shipping_request
+       cargado, y no se mandó antes.
     ================================ */
     const orderStateRes = await pool.query(
-      `SELECT estado_pedido, shipping_type FROM orders_validated WHERE order_number = $1`,
+      `SELECT shipping_type FROM orders_validated WHERE order_number = $1`,
       [orderNumber]
     );
-    if (orderStateRes.rows.length > 0) {
-      const { estado_pedido: epActual, shipping_type: stActual } = orderStateRes.rows[0];
-      // Tracking en Google Sheets: este path no pasa por recalcularPagos,
-      // así que enganchamos el push acá. Idempotente y fire-and-forget.
-      if (epActual === 'a_imprimir') {
-        const { pushOrderToImprimir } = require('./lib/sheets-helpers');
-        setImmediate(() => { pushOrderToImprimir(orderNumber); });
-      }
-      if (epActual === 'pendiente_datos_envio' && requiresShippingForm(stActual)) {
-        const [srCheck, waCheck] = await Promise.all([
-          pool.query(`SELECT 1 FROM shipping_requests WHERE order_number = $1 LIMIT 1`, [orderNumber]),
-          pool.query(`SELECT 1 FROM whatsapp_messages WHERE order_number = $1::int AND (template_key = 'datos__envio' OR template ILIKE '%datos%envio%') LIMIT 1`, [orderNumber])
-        ]);
-        if (srCheck.rows.length === 0 && waCheck.rows.length === 0) {
-          try {
-            await queueWhatsApp({
-              telefono: customerPhoneOverridden || customerPhone || telefono,
-              plantilla: 'datos__envio',
-              variables: { '1': nombre, '2': orderNumber },
-              orderNumber
-            });
-          } catch (waErr) {
-            log.error({ err: waErr.message, orderNumber, plantilla: 'datos__envio' }, 'Error encolando WhatsApp datos__envio en upload');
-          }
+    if (orderStateRes.rows.length > 0 && requiresShippingForm(orderStateRes.rows[0].shipping_type)) {
+      const [srCheck, waCheck] = await Promise.all([
+        pool.query(`SELECT 1 FROM shipping_requests WHERE order_number = $1 LIMIT 1`, [orderNumber]),
+        pool.query(`SELECT 1 FROM whatsapp_messages WHERE order_number = $1::int AND (template_key = 'datos__envio' OR template ILIKE '%datos%envio%') LIMIT 1`, [orderNumber])
+      ]);
+      if (srCheck.rows.length === 0 && waCheck.rows.length === 0) {
+        try {
+          await queueWhatsApp({
+            telefono: customerPhoneOverridden || customerPhone || telefono,
+            plantilla: 'datos__envio',
+            variables: { '1': nombre, '2': orderNumber },
+            orderNumber
+          });
+        } catch (waErr) {
+          log.error({ err: waErr.message, orderNumber, plantilla: 'datos__envio' }, 'Error encolando WhatsApp datos__envio en upload');
         }
       }
     }

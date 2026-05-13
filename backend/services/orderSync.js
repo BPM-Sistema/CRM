@@ -6,6 +6,7 @@
 const axios = require('axios');
 const { callTiendanube } = require('../lib/circuitBreaker');
 const { pushOrderToImprimir } = require('../lib/sheets-helpers');
+const { recalcularPagos } = require('../lib/recalcularPagos');
 const pool = require('../db');
 const {
   addToQueue,
@@ -253,36 +254,37 @@ async function processOrderPaid(orderId, orderNumber) {
   );
 
   if (existing.rowCount === 0) {
-    // Crear como pagado directamente
+    // Crear como pagado directamente. Caso defensivo: order_paid llegó sin
+    // un order_created previo. shipping_type queda NULL hasta que el
+    // webhook real lo settee — por eso defaulteamos a 'a_imprimir' (a la
+    // espera que un evento posterior corra recalcularPagos y ajuste si
+    // corresponde, ej. Vía Cargo sin datos → pendiente_datos_envio).
     await pool.query(`
       INSERT INTO orders_validated (order_number, monto_tiendanube, total_pagado, saldo, estado_pago, estado_pedido, currency, tn_created_at)
       VALUES ($1, $2, $2, 0, 'confirmado_total', 'a_imprimir', $3, $4)
     `, [String(pedido.number), Math.round(Number(pedido.total)), pedido.currency || 'ARS', pedido.created_at || null]);
+
+    // Tracking en Google Sheets para el caso INSERT (no pasa por recalcularPagos).
+    setImmediate(() => { pushOrderToImprimir(String(pedido.number)); });
   } else {
-    // Actualizar como pagado
+    // Actualizar como pagado. NO tocamos estado_pedido — recalcularPagos lo
+    // determina abajo según shipping_type + shipping_request + pago.
     await pool.query(`
       UPDATE orders_validated SET
         estado_pago = 'confirmado_total',
         total_pagado = monto_tiendanube,
         saldo = 0,
-        estado_pedido = CASE
-          WHEN estado_pedido = 'pendiente_pago' THEN 'a_imprimir'
-          ELSE estado_pedido
-        END,
         tn_created_at = COALESCE(tn_created_at, $2)
       WHERE order_number = $1
     `, [String(pedido.number), pedido.created_at || null]);
-  }
 
-  // Tracking en Google Sheets: este path no pasa por recalcularPagos.
-  // Solo pusheamos si el pedido quedó efectivamente en a_imprimir
-  // (el UPDATE solo lo cambia si venía de pendiente_pago).
-  const stateCheck = await pool.query(
-    `SELECT estado_pedido FROM orders_validated WHERE order_number = $1`,
-    [String(pedido.number)]
-  );
-  if (stateCheck.rows[0]?.estado_pedido === 'a_imprimir') {
-    setImmediate(() => { pushOrderToImprimir(String(pedido.number)); });
+    // recalcularPagos recalcula estado_pedido por la lógica central y
+    // pushea a Google Sheets internamente si transiciona a a_imprimir.
+    try {
+      await recalcularPagos(pool, String(pedido.number));
+    } catch (recalcErr) {
+      console.error(`⚠️ Error en recalcularPagos para pedido #${pedido.number}:`, recalcErr.message);
+    }
   }
 
   // NO insertar en pagos_efectivo - el pago ya fue registrado por:
