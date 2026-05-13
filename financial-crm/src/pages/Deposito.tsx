@@ -239,6 +239,9 @@ export function Deposito() {
           expanded={demoradosExpanded}
           onToggle={() => setDemoradosExpanded(v => !v)}
           onPedidoClick={n => navigate(`/orders/${n}`)}
+          canManageTopes={canManageTopes}
+          topesExpanded={topesExpanded}
+          onTopesToggle={() => setTopesExpanded(v => !v)}
         />
 
         {/* Tarjetas-acceso (alargadas, diferenciadas de las métricas) */}
@@ -260,14 +263,6 @@ export function Deposito() {
               to="/deposito/empleados"
               icon={<Users size={22} />}
               label="Empleados"
-            />
-          )}
-          {canManageTopes && (
-            <AccesoCard
-              onClick={() => setTopesExpanded(v => !v)}
-              icon={<Settings size={22} />}
-              label="Topes del banner"
-              active={topesExpanded}
             />
           )}
         </div>
@@ -594,54 +589,84 @@ function AccesoCard({ to, onClick, icon, label, badge, badgeClass = 'bg-indigo-5
 
 // ─── Banner pedidos demorados ──────────────────────────────
 // Siempre visible. Tres variantes: cargando (neutral), 0 demorados (verde
-// sin toggle), N demorados (rojo con toggle a tabla embebida).
+// sin toggle), N demorados (rojo con toggle a tabla embebida). Si el usuario
+// tiene permiso para gestionar topes, aparece un botón ruedita a la derecha
+// que abre/cierra el panel admin de topes del banner.
 interface DemoradosBannerProps {
   items: PedidoDemoradoRow[];
   loading: boolean;
   expanded: boolean;
   onToggle: () => void;
   onPedidoClick: (orderNumber: string) => void;
+  canManageTopes: boolean;
+  topesExpanded: boolean;
+  onTopesToggle: () => void;
 }
 
-function DemoradosBanner({ items, loading, expanded, onToggle, onPedidoClick }: DemoradosBannerProps) {
+function DemoradosBanner({
+  items, loading, expanded, onToggle, onPedidoClick,
+  canManageTopes, topesExpanded, onTopesToggle,
+}: DemoradosBannerProps) {
   const count = items.length;
+
+  // Botón ruedita reutilizable. theme define los colores que combinan con el
+  // fondo de cada variante (verde/rojo/neutro).
+  const settingsBtn = canManageTopes ? (
+    <button
+      type="button"
+      onClick={onTopesToggle}
+      title="Topes del banner"
+      className={`ml-2 flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
+        topesExpanded
+          ? 'bg-indigo-600 text-white'
+          : 'text-neutral-600 hover:bg-black/5'
+      }`}
+    >
+      <Settings size={18} />
+    </button>
+  ) : null;
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 flex items-center gap-3">
+      <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-2 flex items-center gap-3">
         <Clock size={22} className="flex-shrink-0 text-neutral-400 animate-pulse" />
-        <span className="text-neutral-500">Chequeando pedidos demorados…</span>
+        <span className="flex-1 text-neutral-500">Chequeando pedidos demorados…</span>
+        {settingsBtn}
       </div>
     );
   }
 
   if (count === 0) {
     return (
-      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-center gap-3">
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 flex items-center gap-3">
         <CheckCircle2 size={22} className="flex-shrink-0 text-emerald-600" />
-        <span className="font-semibold text-emerald-800">
+        <span className="flex-1 font-semibold text-emerald-800">
           Sin pedidos demorados en el depósito
         </span>
+        {settingsBtn}
       </div>
     );
   }
 
   return (
     <div className="rounded-2xl border border-red-200 bg-red-50 overflow-hidden">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-red-100/60 transition-colors"
-      >
-        <AlertOctagon size={22} className="flex-shrink-0 text-red-600" />
-        <span className="flex-1 text-left font-semibold text-red-800">
-          {count} {count === 1 ? 'pedido demorado' : 'pedidos demorados'} en el depósito
-        </span>
-        <span className="flex items-center gap-1 text-sm text-red-700">
-          {expanded ? 'Ocultar' : 'Ver'}
-          {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-        </span>
-      </button>
+      <div className="flex items-center px-4 py-2">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex-1 flex items-center gap-3 -mx-2 px-2 py-1 rounded-lg hover:bg-red-100/60 transition-colors"
+        >
+          <AlertOctagon size={22} className="flex-shrink-0 text-red-600" />
+          <span className="flex-1 text-left font-semibold text-red-800">
+            {count} {count === 1 ? 'pedido demorado' : 'pedidos demorados'} en el depósito
+          </span>
+          <span className="flex items-center gap-1 text-sm text-red-700 mr-1">
+            {expanded ? 'Ocultar' : 'Ver'}
+            {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </span>
+        </button>
+        {settingsBtn}
+      </div>
 
       {expanded && (
         <div className="border-t border-red-200 bg-white overflow-x-auto">
@@ -764,7 +789,7 @@ function TopesPanel({ onClose }: TopesPanelProps) {
       <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
         <div>
           <h3 className="font-semibold text-neutral-800">Topes del banner</h3>
-          <p className="text-xs text-neutral-500">Horas hábiles por estado antes de marcarlo demorado. Excluye sáb/dom + vie 18 → lun 9.</p>
+          <p className="text-xs text-neutral-500">Horas hábiles por estado antes de marcarlo demorado. Excluye desde vie 18hs hasta lun 9hs.</p>
         </div>
         <button onClick={onClose} className="text-sm text-neutral-500 hover:text-neutral-900">Cerrar</button>
       </div>
