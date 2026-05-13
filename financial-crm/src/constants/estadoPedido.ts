@@ -33,6 +33,7 @@ export type OrderStatus =
 
 export const ORDER_STATUSES: OrderStatus[] = [
   'pendiente_pago',
+  'pendiente_datos_envio',
   'a_imprimir',
   'hoja_impresa',
   'en_preparacion',
@@ -40,7 +41,6 @@ export const ORDER_STATUSES: OrderStatus[] = [
   'pendiente_stock',
   'por_empaquetar',
   'empaquetado',
-  'pendiente_datos_envio',
   'pendiente_retiro',
   'por_enviar',
   'en_calle',

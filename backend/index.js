@@ -5751,8 +5751,10 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
 
     /* ===============================
        1️⃣4️⃣b ENVIAR datos__envio SI CORRESPONDE
-       Se envía cuando el pedido llega a a_imprimir con comprobante cargado
-       y el tipo de envío requiere pedir datos al cliente.
+       Se envía cuando el pedido llega a `a_imprimir` o `pendiente_datos_envio`
+       con comprobante cargado y el tipo de envío requiere pedir datos.
+       Desde 2026-05-13: Vía Cargo/Expreso a Elección + pago OK + sin datos va
+       a pendiente_datos_envio (no a a_imprimir), así que hay que cubrir ambos.
     ================================ */
     const orderStateRes = await pool.query(
       `SELECT estado_pedido, shipping_type FROM orders_validated WHERE order_number = $1`,
@@ -5766,7 +5768,7 @@ app.post('/upload', uploadLimiter, (req, res, next) => {
         const { pushOrderToImprimir } = require('./lib/sheets-helpers');
         setImmediate(() => { pushOrderToImprimir(orderNumber); });
       }
-      if (epActual === 'a_imprimir' && requiresShippingForm(stActual)) {
+      if ((epActual === 'a_imprimir' || epActual === 'pendiente_datos_envio') && requiresShippingForm(stActual)) {
         const [srCheck, waCheck] = await Promise.all([
           pool.query(`SELECT 1 FROM shipping_requests WHERE order_number = $1 LIMIT 1`, [orderNumber]),
           pool.query(`SELECT 1 FROM whatsapp_messages WHERE order_number = $1::int AND (template_key = 'datos__envio' OR template ILIKE '%datos%envio%') LIMIT 1`, [orderNumber])
