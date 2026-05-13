@@ -626,38 +626,30 @@ router.get('/errores', requirePermission('deposito.ver_deposito'), async (req, r
 });
 
 // ─── GET /estado-counts ───────────────────────────────────
-// Alimenta las 5 cajas de métricas del panel /deposito. Las 4 primeras son
-// snapshots actuales (cuántos pedidos hay AHORA en cada estado, independiente
-// del filtro de fecha). La 5ta (despachados_hoy) cuenta pedidos únicos que
-// transicionaron a 'en_calle' durante el día de hoy en zona AR.
+// Alimenta las 5 cajas de métricas del panel /deposito. Son snapshots
+// actuales (cuántos pedidos hay AHORA en cada estado), independiente del
+// filtro de fecha de la tabla de transiciones.
 router.get('/estado-counts', requirePermission('deposito.ver_deposito'), async (req, res) => {
   try {
-    const snapshotSql = `
+    const sql = `
       SELECT
-        COUNT(*) FILTER (WHERE estado_pedido = 'hoja_impresa')    AS por_armar,
+        COUNT(*) FILTER (WHERE estado_pedido = 'hoja_impresa')    AS por_preparar,
+        COUNT(*) FILTER (WHERE estado_pedido = 'en_preparacion')  AS en_preparacion,
         COUNT(*) FILTER (WHERE estado_pedido = 'en_revision')     AS por_revisar,
         COUNT(*) FILTER (WHERE estado_pedido = 'por_empaquetar')  AS por_empaquetar,
         COUNT(*) FILTER (WHERE estado_pedido = 'empaquetado')     AS por_despachar
       FROM orders_validated
-      WHERE estado_pedido IN ('hoja_impresa','en_revision','por_empaquetar','empaquetado')
+      WHERE estado_pedido IN (
+        'hoja_impresa','en_preparacion','en_revision','por_empaquetar','empaquetado'
+      )
     `;
-    const despachadosSql = `
-      SELECT COUNT(DISTINCT order_number) AS despachados_hoy
-      FROM warehouse_state_transitions
-      WHERE to_status = 'en_calle'
-        AND (created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
-          = (NOW()       AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
-    `;
-    const [snap, desp] = await Promise.all([
-      pool.query(snapshotSql),
-      pool.query(despachadosSql),
-    ]);
+    const r = await pool.query(sql);
     res.json({
-      por_armar:        Number(snap.rows[0].por_armar)       || 0,
-      por_revisar:      Number(snap.rows[0].por_revisar)     || 0,
-      por_empaquetar:   Number(snap.rows[0].por_empaquetar)  || 0,
-      por_despachar:    Number(snap.rows[0].por_despachar)   || 0,
-      despachados_hoy:  Number(desp.rows[0].despachados_hoy) || 0,
+      por_preparar:    Number(r.rows[0].por_preparar)    || 0,
+      en_preparacion:  Number(r.rows[0].en_preparacion)  || 0,
+      por_revisar:     Number(r.rows[0].por_revisar)     || 0,
+      por_empaquetar:  Number(r.rows[0].por_empaquetar)  || 0,
+      por_despachar:   Number(r.rows[0].por_despachar)   || 0,
     });
   } catch (err) {
     console.error('❌ GET /admin/deposito/estado-counts error:', err.message);

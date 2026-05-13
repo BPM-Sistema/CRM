@@ -281,13 +281,13 @@ export function Deposito() {
           )}
         </div>
 
-        {/* Métricas: 4 snapshots actuales + 1 contador de despachados de hoy */}
+        {/* Métricas: 5 snapshots por estado del flujo depo */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <MetricBox label="Por Armar"        value={estadoCounts?.por_armar       ?? 0} />
-          <MetricBox label="Por Revisar"      value={estadoCounts?.por_revisar     ?? 0} />
-          <MetricBox label="Por Empaquetar"   value={estadoCounts?.por_empaquetar  ?? 0} />
-          <MetricBox label="Por Despachar"    value={estadoCounts?.por_despachar   ?? 0} />
-          <MetricBox label="Despachados Hoy"  value={estadoCounts?.despachados_hoy ?? 0} />
+          <MetricBox label="Por Preparar"    value={estadoCounts?.por_preparar    ?? 0} />
+          <MetricBox label="En Preparación"  value={estadoCounts?.en_preparacion  ?? 0} />
+          <MetricBox label="Por Revisar"     value={estadoCounts?.por_revisar     ?? 0} />
+          <MetricBox label="Por Empaquetar"  value={estadoCounts?.por_empaquetar  ?? 0} />
+          <MetricBox label="Por Despachar"   value={estadoCounts?.por_despachar   ?? 0} />
         </div>
 
         {/* Filtros */}

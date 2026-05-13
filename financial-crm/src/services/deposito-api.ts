@@ -303,11 +303,11 @@ export interface PedidosDemoradosResponse {
 // ─── Snapshot por estado (cajas del header) ────────────────
 
 export interface EstadoCounts {
-  por_armar: number;        // snapshot: estado_pedido='hoja_impresa'
-  por_revisar: number;      // snapshot: estado_pedido='en_revision'
-  por_empaquetar: number;   // snapshot: estado_pedido='por_empaquetar'
-  por_despachar: number;    // snapshot: estado_pedido='empaquetado'
-  despachados_hoy: number;  // transiciones a en_calle del día de hoy (AR)
+  por_preparar: number;    // snapshot: estado_pedido='hoja_impresa'
+  en_preparacion: number;  // snapshot: estado_pedido='en_preparacion'
+  por_revisar: number;     // snapshot: estado_pedido='en_revision'
+  por_empaquetar: number;  // snapshot: estado_pedido='por_empaquetar'
+  por_despachar: number;   // snapshot: estado_pedido='empaquetado'
 }
 
 export async function fetchEstadoCounts(): Promise<EstadoCounts> {
