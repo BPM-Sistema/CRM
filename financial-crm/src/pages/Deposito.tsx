@@ -19,18 +19,18 @@ import { Header } from '../components/layout';
 import { useAuth } from '../contexts/AuthContext';
 import {
   fetchTransitions,
-  fetchMetrics,
   fetchEmployees,
   fetchStockIssues,
   fetchPedidosDemorados,
   fetchEstadoThresholds,
   updateEstadoThreshold,
+  fetchEstadoCounts,
   TransitionRow,
   EmployeeRow,
   DepositoFilters,
-  DepositoMetrics,
   PedidoDemoradoRow,
   EstadoThresholdRow,
+  EstadoCounts,
 } from '../services/deposito-api';
 
 const TRANSITIONS_OPTIONS: { value: string; label: string }[] = [
@@ -114,7 +114,7 @@ export function Deposito() {
   const [items, setItems] = useState<TransitionRow[]>([]);
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
-  const [metrics, setMetrics] = useState<DepositoMetrics | null>(null);
+  const [estadoCounts, setEstadoCounts] = useState<EstadoCounts | null>(null);
   const [openIssuesCount, setOpenIssuesCount] = useState(0);
   const [demorados, setDemorados] = useState<PedidoDemoradoRow[]>([]);
   const [demoradosLoading, setDemoradosLoading] = useState(true);
@@ -153,14 +153,12 @@ export function Deposito() {
     setLoading(true);
     setError(null);
     try {
-      const [transitionsRes, metricsRes] = await Promise.all([
-        fetchTransitions(currentFilters, { page, limit: pageSize, orderBy, orderDir }),
-        fetchMetrics(currentFilters),
-      ]);
+      const transitionsRes = await fetchTransitions(
+        currentFilters, { page, limit: pageSize, orderBy, orderDir }
+      );
       setItems(transitionsRes.items);
       setTotal(transitionsRes.total);
       setPages(transitionsRes.pages);
-      setMetrics(metricsRes.metrics);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al cargar');
     } finally {
@@ -180,6 +178,9 @@ export function Deposito() {
       .then(r => setDemorados(r.items))
       .catch(() => {})
       .finally(() => setDemoradosLoading(false));
+    fetchEstadoCounts()
+      .then(r => setEstadoCounts(r))
+      .catch(() => {});
   }, [canView]);
 
   useEffect(() => {
@@ -280,18 +281,13 @@ export function Deposito() {
           )}
         </div>
 
-        {/* Métricas */}
+        {/* Métricas: 4 snapshots actuales + 1 contador de despachados de hoy */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <MetricBox label="Empaquetados" value={metrics?.empaquetados ?? 0} />
-          <MetricBox label="Total transiciones" value={metrics?.total_transiciones ?? 0} />
-          <MetricBox label="Pasados a Pend. Stock" value={metrics?.pasados_pendiente_stock ?? 0} />
-          <MetricBox label="Despachados" value={metrics?.despachados ?? 0} hint="(en_calle)" />
-          <MetricBox
-            label="Empleado más activo"
-            value={metrics?.empleado_top?.nombre || '—'}
-            hint={metrics?.empleado_top ? `${metrics.empleado_top.count} acciones` : ''}
-            small
-          />
+          <MetricBox label="Por Armar"        value={estadoCounts?.por_armar       ?? 0} />
+          <MetricBox label="Por Revisar"      value={estadoCounts?.por_revisar     ?? 0} />
+          <MetricBox label="Por Empaquetar"   value={estadoCounts?.por_empaquetar  ?? 0} />
+          <MetricBox label="Por Despachar"    value={estadoCounts?.por_despachar   ?? 0} />
+          <MetricBox label="Despachados Hoy"  value={estadoCounts?.despachados_hoy ?? 0} />
         </div>
 
         {/* Filtros */}

@@ -300,6 +300,22 @@ export interface PedidosDemoradosResponse {
   items: PedidoDemoradoRow[];
 }
 
+// ─── Snapshot por estado (cajas del header) ────────────────
+
+export interface EstadoCounts {
+  por_armar: number;        // snapshot: estado_pedido='hoja_impresa'
+  por_revisar: number;      // snapshot: estado_pedido='en_revision'
+  por_empaquetar: number;   // snapshot: estado_pedido='por_empaquetar'
+  por_despachar: number;    // snapshot: estado_pedido='empaquetado'
+  despachados_hoy: number;  // transiciones a en_calle del día de hoy (AR)
+}
+
+export async function fetchEstadoCounts(): Promise<EstadoCounts> {
+  const r = await authFetch(`${API_BASE_URL}/admin/deposito/estado-counts`);
+  if (!r.ok) throw new Error(`Error ${r.status} al cargar contadores`);
+  return r.json();
+}
+
 export async function fetchPedidosDemorados(): Promise<PedidosDemoradosResponse> {
   const r = await authFetch(`${API_BASE_URL}/admin/deposito/pedidos-demorados`);
   if (!r.ok) throw new Error(`Error ${r.status} al cargar pedidos demorados`);
