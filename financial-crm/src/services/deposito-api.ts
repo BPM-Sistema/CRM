@@ -305,3 +305,38 @@ export async function fetchPedidosDemorados(): Promise<PedidosDemoradosResponse>
   if (!r.ok) throw new Error(`Error ${r.status} al cargar pedidos demorados`);
   return r.json();
 }
+
+// ─── Estado thresholds (topes del banner) ──────────────────
+
+export interface EstadoThresholdRow {
+  estado: string;
+  horas_limite: number;
+  updated_at: string;
+  updated_by_user_id: string | null;
+}
+
+export interface EstadoThresholdsResponse {
+  rows: EstadoThresholdRow[];
+}
+
+export async function fetchEstadoThresholds(): Promise<EstadoThresholdsResponse> {
+  const r = await authFetch(`${API_BASE_URL}/admin/deposito/thresholds`);
+  if (!r.ok) throw new Error(`Error ${r.status} al cargar topes`);
+  return r.json();
+}
+
+export async function updateEstadoThreshold(
+  estado: string,
+  horasLimite: number
+): Promise<{ row: EstadoThresholdRow }> {
+  const r = await authFetch(`${API_BASE_URL}/admin/deposito/thresholds/${encodeURIComponent(estado)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ horas_limite: horasLimite }),
+  });
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '');
+    throw new Error(`Error ${r.status} al guardar tope: ${txt}`);
+  }
+  return r.json();
+}

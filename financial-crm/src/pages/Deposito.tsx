@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState, useCallback, type ReactNode } from 'react
 import { useNavigate, Link } from 'react-router-dom';
 import { format, parseISO, subDays, startOfDay, endOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Users, AlertTriangle, Bug, AlertOctagon, ChevronDown, ChevronUp, Clock } from 'lucide-react';
+import { Users, AlertTriangle, Bug, AlertOctagon, ChevronDown, ChevronUp, Clock, CheckCircle2, Settings, Save, Check } from 'lucide-react';
 import { Header } from '../components/layout';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -23,11 +23,14 @@ import {
   fetchEmployees,
   fetchStockIssues,
   fetchPedidosDemorados,
+  fetchEstadoThresholds,
+  updateEstadoThreshold,
   TransitionRow,
   EmployeeRow,
   DepositoFilters,
   DepositoMetrics,
   PedidoDemoradoRow,
+  EstadoThresholdRow,
 } from '../services/deposito-api';
 
 const TRANSITIONS_OPTIONS: { value: string; label: string }[] = [
@@ -114,7 +117,9 @@ export function Deposito() {
   const [metrics, setMetrics] = useState<DepositoMetrics | null>(null);
   const [openIssuesCount, setOpenIssuesCount] = useState(0);
   const [demorados, setDemorados] = useState<PedidoDemoradoRow[]>([]);
+  const [demoradosLoading, setDemoradosLoading] = useState(true);
   const [demoradosExpanded, setDemoradosExpanded] = useState(false);
+  const [topesExpanded, setTopesExpanded] = useState(false);
 
   // Estado UI.
   const [page, setPage] = useState(1);
@@ -170,9 +175,11 @@ export function Deposito() {
     fetchStockIssues({ status: 'open' }, { page: 1, limit: 1 })
       .then(r => setOpenIssuesCount(r.open_count))
       .catch(() => {});
+    setDemoradosLoading(true);
     fetchPedidosDemorados()
       .then(r => setDemorados(r.items))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setDemoradosLoading(false));
   }, [canView]);
 
   useEffect(() => {
@@ -215,24 +222,24 @@ export function Deposito() {
   };
 
   const canManageEmployees = hasPermission('deposito.gestionar_empleados') || hasPermission('deposito.ver_codigos') || hasPermission('deposito.ver_actividades');
+  const canManageTopes = hasPermission('deposito.gestionar_empleados');
 
   return (
     <>
       <Header
         title="Depósito"
-        subtitle="Actividad del depo y métricas"
+        subtitle="Actividad del depósito y métricas"
       />
 
       <div className="p-4 space-y-4">
-        {/* Banner pedidos demorados (solo si hay) */}
-        {demorados.length > 0 && (
-          <DemoradosBanner
-            items={demorados}
-            expanded={demoradosExpanded}
-            onToggle={() => setDemoradosExpanded(v => !v)}
-            onPedidoClick={n => navigate(`/orders/${n}`)}
-          />
-        )}
+        {/* Banner pedidos demorados (siempre visible — verde si 0, rojo si hay) */}
+        <DemoradosBanner
+          items={demorados}
+          loading={demoradosLoading}
+          expanded={demoradosExpanded}
+          onToggle={() => setDemoradosExpanded(v => !v)}
+          onPedidoClick={n => navigate(`/orders/${n}`)}
+        />
 
         {/* Tarjetas-acceso (alargadas, diferenciadas de las métricas) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -255,7 +262,20 @@ export function Deposito() {
               label="Empleados"
             />
           )}
+          {canManageTopes && (
+            <AccesoCard
+              onClick={() => setTopesExpanded(v => !v)}
+              icon={<Settings size={22} />}
+              label="Topes del banner"
+              active={topesExpanded}
+            />
+          )}
         </div>
+
+        {/* Panel admin de topes (sólo si la tarjeta está expandida) */}
+        {canManageTopes && topesExpanded && (
+          <TopesPanel onClose={() => setTopesExpanded(false)} />
+        )}
 
         {/* Métricas */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -530,42 +550,82 @@ function MetricBox({ label, value, hint, small }: MetricBoxProps) {
 // MetricBox (que son verticales con número grande). Va en una fila aparte
 // arriba de las métricas.
 interface AccesoCardProps {
-  to: string;
   icon: ReactNode;
   label: string;
   badge?: number;
   badgeClass?: string;
+  to?: string;
+  onClick?: () => void;
+  active?: boolean;
 }
 
-function AccesoCard({ to, icon, label, badge, badgeClass = 'bg-indigo-500' }: AccesoCardProps) {
-  return (
-    <Link
-      to={to}
-      className="flex items-center gap-3 bg-white rounded-2xl shadow-sm px-4 py-3 hover:bg-neutral-50 transition-colors border border-transparent hover:border-neutral-200"
-    >
-      <span className="flex-shrink-0 w-10 h-10 rounded-xl bg-neutral-100 text-neutral-700 flex items-center justify-center">
+function AccesoCard({ to, onClick, icon, label, badge, badgeClass = 'bg-indigo-500', active }: AccesoCardProps) {
+  const baseCls = `flex items-center gap-3 rounded-2xl shadow-sm px-4 py-3 transition-colors border ${
+    active
+      ? 'bg-indigo-50 border-indigo-200'
+      : 'bg-white border-transparent hover:bg-neutral-50 hover:border-neutral-200'
+  }`;
+
+  const content = (
+    <>
+      <span className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${
+        active ? 'bg-indigo-100 text-indigo-700' : 'bg-neutral-100 text-neutral-700'
+      }`}>
         {icon}
       </span>
-      <span className="flex-1 font-semibold text-neutral-800">{label}</span>
+      <span className={`flex-1 font-semibold text-left ${active ? 'text-indigo-900' : 'text-neutral-800'}`}>{label}</span>
       {badge !== undefined && badge > 0 && (
         <span className={`inline-flex items-center justify-center min-w-[1.5rem] h-6 px-2 rounded-full text-white text-xs font-bold ${badgeClass}`}>
           {badge}
         </span>
       )}
-    </Link>
+    </>
+  );
+
+  if (to) {
+    return <Link to={to} className={baseCls}>{content}</Link>;
+  }
+  return (
+    <button type="button" onClick={onClick} className={baseCls}>
+      {content}
+    </button>
   );
 }
 
 // ─── Banner pedidos demorados ──────────────────────────────
+// Siempre visible. Tres variantes: cargando (neutral), 0 demorados (verde
+// sin toggle), N demorados (rojo con toggle a tabla embebida).
 interface DemoradosBannerProps {
   items: PedidoDemoradoRow[];
+  loading: boolean;
   expanded: boolean;
   onToggle: () => void;
   onPedidoClick: (orderNumber: string) => void;
 }
 
-function DemoradosBanner({ items, expanded, onToggle, onPedidoClick }: DemoradosBannerProps) {
+function DemoradosBanner({ items, loading, expanded, onToggle, onPedidoClick }: DemoradosBannerProps) {
   const count = items.length;
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 flex items-center gap-3">
+        <Clock size={22} className="flex-shrink-0 text-neutral-400 animate-pulse" />
+        <span className="text-neutral-500">Chequeando pedidos demorados…</span>
+      </div>
+    );
+  }
+
+  if (count === 0) {
+    return (
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-center gap-3">
+        <CheckCircle2 size={22} className="flex-shrink-0 text-emerald-600" />
+        <span className="font-semibold text-emerald-800">
+          Sin pedidos demorados en el depósito
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-2xl border border-red-200 bg-red-50 overflow-hidden">
       <button
@@ -575,7 +635,7 @@ function DemoradosBanner({ items, expanded, onToggle, onPedidoClick }: Demorados
       >
         <AlertOctagon size={22} className="flex-shrink-0 text-red-600" />
         <span className="flex-1 text-left font-semibold text-red-800">
-          {count} {count === 1 ? 'pedido demorado' : 'pedidos demorados'} en el depo
+          {count} {count === 1 ? 'pedido demorado' : 'pedidos demorados'} en el depósito
         </span>
         <span className="flex items-center gap-1 text-sm text-red-700">
           {expanded ? 'Ocultar' : 'Ver'}
@@ -642,4 +702,140 @@ function formatHoras(h: number): string {
     return resto === 0 ? `${dias}d` : `${dias}d ${resto}h`;
   }
   return `${Math.round(h * 10) / 10}h`;
+}
+
+// ─── Panel admin de topes ──────────────────────────────────
+// Sección colapsable que muestran/editan los thresholds en horas hábiles por
+// estado depo. Solo visible con permiso deposito.gestionar_empleados.
+type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+
+interface TopesPanelProps {
+  onClose: () => void;
+}
+
+function TopesPanel({ onClose }: TopesPanelProps) {
+  const [rows, setRows] = useState<EstadoThresholdRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  // Valores en edición (input). Permiten detectar "cambió" vs server.
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [saveStates, setSaveStates] = useState<Record<string, SaveState>>({});
+
+  useEffect(() => {
+    setLoading(true);
+    fetchEstadoThresholds()
+      .then(r => {
+        setRows(r.rows);
+        setDrafts(Object.fromEntries(r.rows.map(row => [row.estado, String(row.horas_limite)])));
+      })
+      .catch(e => setError(e instanceof Error ? e.message : 'Error al cargar topes'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async (estado: string) => {
+    const draft = drafts[estado];
+    const horas = Number(draft);
+    if (!Number.isFinite(horas) || horas <= 0) {
+      setSaveStates(s => ({ ...s, [estado]: 'error' }));
+      return;
+    }
+    setSaveStates(s => ({ ...s, [estado]: 'saving' }));
+    try {
+      const { row } = await updateEstadoThreshold(estado, horas);
+      setRows(rs => rs.map(r => (r.estado === estado ? row : r)));
+      setDrafts(d => ({ ...d, [estado]: String(row.horas_limite) }));
+      setSaveStates(s => ({ ...s, [estado]: 'saved' }));
+      setTimeout(() => {
+        setSaveStates(s => ({ ...s, [estado]: 'idle' }));
+      }, 2000);
+    } catch {
+      setSaveStates(s => ({ ...s, [estado]: 'error' }));
+    }
+  };
+
+  const hasChanged = (estado: string) => {
+    const row = rows.find(r => r.estado === estado);
+    if (!row) return false;
+    return drafts[estado] !== String(row.horas_limite);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
+        <div>
+          <h3 className="font-semibold text-neutral-800">Topes del banner</h3>
+          <p className="text-xs text-neutral-500">Horas hábiles por estado antes de marcarlo demorado. Excluye sáb/dom + vie 18 → lun 9.</p>
+        </div>
+        <button onClick={onClose} className="text-sm text-neutral-500 hover:text-neutral-900">Cerrar</button>
+      </div>
+
+      {loading && (
+        <div className="px-4 py-6 text-center text-neutral-400">Cargando…</div>
+      )}
+      {error && !loading && (
+        <div className="px-4 py-6 text-center text-red-600">{error}</div>
+      )}
+
+      {!loading && !error && (
+        <table className="w-full text-sm">
+          <thead className="bg-neutral-50 border-b border-neutral-200">
+            <tr>
+              <th className="px-4 py-2 text-left font-semibold text-neutral-600">Estado</th>
+              <th className="px-4 py-2 text-left font-semibold text-neutral-600">Horas hábiles</th>
+              <th className="px-4 py-2 text-left font-semibold text-neutral-600"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(row => {
+              const state = saveStates[row.estado] || 'idle';
+              const changed = hasChanged(row.estado);
+              return (
+                <tr key={row.estado} className="border-b border-neutral-100">
+                  <td className="px-4 py-2 text-neutral-800">
+                    {ESTADO_DEPO_LABELS[row.estado] || row.estado}
+                  </td>
+                  <td className="px-4 py-2">
+                    <input
+                      type="number"
+                      min={1}
+                      step="0.5"
+                      value={drafts[row.estado] ?? ''}
+                      onChange={e => setDrafts(d => ({ ...d, [row.estado]: e.target.value }))}
+                      className="w-24 border border-neutral-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <span className="ml-1 text-neutral-500 text-sm">hs</span>
+                  </td>
+                  <td className="px-4 py-2">
+                    <button
+                      onClick={() => handleSave(row.estado)}
+                      disabled={!changed || state === 'saving'}
+                      className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        state === 'saved'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : state === 'error'
+                          ? 'bg-red-100 text-red-700'
+                          : changed
+                          ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                          : 'bg-neutral-100 text-neutral-400 cursor-not-allowed'
+                      }`}
+                    >
+                      {state === 'saving' ? (
+                        <>Guardando…</>
+                      ) : state === 'saved' ? (
+                        <><Check size={14} /> Guardado</>
+                      ) : state === 'error' ? (
+                        <>Error, reintentar</>
+                      ) : (
+                        <><Save size={14} /> Guardar</>
+                      )}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
 }
