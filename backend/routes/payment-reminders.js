@@ -49,7 +49,17 @@ router.get('/', requirePermission('payment_reminders.view'), async (req, res) =>
 
     // Excluir 4 pedidos legacy con order_number tipo "#XXXXX" que rompen los
     // ::int de las subqueries. Son data antigua sin uso operativo.
-    const conditions = [`o.estado_pedido = 'pendiente_pago'`, `o.order_number ~ '^[0-9]+$'`];
+    // Excluir pedidos con cualquier comprobante no rechazado: el cliente ya
+    // mandó algo, no corresponde recordarle que pague.
+    const conditions = [
+      `o.estado_pedido = 'pendiente_pago'`,
+      `o.order_number ~ '^[0-9]+$'`,
+      `NOT EXISTS (
+        SELECT 1 FROM comprobantes
+        WHERE order_number = o.order_number
+          AND COALESCE(estado, '') NOT IN ('rechazado')
+      )`,
+    ];
     const params = [];
     let i = 1;
 
