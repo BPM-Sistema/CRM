@@ -43,10 +43,15 @@ interface StockMissingItem {
   quantity_missing: number;
 }
 
+// Label de estado para mensajes de éxito post-transición ("✓ Eli → ARMADO").
+// 2026-05-13: en_revision se muestra como "ARMADO" porque para el depo
+// "armado" es la acción real que ejecutan; "en revisión" es el estado interno.
+// El chip del estado actual del pedido sí muestra "EN REVISIÓN (ARMADO)" para
+// dar contexto técnico — ver línea del chip más abajo.
 const STATUS_LABEL: Record<string, string> = {
   hoja_impresa:          'HOJA IMPRESA',
   en_preparacion:        'EN PREPARACIÓN',
-  en_revision:           'EN REVISIÓN',
+  en_revision:           'ARMADO',
   pendiente_stock:       'PEND. STOCK',
   por_empaquetar:        'POR EMPAQUETAR',
   empaquetado:           'EMPAQUETADO',
@@ -61,16 +66,23 @@ const STATUS_LABEL: Record<string, string> = {
   a_imprimir:            'A IMPRIMIR',
 };
 
+// Texto del botón de cada transición disponible en el flow QR.
 const BUTTON_LABEL: Record<string, string> = {
   en_preparacion:  'EN PREPARACIÓN',
-  en_revision:     'EN REVISIÓN',
+  en_revision:     'ARMADO',
   pendiente_stock: 'PEND. STOCK',
   por_empaquetar:  'POR EMPAQUETAR',
   empaquetado:     'EMPAQUETADO',
 };
 
-// Botones secundarios (chiquitos abajo). El resto son principales (grandes).
-const SECONDARY_BUTTONS = new Set(['pendiente_stock']);
+// Override de color por destino. Por default todos los botones son violeta
+// (bg-indigo-600). Estos overrides ayudan al depo a identificar acciones
+// distintas a primera vista (2026-05-13).
+const BUTTON_COLOR_OVERRIDE: Record<string, string> = {
+  en_revision:     'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300',
+  pendiente_stock: 'bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300',
+};
+const DEFAULT_BUTTON_COLOR = 'bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300';
 
 /**
  * Limpia el nombre del producto sacando un precio que venga al final entre
@@ -211,8 +223,8 @@ export function QrDeposito() {
   }
   if (!order) return null;
 
-  const primary = buttons.filter(b => !SECONDARY_BUTTONS.has(b.to));
-  const secondary = buttons.filter(b => SECONDARY_BUTTONS.has(b.to));
+  // 2026-05-13: todos los botones de transición ahora son del mismo tamaño,
+  // diferenciados solo por color (ver BUTTON_COLOR_OVERRIDE).
   const isEmpaquetado = order.estado_pedido === 'empaquetado';
 
   return (
@@ -226,7 +238,9 @@ export function QrDeposito() {
             <p className="text-sm text-neutral-600 mt-1">{order.customer_name}</p>
           )}
           <div className="mt-3 inline-block px-4 py-1.5 bg-indigo-100 text-indigo-800 rounded-full text-sm font-semibold">
-            {STATUS_LABEL[order.estado_pedido] || order.estado_pedido}
+            {order.estado_pedido === 'en_revision'
+              ? 'EN REVISIÓN (ARMADO)'
+              : (STATUS_LABEL[order.estado_pedido] || order.estado_pedido)}
           </div>
           {order.bultos > 0 && (
             <p className="text-xs text-neutral-500 mt-2">
@@ -292,10 +306,11 @@ export function QrDeposito() {
           </div>
         )}
 
-        {/* Botones principales */}
-        {primary.length > 0 && !isEmpaquetado && (
+        {/* Botones de transición — todos del mismo tamaño/tipografía, distintos por color */}
+        {buttons.length > 0 && !isEmpaquetado && (
           <div className="space-y-3">
-            {primary.map(btn => {
+            {buttons.map(btn => {
+              const colorCls = BUTTON_COLOR_OVERRIDE[btn.to] || DEFAULT_BUTTON_COLOR;
               return (
                 <div key={btn.to} className="bg-white rounded-2xl shadow-sm p-5 space-y-3">
                   {btn.requiresBultos && (
@@ -324,7 +339,7 @@ export function QrDeposito() {
                     type="button"
                     onClick={() => handleTransition(btn.to, btn.requiresBultos)}
                     disabled={submitting || codigo.length !== 4}
-                    className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white text-xl font-bold rounded-2xl transition-colors"
+                    className={`w-full py-5 ${colorCls} text-white text-xl font-bold rounded-2xl transition-colors`}
                   >
                     {submitting ? 'Procesando…' : BUTTON_LABEL[btn.to] || btn.to.toUpperCase()}
                   </button>
@@ -413,23 +428,6 @@ export function QrDeposito() {
           </div>
         )}
 
-        {/* Botones secundarios (chiquitos abajo) */}
-        {secondary.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm p-4">
-            {secondary.map(btn => (
-              <button
-                key={btn.to}
-                type="button"
-                onClick={() => handleTransition(btn.to, btn.requiresBultos)}
-                disabled={submitting || codigo.length !== 4}
-                className="w-full py-2 text-sm text-amber-700 hover:text-amber-900 hover:bg-amber-50 rounded-lg disabled:opacity-50"
-              >
-                Pasar a {BUTTON_LABEL[btn.to] || btn.to}
-              </button>
-            ))}
-          </div>
-        )}
-
         {/* Estado terminal: no hay botones */}
         {buttons.length === 0 && (
           <div className="bg-white rounded-2xl shadow-sm p-6 text-center">
@@ -473,7 +471,9 @@ export function QrDeposito() {
                         checked={tildado}
                         onChange={e => setStockMissing(prev => ({
                           ...prev,
-                          [p.id]: e.target.checked ? p.quantity : 0,
+                          // Default 1 al tildar — el depo sube manualmente si faltan más
+                          // (antes default era p.quantity y bajaba, menos intuitivo).
+                          [p.id]: e.target.checked ? 1 : 0,
                         }))}
                         className="mt-1 w-5 h-5 accent-amber-500"
                       />
