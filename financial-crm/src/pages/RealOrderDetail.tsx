@@ -388,6 +388,9 @@ export function RealOrderDetail() {
     shippingTypeLower.includes('viacargo');
   // Cualquier envío (no retiro) - para ocultar botón "Retirado"
   const isShippedOrder = requiresShippingData || shippingTypeLower.includes('env');
+  // Retiro en local (mismo criterio que esRetiro en backend/lib/estados-pedido.js).
+  // Usado para la Card "Tipo Envío" de la columna derecha.
+  const isPickupOrder = /pickup|retiro|deposito|depósito/i.test(order.shipping_type || '');
   const canPrint = hasValidPayment;
 
   const canShip = paymentStatus === 'total';
@@ -835,6 +838,18 @@ export function RealOrderDetail() {
                   )}
                 </div>
               </div>
+            </Card>
+
+            {/* Tipo de envío */}
+            <Card>
+              <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider mb-3">
+                Tipo Envío
+              </h3>
+              <p className="text-sm font-medium text-neutral-900">
+                {order.shipping_type
+                  ? (isPickupOrder ? 'Retiro' : 'Envío')
+                  : '—'}
+              </p>
             </Card>
 
             {/* Acciones de pago */}
