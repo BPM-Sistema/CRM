@@ -31,6 +31,11 @@ export type OrderStatus =
   | 'retirado'
   | 'cancelado';
 
+// Orden canónico de los estados (usado por filtros, dropdowns, etc.).
+// Sigue el flujo lógico del pedido: pre-imprimir → depo → empaquetado →
+// salida. `pendiente_datos_envio` quedó entre `pendiente_pago` y
+// `a_imprimir` desde 2026-05-13 (es un bloqueo pre-imprimir: pago OK,
+// falta el form del envío).
 export const ORDER_STATUSES: OrderStatus[] = [
   'pendiente_pago',
   'pendiente_datos_envio',
