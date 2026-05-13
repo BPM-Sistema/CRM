@@ -232,17 +232,30 @@ export function Deposito() {
       />
 
       <div className="p-4 space-y-4">
-        {/* Banner pedidos demorados (siempre visible — verde si 0, rojo si hay) */}
+        {/* Banner pedidos demorados (siempre visible — verde si 0, rojo si hay).
+            Lista y panel de topes son mutuamente excluyentes. */}
         <DemoradosBanner
           items={demorados}
           loading={demoradosLoading}
           expanded={demoradosExpanded}
-          onToggle={() => setDemoradosExpanded(v => !v)}
+          onToggle={() => {
+            setDemoradosExpanded(v => !v);
+            setTopesExpanded(false);
+          }}
           onPedidoClick={n => navigate(`/orders/${n}`)}
           canManageTopes={canManageTopes}
           topesExpanded={topesExpanded}
-          onTopesToggle={() => setTopesExpanded(v => !v)}
+          onTopesToggle={() => {
+            setTopesExpanded(v => !v);
+            setDemoradosExpanded(false);
+          }}
         />
+
+        {/* Panel admin de topes: aparece pegado al banner, antes de las
+            tarjetas-acceso. Exclusivo con la lista de demorados. */}
+        {canManageTopes && topesExpanded && (
+          <TopesPanel onClose={() => setTopesExpanded(false)} />
+        )}
 
         {/* Tarjetas-acceso (alargadas, diferenciadas de las métricas) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -266,11 +279,6 @@ export function Deposito() {
             />
           )}
         </div>
-
-        {/* Panel admin de topes (sólo si la tarjeta está expandida) */}
-        {canManageTopes && topesExpanded && (
-          <TopesPanel onClose={() => setTopesExpanded(false)} />
-        )}
 
         {/* Métricas */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -618,7 +626,7 @@ function DemoradosBanner({
       title="Topes del banner"
       className={`ml-2 flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
         topesExpanded
-          ? 'bg-indigo-600 text-white'
+          ? 'bg-red-800 text-white'
           : 'text-neutral-600 hover:bg-black/5'
       }`}
     >
