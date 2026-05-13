@@ -842,13 +842,10 @@ export function RealOrderDetail() {
 
             {/* Tipo de envío */}
             <Card>
-              <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider mb-3">
-                Tipo Envío
-              </h3>
-              <p className="text-sm font-medium text-neutral-900">
-                {order.shipping_type
-                  ? (isPickupOrder ? 'Retiro' : 'Envío')
-                  : '—'}
+              <p className="text-sm font-semibold uppercase tracking-wider text-neutral-500">
+                Método <span className="text-neutral-900">
+                  - {order.shipping_type ? (isPickupOrder ? 'Retiro' : 'Envío') : '—'}
+                </span>
               </p>
             </Card>
 
