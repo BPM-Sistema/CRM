@@ -4,14 +4,28 @@
  * Montados en /admin/deposito en index.js. Todos requieren auth + permiso
  * RBAC `deposito.ver_deposito` (creado en migration 095).
  *
- * GET /transitions  — listado paginado con filtros (panel del depo)
- * GET /metrics      — 5 cajas de métricas según filtros aplicados
+ * GET /transitions          — listado paginado con filtros (panel del depo)
+ * GET /metrics              — 5 cajas de métricas según filtros aplicados
+ * GET /pedidos-demorados    — banner: pedidos que pasaron su threshold (migration 099)
+ * GET /thresholds           — listar topes editables (admin only)
+ * PUT /thresholds/:estado   — actualizar tope de un estado (admin only)
  */
 
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
 const { authenticate, requirePermission } = require('../middleware/auth');
+const { horasHabilesBanner } = require('../lib/horas-habiles-banner');
+const { logEvento } = require('../utils/logging');
+
+const ESTADOS_DEPO = [
+  'hoja_impresa',
+  'en_preparacion',
+  'en_revision',
+  'pendiente_stock',
+  'por_empaquetar',
+  'empaquetado',
+];
 
 router.use(authenticate);
 
@@ -606,6 +620,134 @@ router.get('/errores', requirePermission('deposito.ver_deposito'), async (req, r
     });
   } catch (err) {
     console.error('❌ GET /admin/deposito/errores error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /pedidos-demorados ───────────────────────────────
+// Alimenta el banner rojo de /deposito. Devuelve los pedidos que están
+// en algún estado depo y superaron su threshold en horas hábiles
+// (excluyendo VIE 18 → LUN 09 AR — ver lib/horas-habiles-banner.js).
+router.get('/pedidos-demorados', requirePermission('deposito.ver_deposito'), async (req, res) => {
+  try {
+    // 1) Traer pedidos en los 6 estados con su "entered_at" (última transición
+    //    a ese estado, o printed_at como fallback para hoja_impresa).
+    const sql = `
+      WITH last_transitions AS (
+        SELECT DISTINCT ON (order_number, to_status)
+          order_number, to_status, created_at
+        FROM warehouse_state_transitions
+        WHERE to_status = ANY($1)
+        ORDER BY order_number, to_status, created_at DESC
+      )
+      SELECT
+        ov.order_number,
+        ov.customer_name,
+        ov.estado_pedido,
+        COALESCE(
+          lt.created_at,
+          CASE WHEN ov.estado_pedido = 'hoja_impresa' THEN ov.printed_at END
+        ) AS entered_at,
+        et.horas_limite
+      FROM orders_validated ov
+      JOIN estado_thresholds et ON et.estado = ov.estado_pedido
+      LEFT JOIN last_transitions lt
+        ON lt.order_number = ov.order_number
+       AND lt.to_status = ov.estado_pedido
+      WHERE ov.estado_pedido = ANY($1)
+        AND COALESCE(
+              lt.created_at,
+              CASE WHEN ov.estado_pedido = 'hoja_impresa' THEN ov.printed_at END
+            ) IS NOT NULL
+    `;
+    const { rows } = await pool.query(sql, [ESTADOS_DEPO]);
+
+    // 2) Calcular horas hábiles en JS y filtrar contra el threshold por estado.
+    const now = new Date();
+    const items = [];
+    for (const row of rows) {
+      const horas = horasHabilesBanner(row.entered_at, now);
+      const limite = Number(row.horas_limite);
+      if (horas > limite) {
+        items.push({
+          order_number: row.order_number,
+          customer_name: row.customer_name,
+          estado_pedido: row.estado_pedido,
+          entered_at: row.entered_at,
+          horas_habiles: Number(horas.toFixed(2)),
+          threshold_horas: limite,
+        });
+      }
+    }
+
+    // Más demorado primero.
+    items.sort((a, b) => (b.horas_habiles - b.threshold_horas) - (a.horas_habiles - a.threshold_horas));
+
+    res.json({ count: items.length, items });
+  } catch (err) {
+    console.error('❌ GET /admin/deposito/pedidos-demorados error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /thresholds ──────────────────────────────────────
+router.get('/thresholds', requirePermission('deposito.gestionar_empleados'), async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT estado, horas_limite, updated_at, updated_by_user_id
+         FROM estado_thresholds
+        ORDER BY array_position($1::text[], estado)`,
+      [ESTADOS_DEPO]
+    );
+    res.json({ rows: r.rows });
+  } catch (err) {
+    console.error('❌ GET /admin/deposito/thresholds error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── PUT /thresholds/:estado ──────────────────────────────
+router.put('/thresholds/:estado', requirePermission('deposito.gestionar_empleados'), async (req, res) => {
+  try {
+    const { estado } = req.params;
+    if (!ESTADOS_DEPO.includes(estado)) {
+      return res.status(400).json({ error: `Estado inválido: ${estado}` });
+    }
+
+    const horasLimite = Number(req.body?.horas_limite);
+    if (!Number.isFinite(horasLimite) || horasLimite <= 0) {
+      return res.status(400).json({ error: 'horas_limite debe ser un número > 0' });
+    }
+
+    const prev = await pool.query(
+      'SELECT horas_limite FROM estado_thresholds WHERE estado = $1',
+      [estado]
+    );
+    if (prev.rowCount === 0) {
+      return res.status(404).json({ error: `Estado no configurado: ${estado}` });
+    }
+    const prevHoras = Number(prev.rows[0].horas_limite);
+
+    const r = await pool.query(
+      `UPDATE estado_thresholds
+          SET horas_limite = $1,
+              updated_at = NOW(),
+              updated_by_user_id = $2
+        WHERE estado = $3
+        RETURNING estado, horas_limite, updated_at, updated_by_user_id`,
+      [horasLimite, req.user?.id || null, estado]
+    );
+
+    await logEvento({
+      accion: `threshold_actualizado: ${estado} ${prevHoras}h → ${horasLimite}h`,
+      origen: 'deposito-admin',
+      userId: req.user?.id || null,
+      username: req.user?.email || null,
+    });
+
+    res.json({ row: r.rows[0] });
+  } catch (err) {
+    console.error('❌ PUT /admin/deposito/thresholds/:estado error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
