@@ -283,3 +283,25 @@ export async function fetchRevisionErrors(desde?: string, hasta?: string): Promi
   if (!r.ok) throw new Error(`Error ${r.status} al cargar errores de revisión`);
   return r.json();
 }
+
+// ─── Banner pedidos demorados ──────────────────────────────
+
+export interface PedidoDemoradoRow {
+  order_number: string;
+  customer_name: string | null;
+  estado_pedido: string;
+  entered_at: string;
+  horas_habiles: number;
+  threshold_horas: number;
+}
+
+export interface PedidosDemoradosResponse {
+  count: number;
+  items: PedidoDemoradoRow[];
+}
+
+export async function fetchPedidosDemorados(): Promise<PedidosDemoradosResponse> {
+  const r = await authFetch(`${API_BASE_URL}/admin/deposito/pedidos-demorados`);
+  if (!r.ok) throw new Error(`Error ${r.status} al cargar pedidos demorados`);
+  return r.json();
+}

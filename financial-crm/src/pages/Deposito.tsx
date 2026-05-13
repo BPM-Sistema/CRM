@@ -10,11 +10,11 @@
  * Click en pedido → navega al detalle. Click en empleado → filtra por él.
  */
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, type ReactNode } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { format, parseISO, subDays, startOfDay, endOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Users, AlertTriangle, Bug } from 'lucide-react';
+import { Users, AlertTriangle, Bug, AlertOctagon, ChevronDown, ChevronUp, Clock } from 'lucide-react';
 import { Header } from '../components/layout';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -22,10 +22,12 @@ import {
   fetchMetrics,
   fetchEmployees,
   fetchStockIssues,
+  fetchPedidosDemorados,
   TransitionRow,
   EmployeeRow,
   DepositoFilters,
   DepositoMetrics,
+  PedidoDemoradoRow,
 } from '../services/deposito-api';
 
 const TRANSITIONS_OPTIONS: { value: string; label: string }[] = [
@@ -44,6 +46,17 @@ const TRANSITIONS_OPTIONS: { value: string; label: string }[] = [
 
 const TRANSITION_LABELS: Record<string, string> =
   Object.fromEntries(TRANSITIONS_OPTIONS.map(t => [t.value, t.label]));
+
+// Labels para el banner de demorados. Incluye hoja_impresa (que no es una
+// transición del depo y por eso no está en TRANSITIONS_OPTIONS).
+const ESTADO_DEPO_LABELS: Record<string, string> = {
+  hoja_impresa:    'Hoja Impresa',
+  en_preparacion:  'En Preparación',
+  en_revision:     'En Revisión',
+  pendiente_stock: 'Pend. Stock',
+  por_empaquetar:  'Por Empaquetar',
+  empaquetado:     'Empaquetado',
+};
 
 const SOURCE_BADGE: Record<string, { label: string; cls: string }> = {
   qr:           { label: 'QR',      cls: 'bg-indigo-100 text-indigo-700' },
@@ -100,6 +113,8 @@ export function Deposito() {
   const [pages, setPages] = useState(1);
   const [metrics, setMetrics] = useState<DepositoMetrics | null>(null);
   const [openIssuesCount, setOpenIssuesCount] = useState(0);
+  const [demorados, setDemorados] = useState<PedidoDemoradoRow[]>([]);
+  const [demoradosExpanded, setDemoradosExpanded] = useState(false);
 
   // Estado UI.
   const [page, setPage] = useState(1);
@@ -155,6 +170,9 @@ export function Deposito() {
     fetchStockIssues({ status: 'open' }, { page: 1, limit: 1 })
       .then(r => setOpenIssuesCount(r.open_count))
       .catch(() => {});
+    fetchPedidosDemorados()
+      .then(r => setDemorados(r.items))
+      .catch(() => {});
   }, [canView]);
 
   useEffect(() => {
@@ -203,38 +221,42 @@ export function Deposito() {
       <Header
         title="Depósito"
         subtitle="Actividad del depo y métricas"
-        actions={
-          <div className="flex items-center gap-2">
-            <Link
-              to="/deposito/stock-issues"
-              className="relative flex items-center gap-2 px-3 py-2 text-sm bg-neutral-100 hover:bg-neutral-200 rounded-lg"
-            >
-              <AlertTriangle size={16} /> Stock Pendientes
-              {openIssuesCount > 0 && (
-                <span className="ml-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-amber-500 text-white text-xs font-bold">
-                  {openIssuesCount}
-                </span>
-              )}
-            </Link>
-            <Link
-              to="/deposito/errores"
-              className="flex items-center gap-2 px-3 py-2 text-sm bg-neutral-100 hover:bg-neutral-200 rounded-lg"
-            >
-              <Bug size={16} /> Errores
-            </Link>
-            {canManageEmployees && (
-              <Link
-                to="/deposito/empleados"
-                className="flex items-center gap-2 px-3 py-2 text-sm bg-neutral-100 hover:bg-neutral-200 rounded-lg"
-              >
-                <Users size={16} /> Empleados
-              </Link>
-            )}
-          </div>
-        }
       />
 
       <div className="p-4 space-y-4">
+        {/* Banner pedidos demorados (solo si hay) */}
+        {demorados.length > 0 && (
+          <DemoradosBanner
+            items={demorados}
+            expanded={demoradosExpanded}
+            onToggle={() => setDemoradosExpanded(v => !v)}
+            onPedidoClick={n => navigate(`/orders/${n}`)}
+          />
+        )}
+
+        {/* Tarjetas-acceso (alargadas, diferenciadas de las métricas) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          <AccesoCard
+            to="/deposito/stock-issues"
+            icon={<AlertTriangle size={22} />}
+            label="Stock Pendientes"
+            badge={openIssuesCount > 0 ? openIssuesCount : undefined}
+            badgeClass="bg-amber-500"
+          />
+          <AccesoCard
+            to="/deposito/errores"
+            icon={<Bug size={22} />}
+            label="Errores"
+          />
+          {canManageEmployees && (
+            <AccesoCard
+              to="/deposito/empleados"
+              icon={<Users size={22} />}
+              label="Empleados"
+            />
+          )}
+        </div>
+
         {/* Métricas */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <MetricBox label="Empaquetados" value={metrics?.empaquetados ?? 0} />
@@ -501,4 +523,123 @@ function MetricBox({ label, value, hint, small }: MetricBoxProps) {
       {hint && <p className="text-xs text-neutral-400 mt-1">{hint}</p>}
     </div>
   );
+}
+
+// ─── Tarjeta-acceso ────────────────────────────────────────
+// Layout horizontal (icono + label), bien diferenciada visualmente de las
+// MetricBox (que son verticales con número grande). Va en una fila aparte
+// arriba de las métricas.
+interface AccesoCardProps {
+  to: string;
+  icon: ReactNode;
+  label: string;
+  badge?: number;
+  badgeClass?: string;
+}
+
+function AccesoCard({ to, icon, label, badge, badgeClass = 'bg-indigo-500' }: AccesoCardProps) {
+  return (
+    <Link
+      to={to}
+      className="flex items-center gap-3 bg-white rounded-2xl shadow-sm px-4 py-3 hover:bg-neutral-50 transition-colors border border-transparent hover:border-neutral-200"
+    >
+      <span className="flex-shrink-0 w-10 h-10 rounded-xl bg-neutral-100 text-neutral-700 flex items-center justify-center">
+        {icon}
+      </span>
+      <span className="flex-1 font-semibold text-neutral-800">{label}</span>
+      {badge !== undefined && badge > 0 && (
+        <span className={`inline-flex items-center justify-center min-w-[1.5rem] h-6 px-2 rounded-full text-white text-xs font-bold ${badgeClass}`}>
+          {badge}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+// ─── Banner pedidos demorados ──────────────────────────────
+interface DemoradosBannerProps {
+  items: PedidoDemoradoRow[];
+  expanded: boolean;
+  onToggle: () => void;
+  onPedidoClick: (orderNumber: string) => void;
+}
+
+function DemoradosBanner({ items, expanded, onToggle, onPedidoClick }: DemoradosBannerProps) {
+  const count = items.length;
+  return (
+    <div className="rounded-2xl border border-red-200 bg-red-50 overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-red-100/60 transition-colors"
+      >
+        <AlertOctagon size={22} className="flex-shrink-0 text-red-600" />
+        <span className="flex-1 text-left font-semibold text-red-800">
+          {count} {count === 1 ? 'pedido demorado' : 'pedidos demorados'} en el depo
+        </span>
+        <span className="flex items-center gap-1 text-sm text-red-700">
+          {expanded ? 'Ocultar' : 'Ver'}
+          {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-red-200 bg-white overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-red-50/50 border-b border-red-100">
+              <tr>
+                <th className="px-4 py-2 text-left font-semibold text-neutral-600">Pedido</th>
+                <th className="px-4 py-2 text-left font-semibold text-neutral-600">Cliente</th>
+                <th className="px-4 py-2 text-left font-semibold text-neutral-600">Estado</th>
+                <th className="px-4 py-2 text-right font-semibold text-neutral-600">Tiempo</th>
+                <th className="px-4 py-2 text-right font-semibold text-neutral-600">Tope</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(row => {
+                const exceso = row.horas_habiles - row.threshold_horas;
+                return (
+                  <tr key={row.order_number} className="border-b border-neutral-100 hover:bg-neutral-50">
+                    <td className="px-4 py-2">
+                      <button
+                        onClick={() => onPedidoClick(row.order_number)}
+                        className="text-indigo-600 hover:underline font-mono"
+                      >
+                        #{row.order_number}
+                      </button>
+                    </td>
+                    <td className="px-4 py-2 text-neutral-700">
+                      {row.customer_name || <span className="text-neutral-400 italic">—</span>}
+                    </td>
+                    <td className="px-4 py-2 text-neutral-700">
+                      {ESTADO_DEPO_LABELS[row.estado_pedido] || row.estado_pedido}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <span className="inline-flex items-center gap-1 text-red-700 font-semibold">
+                        <Clock size={14} />
+                        {formatHoras(row.horas_habiles)}
+                      </span>
+                      <span className="ml-1 text-xs text-red-500">(+{formatHoras(exceso)})</span>
+                    </td>
+                    <td className="px-4 py-2 text-right text-neutral-500">
+                      {formatHoras(row.threshold_horas)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatHoras(h: number): string {
+  if (h >= 24) {
+    const dias = Math.floor(h / 24);
+    const resto = Math.round(h - dias * 24);
+    return resto === 0 ? `${dias}d` : `${dias}d ${resto}h`;
+  }
+  return `${Math.round(h * 10) / 10}h`;
 }
