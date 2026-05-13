@@ -112,25 +112,25 @@ describe('Financial Consistency', () => {
       })).toBe('a_imprimir');
     });
 
-    test('Via Cargo NO avanza sin datos cargados aunque pago sea total', () => {
+    test('Via Cargo va a pendiente_datos_envio si pago OK pero faltan datos', () => {
       expect(calcularEstadoPedido('confirmado_total', 'pendiente_pago', {
         shippingType: 'Via Cargo',
         hasShippingRequest: false,
-      })).toBe('pendiente_pago');
+      })).toBe('pendiente_datos_envio');
     });
 
-    test('Via Cargo NO avanza con confirmado_parcial', () => {
+    test('Via Cargo NO avanza con confirmado_parcial (faltaría pago completo)', () => {
       expect(calcularEstadoPedido('confirmado_parcial', 'pendiente_pago', {
         shippingType: 'Via Cargo',
         hasShippingRequest: true,
       })).toBe('pendiente_pago');
     });
 
-    test('Expreso a elección NO avanza sin datos', () => {
+    test('Expreso a elección va a pendiente_datos_envio si pago OK sin datos', () => {
       expect(calcularEstadoPedido('confirmado_total', 'pendiente_pago', {
         shippingType: 'Expreso a elección',
         hasShippingRequest: false,
-      })).toBe('pendiente_pago');
+      })).toBe('pendiente_datos_envio');
     });
 
     // Otros envíos (Envío Nube, etc.): exige confirmado_total/a_favor, no formulario
@@ -173,6 +173,42 @@ describe('Financial Consistency', () => {
 
     test('does not regress from enviado', () => {
       expect(calcularEstadoPedido('pendiente', 'enviado')).toBe('enviado');
+    });
+
+    // Estado pendiente_datos_envio como punto de cómputo (2026-05-13)
+    describe('pendiente_datos_envio (pre-imprimir)', () => {
+      test('retrocede a pendiente_pago si el pago se anula', () => {
+        expect(calcularEstadoPedido('anulado', 'pendiente_datos_envio', {
+          shippingType: 'Via Cargo',
+          hasShippingRequest: false,
+        })).toBe('pendiente_pago');
+      });
+
+      test('retrocede a pendiente_pago si el pago vuelve a pendiente', () => {
+        expect(calcularEstadoPedido('pendiente', 'pendiente_datos_envio', {
+          shippingType: 'Via Cargo',
+          hasShippingRequest: false,
+        })).toBe('pendiente_pago');
+      });
+
+      test('avanza a a_imprimir cuando se cargan los datos (con pago OK)', () => {
+        expect(calcularEstadoPedido('confirmado_total', 'pendiente_datos_envio', {
+          shippingType: 'Via Cargo',
+          hasShippingRequest: true,
+        })).toBe('a_imprimir');
+      });
+
+      test('se queda en pendiente_datos_envio si pago OK pero siguen faltando datos', () => {
+        expect(calcularEstadoPedido('confirmado_total', 'pendiente_datos_envio', {
+          shippingType: 'Via Cargo',
+          hasShippingRequest: false,
+        })).toBe('pendiente_datos_envio');
+      });
+
+      test('sin contexto, no se mueve', () => {
+        expect(calcularEstadoPedido('confirmado_total', 'pendiente_datos_envio'))
+          .toBe('pendiente_datos_envio');
+      });
     });
   });
 

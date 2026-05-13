@@ -37,19 +37,29 @@ async function calcularTotalPagado(orderNumber) {
 /* =====================================================
    UTIL — CALCULAR ESTADO PEDIDO (centralizado)
 
-   Regla de transicion pendiente_pago -> a_imprimir (segun tipo de envio):
-   - Retiro (pickup/retiro/deposito): estado_pago in (confirmado_parcial, confirmado_total, a_favor)
-   - Via Cargo / Expreso a eleccion: estado_pago in (confirmado_total, a_favor) AND shipping_request cargado
-   - Resto (Envio Nube, etc.): estado_pago in (confirmado_total, a_favor)
+   Modelo de bloqueos pre-imprimir: hay dos estados que pueden bloquear un
+   pedido antes de a_imprimir, según qué le falta:
+   - pendiente_pago         → falta confirmar el pago
+   - pendiente_datos_envio  → pago OK, falta el formulario de envío (Vía Cargo
+                              y similares)
+
+   Regla de transicion a a_imprimir (segun tipo de envio):
+   - Retiro (pickup/retiro/deposito): estado_pago in (confirmado_parcial,
+     confirmado_total, a_favor). No requiere datos extra.
+   - Via Cargo / Expreso a eleccion: estado_pago in (confirmado_total, a_favor)
+     AND shipping_request cargado. Si falta el pago → pendiente_pago. Si está
+     el pago pero falta el form → pendiente_datos_envio.
+   - Resto (Envio Nube, etc.): estado_pago in (confirmado_total, a_favor).
 
    Sin el contexto { shippingType, hasShippingRequest } la funcion es conservadora:
-   NO avanza a a_imprimir aunque el pago habilite. Asi obligamos a los callers
-   nuevos a pasar el contexto y evitamos que un caller viejo accidentalmente
-   pase pedidos Via Cargo sin datos a a_imprimir.
+   NO mueve el estado. Asi obligamos a los callers nuevos a pasar el contexto.
 
    Regla de retroceso (independiente del envio):
-   - si estado_pago queda en ('pendiente','anulado'), a_imprimir retrocede a pendiente_pago
-   - estados posteriores (hoja_impresa, empaquetado, retirado, en_calle, enviado) no retroceden
+   - si estado_pago queda en ('pendiente','anulado'), a_imprimir y
+     pendiente_datos_envio retroceden a pendiente_pago. Razon: significa que
+     ni siquiera se imprimio el pedido, no hay trabajo fisico que respetar.
+   - estados posteriores (hoja_impresa, empaquetado, retirado, en_calle,
+     enviado) NO retroceden porque ya hubo trabajo fisico.
 ===================================================== */
 // Mantenido por compatibilidad con codigo que importa la constante.
 // La logica de habilitacion ahora vive dentro de calcularEstadoPedido y depende del tipo de envio.
@@ -59,35 +69,47 @@ const ESTADOS_PAGO_BLOQUEAN_IMPRIMIR = ['pendiente', 'anulado'];
 const ESTADOS_PAGO_RETIRO_OK = ['confirmado_parcial', 'confirmado_total', 'a_favor'];
 const ESTADOS_PAGO_ENVIO_OK = ['confirmado_total', 'a_favor'];
 
+// Estados pre-imprimir que se recalculan según pago + contexto de envío.
+// Cualquier estado fuera de esta lista es "avanzado" y no se mueve.
+const ESTADOS_RECALCULABLES = ['pendiente_pago', 'pendiente_datos_envio', 'a_imprimir'];
+
 function calcularEstadoPedido(estadoPago, estadoPedidoActual, ctx = {}) {
-  // Si el pago queda invalido y el pedido todavia no se imprimio, retrocede a pendiente_pago.
-  // Solo aplica a a_imprimir: estados posteriores (hoja_impresa+) no retroceden porque ya hubo trabajo fisico.
-  if (estadoPedidoActual === 'a_imprimir' && ESTADOS_PAGO_BLOQUEAN_IMPRIMIR.includes(estadoPago)) {
+  // 1. Retroceso si el pago se anula y el pedido todavía no se imprimió.
+  //    Aplica tanto a a_imprimir como a pendiente_datos_envio (ambos están
+  //    "antes" del trabajo físico).
+  if ((estadoPedidoActual === 'a_imprimir' || estadoPedidoActual === 'pendiente_datos_envio')
+      && ESTADOS_PAGO_BLOQUEAN_IMPRIMIR.includes(estadoPago)) {
     return 'pendiente_pago';
   }
 
-  // Si ya avanzo mas alla de pendiente_pago (y no aplica el retroceso de arriba), no retroceder
-  if (estadoPedidoActual !== 'pendiente_pago') {
+  // 2. Estados avanzados (hoja_impresa+) no se recalculan.
+  if (!ESTADOS_RECALCULABLES.includes(estadoPedidoActual)) {
     return estadoPedidoActual;
   }
 
+  // 3. Re-evaluación según pago + tipo de envío + datos cargados.
   const { shippingType, hasShippingRequest } = ctx;
   if (shippingType === undefined) {
-    // Caller no paso contexto: ser conservador y no avanzar.
-    return 'pendiente_pago';
+    // Caller no pasó contexto: ser conservador y no mover.
+    return estadoPedidoActual;
   }
 
+  return resolveEstadoInicial(estadoPago, shippingType, hasShippingRequest === true);
+}
+
+// Mapea (estadoPago, tipoEnvio, hasShippingRequest) → estado inicial canónico:
+// pendiente_pago | pendiente_datos_envio | a_imprimir.
+function resolveEstadoInicial(estadoPago, shippingType, hasShippingRequest) {
   if (isPickupShipping(shippingType)) {
     return ESTADOS_PAGO_RETIRO_OK.includes(estadoPago) ? 'a_imprimir' : 'pendiente_pago';
   }
 
   if (requiresShippingForm(shippingType)) {
-    return (ESTADOS_PAGO_ENVIO_OK.includes(estadoPago) && hasShippingRequest === true)
-      ? 'a_imprimir'
-      : 'pendiente_pago';
+    if (!ESTADOS_PAGO_ENVIO_OK.includes(estadoPago)) return 'pendiente_pago';
+    return hasShippingRequest ? 'a_imprimir' : 'pendiente_datos_envio';
   }
 
-  // Resto de envios (Envio Nube, etc.): exige pago total/a_favor, no formulario.
+  // Resto (Envío Nube, etc.): solo exige pago total/a_favor.
   return ESTADOS_PAGO_ENVIO_OK.includes(estadoPago) ? 'a_imprimir' : 'pendiente_pago';
 }
 

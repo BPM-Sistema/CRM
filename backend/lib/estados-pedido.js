@@ -46,13 +46,20 @@ const ESTADOS = [
 // Orden jerárquico para "no retroceder" en sync TN→BPM.
 // Estados terminales (en_calle/enviado/retirado) comparten nivel 4 — son rama final.
 // Los estados nuevos comparten niveles según etapa lógica:
+//   0.5:     pendiente_datos_envio (bloqueo pre-imprimir, pago OK pero falta form)
 //   3.0–3.9: depo (preparación, stock, revisión, listo para empaquetar)
 //   4.0:     empaquetado
 //   4.5–4.9: esperando algo del cliente o del transportista
 //   5+:      en calle / enviado / retirado
 // cancelado=99 evita que cualquier sync lo pise sin intención explícita.
+//
+// 2026-05-13: pendiente_datos_envio bajó de 4.5 a 0.5. En el modelo nuevo se
+// usa como bloqueo ANTES de a_imprimir (Vía Cargo + pago OK + sin datos), no
+// post-empaquetado como originalmente. No afecta sync TN→BPM porque este
+// estado no se sincroniza con TiendaNube (ver ESTADO_TN_MAP).
 const ESTADO_PEDIDO_ORDER = {
   pendiente_pago:        0,
+  pendiente_datos_envio: 0.5,
   a_imprimir:            1,
   hoja_impresa:          2,
   en_preparacion:        3.0,
@@ -60,7 +67,6 @@ const ESTADO_PEDIDO_ORDER = {
   en_revision:           3.5,
   por_empaquetar:        3.8,
   empaquetado:           4.0,
-  pendiente_datos_envio: 4.5,
   pendiente_retiro:      4.7,
   por_enviar:            4.7,
   en_calle:              5.0,
@@ -152,37 +158,22 @@ function requiresShippingForm(shipping_type) {
 
 /**
  * Dado un pedido en `empaquetado` con pago confirmado, deriva el siguiente
- * estado según método de envío y disponibilidad de datos.
+ * estado según método de envío.
  *
  * - Retiro                         → 'pendiente_retiro'
- * - Envío + datos cargados         → 'por_enviar'
- * - Envío + sin datos              → 'pendiente_datos_envio'
+ * - Envío                          → 'por_enviar'
  *
- * Si no se debería derivar (caso impossible), devuelve 'empaquetado' (no-op).
+ * 2026-05-13: la rama "envío + sin datos → pendiente_datos_envio" se eliminó.
+ * En el modelo nuevo, los datos del envío se exigen ANTES de a_imprimir, no
+ * post-empaquetado. Si un pedido llega a empaquetado ya tiene datos
+ * cargados (o es retiro). Sigue devolviendo 'empaquetado' como no-op si el
+ * caller llama con un caso impossible.
  */
-function derivarEstadoDesdeEmpaquetado({ shipping_type, empresa_envio, shipping_carrier, has_shipping_request } = {}) {
+function derivarEstadoDesdeEmpaquetado({ shipping_type, empresa_envio, shipping_carrier } = {}) {
   if (esRetiro({ shipping_type, empresa_envio, shipping_carrier })) {
     return 'pendiente_retiro';
   }
-  // Es envío.
-  if (requiresShippingForm(shipping_type) && !has_shipping_request) {
-    return 'pendiente_datos_envio';
-  }
   return 'por_enviar';
-}
-
-/**
- * Dado un pedido en `pendiente_datos_envio` al que se le acaban de cargar
- * los datos, decide a dónde mover según el estado de pago.
- *
- * - Pago confirmado total / a_favor → 'por_enviar'
- * - Pago pendiente / parcial / etc  → 'empaquetado'
- */
-function derivarEstadoTrasCargarDatos(estado_pago) {
-  if (estado_pago === 'confirmado_total' || estado_pago === 'a_favor') {
-    return 'por_enviar';
-  }
-  return 'empaquetado';
 }
 
 function isEstadoValido(s) {
@@ -202,7 +193,6 @@ module.exports = {
   esRetiro,
   requiresShippingForm,
   derivarEstadoDesdeEmpaquetado,
-  derivarEstadoTrasCargarDatos,
   isEstadoValido,
   accionParaEstado,
 };

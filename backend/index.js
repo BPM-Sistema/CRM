@@ -53,7 +53,7 @@ const { verificarConsistencia, getInconsistencias } = require('./utils/orderVeri
 const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crearNotificacion, notificarUsuariosConPermiso } = require('./utils/notifications');
 const { enviarWhatsAppPlantilla } = require('./lib/whatsapp-helpers');
 const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, isForbiddenCarrier, normalizePhoneForComparison, mapShippingToEstadoPedido } = require('./lib/payment-helpers');
-const { ESTADOS, ACCIONES_LOG, ESTADO_PERMISOS, accionParaEstado, derivarEstadoDesdeEmpaquetado, derivarEstadoTrasCargarDatos } = require('./lib/estados-pedido');
+const { ESTADOS, ACCIONES_LOG, ESTADO_PERMISOS, accionParaEstado, derivarEstadoDesdeEmpaquetado } = require('./lib/estados-pedido');
 const { recalcularPagos } = require('./lib/recalcularPagos');
 const { reopenIfCancelled } = require('./lib/reopenIfCancelled');
 const { syncEstadoToTN, sincronizarEstadoTiendanube } = require('./lib/tn-sync');
@@ -7509,34 +7509,14 @@ app.post('/shipping-data', shippingFormLimiter, async (req, res) => {
       console.log(`⚠️  Pedido ${sanitizedOrderNumber}: datos modificados después de imprimir etiqueta`);
     }
 
-    // Trigger B (Fase 1 PR 3): si el pedido estaba en `pendiente_datos_envio`,
-    // ahora que tiene datos cargados podemos avanzar — a `por_enviar` si el
-    // pago ya está confirmado, o a `empaquetado` si aún falta pago. Se hace
-    // después del UPSERT para garantizar que los datos quedaron persistidos.
+    // Trigger B: tras cargar los datos del envío, recalculamos el estado.
+    // En el modelo nuevo (2026-05-13), un pedido Vía Cargo con pago OK pero
+    // sin form queda en `pendiente_datos_envio`; al cargar los datos,
+    // recalcularPagos lo lleva a `a_imprimir`. También cubre el caso menos
+    // común de un pedido en `pendiente_pago` (sin pago) cuyo recálculo no va
+    // a mover el estado pero sí refresca derivaciones colaterales.
     try {
-      const stateRes = await pool.query(
-        `SELECT estado_pedido, estado_pago FROM orders_validated WHERE order_number = $1`,
-        [sanitizedOrderNumber]
-      );
-      const ord = stateRes.rows[0];
-      if (ord && ord.estado_pedido === 'pendiente_datos_envio') {
-        const nuevoEstado = derivarEstadoTrasCargarDatos(ord.estado_pago);
-        await pool.query(
-          `UPDATE orders_validated SET estado_pedido = $1 WHERE order_number = $2`,
-          [nuevoEstado, sanitizedOrderNumber]
-        );
-        await logEvento({
-          orderNumber: sanitizedOrderNumber,
-          accion: accionParaEstado(nuevoEstado),
-          origen: 'trigger_auto_datos',
-        });
-      } else if (ord && ord.estado_pedido === 'pendiente_pago') {
-        // Trigger C: con la regla nueva, un Via Cargo / Expreso a eleccion
-        // con pago confirmado_total/a_favor queda en pendiente_pago hasta
-        // que el cliente cargue datos. Al cargarlos, recalcularPagos reevalua
-        // y avanza a a_imprimir si corresponde.
-        await recalcularPagos(pool, sanitizedOrderNumber);
-      }
+      await recalcularPagos(pool, sanitizedOrderNumber);
     } catch (e) {
       // Trigger fire-and-forget: si falla no rompe la respuesta al cliente.
       console.error('⚠️ Trigger B (datos envío) falló:', e.message);
@@ -7657,26 +7637,10 @@ app.post('/shipping-data/bulk', authenticate, async (req, res) => {
           created_at: result.rows[0].created_at
         });
 
-        // Trigger B (Fase 1 PR 3): mismo que en POST /shipping-data, replicado
-        // por cada pedido del bulk. Si estaba en pendiente_datos_envio, derivar.
+        // Trigger B (bulk): replica el comportamiento de POST /shipping-data.
+        // recalcularPagos lleva el estado al correcto según pago + datos.
         try {
-          const stateRes = await pool.query(
-            `SELECT estado_pedido, estado_pago FROM orders_validated WHERE order_number = $1`,
-            [sanitizedOrderNumber]
-          );
-          const ord = stateRes.rows[0];
-          if (ord && ord.estado_pedido === 'pendiente_datos_envio') {
-            const nuevoEstado = derivarEstadoTrasCargarDatos(ord.estado_pago);
-            await pool.query(
-              `UPDATE orders_validated SET estado_pedido = $1 WHERE order_number = $2`,
-              [nuevoEstado, sanitizedOrderNumber]
-            );
-            await logEvento({
-              orderNumber: sanitizedOrderNumber,
-              accion: accionParaEstado(nuevoEstado),
-              origen: 'trigger_auto_datos',
-            });
-          }
+          await recalcularPagos(pool, sanitizedOrderNumber);
         } catch (e) {
           console.error(`⚠️ Trigger B (bulk) falló para ${sanitizedOrderNumber}:`, e.message);
         }
@@ -9669,6 +9633,35 @@ setInterval(async () => {
 
     for (const msg of pending.rows) {
       try {
+        // Guard aviso_pendiente_datos_envio: solo mandar si el pedido sigue
+        // en pendiente_datos_envio. Si cargó datos (→ a_imprimir o más
+        // adelante) o se canceló, descartar.
+        if (msg.plantilla === 'aviso_pendiente_datos_envio' && msg.order_number) {
+          const gr = await pool.query(
+            `SELECT estado_pedido FROM orders_validated WHERE order_number = $1`,
+            [String(msg.order_number)]
+          );
+          const ord = gr.rows[0];
+          const motivo = !ord
+            ? 'pedido no encontrado'
+            : ord.estado_pedido !== 'pendiente_datos_envio'
+              ? `estado=${ord.estado_pedido}`
+              : null;
+          if (motivo) {
+            await pool.query(
+              `UPDATE scheduled_whatsapp SET error = $1 WHERE id = $2`,
+              [`discarded: ${motivo}`, msg.id]
+            );
+            await logEvento({
+              orderNumber: String(msg.order_number),
+              accion: `aviso_pendiente_datos_envio descartado: ${motivo}`,
+              origen: 'sistema',
+            }).catch(() => {});
+            console.log(`⏰⤴️  aviso_pendiente_datos_envio descartado pedido #${msg.order_number} (${motivo})`);
+            continue;
+          }
+        }
+
         // Guard recordatorios pendientes (pendiente_3hs, pendiente_10hs): descarta
         // si el cliente ya cargó comprobante, si el pago no está más pendiente o si
         // el pedido fue cancelado. Misma lógica para todos los pasos de la serie.
