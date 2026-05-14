@@ -21,6 +21,7 @@ const { pushOrderToImprimir } = require('./sheets-helpers');
 const { derivarEstadoDesdeEmpaquetado, accionParaEstado } = require('./estados-pedido');
 const { logEvento } = require('../utils/logging');
 const { notifyEstadoTransition } = require('./notify-estado-transition');
+const { pagoAlcanzaParaDespachar } = require('./shipping-requirements');
 
 async function recalcularPagos(clientOrPool, orderNumber, opts = {}) {
   const tolerancia = opts.tolerancia ?? 1000;
@@ -109,13 +110,12 @@ async function recalcularPagos(clientOrPool, orderNumber, opts = {}) {
     setImmediate(() => { pushOrderToImprimir(orderNumber); });
   }
 
-  // Trigger A: si el pedido quedó en `empaquetado` con pago confirmado,
-  // avanza solo a `pendiente_retiro` / `por_enviar` / `pendiente_datos_envio`.
-  // Razón: el modelo nuevo de Fase 1 PR 3 hace que la oficina no tenga que
-  // cambiar el estado manualmente cuando se confirma el pago — el sistema
-  // lo deriva según método y datos de envío.
+  // Trigger A: si el pedido quedó en `empaquetado` y el pago alcanza para
+  // despachar según el método, avanza solo a `pendiente_retiro` / `por_enviar`.
+  // Retiro acepta pago parcial; envío exige pago total. Reglas en
+  // lib/shipping-requirements.js.
   let estadoFinal = estadoPedido;
-  if (estadoPedido === 'empaquetado' && (estadoPago === 'confirmado_total' || estadoPago === 'a_favor')) {
+  if (estadoPedido === 'empaquetado' && pagoAlcanzaParaDespachar(estadoPago, row.shipping_type)) {
     const ctx = await clientOrPool.query(`
       SELECT
         ov.shipping_type,

@@ -55,6 +55,7 @@ const { enviarWhatsAppPlantilla } = require('./lib/whatsapp-helpers');
 const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, isForbiddenCarrier, normalizePhoneForComparison, mapShippingToEstadoPedido } = require('./lib/payment-helpers');
 const { ESTADOS, ACCIONES_LOG, ESTADO_PERMISOS, accionParaEstado, derivarEstadoDesdeEmpaquetado } = require('./lib/estados-pedido');
 const { recalcularPagos } = require('./lib/recalcularPagos');
+const { pagoAlcanzaParaDespachar } = require('./lib/shipping-requirements');
 const { reopenIfCancelled } = require('./lib/reopenIfCancelled');
 const { syncEstadoToTN, sincronizarEstadoTiendanube } = require('./lib/tn-sync');
 const { watermarkReceipt, isValidDestination, detectarFinancieraDesdeOCR } = require('./lib/comprobante-helpers');
@@ -3783,13 +3784,18 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
 
     const pedido = orderRes.rows[0];
 
-    // Validar reglas de negocio
-    // No se puede mover a estados de salida si el pago no está confirmado.
-    // Incluye los estados nuevos pendiente_retiro y por_enviar (Fase 1 PR 3):
-    // si bien el pedido puede llegar a esos estados solo vía trigger automático
-    // de pago confirmado, también validamos a nivel HTTP para que un PATCH
-    // manual no pueda forzar la combinación inválida.
-    if (['enviado', 'en_calle', 'retirado', 'pendiente_retiro', 'por_enviar'].includes(estado_pedido)) {
+    // Validar reglas de negocio.
+    // pendiente_retiro acepta pago parcial (cliente pagó seña y abona saldo
+    // al retirar). Los demás estados de salida (por_enviar / enviado / en_calle
+    // / retirado) exigen pago total o a_favor: envío sin pago completo no sale,
+    // y retirado solo se marca cuando el local cobró el total.
+    if (estado_pedido === 'pendiente_retiro') {
+      if (!pagoAlcanzaParaDespachar(pedido.estado_pago, pedido.shipping_type)) {
+        return res.status(400).json({
+          error: `No se puede avanzar a pendiente_retiro: el pago no alcanza (estado_pago=${pedido.estado_pago})`
+        });
+      }
+    } else if (['enviado', 'en_calle', 'retirado', 'por_enviar'].includes(estado_pedido)) {
       if (pedido.estado_pago !== 'confirmado_total' && pedido.estado_pago !== 'a_favor') {
         return res.status(400).json({
           error: 'No se puede avanzar el pedido a este estado sin pago confirmado'
@@ -3832,13 +3838,13 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
       [...updateValues, orderNumber]
     );
 
-    // Trigger A.2: si recién marcaron 'empaquetado' y el pago YA está confirmado,
-    // derivar inmediatamente al estado siguiente (pendiente_retiro / por_enviar /
-    // pendiente_datos_envio) según método y datos. Espejo del Trigger A.1 que
-    // vive en recalcularPagos (que se dispara cuando el pago cambia).
+    // Trigger A.2: si recién marcaron 'empaquetado' y el pago alcanza para
+    // despachar según el método, derivar a pendiente_retiro / por_enviar.
+    // Retiro acepta parcial; envío exige total. Reglas en
+    // lib/shipping-requirements.js. Espejo del Trigger A.1 (recalcularPagos).
     let estadoFinal = estado_pedido;
     if (estado_pedido === 'empaquetado' &&
-        (pedido.estado_pago === 'confirmado_total' || pedido.estado_pago === 'a_favor')) {
+        pagoAlcanzaParaDespachar(pedido.estado_pago, pedido.shipping_type)) {
       const ctx = await pool.query(`
         SELECT
           EXISTS (SELECT 1 FROM shipping_requests WHERE order_number = ov.order_number) AS has_shipping_request,

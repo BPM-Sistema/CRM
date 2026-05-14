@@ -9,6 +9,7 @@ const pool = require('../db');
 const { calcularEstadoCuenta } = require('../utils/calcularEstadoCuenta');
 const { normalizePhone } = require('../utils/phoneNormalize');
 const { ESTADO_PEDIDO_ORDER } = require('./estados-pedido');
+const { motivoBloqueoImpresion } = require('./shipping-requirements');
 
 /* =====================================================
    UTIL — CALCULAR TOTAL PAGADO
@@ -66,9 +67,6 @@ async function calcularTotalPagado(orderNumber) {
 const ESTADOS_PAGO_HABILITAN_IMPRIMIR = ['confirmado_total', 'confirmado_parcial', 'a_favor', 'a_confirmar'];
 const ESTADOS_PAGO_BLOQUEAN_IMPRIMIR = ['pendiente', 'anulado'];
 
-const ESTADOS_PAGO_RETIRO_OK = ['confirmado_parcial', 'confirmado_total', 'a_favor'];
-const ESTADOS_PAGO_ENVIO_OK = ['confirmado_total', 'a_favor'];
-
 // Estados pre-imprimir que se recalculan según pago + contexto de envío.
 // Cualquier estado fuera de esta lista es "avanzado" y no se mueve.
 const ESTADOS_RECALCULABLES = ['pendiente_pago', 'pendiente_datos_envio', 'a_imprimir'];
@@ -99,18 +97,12 @@ function calcularEstadoPedido(estadoPago, estadoPedidoActual, ctx = {}) {
 
 // Mapea (estadoPago, tipoEnvio, hasShippingRequest) → estado inicial canónico:
 // pendiente_pago | pendiente_datos_envio | a_imprimir.
+// Las reglas por método de envío viven en lib/shipping-requirements.js.
 function resolveEstadoInicial(estadoPago, shippingType, hasShippingRequest) {
-  if (isPickupShipping(shippingType)) {
-    return ESTADOS_PAGO_RETIRO_OK.includes(estadoPago) ? 'a_imprimir' : 'pendiente_pago';
-  }
-
-  if (requiresShippingForm(shippingType)) {
-    if (!ESTADOS_PAGO_ENVIO_OK.includes(estadoPago)) return 'pendiente_pago';
-    return hasShippingRequest ? 'a_imprimir' : 'pendiente_datos_envio';
-  }
-
-  // Resto (Envío Nube, etc.): solo exige pago total/a_favor.
-  return ESTADOS_PAGO_ENVIO_OK.includes(estadoPago) ? 'a_imprimir' : 'pendiente_pago';
+  const motivo = motivoBloqueoImpresion(estadoPago, shippingType, hasShippingRequest);
+  if (motivo === 'pago')  return 'pendiente_pago';
+  if (motivo === 'datos') return 'pendiente_datos_envio';
+  return 'a_imprimir';
 }
 
 /* =====================================================
@@ -288,8 +280,6 @@ module.exports = {
   calcularEstadoPedido,
   ESTADOS_PAGO_HABILITAN_IMPRIMIR,
   ESTADOS_PAGO_BLOQUEAN_IMPRIMIR,
-  ESTADOS_PAGO_RETIRO_OK,
-  ESTADOS_PAGO_ENVIO_OK,
   requiresShippingForm,
   isPickupShipping,
   isForbiddenCarrier,
