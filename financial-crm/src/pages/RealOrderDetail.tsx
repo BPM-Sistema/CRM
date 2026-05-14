@@ -15,7 +15,6 @@ import {
   Truck,
   MapPin,
   UserCheck,
-  Package,
   ShoppingBag,
   Download,
   Image,
@@ -57,7 +56,7 @@ import { es } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
 import {
   ORDER_STATUSES, STATUS_CONFIG,
-  puedeImprimirHoja, puedeReimprimirHoja, motivoBloqueoHoja,
+  puedeReimprimirHoja, motivoBloqueoHoja,
 } from '../constants/estadoPedido';
 
 export function RealOrderDetail() {
@@ -436,7 +435,11 @@ export function RealOrderDetail() {
   // Retiro en local (mismo criterio que esRetiro en backend/lib/estados-pedido.js).
   // Usado para la Card "Tipo Envío" de la columna derecha.
   const isPickupOrder = /pickup|retiro|deposito|depósito/i.test(order.shipping_type || '');
-  const canPrintInicial   = puedeImprimirHoja(orderStatus);
+  // En la UI distinguimos "imprimir inicial" (solo a_imprimir, sin motivo) de
+  // "re-imprimir" (resto de estados imprimibles, pide motivo). El backend en
+  // GET /print acepta hoja_impresa por idempotencia, pero acá no queremos
+  // mostrar el botón sin motivo cuando ya está impreso.
+  const canPrintInicial   = orderStatus === 'a_imprimir';
   const canReprint        = puedeReimprimirHoja(orderStatus);
   const printBlockReason  = motivoBloqueoHoja(orderStatus, order.shipping_type);
 
@@ -978,21 +981,11 @@ export function RealOrderDetail() {
                   </div>
                 ) : null}
 
-                {/* Acciones por estado (botones de transición, sin impresión) */}
-
-                {/* Hoja impresa → siguiente paso normal: marcar como empaquetado */}
-                {orderStatus === 'hoja_impresa' && (
-                  <Button
-                    variant="primary"
-                    className="w-full"
-                    size="lg"
-                    leftIcon={<Package size={18} />}
-                    onClick={() => handleUpdateOrderStatus('empaquetado')}
-                    disabled={isUpdatingStatus}
-                  >
-                    {isUpdatingStatus ? 'Procesando...' : 'Marcar como Empaquetado'}
-                  </Button>
-                )}
+                {/* Acciones por estado (botones de transición, sin impresión).
+                    El paso hoja_impresa → empaquetado ya no se hace desde acá:
+                    lo hace el QR del depo (mantiene trazabilidad de quién
+                    armó/empaquetó). Si hay que destrabarlo a mano, usar tester
+                    mode. */}
 
                 {/* Empaquetado: botones de despacho */}
                 {orderStatus === 'empaquetado' && (
