@@ -184,15 +184,77 @@ function accionParaEstado(estado) {
   return ACCIONES_LOG[estado] || `estado_${estado}`;
 }
 
+/**
+ * Estados que permiten emitir la hoja de pedido por primera vez (flujo
+ * GET /orders/:n/print). Solo a_imprimir (donde el operador imprime y se
+ * mueve a hoja_impresa) y hoja_impresa (idempotencia / reintentos del lote).
+ */
+const ESTADOS_IMPRIMIR_HOJA = ['a_imprimir', 'hoja_impresa'];
+
+/**
+ * Estados que permiten reimprimir la hoja con motivo (POST /orders/:n/reprint).
+ * El pedido NO cambia de estado al reimprimir.
+ */
+const ESTADOS_REIMPRIMIR_HOJA = [
+  'hoja_impresa', 'en_preparacion', 'en_revision',
+  'pendiente_stock', 'por_empaquetar', 'empaquetado',
+];
+
+function puedeImprimirHoja(estadoPedido) {
+  return ESTADOS_IMPRIMIR_HOJA.includes(estadoPedido);
+}
+
+function puedeReimprimirHoja(estadoPedido) {
+  return ESTADOS_REIMPRIMIR_HOJA.includes(estadoPedido);
+}
+
+/**
+ * Motivo en castellano del bloqueo de impresion/reimpresion, segun estado.
+ * Devuelve null si el pedido SI puede imprimirse o reimprimirse.
+ *
+ * Para pendiente_pago el texto distingue retiro vs envio:
+ *   - retiro: "no tiene ningun pago confirmado" (alcanza con parcial pero no hay nada).
+ *   - envio:  "no tiene el pago confirmado" (exige pago total).
+ */
+function motivoBloqueoHoja(estadoPedido, shippingType) {
+  if (puedeImprimirHoja(estadoPedido) || puedeReimprimirHoja(estadoPedido)) {
+    return null;
+  }
+  switch (estadoPedido) {
+    case 'pendiente_pago':
+      return esRetiro({ shipping_type: shippingType })
+        ? 'El pedido no tiene ningún pago confirmado.'
+        : 'El pedido todavía no tiene el pago confirmado.';
+    case 'pendiente_datos_envio':
+      return 'El cliente todavía no cargó los datos de envío.';
+    case 'cancelado':
+      return 'El pedido fue cancelado.';
+    case 'pendiente_retiro':
+    case 'por_enviar':
+      return 'El pedido ya está listo para despacho/retiro.';
+    case 'en_calle':
+    case 'enviado':
+    case 'retirado':
+      return 'El pedido ya fue despachado/retirado.';
+    default:
+      return 'El pedido no está en un estado que permita imprimir.';
+  }
+}
+
 module.exports = {
   ESTADOS,
   ESTADO_PEDIDO_ORDER,
   ESTADO_TN_MAP,
   ACCIONES_LOG,
   ESTADO_PERMISOS,
+  ESTADOS_IMPRIMIR_HOJA,
+  ESTADOS_REIMPRIMIR_HOJA,
   esRetiro,
   requiresShippingForm,
   derivarEstadoDesdeEmpaquetado,
   isEstadoValido,
   accionParaEstado,
+  puedeImprimirHoja,
+  puedeReimprimirHoja,
+  motivoBloqueoHoja,
 };
