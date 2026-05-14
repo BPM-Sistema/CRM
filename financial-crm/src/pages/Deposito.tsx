@@ -443,8 +443,8 @@ export function Deposito() {
                   <th className="px-4 py-3 text-left font-semibold text-neutral-600">Origen</th>
                 </tr>
               </thead>
-              <tbody>
-                {loading && (
+              <tbody className={loading && items.length > 0 ? 'opacity-50 transition-opacity' : 'transition-opacity'}>
+                {loading && items.length === 0 && (
                   <tr><td colSpan={5} className="px-4 py-8 text-center text-neutral-400">Cargando…</td></tr>
                 )}
                 {error && !loading && (
@@ -453,7 +453,7 @@ export function Deposito() {
                 {!loading && !error && items.length === 0 && (
                   <tr><td colSpan={5} className="px-4 py-8 text-center text-neutral-400">Sin transiciones para los filtros aplicados</td></tr>
                 )}
-                {!loading && items.map(row => {
+                {items.map(row => {
                   const source = SOURCE_BADGE[row.source] || { label: row.source, cls: 'bg-neutral-200 text-neutral-700' };
                   return (
                     <tr key={row.id} className="border-b border-neutral-100 hover:bg-neutral-50">
@@ -607,11 +607,69 @@ interface DemoradosBannerProps {
   onTopesToggle: () => void;
 }
 
+type DemoradosSortKey = 'order_number' | 'customer_name' | 'estado_pedido' | 'horas_habiles' | 'threshold_horas';
+const DEMORADOS_DEFAULT_SORT: DemoradosSortKey = 'horas_habiles';
+
 function DemoradosBanner({
   items, loading, expanded, onToggle, onPedidoClick,
   canManageTopes, topesExpanded, onTopesToggle,
 }: DemoradosBannerProps) {
   const count = items.length;
+  const [sortKey, setSortKey] = useState<DemoradosSortKey>(DEMORADOS_DEFAULT_SORT);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const toggleSort = (col: DemoradosSortKey) => {
+    if (sortKey !== col) {
+      setSortKey(col);
+      setSortDir('desc');
+    } else if (sortDir === 'desc') {
+      setSortDir('asc');
+    } else {
+      setSortKey(DEMORADOS_DEFAULT_SORT);
+      setSortDir('desc');
+    }
+  };
+
+  const sortIndicator = (col: DemoradosSortKey) => {
+    if (sortKey !== col) return '';
+    return sortDir === 'asc' ? ' ▲' : ' ▼';
+  };
+
+  const sortedItems = useMemo(() => {
+    const arr = [...items];
+    const dir = sortDir === 'asc' ? 1 : -1;
+    arr.sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case 'order_number':
+          cmp = (Number(a.order_number) || 0) - (Number(b.order_number) || 0);
+          break;
+        case 'customer_name': {
+          const an = (a.customer_name || '').toLocaleLowerCase('es');
+          const bn = (b.customer_name || '').toLocaleLowerCase('es');
+          // Vacíos al final independientemente de la dirección.
+          if (!an && bn) return 1;
+          if (an && !bn) return -1;
+          cmp = an.localeCompare(bn, 'es');
+          break;
+        }
+        case 'estado_pedido': {
+          const al = ESTADO_DEPO_LABELS[a.estado_pedido] || a.estado_pedido;
+          const bl = ESTADO_DEPO_LABELS[b.estado_pedido] || b.estado_pedido;
+          cmp = al.localeCompare(bl, 'es');
+          break;
+        }
+        case 'horas_habiles':
+          cmp = a.horas_habiles - b.horas_habiles;
+          break;
+        case 'threshold_horas':
+          cmp = a.threshold_horas - b.threshold_horas;
+          break;
+      }
+      return cmp * dir;
+    });
+    return arr;
+  }, [items, sortKey, sortDir]);
 
   // Botón ruedita reutilizable. theme define los colores que combinan con el
   // fondo de cada variante (verde/rojo/neutro).
@@ -677,15 +735,40 @@ function DemoradosBanner({
           <table className="w-full text-sm">
             <thead className="bg-red-50/50 border-b border-red-100">
               <tr>
-                <th className="px-4 py-2 text-left font-semibold text-neutral-600">Pedido</th>
-                <th className="px-4 py-2 text-left font-semibold text-neutral-600">Cliente</th>
-                <th className="px-4 py-2 text-left font-semibold text-neutral-600">Estado</th>
-                <th className="px-4 py-2 text-right font-semibold text-neutral-600">Tiempo</th>
-                <th className="px-4 py-2 text-right font-semibold text-neutral-600">Tope</th>
+                <th
+                  onClick={() => toggleSort('order_number')}
+                  className="px-4 py-2 text-left font-semibold text-neutral-600 cursor-pointer hover:bg-red-100/60 select-none"
+                >
+                  Pedido{sortIndicator('order_number')}
+                </th>
+                <th
+                  onClick={() => toggleSort('customer_name')}
+                  className="px-4 py-2 text-left font-semibold text-neutral-600 cursor-pointer hover:bg-red-100/60 select-none"
+                >
+                  Cliente{sortIndicator('customer_name')}
+                </th>
+                <th
+                  onClick={() => toggleSort('estado_pedido')}
+                  className="px-4 py-2 text-left font-semibold text-neutral-600 cursor-pointer hover:bg-red-100/60 select-none"
+                >
+                  Estado{sortIndicator('estado_pedido')}
+                </th>
+                <th
+                  onClick={() => toggleSort('horas_habiles')}
+                  className="px-4 py-2 text-right font-semibold text-neutral-600 cursor-pointer hover:bg-red-100/60 select-none"
+                >
+                  Tiempo{sortIndicator('horas_habiles')}
+                </th>
+                <th
+                  onClick={() => toggleSort('threshold_horas')}
+                  className="px-4 py-2 text-right font-semibold text-neutral-600 cursor-pointer hover:bg-red-100/60 select-none"
+                >
+                  Tope{sortIndicator('threshold_horas')}
+                </th>
               </tr>
             </thead>
             <tbody>
-              {items.map(row => {
+              {sortedItems.map(row => {
                 const exceso = row.horas_habiles - row.threshold_horas;
                 return (
                   <tr key={row.order_number} className="border-b border-neutral-100 hover:bg-neutral-50">
