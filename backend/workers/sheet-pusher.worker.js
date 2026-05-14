@@ -22,6 +22,11 @@ const { workerLogger: log } = require('../lib/logger');
 
 const TICK_MS = 5000;
 const MAX_ATTEMPTS = 5;
+// Delay entre pushes para no pegar el rate limit de Sheets API (60 reads
+// + 60 writes/min por usuario). Un push = 1 read + 1 update. Con 2s entre
+// pedidos: ~30 pushes/min = 60 calls/min. Margen real porque la API tiene
+// latencia natural de 100-300ms por call.
+const DELAY_BETWEEN_PUSHES_MS = 2000;
 
 /**
  * Claim atomic del próximo row pendiente. Incrementa attempts (lock-then-claim)
@@ -94,10 +99,11 @@ async function processOne() {
  */
 async function tick() {
   // Procesar hasta vaciar la cola (con tope defensivo para no bloquear si hay
-  // un loop raro).
+  // un loop raro). Delay entre cada push para mantenerse bajo rate limit.
   for (let i = 0; i < 200; i++) {
     const processed = await processOne();
     if (!processed) break;
+    await new Promise(r => setTimeout(r, DELAY_BETWEEN_PUSHES_MS));
   }
 }
 
