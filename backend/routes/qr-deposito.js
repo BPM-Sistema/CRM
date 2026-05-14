@@ -19,6 +19,7 @@ const { findTransition, allowedFrom, permissionKey } = require('../lib/qr-deposi
 const { derivarEstadoDesdeEmpaquetado, accionParaEstado } = require('../lib/estados-pedido');
 const { logEvento } = require('../utils/logging');
 const { notifyEstadoTransition } = require('../lib/notify-estado-transition');
+const { pagoAlcanzaParaDespachar } = require('../lib/shipping-requirements');
 
 // ─── Helper: leer pedido base ──────────────────────────────────
 async function loadOrder(orderNumber) {
@@ -273,9 +274,10 @@ router.post('/:orderNumber/transition', async (req, res) => {
         }
       }
 
-      // 6c. Trigger A.2 si pasa a empaquetado con pago confirmado.
+      // 6c. Trigger A si pasa a empaquetado y el pago alcanza para despachar.
+      // Retiro acepta parcial; envío exige total. Reglas en lib/shipping-requirements.js.
       if (to_status === 'empaquetado' && !trans.selfTransition &&
-          (order.estado_pago === 'confirmado_total' || order.estado_pago === 'a_favor')) {
+          pagoAlcanzaParaDespachar(order.estado_pago, order.shipping_type)) {
         const ctxRes = await client.query(
           `SELECT
              EXISTS (SELECT 1 FROM shipping_requests WHERE order_number = ov.order_number) AS has_shipping_request,
