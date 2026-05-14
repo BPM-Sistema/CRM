@@ -426,12 +426,6 @@ export function RealOrderDetail() {
   // backend con la regla completa pago + método + datos). Acá solo derivamos
   // qué botón mostrar y el motivo cuando el pedido no permite imprimir.
   const shippingTypeLower = (order.shipping_type || '').toLowerCase();
-  const requiresShippingData =
-    (shippingTypeLower.includes('expreso') && shippingTypeLower.includes('elec')) ||
-    shippingTypeLower.includes('via cargo') ||
-    shippingTypeLower.includes('viacargo');
-  // Cualquier envío (no retiro) - para ocultar botón "Retirado"
-  const isShippedOrder = requiresShippingData || shippingTypeLower.includes('env');
   // Retiro en local (mismo criterio que esRetiro en backend/lib/estados-pedido.js).
   // Usado para la Card "Tipo Envío" de la columna derecha.
   const isPickupOrder = /pickup|retiro|deposito|depósito/i.test(order.shipping_type || '');
@@ -987,49 +981,60 @@ export function RealOrderDetail() {
                     armó/empaquetó). Si hay que destrabarlo a mano, usar tester
                     mode. */}
 
-                {/* Empaquetado: botones de despacho */}
-                {orderStatus === 'empaquetado' && (
+                {/* Empaquetado: el Trigger A deriva automáticamente a
+                    pendiente_retiro / por_enviar cuando el pago alcanza. No
+                    hay botones acá — los siguientes pasos viven en esos
+                    estados. */}
+
+                {/* Pendiente de retiro: cliente viene al local. */}
+                {orderStatus === 'pendiente_retiro' && (
                   <>
-                    {!canShip && (
-                      <div className="p-3 bg-amber-50 rounded-xl text-center mb-3">
-                        <p className="text-xs text-amber-700">
-                          Para enviar/retirar, el pago debe estar confirmado como "Total"
-                        </p>
-                      </div>
-                    )}
-                    {isShippedOrder ? (
+                    {canShip ? (
                       <Button
                         variant="primary"
                         className="w-full"
-                        leftIcon={<Truck size={16} />}
-                        onClick={() => handleUpdateOrderStatus('en_calle')}
-                        disabled={isUpdatingStatus || !canShip}
+                        size="lg"
+                        leftIcon={<UserCheck size={18} />}
+                        onClick={() => handleUpdateOrderStatus('retirado')}
+                        disabled={isUpdatingStatus}
                       >
-                        En Calle
+                        {isUpdatingStatus ? 'Procesando...' : 'Marcar Retirado'}
                       </Button>
                     ) : (
-                      <div className="grid grid-cols-2 gap-3">
+                      <>
                         <Button
                           variant="primary"
                           className="w-full"
-                          leftIcon={<UserCheck size={16} />}
-                          onClick={() => handleUpdateOrderStatus('retirado')}
-                          disabled={isUpdatingStatus || !canShip}
+                          size="lg"
+                          leftIcon={<UserCheck size={18} />}
+                          disabled
                         >
-                          Retirado
+                          Marcar Retirado
                         </Button>
-                        <Button
-                          variant="primary"
-                          className="w-full"
-                          leftIcon={<Truck size={16} />}
-                          onClick={() => handleUpdateOrderStatus('en_calle')}
-                          disabled={isUpdatingStatus || !canShip}
-                        >
-                          En Calle
-                        </Button>
-                      </div>
+                        <div className="p-3 bg-amber-50 rounded-xl text-center mt-2">
+                          <p className="text-xs text-amber-700">
+                            El pedido todavía no tiene el pago confirmado.
+                          </p>
+                        </div>
+                      </>
                     )}
                   </>
+                )}
+
+                {/* Por enviar: listo para que salga el transportista. El
+                    constraint DB exige pago total en este estado, así que
+                    canShip siempre es true. */}
+                {orderStatus === 'por_enviar' && (
+                  <Button
+                    variant="primary"
+                    className="w-full"
+                    size="lg"
+                    leftIcon={<Truck size={18} />}
+                    onClick={() => handleUpdateOrderStatus('en_calle')}
+                    disabled={isUpdatingStatus}
+                  >
+                    {isUpdatingStatus ? 'Procesando...' : 'Marcar En Calle'}
+                  </Button>
                 )}
 
                 {/* En Calle - siguiente paso es Enviado */}
