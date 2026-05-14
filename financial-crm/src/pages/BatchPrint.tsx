@@ -18,6 +18,9 @@ export default function BatchPrint() {
   const [isPrinting, setIsPrinting] = useState(false);
 
   const orderNumbers = searchParams.get('orders')?.split(',').filter(Boolean) || [];
+  // Modo reimpresión: el motivo ya se registró vía POST /orders/:n/reprint en
+  // RealOrderDetail. Acá solo generamos el PDF y NO movemos el estado.
+  const isReprintMode = searchParams.get('reprint') === '1';
 
   useEffect(() => {
     if (orderNumbers.length === 0) {
@@ -64,23 +67,28 @@ export default function BatchPrint() {
     setIsPrinting(true);
 
     try {
-      // Marcar todos los pedidos como impresos (estado: hoja_impresa)
-      const failed: string[] = [];
-      const markPromises = orders.map(order =>
-        updateOrderStatus(order.order_number, 'hoja_impresa').catch(() => {
-          failed.push(order.order_number);
-        })
-      );
-      await Promise.all(markPromises);
-
-      if (failed.length > 0) {
-        alert(
-          `No se pudieron marcar ${failed.length} pedidos como impresos:\n${failed.join(', ')}\n\nNo se va a imprimir. Reintentá en unos segundos.`
+      // En modo reimpresión NO movemos el estado — el pedido se queda donde
+      // está (hoja_impresa..empaquetado). El motivo ya fue registrado en
+      // RealOrderDetail antes de abrir esta pestaña.
+      if (!isReprintMode) {
+        // Marcar todos los pedidos como impresos (estado: hoja_impresa)
+        const failed: string[] = [];
+        const markPromises = orders.map(order =>
+          updateOrderStatus(order.order_number, 'hoja_impresa').catch(() => {
+            failed.push(order.order_number);
+          })
         );
-        return;
+        await Promise.all(markPromises);
+
+        if (failed.length > 0) {
+          alert(
+            `No se pudieron marcar ${failed.length} pedidos como impresos:\n${failed.join(', ')}\n\nNo se va a imprimir. Reintentá en unos segundos.`
+          );
+          return;
+        }
       }
 
-      // Abrir diálogo de impresión solo si todos se marcaron OK
+      // Abrir diálogo de impresión (en ambos modos)
       window.print();
     } catch (error) {
       console.error('Error al imprimir:', error);

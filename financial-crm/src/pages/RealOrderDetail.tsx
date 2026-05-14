@@ -50,11 +50,15 @@ import {
   mapEstadoPedido,
   OrderStatus,
   getTotalUnits,
+  requestReprint,
 } from '../services/api';
 import { formatDistanceToNow, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
-import { ORDER_STATUSES, STATUS_CONFIG } from '../constants/estadoPedido';
+import {
+  ORDER_STATUSES, STATUS_CONFIG,
+  puedeImprimirHoja, puedeReimprimirHoja, motivoBloqueoHoja,
+} from '../constants/estadoPedido';
 
 export function RealOrderDetail() {
   const { orderNumber } = useParams<{ orderNumber: string }>();
@@ -83,6 +87,12 @@ export function RealOrderDetail() {
   const [printData, setPrintData] = useState<ApiOrderPrintData | null>(null);
   const [isLoadingPrint, setIsLoadingPrint] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
+
+  // Estado para reimpresión (motivo obligatorio).
+  const [isReprintModalOpen, setIsReprintModalOpen] = useState(false);
+  const [reprintMotivo, setReprintMotivo] = useState('');
+  const [reprintError, setReprintError] = useState<string | null>(null);
+  const [isSubmittingReprint, setIsSubmittingReprint] = useState(false);
 
   // Estado para resync
   const [isResyncing, setIsResyncing] = useState(false);
@@ -338,6 +348,45 @@ export function RealOrderDetail() {
     setTimeout(() => loadOrder(), 1500);
   };
 
+  // Abrir modal de reimpresión (estados hoja_impresa → empaquetado).
+  const handleOpenReprint = () => {
+    setReprintMotivo('');
+    setReprintError(null);
+    setIsReprintModalOpen(true);
+  };
+
+  // Confirmar reimpresión: registra motivo en backend, después abre BatchPrint
+  // en modo reprint (no cambia el estado del pedido).
+  const handleConfirmReprint = async () => {
+    if (!orderNumber) return;
+    const motivo = reprintMotivo.trim();
+    if (motivo.length < 10) {
+      setReprintError('El motivo debe tener al menos 10 caracteres.');
+      return;
+    }
+    if (motivo.length > 500) {
+      setReprintError('El motivo no puede superar los 500 caracteres.');
+      return;
+    }
+    setIsSubmittingReprint(true);
+    setReprintError(null);
+    try {
+      await requestReprint(orderNumber, motivo);
+      const printWindow = window.open(`/orders/print?orders=${orderNumber}&reprint=1`, '_blank');
+      if (!printWindow) {
+        alert('Permite las ventanas emergentes para imprimir');
+        return;
+      }
+      setIsReprintModalOpen(false);
+      setReprintMotivo('');
+      setTimeout(() => loadOrder(), 1500);
+    } catch (err) {
+      setReprintError(err instanceof Error ? err.message : 'Error al registrar la reimpresión');
+    } finally {
+      setIsSubmittingReprint(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -374,13 +423,9 @@ export function RealOrderDetail() {
   // Lógica de permisos (RBAC + reglas de negocio)
   const canRegisterPayment = hasPermission('orders.create_cash_payment') && saldoPendiente > 0 && paymentStatus !== 'rechazado';
 
-  // Lógica de impresión: solo bloquea por pago.
-  // Fase 2 PR 2: se sacó el bloqueo por datos de envío faltantes — el depo
-  // puede armar/empaquetar sin que el cliente haya cargado datos todavía.
-  // La red de seguridad contra despacho sin pago sigue cubierta por:
-  // (a) constraints de Fase 1 en /orders/:n/status para estados de salida y
-  // (b) PR 2 también bloquea imprimir etiqueta de envío sin pago confirmado.
-  const hasValidPayment = ['a_confirmar', 'parcial', 'total'].includes(paymentStatus);
+  // Lógica de impresión: la fuente de verdad es estado_pedido (la calcula el
+  // backend con la regla completa pago + método + datos). Acá solo derivamos
+  // qué botón mostrar y el motivo cuando el pedido no permite imprimir.
   const shippingTypeLower = (order.shipping_type || '').toLowerCase();
   const requiresShippingData =
     (shippingTypeLower.includes('expreso') && shippingTypeLower.includes('elec')) ||
@@ -391,7 +436,9 @@ export function RealOrderDetail() {
   // Retiro en local (mismo criterio que esRetiro en backend/lib/estados-pedido.js).
   // Usado para la Card "Tipo Envío" de la columna derecha.
   const isPickupOrder = /pickup|retiro|deposito|depósito/i.test(order.shipping_type || '');
-  const canPrint = hasValidPayment;
+  const canPrintInicial   = puedeImprimirHoja(orderStatus);
+  const canReprint        = puedeReimprimirHoja(orderStatus);
+  const printBlockReason  = motivoBloqueoHoja(orderStatus, order.shipping_type);
 
   const canShip = paymentStatus === 'total';
 
@@ -881,91 +928,75 @@ export function RealOrderDetail() {
             <Card>
               <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider mb-3">Estado del Pedido</h3>
               <div className="space-y-3">
-                {/* Pendiente de pago */}
-                {orderStatus === 'pendiente_pago' && (
-                  <>
-                    {canPrint ? (
-                      <Button
-                        variant="primary"
-                        className="w-full"
-                        size="lg"
-                        leftIcon={isLoadingPrint ? <Loader2 size={18} className="animate-spin" /> : <Printer size={18} />}
-                        onClick={handlePrintOrder}
-                        disabled={isLoadingPrint}
-                      >
-                        {isLoadingPrint ? 'Cargando...' : 'Imprimir Hoja de Pedido'}
-                      </Button>
-                    ) : (
-                      <div className="p-4 bg-amber-50 rounded-xl text-center">
-                        <p className="text-sm text-amber-700">
-                          Esperando comprobante de pago para poder imprimir.
-                        </p>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* A imprimir */}
-                {orderStatus === 'a_imprimir' && (
-                  <>
-                    {canPrint ? (
-                      <Button
-                        variant="primary"
-                        className="w-full"
-                        size="lg"
-                        leftIcon={isLoadingPrint ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
-                        onClick={handlePrintOrder}
-                        disabled={isLoadingPrint}
-                      >
-                        {order.printed_at ? 'Re-imprimir Hoja' : 'Imprimir Hoja'}
-                      </Button>
-                    ) : (
-                      <div className="p-4 bg-amber-50 rounded-xl text-center">
-                        <p className="text-sm text-amber-700">
-                          Esperando comprobante de pago para poder imprimir.
-                        </p>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* Etiqueta impresa */}
-                {orderStatus === 'hoja_impresa' && (
+                {/* Botón de imprimir / reimprimir + lista de reimpresiones.
+                    Patrón único basado en estado_pedido (no en estado_pago):
+                    - a_imprimir            → Imprimir Hoja.
+                    - hoja_impresa..empaquetado → Re-imprimir Hoja (pide motivo).
+                    - cualquier otro        → mensaje naranja con motivo. */}
+                {canPrintInicial ? (
+                  <Button
+                    variant="primary"
+                    className="w-full"
+                    size="lg"
+                    leftIcon={isLoadingPrint ? <Loader2 size={18} className="animate-spin" /> : <Printer size={18} />}
+                    onClick={handlePrintOrder}
+                    disabled={isLoadingPrint}
+                  >
+                    {isLoadingPrint ? 'Cargando...' : (order.printed_at ? 'Re-imprimir Hoja de Pedido' : 'Imprimir Hoja de Pedido')}
+                  </Button>
+                ) : canReprint ? (
                   <>
                     <Button
                       variant="secondary"
-                      className="w-full mb-2"
-                      leftIcon={isLoadingPrint ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
-                      onClick={handlePrintOrder}
-                      disabled={isLoadingPrint}
-                    >
-                      Re-imprimir Hoja
-                    </Button>
-                    <Button
-                      variant="primary"
                       className="w-full"
-                      size="lg"
-                      leftIcon={<Package size={18} />}
-                      onClick={() => handleUpdateOrderStatus('empaquetado')}
-                      disabled={isUpdatingStatus}
+                      leftIcon={<Printer size={16} />}
+                      onClick={handleOpenReprint}
                     >
-                      {isUpdatingStatus ? 'Procesando...' : 'Marcar como Empaquetado'}
+                      Re-imprimir Hoja de Pedido
                     </Button>
+                    {data.reprints && data.reprints.length > 0 && (
+                      <div className="text-xs text-neutral-600 space-y-1 mt-1">
+                        {data.reprints.map((r, idx) => (
+                          <div key={r.id} className="px-3 py-2 bg-neutral-50 rounded-lg">
+                            <span className="font-medium text-neutral-700">
+                              {idx + 1}ª reimpresión
+                            </span>
+                            {' — '}
+                            {r.username || 'Sin usuario'}
+                            {' — '}
+                            <span className="italic">"{r.motivo}"</span>
+                            {' — '}
+                            {format(new Date(r.created_at), 'dd/MM/yy HH:mm', { locale: es })}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </>
+                ) : printBlockReason ? (
+                  <div className="p-4 bg-amber-50 rounded-xl text-center">
+                    <p className="text-sm text-amber-700">{printBlockReason}</p>
+                  </div>
+                ) : null}
+
+                {/* Acciones por estado (botones de transición, sin impresión) */}
+
+                {/* Hoja impresa → siguiente paso normal: marcar como empaquetado */}
+                {orderStatus === 'hoja_impresa' && (
+                  <Button
+                    variant="primary"
+                    className="w-full"
+                    size="lg"
+                    leftIcon={<Package size={18} />}
+                    onClick={() => handleUpdateOrderStatus('empaquetado')}
+                    disabled={isUpdatingStatus}
+                  >
+                    {isUpdatingStatus ? 'Procesando...' : 'Marcar como Empaquetado'}
+                  </Button>
                 )}
 
-                {/* Empaquetado */}
+                {/* Empaquetado: botones de despacho */}
                 {orderStatus === 'empaquetado' && (
                   <>
-                    <Button
-                      variant="secondary"
-                      className="w-full mb-3"
-                      leftIcon={isLoadingPrint ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
-                      onClick={handlePrintOrder}
-                      disabled={isLoadingPrint}
-                    >
-                      Re-imprimir Hoja
-                    </Button>
                     {!canShip && (
                       <div className="p-3 bg-amber-50 rounded-xl text-center mb-3">
                         <p className="text-xs text-amber-700">
@@ -1539,6 +1570,51 @@ export function RealOrderDetail() {
           </div>
         </div>
       )}
+
+      {/* Modal de reimpresión: pide motivo (10-500 chars) */}
+      <Modal
+        isOpen={isReprintModalOpen}
+        onClose={() => { if (!isSubmittingReprint) setIsReprintModalOpen(false); }}
+        title="Re-imprimir Hoja de Pedido"
+        size="md"
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-neutral-600">
+            Ingresá el motivo de la reimpresión. Va a quedar registrado junto al pedido.
+          </p>
+          <textarea
+            value={reprintMotivo}
+            onChange={(e) => setReprintMotivo(e.target.value)}
+            rows={4}
+            maxLength={500}
+            placeholder="Ej: la hoja original se manchó en el depósito"
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            disabled={isSubmittingReprint}
+            autoFocus
+          />
+          <div className="flex justify-between text-xs text-neutral-500">
+            <span>{reprintError && <span className="text-red-600">{reprintError}</span>}</span>
+            <span>{reprintMotivo.trim().length}/500 (mín 10)</span>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="secondary"
+              onClick={() => setIsReprintModalOpen(false)}
+              disabled={isSubmittingReprint}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="primary"
+              leftIcon={isSubmittingReprint ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
+              onClick={handleConfirmReprint}
+              disabled={isSubmittingReprint || reprintMotivo.trim().length < 10}
+            >
+              {isSubmittingReprint ? 'Procesando...' : 'Re-imprimir'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Modal de Remito */}
       {showRemitoModal && remito && (

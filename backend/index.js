@@ -53,7 +53,7 @@ const { verificarConsistencia, getInconsistencias } = require('./utils/orderVeri
 const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crearNotificacion, notificarUsuariosConPermiso } = require('./utils/notifications');
 const { enviarWhatsAppPlantilla } = require('./lib/whatsapp-helpers');
 const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, isForbiddenCarrier, normalizePhoneForComparison, mapShippingToEstadoPedido } = require('./lib/payment-helpers');
-const { ESTADOS, ACCIONES_LOG, ESTADO_PERMISOS, accionParaEstado, derivarEstadoDesdeEmpaquetado } = require('./lib/estados-pedido');
+const { ESTADOS, ACCIONES_LOG, ESTADO_PERMISOS, accionParaEstado, derivarEstadoDesdeEmpaquetado, puedeImprimirHoja, puedeReimprimirHoja, motivoBloqueoHoja } = require('./lib/estados-pedido');
 const { recalcularPagos } = require('./lib/recalcularPagos');
 const { pagoAlcanzaParaDespachar } = require('./lib/shipping-requirements');
 const { reopenIfCancelled } = require('./lib/reopenIfCancelled');
@@ -1354,8 +1354,9 @@ app.post('/orders/to-print', authenticate, requirePermission('orders.print'), as
     // Selección de pedidos imprimibles:
     //  - estado_pedido = 'a_imprimir' → estado de negocio "listo para imprimir"
     //  - printed_at IS NULL → no reimprimir
-    //  - NOT IN ('pendiente','anulado') → defensa mínima contra invariante violada
-    //    (las reglas completas viven en los paths que setean a_imprimir, no acá)
+    //  - NOT IN ('pendiente','anulado','a_confirmar') → defensa mínima.
+    //    a_confirmar = hay comprobante sin verificar; el pedido NO debería
+    //    estar en a_imprimir con ese pago, pero filtramos por consistencia.
     const result = await pool.query(`
       SELECT
         o.order_number,
@@ -1364,7 +1365,7 @@ app.post('/orders/to-print', authenticate, requirePermission('orders.print'), as
       FROM orders_validated o
       WHERE o.estado_pedido = ANY($1)
         AND o.printed_at IS NULL
-        AND o.estado_pago NOT IN ('pendiente', 'anulado')
+        AND o.estado_pago NOT IN ('pendiente', 'anulado', 'a_confirmar')
       ORDER BY o.created_at ASC
     `, [statuses]);
 
@@ -2800,6 +2801,18 @@ app.get('/orders/:orderNumber/print', authenticate, requirePermission('orders.pr
 
     const order = orderRes.rows[0];
 
+    // Guard: solo permitimos generar el PDF si el pedido está en uno de los
+    // estados imprimibles (a_imprimir, hoja_impresa) o reimprimibles (depo).
+    // El flujo de reimpresión pasa primero por POST /orders/:n/reprint para
+    // registrar motivo; este endpoint sirve los datos para los dos casos.
+    // El PATCH a hoja_impresa se mantiene estricto (solo desde a_imprimir),
+    // así si BatchPrint en modo reprint llama PATCH por error, lo rechaza.
+    if (!puedeImprimirHoja(order.estado_pedido) && !puedeReimprimirHoja(order.estado_pedido)) {
+      const motivo = motivoBloqueoHoja(order.estado_pedido, order.shipping_type)
+        || 'El pedido no está en un estado que permita imprimir.';
+      return res.status(400).json({ error: motivo, code: 'PRINT_BLOCKED' });
+    }
+
     // 2️⃣ Obtener productos de la DB
     const productosRes = await pool.query(`
       SELECT
@@ -2948,6 +2961,84 @@ app.get('/orders/:orderNumber/print', authenticate, requirePermission('orders.pr
 
   } catch (error) {
     console.error('❌ /orders/:orderNumber/print error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+/* =====================================================
+   POST — REIMPRIMIR HOJA DE PEDIDO (con motivo)
+   Registra una reimpresión en order_reprints, loguea evento, y NO cambia
+   el estado del pedido. La impresión la dispara BatchPrint con ?reprint=1
+   (que se salta el PATCH a hoja_impresa).
+===================================================== */
+app.post('/orders/:orderNumber/reprint', authenticate, requirePermission('orders.print'), async (req, res) => {
+  try {
+    const { orderNumber } = req.params;
+    const motivoRaw = (req.body?.motivo || '').toString().trim();
+
+    if (motivoRaw.length < 10 || motivoRaw.length > 500) {
+      return res.status(400).json({
+        error: 'El motivo debe tener entre 10 y 500 caracteres.'
+      });
+    }
+
+    // Validar estado del pedido.
+    const orderRes = await pool.query(
+      `SELECT estado_pedido, shipping_type FROM orders_validated WHERE order_number = $1`,
+      [orderNumber]
+    );
+    if (orderRes.rowCount === 0) {
+      return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
+    const order = orderRes.rows[0];
+
+    if (!puedeReimprimirHoja(order.estado_pedido)) {
+      const motivoMsg = motivoBloqueoHoja(order.estado_pedido, order.shipping_type)
+        || 'El pedido no está en un estado que permita reimprimir.';
+      return res.status(400).json({ error: motivoMsg, code: 'REPRINT_BLOCKED' });
+    }
+
+    // Calcular número de reimpresión (1ra, 2da, …) ANTES de insertar.
+    // Usamos COUNT existente + 1; la inserción siguiente confirma la posición.
+    const countRes = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM order_reprints WHERE order_number = $1`,
+      [orderNumber]
+    );
+    const reimpresionNumero = countRes.rows[0].n + 1;
+
+    // Insertar el registro.
+    const insertRes = await pool.query(
+      `INSERT INTO order_reprints (order_number, motivo, user_id, username)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, created_at`,
+      [orderNumber, motivoRaw, req.user?.id || null, req.user?.name || null]
+    );
+
+    // Loguear en logs (sin guardar el motivo ahí; vive en order_reprints).
+    await logEvento({
+      orderNumber,
+      accion: `reimpresion_${reimpresionNumero}`,
+      origen: 'crm',
+      userId: req.user?.id,
+      username: req.user?.name,
+    });
+
+    res.json({
+      ok: true,
+      reprint: {
+        id: insertRes.rows[0].id,
+        order_number: orderNumber,
+        motivo: motivoRaw,
+        user_id: req.user?.id || null,
+        username: req.user?.name || null,
+        created_at: insertRes.rows[0].created_at,
+        reimpresion_numero: reimpresionNumero,
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ POST /orders/:orderNumber/reprint error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -3108,6 +3199,17 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
     // 🔍 Verificar si hay inconsistencias activas
     const inconsistencias = await getInconsistencias(orderNumber);
 
+    // Reimpresiones (con motivo). El frontend las muestra debajo del botón
+    // "Re-imprimir Hoja" en la card "Estado del Pedido". Ordenadas por created_at
+    // ASC para que la 1ra reimpresión sea la primera de la lista.
+    const reprintsRes = await pool.query(`
+      SELECT id, motivo, username,
+             to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS created_at
+        FROM order_reprints
+       WHERE order_number = $1
+       ORDER BY created_at ASC
+    `, [orderNumber]);
+
     res.json({
       ok: true,
       order: order,
@@ -3115,6 +3217,7 @@ app.get('/orders/:orderNumber', authenticate, requirePermission('orders.view'), 
       pagos_efectivo: pagosEfectivoRes.rows,
       logs: logsRes.rows,
       productos: productos,
+      reprints: reprintsRes.rows,
       has_inconsistency: inconsistencias.length > 0,
       inconsistencies: inconsistencias
     });
@@ -3803,15 +3906,23 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
       }
     }
 
-    // No se puede marcar como impreso (hoja_impresa) si el pago está bloqueante.
-    // Regla mínima: pendiente/anulado no → cualquier otro estado (incluye a_confirmar,
-    // confirmado_parcial, confirmado_total, a_favor) sí puede imprimirse.
-    // La lógica fina de cuándo un pedido llega a a_imprimir vive en los paths que lo setean.
+    // Marcar como impreso (hoja_impresa) tiene dos guards estrictos:
+    //  (a) estado actual debe ser a_imprimir (primera impresión) o ya
+    //      hoja_impresa (idempotente). Otros estados re-imprimen vía
+    //      POST /orders/:n/reprint sin cambiar estado.
+    //  (b) pago no puede ser pendiente / anulado / a_confirmar (este último
+    //      significa que hay comprobante sin verificar — no alcanza para
+    //      considerar el pedido "pagado" en ningún método).
     if (estado_pedido === 'hoja_impresa') {
-      const bloqueantes = ['pendiente', 'anulado'];
+      if (pedido.estado_pedido !== 'a_imprimir' && pedido.estado_pedido !== 'hoja_impresa') {
+        return res.status(400).json({
+          error: `No se puede marcar como impreso: el pedido está en "${pedido.estado_pedido}", no en "a_imprimir".`
+        });
+      }
+      const bloqueantes = ['pendiente', 'anulado', 'a_confirmar'];
       if (bloqueantes.includes(pedido.estado_pago)) {
         return res.status(400).json({
-          error: `No se puede marcar como impreso: pago ${pedido.estado_pago}`
+          error: `No se puede marcar como impreso: pago ${pedido.estado_pago}.`
         });
       }
     }

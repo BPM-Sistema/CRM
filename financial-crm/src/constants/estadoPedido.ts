@@ -119,6 +119,67 @@ export const STATUS_FILTER_CONFIG: Record<OrderStatus, { label: string; color: s
   cancelado:             { label: 'Cancelado',          color: 'bg-red-50 text-red-700',         permission: 'orders.view_cancelado' },
 };
 
+// Permisos de impresión / reimpresión de la hoja de pedido.
+// Espejo de lib/estados-pedido.js — cualquier cambio debe replicarse allá.
+// La defensa real vive en el backend; estos helpers son solo para decidir
+// qué botón mostrar en la UI y el mensaje de bloqueo.
+const ESTADOS_IMPRIMIR_HOJA: OrderStatus[] = ['a_imprimir', 'hoja_impresa'];
+
+const ESTADOS_REIMPRIMIR_HOJA: OrderStatus[] = [
+  'hoja_impresa', 'en_preparacion', 'en_revision',
+  'pendiente_stock', 'por_empaquetar', 'empaquetado',
+];
+
+export function puedeImprimirHoja(estado: OrderStatus | null | undefined): boolean {
+  return !!estado && ESTADOS_IMPRIMIR_HOJA.includes(estado);
+}
+
+export function puedeReimprimirHoja(estado: OrderStatus | null | undefined): boolean {
+  return !!estado && ESTADOS_REIMPRIMIR_HOJA.includes(estado);
+}
+
+// Detector simple por shipping_type (espejo acotado de esRetiro en backend).
+// No mira empresa_envio porque el frontend no la tiene a mano en la card.
+function isPickupShipping(shippingType: string | null | undefined): boolean {
+  if (!shippingType) return false;
+  return /pickup|retiro|deposito|depósito/i.test(shippingType);
+}
+
+/**
+ * Motivo del bloqueo de imprimir / reimprimir hoja, en castellano para mostrar
+ * en la card "Estado del Pedido". Devuelve null si el pedido SÍ puede imprimirse
+ * o reimprimirse — esos casos no muestran mensaje, muestran botón.
+ *
+ * Para pendiente_pago el texto distingue retiro vs envío:
+ *   - retiro: "no tiene ningún pago confirmado" (alcanza con parcial, no hay nada).
+ *   - envío:  "todavía no tiene el pago confirmado" (exige total).
+ */
+export function motivoBloqueoHoja(
+  estado: OrderStatus | null | undefined,
+  shippingType: string | null | undefined,
+): string | null {
+  if (puedeImprimirHoja(estado) || puedeReimprimirHoja(estado)) return null;
+  switch (estado) {
+    case 'pendiente_pago':
+      return isPickupShipping(shippingType)
+        ? 'El pedido no tiene ningún pago confirmado.'
+        : 'El pedido todavía no tiene el pago confirmado.';
+    case 'pendiente_datos_envio':
+      return 'El cliente todavía no cargó los datos de envío.';
+    case 'cancelado':
+      return 'El pedido fue cancelado.';
+    case 'pendiente_retiro':
+    case 'por_enviar':
+      return 'El pedido ya está listo para despacho/retiro.';
+    case 'en_calle':
+    case 'enviado':
+    case 'retirado':
+      return 'El pedido ya fue despachado/retirado.';
+    default:
+      return 'El pedido no está en un estado que permita imprimir.';
+  }
+}
+
 // Acciones de log (espejo de ACCIONES_LOG del backend) — útil para mapear eventos del log a UI.
 // `pedido_armado` se mantiene en eventConfig.ts para renderizar logs históricos.
 export const STATUS_LOG_ACTIONS: Record<OrderStatus, string> = {

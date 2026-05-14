@@ -336,4 +336,67 @@ describe('Comprobante Helpers', () => {
       expect(normalizeText('hello   world')).toBe('hello world');
     });
   });
+
+  describe('puedeImprimirHoja / puedeReimprimirHoja / motivoBloqueoHoja', () => {
+    const { puedeImprimirHoja, puedeReimprimirHoja, motivoBloqueoHoja } = require('../lib/estados-pedido');
+
+    test('a_imprimir habilita imprimir inicial', () => {
+      expect(puedeImprimirHoja('a_imprimir')).toBe(true);
+      expect(puedeReimprimirHoja('a_imprimir')).toBe(false);
+    });
+
+    test('hoja_impresa habilita ambos (imprimir idempotente y reimprimir)', () => {
+      expect(puedeImprimirHoja('hoja_impresa')).toBe(true);
+      expect(puedeReimprimirHoja('hoja_impresa')).toBe(true);
+    });
+
+    test('estados depo habilitan reimprimir pero no imprimir inicial', () => {
+      for (const s of ['en_preparacion', 'en_revision', 'pendiente_stock', 'por_empaquetar', 'empaquetado']) {
+        expect(puedeImprimirHoja(s)).toBe(false);
+        expect(puedeReimprimirHoja(s)).toBe(true);
+      }
+    });
+
+    test('estados terminales y bloqueantes no habilitan ninguna', () => {
+      for (const s of ['pendiente_pago', 'pendiente_datos_envio', 'cancelado',
+                       'pendiente_retiro', 'por_enviar', 'en_calle', 'enviado', 'retirado']) {
+        expect(puedeImprimirHoja(s)).toBe(false);
+        expect(puedeReimprimirHoja(s)).toBe(false);
+      }
+    });
+
+    test('motivoBloqueoHoja pendiente_pago + envío: texto de "pago confirmado"', () => {
+      expect(motivoBloqueoHoja('pendiente_pago', 'Via Cargo'))
+        .toBe('El pedido todavía no tiene el pago confirmado.');
+      expect(motivoBloqueoHoja('pendiente_pago', 'Envio Nube'))
+        .toBe('El pedido todavía no tiene el pago confirmado.');
+    });
+
+    test('motivoBloqueoHoja pendiente_pago + retiro: texto de "ningún pago confirmado"', () => {
+      expect(motivoBloqueoHoja('pendiente_pago', 'Retiro en deposito'))
+        .toBe('El pedido no tiene ningún pago confirmado.');
+      expect(motivoBloqueoHoja('pendiente_pago', 'Pickup Gaona'))
+        .toBe('El pedido no tiene ningún pago confirmado.');
+    });
+
+    test('motivoBloqueoHoja pendiente_datos_envio', () => {
+      expect(motivoBloqueoHoja('pendiente_datos_envio', 'Via Cargo'))
+        .toBe('El cliente todavía no cargó los datos de envío.');
+    });
+
+    test('motivoBloqueoHoja cancelado / post-empaquetado / terminales', () => {
+      expect(motivoBloqueoHoja('cancelado', null)).toBe('El pedido fue cancelado.');
+      expect(motivoBloqueoHoja('pendiente_retiro', null)).toBe('El pedido ya está listo para despacho/retiro.');
+      expect(motivoBloqueoHoja('por_enviar', null)).toBe('El pedido ya está listo para despacho/retiro.');
+      expect(motivoBloqueoHoja('enviado', null)).toBe('El pedido ya fue despachado/retirado.');
+      expect(motivoBloqueoHoja('retirado', null)).toBe('El pedido ya fue despachado/retirado.');
+      expect(motivoBloqueoHoja('en_calle', null)).toBe('El pedido ya fue despachado/retirado.');
+    });
+
+    test('motivoBloqueoHoja devuelve null cuando se puede imprimir/reimprimir', () => {
+      expect(motivoBloqueoHoja('a_imprimir', 'Via Cargo')).toBeNull();
+      expect(motivoBloqueoHoja('hoja_impresa', 'Retiro')).toBeNull();
+      expect(motivoBloqueoHoja('empaquetado', 'Envio Nube')).toBeNull();
+    });
+  });
 });

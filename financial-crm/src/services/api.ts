@@ -226,12 +226,20 @@ export interface ApiOrderInconsistency {
   detected_at: string;
 }
 
+export interface ApiOrderReprint {
+  id: number;
+  motivo: string;
+  username: string | null;
+  created_at: string;
+}
+
 export interface ApiOrderDetail {
   order: ApiOrder;
   comprobantes: ApiComprobante[];
   pagos_efectivo: ApiPagoEfectivo[];
   logs: ApiLog[];
   productos: ApiOrderProduct[];
+  reprints: ApiOrderReprint[];
   has_inconsistency: boolean;
   inconsistencies: ApiOrderInconsistency[];
 }
@@ -479,6 +487,7 @@ export async function fetchOrderDetail(orderNumber: string): Promise<ApiOrderDet
     pagos_efectivo: data.pagos_efectivo || [],
     logs: data.logs,
     productos: data.productos || [],
+    reprints: data.reprints || [],
     has_inconsistency: data.has_inconsistency || false,
     inconsistencies: data.inconsistencies || []
   };
@@ -526,11 +535,37 @@ export async function fetchOrderPrintData(orderNumber: string): Promise<ApiOrder
     if (response.status === 404) {
       throw new Error('Pedido no encontrado en Tiendanube');
     }
+    // El backend devuelve mensajes claros (ej. "El pedido todavía no tiene
+    // el pago confirmado") cuando bloquea por estado. Propagamos ese texto.
+    try {
+      const data = await response.json();
+      if (data?.error) throw new Error(data.error);
+    } catch (e) {
+      if (e instanceof Error && e.message) throw e;
+    }
     throw new Error('Error al obtener datos de impresión');
   }
 
   const data = await response.json();
   return data.print_data;
+}
+
+// Registrar reimpresión con motivo. Devuelve el registro creado (con número
+// de reimpresión calculado en backend).
+export async function requestReprint(
+  orderNumber: string,
+  motivo: string
+): Promise<ApiOrderReprint & { reimpresion_numero: number }> {
+  const response = await authFetch(`${API_BASE_URL}/orders/${orderNumber}/reprint`, {
+    method: 'POST',
+    body: JSON.stringify({ motivo }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data?.error || 'Error al registrar la reimpresión');
+  }
+  return data.reprint;
 }
 
 // Registrar pago en efectivo
