@@ -115,4 +115,123 @@ async function pushOrderToImprimir(orderNumber) {
   }
 }
 
-module.exports = { pushOrderToImprimir };
+/**
+ * Encola un push al sheet en `pending_sheet_pushes`. Idempotente: si ya hay
+ * un row pendiente para el mismo order_number, no inserta.
+ *
+ * Recibe un cliente de pg (transacción o pool). Es awaiteado por los callers
+ * dentro de sus transacciones — si la transacción rolea, el INSERT también.
+ *
+ * Reemplazó al `setImmediate(pushOrderToImprimir)` original, que tenía un
+ * problema en Cloud Run con cpu-throttling: las promises HTTP a Sheets que
+ * arrancaban via setImmediate podían quedar a medias cuando el endpoint
+ * respondía y el contenedor se congelaba (sobre todo en batch).
+ */
+async function enqueueSheetPush(clientOrPool, orderNumber) {
+  if (orderNumber === undefined || orderNumber === null) return;
+  await clientOrPool.query(
+    `INSERT INTO pending_sheet_pushes (order_number)
+     VALUES ($1)
+     ON CONFLICT (order_number) WHERE processed_at IS NULL DO NOTHING`,
+    [String(orderNumber)]
+  );
+}
+
+/**
+ * Marca como impresos (col B = TRUE) los pedidos pasados, en el sheet.
+ * Usado por el script one-shot de backfill — el flujo normal no debería
+ * tocar col B (los humanos tildan manualmente cuando imprimen).
+ *
+ * Estrategia: leer A:B una sola vez, armar mapa orderNumber → row,
+ * después batchUpdate de los rows correspondientes en una sola call.
+ * Total: 2 API calls (1 read + 1 batch write). Bajo rate limit.
+ *
+ * @param {string[]} orderNumbers
+ * @returns {Promise<{marked:string[], notFound:string[], alreadyTrue:string[]}>}
+ */
+async function markOrdersAsPrinted(orderNumbers) {
+  if (!Array.isArray(orderNumbers) || orderNumbers.length === 0) {
+    return { marked: [], notFound: [], alreadyTrue: [] };
+  }
+  const spreadsheetId = process.env.SHEETS_SPREADSHEET_ID;
+  if (!spreadsheetId) throw new Error('SHEETS_SPREADSHEET_ID no seteado');
+  const sheets = getSheetsClient();
+  if (!sheets) throw new Error('GOOGLE_SHEETS_SA_KEY no seteado o inválido');
+
+  // Leer A y B juntas para tener la fila y el estado actual del checkbox.
+  const existing = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${TAB_NAME}!A:B`,
+  });
+  const rows = existing.data.values || [];
+
+  // Mapa orderNumber → 1-indexed row.
+  const indexByOrder = new Map();
+  for (let i = 1; i < rows.length; i++) {
+    const cell = rows[i]?.[0];
+    if (cell === undefined || cell === null) continue;
+    const key = String(cell).trim();
+    if (key !== '' && !indexByOrder.has(key)) {
+      indexByOrder.set(key, i + 1);
+    }
+  }
+
+  const marked = [];
+  const notFound = [];
+  const alreadyTrue = [];
+  const dataUpdates = [];
+
+  for (const raw of orderNumbers) {
+    const key = String(raw).trim();
+    const row = indexByOrder.get(key);
+    if (!row) { notFound.push(key); continue; }
+    const currentB = rows[row - 1]?.[1];
+    // Sheets devuelve TRUE/FALSE como strings cuando la celda es boolean.
+    if (currentB === true || String(currentB).toUpperCase() === 'TRUE') {
+      alreadyTrue.push(key);
+      continue;
+    }
+    dataUpdates.push({
+      range: `${TAB_NAME}!B${row}`,
+      values: [[true]],
+    });
+    marked.push(key);
+  }
+
+  if (dataUpdates.length > 0) {
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        valueInputOption: 'USER_ENTERED',
+        data: dataUpdates,
+      },
+    });
+  }
+
+  return { marked, notFound, alreadyTrue };
+}
+
+/**
+ * Lee un rango simple (ej. "Pedidos!C2521:C2608") y devuelve la lista plana
+ * de valores no vacíos. Usado por el script de "marcar impresos" para leer
+ * la lista manual del operario.
+ */
+async function readColumnRange(range) {
+  const spreadsheetId = process.env.SHEETS_SPREADSHEET_ID;
+  if (!spreadsheetId) throw new Error('SHEETS_SPREADSHEET_ID no seteado');
+  const sheets = getSheetsClient();
+  if (!sheets) throw new Error('GOOGLE_SHEETS_SA_KEY no seteado o inválido');
+
+  const r = await sheets.spreadsheets.values.get({ spreadsheetId, range });
+  const rows = r.data.values || [];
+  return rows
+    .map(row => (row && row[0] !== undefined && row[0] !== null) ? String(row[0]).trim() : '')
+    .filter(s => s !== '');
+}
+
+module.exports = {
+  pushOrderToImprimir,
+  enqueueSheetPush,
+  markOrdersAsPrinted,
+  readColumnRange,
+};

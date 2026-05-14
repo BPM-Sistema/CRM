@@ -5,7 +5,7 @@
 
 const axios = require('axios');
 const { callTiendanube } = require('../lib/circuitBreaker');
-const { pushOrderToImprimir } = require('../lib/sheets-helpers');
+const { enqueueSheetPush } = require('../lib/sheets-helpers');
 const { recalcularPagos } = require('../lib/recalcularPagos');
 const pool = require('../db');
 const {
@@ -321,7 +321,12 @@ async function processOrderPaid(orderId, orderNumber) {
     ]);
 
     // Tracking en Google Sheets para el caso INSERT (no pasa por recalcularPagos).
-    setImmediate(() => { pushOrderToImprimir(String(pedido.number)); });
+    // Encolamos en pending_sheet_pushes — el worker sheet-pusher procesa la cola.
+    try {
+      await enqueueSheetPush(pool, String(pedido.number));
+    } catch (err) {
+      console.error(`[orderSync] enqueueSheetPush #${pedido.number} falló: ${err.message}`);
+    }
   } else {
     // Actualizar como pagado. NO tocamos estado_pedido — recalcularPagos lo
     // determina abajo según shipping_type + shipping_request + pago.

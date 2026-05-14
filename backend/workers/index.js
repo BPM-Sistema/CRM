@@ -11,6 +11,7 @@ const { logger, workerLogger: log } = require('../lib/logger');
 const { redis } = require('../lib/redis');
 const { createWhatsAppWorker } = require('./whatsapp.worker');
 const { createRemitosWorker } = require('./remitos.worker');
+const { startSheetPusherWorker } = require('./sheet-pusher.worker');
 // AI Bot workers — loaded defensively so BPM workers always start even if bot code fails
 // AI Bot workers — PAUSADOS, descomentar cuando se active el bot en prod
 // let createMetaEventsWorker, createAiGenerateWorker, createAiSendReplyWorker;
@@ -88,6 +89,11 @@ async function start() {
   const remitosWorker = createRemitosWorker(connection);
   workers.push(remitosWorker);
   log.info('Remitos worker iniciado');
+
+  // Sheet pusher: poll-based (no BullMQ). Procesa pending_sheet_pushes cada 5s.
+  const sheetPusherWorker = startSheetPusherWorker();
+  workers.push(sheetPusherWorker);
+  log.info('Sheet pusher worker iniciado');
 
   // AI Bot workers — isolated in try-catch so BPM workers survive if bot fails
   try {

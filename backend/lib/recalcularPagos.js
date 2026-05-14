@@ -17,7 +17,7 @@
  */
 
 const { calcularEstadoPedido } = require('./payment-helpers');
-const { pushOrderToImprimir } = require('./sheets-helpers');
+const { enqueueSheetPush } = require('./sheets-helpers');
 const { derivarEstadoDesdeEmpaquetado, accionParaEstado } = require('./estados-pedido');
 const { logEvento } = require('../utils/logging');
 const { notifyEstadoTransition } = require('./notify-estado-transition');
@@ -104,10 +104,18 @@ async function recalcularPagos(clientOrPool, orderNumber, opts = {}) {
     WHERE order_number = $5
   `, [totalPagado, saldo, estadoPago, estadoPedido, orderNumber]);
 
-  // Transición a "a_imprimir" → tracking en Google Sheets (fire-and-forget,
-  // nunca rompe el flujo aunque la API de Sheets falle).
+  // Transición a "a_imprimir" → encolar en pending_sheet_pushes. El worker
+  // sheet-pusher procesa la cola secuencial. Evita el problema de Cloud Run
+  // con cpu-throttling: antes era setImmediate(pushOrderToImprimir), pero
+  // los pushes en batch (conciliación bancaria masiva) quedaban a medias al
+  // congelarse el contenedor post-response. El INSERT corre dentro de la
+  // misma transacción del caller, así que si rolea, el encolado también.
   if (estadoPedidoActual !== 'a_imprimir' && estadoPedido === 'a_imprimir') {
-    setImmediate(() => { pushOrderToImprimir(orderNumber); });
+    try {
+      await enqueueSheetPush(clientOrPool, orderNumber);
+    } catch (err) {
+      console.error(`[recalcularPagos] enqueueSheetPush #${orderNumber} falló: ${err.message}`);
+    }
   }
 
   // Trigger A: si el pedido quedó en `empaquetado` y el pago alcanza para
