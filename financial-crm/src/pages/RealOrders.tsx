@@ -159,6 +159,10 @@ export function RealOrders() {
     loadPrintCounts();
   };
 
+  // Controller para cancelar la request anterior cuando arranca una nueva
+  // (evita race condition donde una respuesta vieja pisa una nueva)
+  const loadOrdersAbortRef = useRef<AbortController | null>(null);
+
   const loadOrders = useCallback(async (page?: number, overrideFilters?: OrderFilters, isFilterChange = false) => {
     const pageToLoad = page ?? currentPage;
 
@@ -179,20 +183,37 @@ export function RealOrders() {
       shipping_data: shippingDataFilter === 'all' ? undefined : shippingDataFilter,
       shipping_type: shippingTypeFilter === 'all' ? undefined : shippingTypeFilter,
     };
+
+    // Cancelar request anterior si sigue en vuelo
+    if (loadOrdersAbortRef.current) {
+      loadOrdersAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    loadOrdersAbortRef.current = controller;
+
     setLoading(true);
     if (isFilterChange) {
       setIsFiltering(true);
     }
     setError(null);
     try {
-      const response = await fetchOrders(pageToLoad, ITEMS_PER_PAGE, filtersToUse);
+      const response = await fetchOrders(pageToLoad, ITEMS_PER_PAGE, filtersToUse, controller.signal);
       setOrders(response.data);
       setPagination(response.pagination);
     } catch (err) {
+      // Request abortada: la pisó otra más nueva, no es un error real
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Error al cargar pedidos');
     } finally {
-      setLoading(false);
-      setIsFiltering(false);
+      // Solo apagar el loading si esta request sigue siendo la última.
+      // Si fue abortada por una más nueva, esa nueva ya seteó loading=true
+      // y debe mantenerlo hasta que termine.
+      if (loadOrdersAbortRef.current === controller) {
+        setLoading(false);
+        setIsFiltering(false);
+      }
     }
   }, [currentPage, fechaFilter, customDate, paymentFilter, orderStatusFilter, searchQuery, shippingDataFilter, shippingTypeFilter]);
 

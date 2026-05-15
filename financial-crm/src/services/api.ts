@@ -384,7 +384,7 @@ function mapEstadoPagoToDB(uiValue: string): string {
 }
 
 // Obtener todos los pedidos (con paginación y filtros)
-export async function fetchOrders(page = 1, limit = 50, filters?: OrderFilters): Promise<PaginatedResponse<ApiOrder>> {
+export async function fetchOrders(page = 1, limit = 50, filters?: OrderFilters, signal?: AbortSignal): Promise<PaginatedResponse<ApiOrder>> {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
 
   if (filters?.estado_pago && filters.estado_pago !== 'all') {
@@ -406,7 +406,7 @@ export async function fetchOrders(page = 1, limit = 50, filters?: OrderFilters):
     params.append('shipping_type', filters.shipping_type);
   }
 
-  const response = await authFetch(`${API_BASE_URL}/orders?${params.toString()}`);
+  const response = await authFetch(`${API_BASE_URL}/orders?${params.toString()}`, { signal });
 
   if (!response.ok) {
     throw new Error('Error al obtener pedidos');
