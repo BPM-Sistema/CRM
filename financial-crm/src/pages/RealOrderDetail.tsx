@@ -56,7 +56,7 @@ import { es } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
 import {
   ORDER_STATUSES, STATUS_CONFIG,
-  puedeReimprimirHoja, motivoBloqueoHoja,
+  puedeReimprimirHoja, motivoBloqueoHoja, isPickupShipping, isEnvioNubeShipping,
 } from '../constants/estadoPedido';
 
 export function RealOrderDetail() {
@@ -425,10 +425,9 @@ export function RealOrderDetail() {
   // Lógica de impresión: la fuente de verdad es estado_pedido (la calcula el
   // backend con la regla completa pago + método + datos). Acá solo derivamos
   // qué botón mostrar y el motivo cuando el pedido no permite imprimir.
-  const shippingTypeLower = (order.shipping_type || '').toLowerCase();
   // Retiro en local (mismo criterio que esRetiro en backend/lib/estados-pedido.js).
   // Usado para la Card "Tipo Envío" de la columna derecha.
-  const isPickupOrder = /pickup|retiro|deposito|depósito/i.test(order.shipping_type || '');
+  const isPickupOrder = isPickupShipping(order.shipping_type);
   // En la UI distinguimos "imprimir inicial" (solo a_imprimir, sin motivo) de
   // "re-imprimir" (resto de estados imprimibles, pide motivo). El backend en
   // GET /print acepta hoja_impresa por idempotencia, pero acá no queremos
@@ -1237,7 +1236,7 @@ export function RealOrderDetail() {
             )}
 
             {/* Etiqueta Envío Nube (solo si es envío nube) */}
-            {(shippingTypeLower.includes('envío nube') || shippingTypeLower.includes('envio nube')) && (
+            {isEnvioNubeShipping(order.shipping_type) && (
               <Card>
                 <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider mb-3">
                   Etiqueta Envío Nube

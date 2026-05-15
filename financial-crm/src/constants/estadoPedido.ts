@@ -140,9 +140,17 @@ export function puedeReimprimirHoja(estado: OrderStatus | null | undefined): boo
 
 // Detector simple por shipping_type (espejo acotado de esRetiro en backend).
 // No mira empresa_envio porque el frontend no la tiene a mano en la card.
-function isPickupShipping(shippingType: string | null | undefined): boolean {
+export function isPickupShipping(shippingType: string | null | undefined): boolean {
   if (!shippingType) return false;
   return /pickup|retiro|deposito|depósito/i.test(shippingType);
+}
+
+// Espejo de isEnvioNubeShipping del backend (lib/estados-pedido.js).
+// TN manda el nombre con/sin tilde inconsistentemente.
+export function isEnvioNubeShipping(shippingType: string | null | undefined): boolean {
+  if (!shippingType) return false;
+  const lower = shippingType.toLowerCase();
+  return lower.includes('envío nube') || lower.includes('envio nube');
 }
 
 /**

@@ -15,28 +15,15 @@
  * solo chequeamos pago — los datos ya fueron validados pre-imprimir.
  */
 
+const { esRetiro, requiresShippingForm } = require('./estados-pedido');
+
 const PAGOS_OK_PARCIAL = ['confirmado_parcial', 'confirmado_total', 'a_favor'];
 const PAGOS_OK_TOTAL   = ['confirmado_total', 'a_favor'];
 
-function _isPickup(shippingType) {
-  if (!shippingType) return false;
-  return /pickup|retiro|deposito|depósito/i.test(shippingType);
-}
-
-function _requiresShippingForm(shippingType) {
-  if (!shippingType) return false;
-  const lower = shippingType.toLowerCase();
-  return (
-    (lower.includes('expreso') && lower.includes('elec')) ||
-    lower.includes('via cargo') ||
-    lower.includes('viacargo')
-  );
-}
-
 function getRequirements(shippingType) {
-  if (_isPickup(shippingType))             return { minPago: 'parcial', requiereDatos: false };
-  if (_requiresShippingForm(shippingType)) return { minPago: 'total',   requiereDatos: true  };
-  return                                     { minPago: 'total',   requiereDatos: false };
+  if (esRetiro({ shipping_type: shippingType })) return { minPago: 'parcial', requiereDatos: false };
+  if (requiresShippingForm(shippingType))        return { minPago: 'total',   requiereDatos: true  };
+  return                                           { minPago: 'total',   requiereDatos: false };
 }
 
 function _pagoAlcanza(estadoPago, shippingType) {

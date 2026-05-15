@@ -14,7 +14,7 @@ import {
   TableCell,
 } from '../components/ui';
 import { fetchOrders, fetchPrintCounts, fetchOrdersToPrint, ApiOrder, mapEstadoPago, mapEstadoPedido, PaymentStatus, OrderStatus, PaginationInfo, OrderFilters, ShippingTypeFilter, getEnvioNubeLabels, getQlickLabels, isQlickShipping, PrintCounts } from '../services/api';
-import { ORDER_STATUSES, STATUS_FILTER_CONFIG } from '../constants/estadoPedido';
+import { ORDER_STATUSES, STATUS_FILTER_CONFIG, isEnvioNubeShipping } from '../constants/estadoPedido';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -118,8 +118,7 @@ export function RealOrders() {
     if (selectedOrderNumbers.size === 0) return { selectedEnvioNubeCount: 0, selectedEnvioNubePrintedCount: 0 };
     const envioNubeOrders = orders.filter(o => {
       if (!selectedOrderNumbers.has(o.order_number)) return false;
-      const shippingType = (o.shipping_type || '').toLowerCase();
-      return shippingType.includes('envío nube') || shippingType.includes('envio nube');
+      return isEnvioNubeShipping(o.shipping_type);
     });
     const printed = envioNubeOrders.filter(o => o.envio_nube_label_printed_at).length;
     return {
@@ -495,10 +494,7 @@ export function RealOrders() {
     try {
       // Filtrar solo pedidos con Envío Nube
       const selectedOrders = orders.filter(o => selectedOrderNumbers.has(o.order_number));
-      const envioNubeOrders = selectedOrders.filter(o => {
-        const shippingType = (o.shipping_type || '').toLowerCase();
-        return shippingType.includes('envío nube') || shippingType.includes('envio nube');
-      });
+      const envioNubeOrders = selectedOrders.filter(o => isEnvioNubeShipping(o.shipping_type));
 
       if (envioNubeOrders.length === 0) {
         alert('Ninguno de los pedidos seleccionados usa Envío Nube');

@@ -8,8 +8,12 @@
 const pool = require('../db');
 const { calcularEstadoCuenta } = require('../utils/calcularEstadoCuenta');
 const { normalizePhone } = require('../utils/phoneNormalize');
-const { ESTADO_PEDIDO_ORDER } = require('./estados-pedido');
+const { ESTADO_PEDIDO_ORDER, esRetiro, requiresShippingForm } = require('./estados-pedido');
 const { motivoBloqueoImpresion } = require('./shipping-requirements');
+
+// Wrapper acotado a shipping_type (sin carrier ni empresa) para mantener la
+// firma que ya esperan los call sites históricos.
+const isPickupShipping = (shippingType) => esRetiro({ shipping_type: shippingType });
 
 /* =====================================================
    UTIL — CALCULAR TOTAL PAGADO
@@ -106,31 +110,6 @@ function resolveEstadoInicial(estadoPago, shippingType, hasShippingRequest) {
 }
 
 /* =====================================================
-   UTIL — REQUIERE FORMULARIO DE ENVIO
-   Detecta si un pedido requiere completar el formulario /envio
-   Casos: "Expreso a eleccion" o "Via Cargo"
-===================================================== */
-function requiresShippingForm(shippingType) {
-  if (!shippingType) return false;
-  const lower = shippingType.toLowerCase();
-  return (
-    (lower.includes('expreso') && lower.includes('elec')) ||
-    lower.includes('via cargo') ||
-    lower.includes('viacargo')
-  );
-}
-
-/* =====================================================
-   UTIL — ES ENVIO POR RETIRO
-   Detecta si el envio es retiro en deposito / pickup point.
-   Misma logica que ya esta duplicada en index.js (print-data) y mapShippingToEstadoPedido.
-===================================================== */
-function isPickupShipping(shippingType) {
-  if (!shippingType) return false;
-  return /pickup|retiro|deposito|depósito/i.test(shippingType);
-}
-
-/* =====================================================
    UTIL — TRANSPORTES PROHIBIDOS
    Bloqueamos Andreani, OCA y Correo Argentino en el form /envio:
    están con demoras y costos altos. Replica la validación del
@@ -220,8 +199,7 @@ function normalizePhoneForComparison(phone) {
 function mapShippingToEstadoPedido(shippingStatus, shippingCarrier, shippingType, estadoPedidoActual, opts = {}) {
   if (estadoPedidoActual === 'cancelado') return null;
 
-  const isPickup = (shippingType && /pickup|retiro|deposito|depósito/i.test(shippingType))
-    || shippingCarrier === 'pickup-point';
+  const isPickup = esRetiro({ shipping_type: shippingType, shipping_carrier: shippingCarrier });
 
   const fulfillStatus = opts.fulfillmentStatus?.toUpperCase();
   let nuevoEstado = null;

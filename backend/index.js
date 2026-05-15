@@ -53,7 +53,7 @@ const { verificarConsistencia, getInconsistencias } = require('./utils/orderVeri
 const { getNotificaciones, contarNoLeidas, marcarLeida, marcarTodasLeidas, crearNotificacion, notificarUsuariosConPermiso } = require('./utils/notifications');
 const { enviarWhatsAppPlantilla } = require('./lib/whatsapp-helpers');
 const { calcularTotalPagado, calcularEstadoPedido, requiresShippingForm, isForbiddenCarrier, normalizePhoneForComparison, mapShippingToEstadoPedido } = require('./lib/payment-helpers');
-const { ESTADOS, ACCIONES_LOG, ESTADO_PERMISOS, accionParaEstado, derivarEstadoDesdeEmpaquetado, puedeImprimirHoja, puedeReimprimirHoja, motivoBloqueoHoja } = require('./lib/estados-pedido');
+const { ESTADOS, ACCIONES_LOG, ESTADO_PERMISOS, accionParaEstado, derivarEstadoDesdeEmpaquetado, puedeImprimirHoja, puedeReimprimirHoja, motivoBloqueoHoja, esRetiro, isEnvioNubeShipping } = require('./lib/estados-pedido');
 const { recalcularPagos } = require('./lib/recalcularPagos');
 const { pagoAlcanzaParaDespachar } = require('./lib/shipping-requirements');
 const { reopenIfCancelled } = require('./lib/reopenIfCancelled');
@@ -2917,11 +2917,7 @@ app.get('/orders/:orderNumber/print', authenticate, requirePermission('orders.pr
           }
         }
 
-        const typeLower = type.toLowerCase();
-        const isPickup = typeLower.includes('pickup') ||
-                         typeLower.includes('retiro') ||
-                         typeLower.includes('deposito') ||
-                         typeLower.includes('depósito');
+        const isPickup = esRetiro({ shipping_type: type });
         return {
           type,
           pickup_type: isPickup ? 'pickup' : 'ship',
@@ -4014,8 +4010,7 @@ app.patch('/orders/:orderNumber/status', authenticate, requirePermission('orders
 
     // WhatsApp automático cuando se marca como "enviado" con Envío Nube
     if (estado_pedido === 'enviado') {
-      const shippingType = (pedido.shipping_type || '').toLowerCase();
-      const esEnvioNube = shippingType.includes('envío nube') || shippingType.includes('envio nube');
+      const esEnvioNube = isEnvioNubeShipping(pedido.shipping_type);
 
       if (esEnvioNube && pedido.customer_phone && pedido.tn_order_id && pedido.tn_order_token) {
         const trackingParam = `${pedido.tn_order_id}/${pedido.tn_order_token}`;
@@ -5140,8 +5135,7 @@ app.post('/webhook/tiendanube', async (req, res) => {
 
           // WhatsApp automático cuando TN marca como "enviado" (Envío Nube)
           if (shippingDerivedEstado === 'enviado') {
-            const shippingTypeLower = (db.shipping_type || '').toLowerCase();
-            const esEnvioNube = shippingTypeLower.includes('envío nube') || shippingTypeLower.includes('envio nube');
+            const esEnvioNube = isEnvioNubeShipping(db.shipping_type);
 
             if (esEnvioNube) {
               // Obtener datos del cliente para WhatsApp
@@ -8545,8 +8539,7 @@ app.get('/orders/:orderNumber/envio-nube-label', authenticate, async (req, res) 
     }
 
     // Verificar que sea Envío Nube
-    const shippingType = (order.shipping_type || '').toLowerCase();
-    if (!shippingType.includes('envío nube') && !shippingType.includes('envio nube')) {
+    if (!isEnvioNubeShipping(order.shipping_type)) {
       return res.status(400).json({
         error: 'Este pedido no usa Envío Nube',
         shipping_type: order.shipping_type
@@ -8657,8 +8650,7 @@ app.post('/orders/envio-nube-labels', authenticate, async (req, res) => {
         continue;
       }
 
-      const shippingType = (order.shipping_type || '').toLowerCase();
-      if (!shippingType.includes('envío nube') && !shippingType.includes('envio nube')) {
+      if (!isEnvioNubeShipping(order.shipping_type)) {
         results.failed.push({ order: orderNumber, error: 'No es Envío Nube' });
         continue;
       }
@@ -8854,8 +8846,7 @@ app.post('/orders/envio-nube-labels/preview', authenticate, async (req, res) => 
         continue;
       }
 
-      const shippingType = (order.shipping_type || '').toLowerCase();
-      if (!shippingType.includes('envío nube') && !shippingType.includes('envio nube')) {
+      if (!isEnvioNubeShipping(order.shipping_type)) {
         results.unavailable.push({ order: orderNumber, reason: 'No es Envío Nube', shipping_type: order.shipping_type });
         continue;
       }
@@ -9228,10 +9219,7 @@ app.post('/orders/:orderNumber/tracking-codes', authenticate, requirePermission(
     }
 
     const order = orderRes.rows[0];
-    const shippingType = (order.shipping_type || '').toLowerCase();
-    const esEnvioNube = shippingType.includes('envío nube') || shippingType.includes('envio nube');
-
-    if (!esEnvioNube) {
+    if (!isEnvioNubeShipping(order.shipping_type)) {
       return res.status(400).json({ error: 'Solo se pueden agregar trackings a pedidos de Envío Nube' });
     }
 

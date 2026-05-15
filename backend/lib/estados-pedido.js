@@ -157,6 +157,17 @@ function requiresShippingForm(shipping_type) {
 }
 
 /**
+ * Detecta si el shipping_type es "Envío Nube" (el método nativo de TiendaNube
+ * donde TN genera y mantiene la etiqueta). Acepta ambas grafías (con y sin
+ * tilde) porque TN lo manda inconsistentemente.
+ */
+function isEnvioNubeShipping(shipping_type) {
+  if (!shipping_type) return false;
+  const lower = shipping_type.toLowerCase();
+  return lower.includes('envío nube') || lower.includes('envio nube');
+}
+
+/**
  * Dado un pedido en `empaquetado` con pago confirmado, deriva el siguiente
  * estado según método de envío.
  *
@@ -251,6 +262,7 @@ module.exports = {
   ESTADOS_REIMPRIMIR_HOJA,
   esRetiro,
   requiresShippingForm,
+  isEnvioNubeShipping,
   derivarEstadoDesdeEmpaquetado,
   isEstadoValido,
   accionParaEstado,
