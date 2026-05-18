@@ -58,7 +58,7 @@ const paymentStatusConfig: Record<PaymentStatus, { icon: string; label: string }
   pendiente: { icon: '', label: 'Pendiente' },
   a_confirmar: { icon: '', label: 'A confirmar' },
   parcial: { icon: '', label: 'Parcial' },
-  total: { icon: '', label: 'Recibido' },
+  total: { icon: '', label: 'Pago completo' },
   rechazado: { icon: '', label: 'Rechazado' },
   anulado: { icon: '', label: 'Anulado' },
   reembolsado: { icon: '', label: 'Reembolsado' },
