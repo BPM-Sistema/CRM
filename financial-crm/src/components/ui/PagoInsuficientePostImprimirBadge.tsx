@@ -36,7 +36,7 @@ export function PagoInsuficientePostImprimirBadge() {
   }, [loadCount]);
 
   const handleClick = () => {
-    navigate('/pedidos?alert=pago_insuficiente_post_imprimir');
+    navigate('/orders?alert=pago_insuficiente_post_imprimir');
   };
 
   if (count === 0) return null;
