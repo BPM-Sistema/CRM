@@ -10,6 +10,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { Header } from '../components/layout';
+import { Switch } from '../components/ui/Switch';
 import {
   fetchRevisionErrors,
   RevisionErrorRow,
@@ -26,6 +27,7 @@ export function DepositoErrores() {
   const [desde, setDesde] = useState<string>(isoDate(thirtyDaysAgo));
   const [hasta, setHasta] = useState<string>(isoDate(today));
   const [rows, setRows] = useState<RevisionErrorRow[]>([]);
+  const [showInactive, setShowInactive] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,8 +48,9 @@ export function DepositoErrores() {
 
   useEffect(() => { load(); }, [load]);
 
-  const totalErrores = rows.reduce((sum, r) => sum + r.total_errores, 0);
-  const totalPedidos = rows.reduce((sum, r) => sum + r.pedidos_preparados, 0);
+  const visible = rows.filter(r => showInactive || r.active);
+  const totalErrores = visible.reduce((sum, r) => sum + r.total_errores, 0);
+  const totalPedidos = visible.reduce((sum, r) => sum + r.pedidos_preparados, 0);
 
   return (
     <>
@@ -94,6 +97,14 @@ export function DepositoErrores() {
           </div>
         </div>
 
+        {/* Toggle inactivos */}
+        <div className="flex items-center">
+          <label className="flex items-center gap-3 text-sm text-neutral-700 cursor-pointer select-none">
+            <Switch checked={showInactive} onChange={() => setShowInactive(v => !v)} />
+            Mostrar inactivos
+          </label>
+        </div>
+
         {/* Tabla */}
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
           <table className="w-full text-sm">
@@ -112,11 +123,11 @@ export function DepositoErrores() {
               {!loading && error && (
                 <tr><td colSpan={4} className="px-4 py-8 text-center text-red-600">{error}</td></tr>
               )}
-              {!loading && !error && rows.length === 0 && (
+              {!loading && !error && visible.length === 0 && (
                 <tr><td colSpan={4} className="px-4 py-8 text-center text-neutral-400">Sin datos en el rango seleccionado</td></tr>
               )}
-              {!loading && rows.map(r => (
-                <tr key={r.warehouse_user_id} className="border-b border-neutral-100">
+              {!loading && visible.map(r => (
+                <tr key={r.warehouse_user_id} className={`border-b border-neutral-100 ${!r.active ? 'opacity-60' : ''}`}>
                   <td className="px-4 py-2 font-medium">{r.nombre}</td>
                   <td className="px-4 py-2 text-right text-neutral-700">{r.pedidos_preparados}</td>
                   <td className={`px-4 py-2 text-right font-semibold ${r.total_errores > 0 ? 'text-red-600' : 'text-neutral-400'}`}>

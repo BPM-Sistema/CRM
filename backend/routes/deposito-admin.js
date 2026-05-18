@@ -585,6 +585,7 @@ router.get('/errores', requirePermission('deposito.ver_deposito'), async (req, r
       `SELECT
          wu.id AS warehouse_user_id,
          wu.nombre,
+         wu.active,
          COUNT(DISTINCT wst.order_number) FILTER (
            WHERE wst.to_status = 'en_revision'
              AND wst.created_at BETWEEN $1 AND $2
@@ -597,15 +598,15 @@ router.get('/errores', requirePermission('deposito.ver_deposito'), async (req, r
          ), 0) AS total_errores
        FROM warehouse_users wu
        LEFT JOIN warehouse_state_transitions wst ON wst.warehouse_user_id = wu.id
-       WHERE wu.active = true
-       GROUP BY wu.id, wu.nombre
-       ORDER BY total_errores DESC, wu.nombre ASC`,
+       GROUP BY wu.id, wu.nombre, wu.active
+       ORDER BY wu.active DESC, total_errores DESC, wu.nombre ASC`,
       [desde.toISOString(), hasta.toISOString()]
     );
 
     const rows = r.rows.map(row => ({
       warehouse_user_id: row.warehouse_user_id,
       nombre: row.nombre,
+      active: row.active,
       pedidos_preparados: row.pedidos_preparados,
       total_errores: row.total_errores,
       promedio: row.pedidos_preparados > 0

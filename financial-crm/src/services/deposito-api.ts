@@ -262,6 +262,7 @@ export async function regenerateEmployeeCode(id: number): Promise<CodeResponse> 
 export interface RevisionErrorRow {
   warehouse_user_id: number;
   nombre: string;
+  active: boolean;
   pedidos_preparados: number;
   total_errores: number;
   promedio: number | null;
