@@ -1542,9 +1542,14 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
       conditions.push(requiresFormCondition);
       conditions.push(`EXISTS (SELECT 1 FROM shipping_requests sr2 WHERE sr2.order_number = o.order_number AND sr2.label_printed_at IS NOT NULL)`);
     } else if (shipping_data === 'label_not_printed') {
-      // Solo pedidos que requieren form, tienen datos PERO etiqueta NO impresa
+      // Solo pedidos que requieren form, tienen datos PERO etiqueta NO impresa.
+      // Ademas excluimos pedidos sin pago total y terminales (cancelado/enviado/
+      // retirado), porque el endpoint POST /orders/:n/shipping-label los rechaza
+      // (gate de pago) y no tiene sentido listarlos como "etiqueta pendiente".
       conditions.push(requiresFormCondition);
       conditions.push(`EXISTS (SELECT 1 FROM shipping_requests sr2 WHERE sr2.order_number = o.order_number AND sr2.label_printed_at IS NULL)`);
+      conditions.push(`o.estado_pago IN ('confirmado_total', 'a_favor')`);
+      conditions.push(`o.estado_pedido NOT IN ('cancelado', 'enviado', 'retirado')`);
     } else if (shipping_data === 'data_changed') {
       // Etiqueta impresa pero el cliente modifico datos despues. Requiere
       // reimpresion manual desde el detalle del pedido.
