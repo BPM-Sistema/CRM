@@ -1,4 +1,4 @@
-import { Box, Text } from "@tiendanube/nube-sdk-jsx";
+import { Box, Image, Row, Text } from "@tiendanube/nube-sdk-jsx";
 import { styled } from "@tiendanube/nube-sdk-ui";
 import type { NubeSDK } from "@tiendanube/nube-sdk-types";
 
@@ -27,7 +27,15 @@ const Body = styled(Text)`
 function PhoneMessage() {
   return (
     <Container>
-      <Title>📱 Cargá un número con WhatsApp activo</Title>
+      <Row gap={8}>
+        <Image
+          src="https://cdn.simpleicons.org/whatsapp/25D366"
+          alt="WhatsApp"
+          width="20px"
+          height="20px"
+        />
+        <Title>Cargá un número con WhatsApp activo</Title>
+      </Row>
       <Body>
         Importante: te avisamos por ahí todas las novedades de tu pedido (pago,
         preparación y envío).
