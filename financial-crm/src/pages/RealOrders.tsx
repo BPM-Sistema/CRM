@@ -66,6 +66,7 @@ export function RealOrders() {
   const searchQuery = filters.search;
   const shippingDataFilter = filters.shipping_data;
   const shippingTypeFilter = filters.shipping_type;
+  const alertFilter = filters.alert;
   const currentPage = filters.page;
 
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
@@ -241,7 +242,7 @@ export function RealOrders() {
   // Este efecto se dispara cuando cualquier filtro cambia (incluyendo navegación back/forward)
   useEffect(() => {
     loadOrders(currentPage, undefined, true);
-  }, [paymentFilter, orderStatusFilter, shippingDataFilter, shippingTypeFilter, fechaFilter, customDate, currentPage, searchQuery]);
+  }, [paymentFilter, orderStatusFilter, shippingDataFilter, shippingTypeFilter, alertFilter, fechaFilter, customDate, currentPage, searchQuery]);
 
   // Estado local para input de búsqueda (con debounce antes de actualizar URL)
   const [searchInput, setSearchInput] = useState(searchQuery);
