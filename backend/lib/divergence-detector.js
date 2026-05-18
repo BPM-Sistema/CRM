@@ -341,13 +341,17 @@ async function applyAutoFixes(orderNumber, divergences, opts = {}) {
   let skipped = 0;
 
   // Cargar flags del pedido que afectan qué fixes se pueden aplicar.
-  // customer_phone_overridden_at: el cliente verificó su teléfono vía
-  // /comprobantes-wpp, no debemos pisarlo con el de TN.
+  // - customer_phone_overridden_at: el cliente verificó su teléfono vía
+  //   /comprobantes-wpp, no debemos pisarlo con el de TN.
+  // - shipping_overridden_at: admin cambió el método de envío manualmente vía
+  //   /orders/:n/shipping, no debemos pisar shipping_address con el de TN.
   const flagsRes = await pool.query(
-    `SELECT customer_phone_overridden_at FROM orders_validated WHERE order_number = $1`,
+    `SELECT customer_phone_overridden_at, shipping_overridden_at
+       FROM orders_validated WHERE order_number = $1`,
     [orderNumber]
   );
   const customerPhoneLocked = !!flagsRes.rows[0]?.customer_phone_overridden_at;
+  const shippingLocked = !!flagsRes.rows[0]?.shipping_overridden_at;
 
   const setClauses = ['updated_at = NOW()'];
   const setParams = [];
@@ -433,10 +437,15 @@ async function applyAutoFixes(orderNumber, divergences, opts = {}) {
         break;
 
       case 'shipping_address':
-        setClauses.push(`shipping_address = $${paramIdx++}`);
-        setParams.push(JSON.stringify(d.expected_value));
-        details.push({ field: 'shipping_address', action: 'fixed' });
-        fixed++;
+        if (shippingLocked) {
+          skipped++;
+          details.push({ field: 'shipping_address', action: 'skipped', reason: 'admin_shipping_override_lock' });
+        } else {
+          setClauses.push(`shipping_address = $${paramIdx++}`);
+          setParams.push(JSON.stringify(d.expected_value));
+          details.push({ field: 'shipping_address', action: 'fixed' });
+          fixed++;
+        }
         break;
 
       case 'note':

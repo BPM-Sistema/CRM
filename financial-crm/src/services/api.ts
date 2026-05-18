@@ -664,6 +664,48 @@ export async function updateCustomerPhone(
   return data;
 }
 
+export interface ShippingChangePayload {
+  method: 'RETIRO' | 'VIA_CARGO' | 'OTRO';
+  shipping_request?: {
+    empresa_envio: 'VIA_CARGO' | 'OTRO';
+    empresa_envio_otro?: string | null;
+    destino_tipo: 'SUCURSAL' | 'DOMICILIO';
+    direccion_entrega: string;
+    nombre_apellido: string;
+    dni: string;
+    email: string;
+    codigo_postal: string;
+    provincia: string;
+    localidad: string;
+    telefono: string;
+    comentarios?: string | null;
+  };
+}
+
+export async function updateOrderShipping(
+  orderNumber: string,
+  payload: ShippingChangePayload
+): Promise<{
+  ok: boolean;
+  changed: boolean;
+  old_shipping_type: string | null;
+  shipping_type: string | null;
+  reason: string;
+}> {
+  const response = await authFetch(`${API_BASE_URL}/orders/${orderNumber}/shipping`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Error al cambiar método de envío');
+  }
+
+  return data;
+}
+
 // Mapear estado de pedido del backend.
 // El backend ya garantiza valores válidos (CHECK constraint en PR 5), pero por las
 // dudas (datos viejos / desync) caemos a 'pendiente_pago' si el string no matchea.

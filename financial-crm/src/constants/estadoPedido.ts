@@ -138,6 +138,27 @@ export function puedeReimprimirHoja(estado: OrderStatus | null | undefined): boo
   return !!estado && ESTADOS_REIMPRIMIR_HOJA.includes(estado);
 }
 
+// Estados permitidos para cambiar el método de envío. Hasta por_empaquetar
+// inclusive (pre-empaquetado). Espejo de la regla del backend
+// lib/shipping-override.js canChangeShipping().
+const ESTADOS_CAMBIAR_ENVIO: OrderStatus[] = [
+  'pendiente_pago', 'pendiente_datos_envio', 'a_imprimir', 'hoja_impresa',
+  'en_preparacion', 'pendiente_stock', 'en_revision', 'por_empaquetar',
+];
+
+export function puedeCambiarEnvio(estado: OrderStatus | null | undefined): boolean {
+  return !!estado && ESTADOS_CAMBIAR_ENVIO.includes(estado);
+}
+
+export function motivoBloqueoCambiarEnvio(estado: OrderStatus | null | undefined): string | null {
+  if (puedeCambiarEnvio(estado)) return null;
+  if (estado === 'cancelado') return 'El pedido fue cancelado.';
+  if (estado === 'empaquetado') return 'El pedido ya está empaquetado.';
+  if (estado === 'pendiente_retiro' || estado === 'por_enviar') return 'El pedido ya está listo para despacho/retiro.';
+  if (estado === 'en_calle' || estado === 'enviado' || estado === 'retirado') return 'El pedido ya fue despachado/retirado.';
+  return 'El pedido no está en un estado que permita cambiar el envío.';
+}
+
 // Detector simple por shipping_type (espejo acotado de esRetiro en backend).
 // No mira empresa_envio porque el frontend no la tiene a mano en la card.
 export function isPickupShipping(shippingType: string | null | undefined): boolean {

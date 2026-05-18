@@ -599,9 +599,15 @@ async function guardarPedidoCompleto(pedido) {
         WHEN orders_validated.customer_phone_overridden_at IS NOT NULL THEN orders_validated.customer_phone
         ELSE COALESCE(EXCLUDED.customer_phone, orders_validated.customer_phone)
       END,
-      shipping_type = EXCLUDED.shipping_type,
+      shipping_type = CASE
+        WHEN orders_validated.shipping_overridden_at IS NOT NULL THEN orders_validated.shipping_type
+        ELSE EXCLUDED.shipping_type
+      END,
       shipping_tracking = EXCLUDED.shipping_tracking,
-      shipping_address = EXCLUDED.shipping_address,
+      shipping_address = CASE
+        WHEN orders_validated.shipping_overridden_at IS NOT NULL THEN orders_validated.shipping_address
+        ELSE EXCLUDED.shipping_address
+      END,
       note = EXCLUDED.note,
       owner_note = EXCLUDED.owner_note,
       tn_payment_status = EXCLUDED.tn_payment_status,
@@ -4171,6 +4177,93 @@ app.patch('/orders/:orderNumber/customer-phone', authenticate, requirePermission
 });
 
 
+/* =====================================================
+   PATCH — CAMBIAR MÉTODO DE ENVÍO (override admin)
+   Permite cambiar entre Retiro / Vía Cargo / "Otro" (carrier libre).
+   Setea shipping_overridden_at para que TN no pise el cambio.
+   Solo admin (permiso orders.edit_shipping). Estados hasta por_empaquetar.
+===================================================== */
+app.patch('/orders/:orderNumber/shipping', authenticate, requirePermission('orders.edit_shipping'), async (req, res) => {
+  try {
+    const { orderNumber } = req.params;
+    const { method, shipping_request: shippingRequestData } = req.body || {};
+
+    // Mapeo de la opción del modal al shipping_type final que guardamos en DB.
+    // Los strings elegidos matchean con los helpers esRetiro / requiresShippingForm
+    // (sin tildes para evitar problemas de normalización entre TN y nuestros checks).
+    const TYPE_MAP = {
+      RETIRO:    'Retiro',
+      VIA_CARGO: 'Via Cargo',
+      OTRO:      'Expreso a elección',
+    };
+
+    if (!method || !TYPE_MAP[method]) {
+      return res.status(400).json({ error: 'method debe ser RETIRO, VIA_CARGO o OTRO' });
+    }
+    const newShippingType = TYPE_MAP[method];
+
+    // Validación de campos si es Envío (Retiro no usa shippingRequestData).
+    if (method !== 'RETIRO') {
+      if (!shippingRequestData || typeof shippingRequestData !== 'object') {
+        return res.status(400).json({ error: 'Faltan los datos de envío (shipping_request)' });
+      }
+      const required = ['empresa_envio', 'destino_tipo', 'direccion_entrega',
+        'nombre_apellido', 'dni', 'email', 'codigo_postal', 'provincia',
+        'localidad', 'telefono'];
+      const missing = required.filter(k => !shippingRequestData[k] || String(shippingRequestData[k]).trim() === '');
+      if (missing.length > 0) {
+        return res.status(400).json({ error: `Faltan campos: ${missing.join(', ')}` });
+      }
+      // empresa_envio segun el carrier elegido
+      if (method === 'VIA_CARGO') {
+        shippingRequestData.empresa_envio = 'VIA_CARGO';
+      } else if (method === 'OTRO') {
+        shippingRequestData.empresa_envio = 'OTRO';
+        if (!shippingRequestData.empresa_envio_otro || String(shippingRequestData.empresa_envio_otro).trim() === '') {
+          return res.status(400).json({ error: 'Falta empresa_envio_otro para método OTRO' });
+        }
+      }
+    }
+
+    const { applyShippingOverride } = require('./lib/shipping-override');
+    const result = await applyShippingOverride(orderNumber, {
+      newShippingType,
+      shippingRequestData: method === 'RETIRO' ? null : shippingRequestData,
+      triggeredBy: 'admin',
+      username: req.user?.name || req.user?.username || null,
+    });
+
+    if (result.reason === 'order_not_found') {
+      return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
+    if (result.reason === 'state_not_allowed') {
+      return res.status(409).json({
+        error: 'No se puede cambiar el método: el pedido ya está empaquetado o en un estado posterior.',
+      });
+    }
+    if (result.reason === 'forbidden_carrier') {
+      return res.status(400).json({
+        error: 'No despachamos por Correo Argentino, Andreani ni OCA. Elegí otro transporte.',
+      });
+    }
+    if (result.reason === 'missing_shipping_data') {
+      return res.status(400).json({ error: 'Datos de envío incompletos' });
+    }
+
+    return res.json({
+      ok: true,
+      changed: result.applied,
+      old_shipping_type: result.oldShippingType,
+      shipping_type: result.newShippingType,
+      reason: result.reason,
+    });
+  } catch (error) {
+    console.error('❌ /orders/:orderNumber/shipping error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 function verifyTiendaNubeSignature(req) {
   const received = req.headers['x-linkedstore-hmac-sha256'];
 
@@ -4709,7 +4802,8 @@ app.post('/webhook/tiendanube', async (req, res) => {
       // Datos actuales extendidos para detectar cambios
       const dbExtended = await pool.query(
         `SELECT customer_name, customer_email, customer_phone, customer_phone_overridden_at,
-                shipping_address, note, owner_note, discount, shipping_cost,
+                shipping_address, shipping_overridden_at,
+                note, owner_note, discount, shipping_cost,
                 shipping_tracking
          FROM orders_validated WHERE order_number = $1`,
         [String(pedido.number)]
@@ -4747,13 +4841,17 @@ app.post('/webhook/tiendanube', async (req, res) => {
                              (dbExt.customer_email !== customerEmailNuevo) ||
                              phoneCambioReal;
 
-      // Comparar address campo a campo (JSONB reordena keys alfabéticamente, JSON.stringify no sirve)
+      // Comparar address campo a campo (JSONB reordena keys alfabéticamente, JSON.stringify no sirve).
+      // Si admin overrideó shipping_address vía /orders/:n/shipping, ignoramos cualquier
+      // diff con TN: el override gana y el flag es la fuente de verdad.
       const addressFields = ['name', 'address', 'number', 'floor', 'locality', 'city', 'province', 'zipcode', 'phone', 'between_streets', 'reference'];
       const dbAddr = dbExt.shipping_address || {};
       const tnAddr = pedido.shipping_address || {};
-      const cambioAddress = pedido.shipping_address
-        ? addressFields.some(f => (dbAddr[f] || null) !== (tnAddr[f] || null))
-        : (dbExt.shipping_address !== null);
+      const cambioAddress = !dbExt.shipping_overridden_at && (
+        pedido.shipping_address
+          ? addressFields.some(f => (dbAddr[f] || null) !== (tnAddr[f] || null))
+          : (dbExt.shipping_address !== null)
+      );
       // DEBUG: log qué campo difiere para diagnosticar falsos positivos
       if (cambioAddress && pedido.shipping_address) {
         const diffs = addressFields.filter(f => (dbAddr[f] || null) !== (tnAddr[f] || null));

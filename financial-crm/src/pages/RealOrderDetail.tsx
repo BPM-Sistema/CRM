@@ -57,7 +57,9 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   ORDER_STATUSES, STATUS_CONFIG,
   puedeReimprimirHoja, motivoBloqueoHoja, isPickupShipping, isEnvioNubeShipping,
+  motivoBloqueoCambiarEnvio,
 } from '../constants/estadoPedido';
+import { ShippingChangeModal } from '../components/orders';
 
 export function RealOrderDetail() {
   const { orderNumber } = useParams<{ orderNumber: string }>();
@@ -109,6 +111,9 @@ export function RealOrderDetail() {
   const [phoneInput, setPhoneInput] = useState('');
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [savingPhone, setSavingPhone] = useState(false);
+
+  // Modal para cambiar método de envío
+  const [isShippingChangeModalOpen, setIsShippingChangeModalOpen] = useState(false);
 
   // Estado para etiqueta Envío Nube
   const [isLoadingEnvioNubeLabel, setIsLoadingEnvioNubeLabel] = useState(false);
@@ -883,13 +888,38 @@ export function RealOrderDetail() {
               </div>
             </Card>
 
-            {/* Tipo de envío */}
+            {/* Tipo de envío + botón cambiar método */}
             <Card>
               <p className="text-sm font-semibold uppercase tracking-wider text-neutral-500">
                 Método <span className="text-neutral-900">
                   - {order.shipping_type ? (isPickupOrder ? 'Retiro' : 'Envío') : '—'}
                 </span>
               </p>
+              {order.shipping_type && (
+                <p className="text-sm text-neutral-600 mt-1">{order.shipping_type}</p>
+              )}
+              {hasPermission('orders.edit_shipping') && (() => {
+                const motivoBloqueo = motivoBloqueoCambiarEnvio(orderStatus);
+                const puedeCambiar = !motivoBloqueo;
+                return (
+                  <div className="mt-3">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => setIsShippingChangeModalOpen(true)}
+                      disabled={!puedeCambiar}
+                      title={motivoBloqueo || undefined}
+                      leftIcon={<Edit3 size={14} />}
+                    >
+                      Cambiar método de envío
+                    </Button>
+                    {motivoBloqueo && (
+                      <p className="text-xs text-neutral-500 mt-1.5">{motivoBloqueo}</p>
+                    )}
+                  </div>
+                );
+              })()}
             </Card>
 
             {/* Acciones de pago */}
@@ -1660,6 +1690,21 @@ export function RealOrderDetail() {
           </div>
         </div>
       )}
+
+      {/* Modal: cambiar método de envío */}
+      <ShippingChangeModal
+        isOpen={isShippingChangeModalOpen}
+        onClose={() => setIsShippingChangeModalOpen(false)}
+        orderNumber={orderNumber || ''}
+        isPickupOrder={isPickupOrder}
+        currentShippingType={order.shipping_type}
+        shippingRequest={shippingRequest}
+        tnAddress={null}
+        customerName={order.customer_name}
+        customerPhone={order.customer_phone}
+        customerEmail={order.customer_email}
+        onSuccess={() => loadOrder()}
+      />
     </div>
   );
 }
