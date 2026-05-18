@@ -20,12 +20,13 @@ const { derivarEstadoDesdeEmpaquetado, accionParaEstado } = require('../lib/esta
 const { logEvento } = require('../utils/logging');
 const { notifyEstadoTransition } = require('../lib/notify-estado-transition');
 const { pagoAlcanzaParaDespachar } = require('../lib/shipping-requirements');
+const { syncEstadoToTN } = require('../lib/tn-sync');
 
 // ─── Helper: leer pedido base ──────────────────────────────────
 async function loadOrder(orderNumber) {
   const r = await pool.query(
     `SELECT order_number, estado_pedido, estado_pago, customer_name,
-            shipping_type, bultos
+            shipping_type, bultos, tn_order_id
      FROM orders_validated
      WHERE order_number = $1`,
     [orderNumber]
@@ -379,6 +380,18 @@ router.post('/:orderNumber/transition', async (req, res) => {
       toEstado: estadoFinal,
       estadoPago: order.estado_pago,
     }).catch(err => console.error('[qr] notifyEstadoTransition fallo:', err.message));
+
+    // 9. Sincronizar a Tiendanube si el estado tiene equivalencia (espejo
+    // de lo que hace PATCH /orders/:n/status:4116). Pasamos to_status (no
+    // estadoFinal) porque la derivación post-empaquetado lleva a estados
+    // internos (pendiente_retiro/por_enviar) que no están en ESTADO_TN_MAP.
+    // empaquetado→packed en TN hace que la vista pase de "Por empaquetar"
+    // a "Por enviar" o "Por retirar" automáticamente.
+    if (order.tn_order_id && to_status === 'empaquetado') {
+      syncEstadoToTN(order.tn_order_id, orderNumber, 'empaquetado', {
+        triggeredBy: `qr_deposito:${empleado.nombre}`,
+      }).catch(err => console.error('[qr] syncEstadoToTN fallo:', err.message));
+    }
 
     res.json({
       ok: true,
