@@ -6,6 +6,7 @@ import {
   Receipt,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   LogOut,
   Users,
   Activity,
@@ -27,6 +28,8 @@ import {
   Bell,
   BellRing,
   Warehouse,
+  Megaphone,
+  Star,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -98,6 +101,11 @@ const localItems = [
   { to: '/local/alertas', icon: <AlertTriangle size={20} />, label: 'Alertas', permissions: ['local.alerts.view'] },
 ];
 
+const marketingItems = [
+  { to: '/marketing/stock', icon: <Bell size={20} />, label: 'Stock Alerts', permissions: ['marketing.stock.view', 'stock_alerts.view'] },
+  { to: '/marketing/resenas', icon: <Star size={20} />, label: 'Reseñas Google', permissions: ['marketing.reviews.view'] },
+];
+
 const adminItems = [
   { to: '/admin/users', icon: <Users size={20} />, label: 'Usuarios', permissions: ['users.view'] },
   { to: '/admin/financieras', icon: <Landmark size={20} />, label: 'Financieras', permissions: ['financieras.view'] },
@@ -105,7 +113,6 @@ const adminItems = [
   { to: '/admin/sync-queue', icon: <RefreshCw size={20} />, label: 'Sincronización', permissions: ['activity.view'] },
   { to: '/admin/whatsapp-actions', icon: <Send size={20} />, label: 'WhatsApp Envíos', permissions: ['whatsapp.send_bulk'] },
   { to: '/admin/image-sync', icon: <ImageIcon size={20} />, label: 'Sync Imagenes', permissions: ['activity.view'] },
-  { to: '/admin/stock-alerts', icon: <Bell size={20} />, label: 'Stock Alerts', permissions: ['stock_alerts.view'] },
   { to: '/admin/payment-reminders', icon: <BellRing size={20} />, label: 'Cancelaciones', permissions: ['payment_reminders.view'] },
   { to: '/admin/integrations', icon: <Settings size={20} />, label: 'Integraciones', permissions: ['integrations.view'] },
   { to: '/system-status', icon: <Monitor size={20} />, label: 'Estado Sistema', permissions: ['integrations.view'] },
@@ -126,11 +133,17 @@ export function Sidebar() {
 
   const visibleNavItems = navItems.filter(item => hasAnyPermission(item.permissions));
   const visibleLocalItems = localItems.filter(item => hasAnyPermission(item.permissions));
+  const visibleMarketingItems = marketingItems.filter(item => hasAnyPermission(item.permissions));
   const visibleAdminItems = adminItems.filter(item => hasAnyPermission(item.permissions));
+
+  const isMarketingActive = visibleMarketingItems.some(
+    item => location.pathname === item.to || location.pathname.startsWith(item.to + '/')
+  );
+  const [marketingOpen, setMarketingOpen] = useState(isMarketingActive);
 
   // Mobile: show first 4 nav items + "More" button
   const mobileMainTabs = visibleNavItems.slice(0, 4);
-  const mobileOverflowItems = [...visibleNavItems.slice(4), ...visibleLocalItems, ...visibleAdminItems];
+  const mobileOverflowItems = [...visibleNavItems.slice(4), ...visibleLocalItems, ...visibleMarketingItems, ...visibleAdminItems];
   const isOverflowActive = mobileOverflowItems.some(item => location.pathname === item.to || location.pathname.startsWith(item.to + '/'));
 
   return (
@@ -169,6 +182,51 @@ export function Sidebar() {
               {visibleLocalItems.map((item) => (
                 <NavItem key={item.to} to={item.to} icon={item.icon} label={item.label} collapsed={collapsed} />
               ))}
+            </>
+          )}
+
+          {visibleMarketingItems.length > 0 && (
+            <>
+              <div className={clsx('pt-4 pb-2', collapsed ? 'px-2' : 'px-3')}>
+                {!collapsed && (
+                  <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">
+                    Marketing
+                  </span>
+                )}
+                {collapsed && <div className="h-px bg-neutral-200" />}
+              </div>
+              {collapsed ? (
+                // En colapsado mostramos los hijos sueltos para no perder accesos
+                visibleMarketingItems.map((item) => (
+                  <NavItem key={item.to} to={item.to} icon={item.icon} label={item.label} collapsed={collapsed} />
+                ))
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setMarketingOpen(o => !o)}
+                    className={clsx(
+                      'flex items-center gap-3 w-full px-3 py-2.5 rounded-xl transition-all duration-150',
+                      'hover:bg-neutral-100',
+                      isMarketingActive ? 'text-neutral-900' : 'text-neutral-600'
+                    )}
+                  >
+                    <span className="flex-shrink-0"><Megaphone size={20} /></span>
+                    <span className="font-medium text-sm flex-1 text-left">Marketing</span>
+                    <ChevronDown
+                      size={16}
+                      className={clsx('text-neutral-400 transition-transform', marketingOpen && 'rotate-180')}
+                    />
+                  </button>
+                  {marketingOpen && (
+                    <div className="pl-3 space-y-1">
+                      {visibleMarketingItems.map((item) => (
+                        <NavItem key={item.to} to={item.to} icon={item.icon} label={item.label} collapsed={collapsed} />
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
             </>
           )}
 
@@ -295,6 +353,35 @@ export function Sidebar() {
                     </span>
                   </div>
                   {visibleLocalItems.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={({ isActive }) =>
+                        clsx(
+                          'flex items-center gap-3 px-4 py-3.5 rounded-xl transition-colors',
+                          isActive
+                            ? 'bg-neutral-900 text-white'
+                            : 'text-neutral-700 hover:bg-neutral-100 active:bg-neutral-200'
+                        )
+                      }
+                    >
+                      {item.icon}
+                      <span className="font-medium">{item.label}</span>
+                    </NavLink>
+                  ))}
+                </>
+              )}
+
+              {/* Marketing section */}
+              {visibleMarketingItems.length > 0 && (
+                <>
+                  <div className="pt-4 pb-2 px-4">
+                    <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">
+                      Marketing
+                    </span>
+                  </div>
+                  {visibleMarketingItems.map((item) => (
                     <NavLink
                       key={item.to}
                       to={item.to}

@@ -194,8 +194,120 @@ async function sendStockAlertTemplate({
   }
 }
 
+function buildReviewRequestComponents({ name, token }) {
+  return [
+    {
+      type: 'body',
+      parameters: [{ type: 'text', text: name || 'Cliente' }],
+    },
+    {
+      type: 'button',
+      sub_type: 'url',
+      index: '0',
+      parameters: [{ type: 'text', text: token || '' }],
+    },
+  ];
+}
+
+/**
+ * Envía el template solicitud_resena_google vía Waspy (canal marketing).
+ *
+ * Plantilla cargada en Meta con:
+ *   - Body var {{1}}: nombre del cliente
+ *   - Button URL dinámico, base "https://blanqueriaxmayor.com/resena/" + var {{1}} = token
+ *
+ * @param {Object} args
+ * @param {string} args.to                  Teléfono destino (cualquier formato AR; se normaliza).
+ * @param {string} [args.templateName]      Default 'solicitud_resena_google'.
+ * @param {string} [args.language]          Default 'es_AR'.
+ * @param {Object} args.variables           '1' = nombre, 'token' = token único del link.
+ *
+ * @returns {Promise<{sent:boolean, reason?:string, providerMessageId?:string, ...}>}
+ */
+async function sendReviewRequestTemplate({
+  to,
+  templateName = 'solicitud_resena_google_v2',
+  language = 'es_AR',
+  variables = {},
+} = {}) {
+  if (!to) return { sent: false, reason: 'missing_to' };
+  if (!variables.token) return { sent: false, reason: 'missing_token' };
+
+  const cfg = await getMarketingConfig();
+  if (!cfg) {
+    log.warn('[waspyOutbound] marketing config no disponible para review request');
+    return { sent: false, reason: 'config_unavailable' };
+  }
+
+  const testingConfig = await waConfig.getTestingConfig();
+  if (testingConfig === null) {
+    log.error('[waspyOutbound] no se pudo leer testing config — bloqueando envio review');
+    return { sent: false, reason: 'testing_config_unavailable' };
+  }
+  if (testingConfig.enabled) {
+    if (!testingConfig.testingPhone) {
+      return { sent: false, reason: 'testing_no_phone' };
+    }
+    log.info({ from: to, testing: testingConfig.testingPhone }, '[waspyOutbound] review testing redirect');
+    to = testingConfig.testingPhone;
+  }
+
+  to = normalizeArgentinaPhone(to);
+  if (!to.startsWith('+')) to = '+' + to;
+
+  await rateLimit();
+
+  const components = buildReviewRequestComponents({
+    name: variables['1'],
+    token: variables.token,
+  });
+
+  const payload = {
+    phoneNumberId: cfg.phoneNumberId,
+    to,
+    type: 'template',
+    template: {
+      name: templateName,
+      language: { code: language },
+      components,
+    },
+  };
+
+  try {
+    const res = await axios.post(`${cfg.baseUrl}/messages`, payload, {
+      headers: {
+        Authorization: `Bearer ${cfg.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: REQUEST_TIMEOUT_MS,
+    });
+    const providerMessageId =
+      res.data?.id || res.data?.messageId || res.data?.data?.id || null;
+    log.info(
+      { to, templateName, providerMessageId, status: res.status },
+      '[waspyOutbound] review sent OK'
+    );
+    return { sent: true, providerMessageId, to, status: res.status };
+  } catch (err) {
+    const status = err.response?.status;
+    const data = err.response?.data;
+    log.error(
+      { to, templateName, status, data, msg: err.message },
+      '[waspyOutbound] review send error'
+    );
+    return {
+      sent: false,
+      reason: status ? 'api_error' : 'network_error',
+      status,
+      error: err.message,
+      data,
+    };
+  }
+}
+
 module.exports = {
   sendStockAlertTemplate,
+  sendReviewRequestTemplate,
   getMarketingConfig,
   invalidateConfigCache,
 };

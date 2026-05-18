@@ -17,6 +17,7 @@ import LocalCajaNew from './pages/local/LocalCajaNew';
 import LocalCajaDetail from './pages/local/LocalCajaDetail';
 import LocalAlertas from './pages/local/LocalAlertas';
 import StockAlerts from './pages/StockAlerts';
+import MarketingReviews from './pages/MarketingReviews';
 import PaymentReminders from './pages/PaymentReminders';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginPage } from './pages/LoginPage';
@@ -77,7 +78,11 @@ function AppRoutes() {
             <Route path="/local/caja/nueva" element={<LocalCajaNew />} />
             <Route path="/local/caja/:id" element={<LocalCajaDetail />} />
             <Route path="/local/alertas" element={<LocalAlertas />} />
-            <Route path="/admin/stock-alerts" element={<StockAlerts />} />
+            {/* Marketing */}
+            <Route path="/marketing/stock" element={<StockAlerts />} />
+            <Route path="/marketing/resenas" element={<MarketingReviews />} />
+            {/* Redirect ruta vieja a la nueva para no romper bookmarks */}
+            <Route path="/admin/stock-alerts" element={<Navigate to="/marketing/stock" replace />} />
             <Route path="/admin/payment-reminders" element={<PaymentReminders />} />
             {/* Ruta catch-all: redirige a la primera sección permitida */}
             <Route path="*" element={<DefaultRedirect />} />

@@ -6522,6 +6522,7 @@ const localOrdersRoutes = require('./routes/local-orders');
 const localBoxRoutes = require('./routes/local-box');
 const localAlertsRoutes = require('./routes/local-alerts');
 const stockAlertsRoutes = require('./routes/stock-alerts');
+const marketingReviewsRoutes = require('./routes/marketing-reviews');
 const paymentRemindersRoutes = require('./routes/payment-reminders');
 const qrDepositoRoutes = require('./routes/qr-deposito');
 const depositoAdminRoutes = require('./routes/deposito-admin');
@@ -6619,6 +6620,13 @@ app.post('/cron/canonicalize-carriers', verifyCronAuth, async (req, res) => {
   }
 });
 app.use('/stock-alerts', stockAlertsRoutes);
+
+// Marketing → Reseñas Google.
+// Endpoint público (sin auth) para el redirect del link corto que reciben
+// los clientes por WhatsApp. Resto bajo /marketing/reviews (autenticado).
+app.get('/resena/:token', marketingReviewsRoutes.redirectByToken);
+app.use('/marketing/reviews', marketingReviewsRoutes.router);
+
 if (aiBotRoutes) app.use('/ai-bot', aiBotRoutes);
 app.use('/admin/queues', bullBoardAuth, bullBoardAdapter.getRouter());
 
