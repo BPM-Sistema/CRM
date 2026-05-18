@@ -9,9 +9,11 @@
  * Setea customer_phone_overridden_at para que los webhooks de TN y el
  * divergence-detector no pisen el valor con el de TN.
  *
- * Comparación inteligente: por últimos 10 dígitos, así "el mismo número
- * en otro formato" no dispara override falso. Soporta el formato viejo
- * argentino con "15" para áreas de 2 dígitos (CABA/GBA).
+ * Comparación inteligente: normaliza ambos lados a formato +549... y
+ * compara, así "el mismo número en otro formato" no dispara override
+ * falso, pero un fijo (sin 9) vs móvil (con 9) sí lo dispara — son
+ * destinos distintos para WhatsApp. Soporta el formato viejo argentino
+ * con "15" para áreas de 2 dígitos (CABA/GBA).
  */
 
 const pool = require('../db');
@@ -100,16 +102,20 @@ async function applyCustomerPhoneOverride(orderNumber, rawPhone, opts = {}) {
     return { applied: false, normalized: null, oldPhone: orderRow.customer_phone, reason: 'state_not_allowed' };
   }
 
-  // 4. Comparar últimos 10 dígitos (mismo número en distinto formato → no override)
+  // 4. Normalizar a formato +549... y comparar con el del DB también normalizado.
+  // No alcanza con comparar últimos 10 dígitos: un fijo "+5401158130287" y un
+  // móvil "+5491158130287" tienen los mismos 10 últimos pero son destinos
+  // distintos para WhatsApp (el "9" marca móvil). Comparar normalizado vs
+  // normalizado distingue esos casos y sigue cubriendo "mismo número en otro
+  // formato" (espacios, guiones, con/sin código país, formato viejo con 15).
+  const normalized = normalizeForArgentina(digits);
   const currentDigits = (orderRow.customer_phone || '').replace(/\D/g, '');
-  if (currentDigits && currentDigits.slice(-10) === digits.slice(-10)) {
+  const currentNormalized = currentDigits ? normalizeForArgentina(currentDigits) : null;
+  if (currentNormalized && currentNormalized === normalized) {
     return { applied: false, normalized: orderRow.customer_phone, oldPhone: orderRow.customer_phone, reason: 'same_phone' };
   }
 
-  // 5. Normalizar a formato +549...
-  const normalized = normalizeForArgentina(digits);
-
-  // 6. UPDATE customer_phone + flag + scheduled_whatsapp pendientes
+  // 5. UPDATE customer_phone + flag + scheduled_whatsapp pendientes
   await pool.query(
     `UPDATE orders_validated
        SET customer_phone = $1,
@@ -125,7 +131,7 @@ async function applyCustomerPhoneOverride(orderNumber, rawPhone, opts = {}) {
     [normalized, orderNumber]
   );
 
-  // 7. Log evento
+  // 6. Log evento
   const accion = triggeredBy === 'admin'
     ? `Teléfono actualizado manualmente: ${orderRow.customer_phone || '(vacío)'} → ${normalized}`
     : `Teléfono actualizado por cliente: ${orderRow.customer_phone || '(vacío)'} → ${normalized}`;
