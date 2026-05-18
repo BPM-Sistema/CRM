@@ -37,8 +37,5 @@ function PhoneMessage() {
 }
 
 export function App(nube: NubeSDK) {
-  nube.render("before_contact_form", <PhoneMessage />);
   nube.render("before_address_form", <PhoneMessage />);
-  nube.render("before_billing_form", <PhoneMessage />);
-  nube.render("before_shipping_form", <PhoneMessage />);
 }
