@@ -22,6 +22,7 @@ import {
   AlertTriangle,
   Edit3,
   X,
+  DollarSign,
 } from 'lucide-react';
 import { getEventConfig, formatEventLabel } from '../utils/eventConfig';
 import { Header } from '../components/layout';
@@ -57,7 +58,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   ORDER_STATUSES, STATUS_CONFIG,
   puedeReimprimirHoja, motivoBloqueoHoja, isPickupShipping, isEnvioNubeShipping,
-  motivoBloqueoCambiarEnvio,
+  motivoBloqueoCambiarEnvio, tienePagoInsuficientePostImprimir,
 } from '../constants/estadoPedido';
 import { ShippingChangeModal } from '../components/orders';
 
@@ -475,6 +476,33 @@ export function RealOrderDetail() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Columna izquierda */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Alerta: pago insuficiente post-impresión.
+                Cubre dos casos: pago anulado/reembolsado/pendiente después
+                de imprimir, o cambio de método a Envío con pago parcial. */}
+            {tienePagoInsuficientePostImprimir(orderStatus, order.estado_pago, order.shipping_type) && (
+              <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <DollarSign className="text-red-600 flex-shrink-0 mt-0.5" size={22} />
+                  <div className="flex-1">
+                    <h3 className="text-sm font-semibold text-red-900 mb-1">
+                      Pago insuficiente para el método actual
+                    </h3>
+                    <p className="text-sm text-red-700">
+                      El pedido está en <span className="font-medium">{STATUS_CONFIG[orderStatus]?.label || orderStatus}</span> con pago{' '}
+                      <span className="font-medium">{order.estado_pago || 'desconocido'}</span> y método{' '}
+                      <span className="font-medium">{isPickupShipping(order.shipping_type) ? 'Retiro' : 'Envío'}</span>.
+                      {isPickupShipping(order.shipping_type)
+                        ? ' Retiro acepta pago parcial pero no menor.'
+                        : ' Envío requiere pago total confirmado.'}
+                    </p>
+                    <p className="text-xs text-red-600 mt-2">
+                      Sin acción, el pedido no va a poder avanzar al despacho. Verificá el pago, cambiá a Retiro si corresponde, o cancelá el pedido.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Resumen del pedido */}
             <Card>
               <div className="flex items-center justify-between mb-4">

@@ -1192,6 +1192,46 @@ app.get('/orders/print-counts', authenticate, requirePermission('orders.view'), 
        desde el punto de vista del operador.
    Lo usa el badge del Header (al lado del bell de notificaciones).
 ===================================================== */
+/* =====================================================
+   CONDICIÓN SQL — pedido post-imprimir con pago insuficiente para el método actual
+   Espejo en SQL de pagoAlcanzaParaDespachar (lib/shipping-requirements.js).
+   - Estados post-imprimir, no terminales: hoja_impresa hasta por_enviar.
+   - Retiro: exige pago parcial/total/a_favor.
+   - Envío (no retiro): exige total/a_favor.
+   La detección de retiro espeja esRetiro pero solo mira shipping_type (no
+   empresa_envio del shipping_request) porque casi siempre TN ya manda el
+   shipping_type cargado; en los casos en que no, el shipping_request implica
+   Envío de todos modos (no se crea para retiro).
+===================================================== */
+const SQL_ALERT_PAGO_INSUFICIENTE_POST_IMPRIMIR = `
+  o.estado_pedido IN (
+    'hoja_impresa', 'en_preparacion', 'pendiente_stock',
+    'en_revision', 'por_empaquetar', 'empaquetado',
+    'pendiente_retiro', 'por_enviar'
+  )
+  AND (
+    (LOWER(COALESCE(o.shipping_type, '')) ~* 'pickup|retiro|deposito|depósito'
+     AND o.estado_pago NOT IN ('confirmado_parcial', 'confirmado_total', 'a_favor'))
+    OR
+    (LOWER(COALESCE(o.shipping_type, '')) !~* 'pickup|retiro|deposito|depósito'
+     AND o.estado_pago NOT IN ('confirmado_total', 'a_favor'))
+  )
+`;
+
+app.get('/orders/pago-insuficiente-post-imprimir-count', authenticate, requirePermission('orders.view'), async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT COUNT(*)::int AS count
+      FROM orders_validated o
+      WHERE ${SQL_ALERT_PAGO_INSUFICIENTE_POST_IMPRIMIR}
+    `);
+    res.json({ ok: true, count: result.rows[0].count });
+  } catch (error) {
+    console.error('❌ /orders/pago-insuficiente-post-imprimir-count error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/orders/pending-shipping-data-count', authenticate, requirePermission('orders.view'), async (req, res) => {
   try {
     const result = await pool.query(`
@@ -1439,7 +1479,7 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
     const offset = (page - 1) * limit;
 
     // Filtros
-    const { estado_pago, estado_pedido, search, fecha, shipping_data, shipping_type } = req.query;
+    const { estado_pago, estado_pedido, search, fecha, shipping_data, shipping_type, alert } = req.query;
 
     // Mapeo de permisos granulares a estados
     const estadoPagoPermisos = {
@@ -1592,6 +1632,11 @@ app.get('/orders', authenticate, requirePermission('orders.view'), async (req, r
           conditions.push(`(${st} LIKE '%retiro%' OR ${st} LIKE '%pickup%' OR ${st} LIKE '%deposito%' OR ${st} LIKE '%depósito%' OR ${st} LIKE '%punto de retiro%')`);
           break;
       }
+    }
+
+    // Filtros de alerta (cuando el user clickea en algún botón del header con badge).
+    if (alert === 'pago_insuficiente_post_imprimir') {
+      conditions.push(SQL_ALERT_PAGO_INSUFICIENTE_POST_IMPRIMIR);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

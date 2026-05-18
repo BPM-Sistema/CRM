@@ -1,4 +1,4 @@
-import { NotificationBell, PendingShippingDataBadge, ShippingDataChangedBadge } from '../ui';
+import { NotificationBell, PendingShippingDataBadge, ShippingDataChangedBadge, PagoInsuficientePostImprimirBadge } from '../ui';
 
 interface HeaderProps {
   title: React.ReactNode;
@@ -21,6 +21,7 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
           <NotificationBell />
           <PendingShippingDataBadge />
           <ShippingDataChangedBadge />
+          <PagoInsuficientePostImprimirBadge />
           <div className="hidden md:contents">
             {actions}
           </div>

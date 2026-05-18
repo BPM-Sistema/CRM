@@ -159,6 +159,39 @@ export function motivoBloqueoCambiarEnvio(estado: OrderStatus | null | undefined
   return 'El pedido no está en un estado que permita cambiar el envío.';
 }
 
+// Estados "post-impresión, no terminales": el pedido ya pasó a_imprimir y
+// puede tener trabajo físico hecho, pero todavía no se despachó/retiró.
+// Es la ventana donde una anulación de pago o un cambio de método puede
+// dejar al pedido inconsistente sin que el sistema retroceda automáticamente.
+const ESTADOS_POST_IMPRIMIR_NO_TERMINAL: OrderStatus[] = [
+  'hoja_impresa', 'en_preparacion', 'pendiente_stock', 'en_revision',
+  'por_empaquetar', 'empaquetado', 'pendiente_retiro', 'por_enviar',
+];
+
+/**
+ * True si el pedido tiene pago insuficiente para el método actual estando
+ * en un estado post-impresión. Espejo en frontend del criterio SQL
+ * SQL_ALERT_PAGO_INSUFICIENTE_POST_IMPRIMIR del backend.
+ *
+ * Cubre dos casos:
+ *   1. Pago anulado / reembolsado / pendiente después de imprimir hoja.
+ *   2. Cambio de método Retiro → Envío con pago parcial.
+ */
+export function tienePagoInsuficientePostImprimir(
+  estadoPedido: OrderStatus | null | undefined,
+  estadoPago: string | null | undefined,
+  shippingType: string | null | undefined,
+): boolean {
+  if (!estadoPedido || !ESTADOS_POST_IMPRIMIR_NO_TERMINAL.includes(estadoPedido)) return false;
+  const pago = estadoPago || '';
+  if (isPickupShipping(shippingType)) {
+    // Retiro: requiere parcial/total/a_favor
+    return !['confirmado_parcial', 'confirmado_total', 'a_favor'].includes(pago);
+  }
+  // Envío: requiere total/a_favor
+  return !['confirmado_total', 'a_favor'].includes(pago);
+}
+
 // Detector simple por shipping_type (espejo acotado de esRetiro en backend).
 // No mira empresa_envio porque el frontend no la tiene a mano en la card.
 export function isPickupShipping(shippingType: string | null | undefined): boolean {

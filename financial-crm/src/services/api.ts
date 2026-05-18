@@ -372,6 +372,7 @@ export interface OrderFilters {
   fecha?: string;
   shipping_data?: 'pending' | 'complete' | 'label_printed' | 'label_not_printed' | 'data_changed';
   shipping_type?: ShippingTypeFilter;
+  alert?: 'pago_insuficiente_post_imprimir';
 }
 
 // Mapeo inverso: de UI a DB
@@ -404,6 +405,9 @@ export async function fetchOrders(page = 1, limit = 50, filters?: OrderFilters, 
   }
   if (filters?.shipping_type && filters.shipping_type !== 'all') {
     params.append('shipping_type', filters.shipping_type);
+  }
+  if (filters?.alert) {
+    params.append('alert', filters.alert);
   }
 
   const response = await authFetch(`${API_BASE_URL}/orders?${params.toString()}`, { signal });

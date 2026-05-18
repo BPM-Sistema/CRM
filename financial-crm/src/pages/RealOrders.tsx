@@ -54,6 +54,7 @@ export function RealOrders() {
     search: '',
     shipping_data: 'all' as 'all' | 'pending' | 'complete' | 'label_printed' | 'label_not_printed' | 'data_changed',
     shipping_type: 'all' as ShippingTypeFilter,
+    alert: '' as '' | 'pago_insuficiente_post_imprimir',
     page: 1,
   });
 
@@ -181,6 +182,7 @@ export function RealOrders() {
       fecha: fechaParam,
       shipping_data: shippingDataFilter === 'all' ? undefined : shippingDataFilter,
       shipping_type: shippingTypeFilter === 'all' ? undefined : shippingTypeFilter,
+      alert: filters.alert || undefined,
     };
 
     // Cancelar request anterior si sigue en vuelo
