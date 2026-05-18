@@ -88,11 +88,12 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
           `}
         </style>
 
-        {/* Header del documento.
-            Lo dejamos arriba como antes (margen de seguridad si la impresora
-            lo come), pero los mismos datos también aparecen dentro del grid
-            de abajo para que nunca se pierdan. */}
-        <div className="print-no-break border-b border-black pb-2 mb-3 flex justify-between items-end">
+        {/* Header del documento — INVISIBLE pero ocupa espacio.
+            Mantiene el alto como margen de seguridad si la impresora
+            corta arriba (corta espacio en blanco, no info). Los datos
+            reales del header viven en la card de la columna izquierda
+            del grid de abajo. */}
+        <div className="invisible print-no-break border-b border-black pb-2 mb-3 flex justify-between items-end" aria-hidden="true">
           <div>
             <h1 className="font-bold font-mono">#{data.order_number}</h1>
             <p className="text-[10px] text-gray-600 uppercase">Hoja de Picking</p>
