@@ -88,7 +88,10 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
           `}
         </style>
 
-        {/* Header del documento */}
+        {/* Header del documento.
+            Lo dejamos arriba como antes (margen de seguridad si la impresora
+            lo come), pero los mismos datos también aparecen dentro del grid
+            de abajo para que nunca se pierdan. */}
         <div className="print-no-break border-b border-black pb-2 mb-3 flex justify-between items-end">
           <div>
             <h1 className="font-bold font-mono">#{data.order_number}</h1>
@@ -104,15 +107,36 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
           </div>
         </div>
 
-        {/* Cliente y Envío en línea */}
-        <div className="print-no-break grid grid-cols-2 gap-3 mb-3 text-[11px]">
-          <div className="border border-gray-400 p-2 flex items-start justify-between gap-2">
-            <div className="flex-1 min-w-0">
+        {/* Grid principal: [Header + Cliente apilados] [QR] [Envío]
+            Los datos del header viven también acá adentro como respaldo, por
+            si la config de impresión recorta la franja de arriba. */}
+        <div className="print-no-break grid grid-cols-[1fr_auto_1fr] gap-3 mb-3 text-[11px]">
+          {/* Columna izq: header arriba, cliente abajo */}
+          <div className="flex flex-col gap-3">
+            <div className="border border-gray-400 p-2 flex justify-between items-end gap-2">
+              <div className="min-w-0">
+                <h1 className="font-bold font-mono">#{data.order_number}</h1>
+                <p className="text-[10px] text-gray-600 uppercase">Hoja de Picking</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] text-gray-600">
+                  Pedido: {data.created_at ? format(new Date(data.created_at), "dd/MM/yyyy HH:mm", { locale: es }) : '-'}
+                </p>
+                <p className="text-[10px] text-gray-600">
+                  Impreso: {format(new Date(), "dd/MM/yyyy HH:mm", { locale: es })}
+                </p>
+              </div>
+            </div>
+
+            <div className="border border-gray-400 p-2">
               <h2 className="font-bold text-gray-500 uppercase mb-1">Cliente</h2>
               <p className="font-semibold">{data.customer.name}</p>
               {data.customer.phone && <p>Tel: {data.customer.phone}</p>}
             </div>
-            {/* QR del pedido (Fase 2 PR 5) — apunta a /q/:orderNumber */}
+          </div>
+
+          {/* Columna medio: QR como card propia (apunta a /q/:orderNumber) */}
+          <div className="border border-gray-400 p-2 flex items-center justify-center">
             <QRCodeSVG
               value={`${window.location.origin}/q/${data.order_number}`}
               size={132}
@@ -121,6 +145,7 @@ export const PrintableOrder = forwardRef<HTMLDivElement, PrintableOrderProps>(
             />
           </div>
 
+          {/* Columna der: Envío */}
           <div className="border border-gray-400 p-2">
             <h2 className="font-bold text-gray-500 uppercase mb-1">
               {data.shipping.pickup_type === 'pickup' ? 'Retiro' : 'Envío'}
