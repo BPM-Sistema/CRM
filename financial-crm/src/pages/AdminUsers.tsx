@@ -40,6 +40,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   'orders.view': 'Ver pedidos',
   'orders.print': 'Imprimir pedido',
   'orders.update_status': 'Cambiar estado logístico',
+  'orders.edit_shipping': 'Cambiar método de envío',
   'orders.create_cash_payment': 'Registrar pago en efectivo',
   'orders.view_pendiente': 'Pendiente',
   'orders.view_a_confirmar': 'A confirmar',
@@ -132,7 +133,7 @@ const SECTIONS = [
     icon: ShoppingCart,
     color: 'bg-amber-50 text-amber-600',
     subsections: [
-      { title: 'Acciones', permissions: ['orders.view', 'orders.print', 'orders.update_status', 'orders.create_cash_payment'] },
+      { title: 'Acciones', permissions: ['orders.view', 'orders.print', 'orders.update_status', 'orders.edit_shipping', 'orders.create_cash_payment'] },
       { title: 'Filtro por Estado de Pago', permissions: ['orders.view_pendiente', 'orders.view_a_confirmar', 'orders.view_parcial', 'orders.view_total', 'orders.view_rechazado'] },
       // Permisos individuales por estado (1↔1 con los botones de filtro).
       { title: 'Filtro por Estado Logístico', permissions: [
