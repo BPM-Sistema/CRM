@@ -61,6 +61,18 @@ router.get('/:orderNumber', async (req, res) => {
       [orderNumber]
     );
 
+    // Flag para que la página del QR muestre un banner si el pedido está
+    // en estado post-impresión con pago insuficiente para el método actual.
+    // Espejo de SQL_ALERT_PAGO_INSUFICIENTE_POST_IMPRIMIR (index.js) y de
+    // tienePagoInsuficientePostImprimir (frontend constants/estadoPedido.ts).
+    const ESTADOS_POST_IMPRIMIR_NO_TERMINAL = [
+      'hoja_impresa', 'en_preparacion', 'pendiente_stock', 'en_revision',
+      'por_empaquetar', 'empaquetado', 'pendiente_retiro', 'por_enviar',
+    ];
+    const pagoInsuficientePostImprimir =
+      ESTADOS_POST_IMPRIMIR_NO_TERMINAL.includes(order.estado_pedido) &&
+      !pagoAlcanzaParaDespachar(order.estado_pago, order.shipping_type);
+
     res.json({
       ok: true,
       order: {
@@ -68,6 +80,7 @@ router.get('/:orderNumber', async (req, res) => {
         estado_pedido: order.estado_pedido,
         customer_name: order.customer_name,
         bultos: order.bultos,
+        pago_insuficiente_post_imprimir: pagoInsuficientePostImprimir,
       },
       buttons,
       products: productsRes.rows,

@@ -27,6 +27,7 @@ interface OrderData {
   estado_pedido: string;
   customer_name: string | null;
   bultos: number;
+  pago_insuficiente_post_imprimir?: boolean;
 }
 
 interface OrderProduct {
@@ -248,6 +249,22 @@ export function QrDeposito() {
             </p>
           )}
         </div>
+
+        {/* Banner de alerta: pago insuficiente post-imprimir.
+            Avisa al operario que NO debe avanzar el pedido por más que el
+            estado lo permita (el sistema bloquea físicamente con la etiqueta,
+            pero este banner evita trabajo "en stand-by"). */}
+        {order.pago_insuficiente_post_imprimir && (
+          <div className="bg-red-50 border-2 border-red-400 rounded-2xl p-4 text-center">
+            <p className="text-3xl mb-2">⚠️</p>
+            <p className="text-base font-bold text-red-900 mb-1">
+              NO AVANZAR ESTE PEDIDO
+            </p>
+            <p className="text-sm text-red-700">
+              Tiene pago insuficiente para el método de envío actual. Consultá con administración antes de empaquetar o despachar.
+            </p>
+          </div>
+        )}
 
         {/* Código */}
         <div className="bg-white rounded-2xl shadow-sm p-5">
