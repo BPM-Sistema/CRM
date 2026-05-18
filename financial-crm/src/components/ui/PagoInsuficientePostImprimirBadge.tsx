@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { DollarSign } from 'lucide-react';
 import { authFetch } from '../../services/api';
 
@@ -12,11 +12,17 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
  *   1. Pago anulado / reembolsado después de imprimir la hoja.
  *   2. Cambio de método a Envío en un pedido con pago parcial.
  *
- * Al clickearlo navega a /orders con el filtro de alerta activo.
+ * Toggle: el primer click activa el filtro en /orders, el segundo lo desactiva
+ * y vuelve a /orders sin filtros. Cuando está activo, el botón muestra ring rojo.
  */
 export function PagoInsuficientePostImprimirBadge() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [count, setCount] = useState(0);
+
+  const isActive =
+    location.pathname === '/orders' &&
+    new URLSearchParams(location.search).get('alert') === 'pago_insuficiente_post_imprimir';
 
   const loadCount = useCallback(async () => {
     try {
@@ -36,16 +42,25 @@ export function PagoInsuficientePostImprimirBadge() {
   }, [loadCount]);
 
   const handleClick = () => {
-    navigate('/orders?alert=pago_insuficiente_post_imprimir');
+    if (isActive) {
+      navigate('/orders');
+    } else {
+      navigate('/orders?alert=pago_insuficiente_post_imprimir');
+    }
   };
 
   if (count === 0) return null;
 
+  const baseClasses = 'relative p-2 rounded-lg transition-colors';
+  const stateClasses = isActive
+    ? 'text-red-700 bg-red-100 ring-2 ring-red-500'
+    : 'text-red-600 hover:text-red-700 hover:bg-red-50';
+
   return (
     <button
       onClick={handleClick}
-      className="relative p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-      title="Pedidos impresos con pago insuficiente — ver lista"
+      className={`${baseClasses} ${stateClasses}`}
+      title={isActive ? 'Quitar filtro de pago insuficiente' : 'Pedidos impresos con pago insuficiente — ver lista'}
     >
       <DollarSign size={20} />
       <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center text-xs font-semibold text-white bg-red-600 rounded-full px-1">
